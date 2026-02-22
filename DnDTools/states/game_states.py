@@ -1,16 +1,21 @@
 import pygame
 import math
 import os
+import json
+import copy
 import random
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, fonts, hp_bar
 from engine.battle import BattleSystem
 from engine.ai import TurnPlan, ActionStep
+from engine.terrain import TerrainObject, TERRAIN_TYPES
 from data.library import library
 from engine.entities import Entity
 from data.models import CreatureStats, AbilityScores, Action
 from data.heroes import hero_list
 from data.conditions import CONDITIONS
+
+SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "saves", "encounter.json")
 
 
 # ============================================================
@@ -31,9 +36,24 @@ class MenuState(GameState):
         super().__init__(manager)
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         self.buttons = [
-            Button(cx-160, cy-60,  320, 60, "New Encounter",    lambda: manager.change_state("SETUP")),
-            Button(cx-160, cy+20,  320, 60, "Exit",             lambda: manager.quit()),
+            Button(cx-160, cy-70,  320, 60, "New Encounter",    lambda: manager.change_state("SETUP")),
+            Button(cx-160, cy+10,  320, 60, "Load Encounter",   lambda: self._load_from_menu(manager),
+                   color=COLORS["panel"]),
+            Button(cx-160, cy+90,  320, 60, "Exit",             lambda: manager.quit()),
         ]
+
+    def _load_from_menu(self, manager):
+        if not os.path.exists(SAVE_FILE):
+            return
+        try:
+            bs = BattleState(manager)
+            bs.battle = BattleSystem.from_save(SAVE_FILE, bs._log)
+            bs.battle.log = bs._log
+            manager.states["BATTLE"] = bs
+            manager.change_state("BATTLE")
+        except Exception as ex:
+            import traceback; traceback.print_exc()
+            print(f"Load error: {ex}")
 
     def handle_events(self, events):
         for e in events:
@@ -225,6 +245,14 @@ class BattleState(GameState):
         self.ctx_pos = (0, 0)
         self.ctx_rects = []   # [(rect, callback, text)]
 
+        # Terrain mode
+        self.terrain_mode = False
+        self.terrain_selected_type = "wall"
+        self.terrain_palette_open = False
+
+        # Condition reminder (set when player turn starts with active conditions)
+        self.condition_reminder: Entity | None = None
+
         self._build_buttons()
 
     # ------------------------------------------------------------------ #
@@ -238,6 +266,10 @@ class BattleState(GameState):
         self.btn_ai     = Button(bx+175, SCREEN_HEIGHT-65, 145, 50, "AI AUTO-PLAY", self._do_ai_turn,        color=COLORS["accent"])
         self.btn_menu   = Button(10, 10, 80, 30, "Menu",          lambda: self.manager.change_state("MENU"), color=COLORS["panel"])
         self.btn_log_pl = Button(bx+330, SCREEN_HEIGHT-65, 165, 50, "LOG PLAYER ACTION", self._open_player_action_panel, color=COLORS["neutral"])
+        # Grid area bottom-left utilities
+        self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._save_encounter,       color=COLORS["panel"])
+        self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._load_encounter,       color=COLORS["panel"])
+        self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
 
         # HP quick buttons
         vals = [-10, -5, -1, 1, 5, 10]
@@ -288,11 +320,14 @@ class BattleState(GameState):
     def _do_next_turn(self):
         self.pending_plan = None
         self.player_action_mode = False
+        self.condition_reminder = None
         curr = self.battle.next_turn()
         self.selected_entity = curr
-        # If player, open action panel hint
+        # If player, open action panel hint and show condition reminder
         if curr.is_player:
             self._log(f"[PLAYER TURN] {curr.name} – log their action with 'LOG PLAYER ACTION'")
+            if curr.conditions or curr.concentrating_on:
+                self.condition_reminder = curr
 
     def _do_ai_turn(self):
         curr = self.battle.get_current_entity()
@@ -471,32 +506,72 @@ class BattleState(GameState):
         return None
 
     def _draw_token(self, screen, entity, cx, cy, radius):
-        pygame.draw.circle(screen, (0,0,0,80), (cx+3, cy+3), radius)
+        # Drop shadow
+        shadow_surf = pygame.Surface((radius*2+6, radius*2+6), pygame.SRCALPHA)
+        pygame.draw.circle(shadow_surf, (0,0,0,60), (radius+3, radius+3), radius+2)
+        screen.blit(shadow_surf, (cx - radius - 3, cy - radius - 3))
+
         img = self._get_token_image(entity.name)
         if img:
             scaled = pygame.transform.smoothscale(img, (radius*2, radius*2))
-            screen.blit(scaled, scaled.get_rect(center=(cx, cy)))
+            # Clip to circle via mask
+            mask_surf = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(mask_surf, (255,255,255,255), (radius, radius), radius)
+            scaled.blit(mask_surf, (0,0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(scaled, (cx - radius, cy - radius))
             border = (255, 215, 0) if entity.is_player else (192, 192, 192)
             pygame.draw.circle(screen, border, (cx, cy), radius, 3)
         else:
-            border = (255, 215, 0) if entity.is_player else (169, 169, 169)
+            # HP-based border color
+            hp_pct = entity.hp / entity.max_hp if entity.max_hp > 0 else 0
+            if entity.is_player:
+                border = (255, 215, 0)   # gold for players always
+            elif hp_pct > 0.6:
+                border = (160, 200, 160)
+            elif hp_pct > 0.3:
+                border = (220, 160, 50)
+            else:
+                border = (200, 60, 60)
+
             if entity.has_condition("Prone"):
-                pygame.draw.ellipse(screen, border, (cx-radius, cy-radius//2, radius*2, radius), 3)
+                pygame.draw.ellipse(screen, border, (cx-radius, cy-radius//2, radius*2, radius))
+                pygame.draw.ellipse(screen, (30, 32, 36), (cx-radius+3, cy-radius//2+3, radius*2-6, radius-6))
+                pygame.draw.ellipse(screen, entity.color, (cx-radius+6, cy-radius//2+6, radius*2-12, radius-12), 4)
             else:
                 pygame.draw.circle(screen, border, (cx, cy), radius)
-            pygame.draw.circle(screen, (25, 27, 30), (cx, cy), radius-4)
-            pygame.draw.circle(screen, entity.color, (cx, cy), radius-7, 5)
+                pygame.draw.circle(screen, (30, 32, 36), (cx, cy), radius - 4)
+                pygame.draw.circle(screen, entity.color, (cx, cy), radius - 7, 5)
+
+            # Initials text with outline
             initials = entity.name[:2].upper()
-            ts = fonts.small.render(initials, True, (0,0,0))
-            tf = fonts.small.render(initials, True, (240,240,240))
-            screen.blit(ts, (cx - tf.get_width()//2+1, cy - tf.get_height()//2+1))
-            screen.blit(tf, (cx - tf.get_width()//2,   cy - tf.get_height()//2))
-        # Concentration ring
+            ts = fonts.small.render(initials, True, (0, 0, 0))
+            tf = fonts.small.render(initials, True, (240, 240, 240))
+            tx = cx - tf.get_width() // 2
+            ty = cy - tf.get_height() // 2
+            for ox, oy in ((-1,0),(1,0),(0,-1),(0,1)):
+                screen.blit(ts, (tx+ox, ty+oy))
+            screen.blit(tf, (tx, ty))
+
+            # CR badge for monsters (bottom-right of token)
+            if not entity.is_player and entity.stats.challenge_rating:
+                cr = entity.stats.challenge_rating
+                cr_str = f"{cr:.3g}" if cr < 1 else str(int(cr))
+                badge = fonts.tiny.render(cr_str, True, (255, 220, 100))
+                bx = cx + radius - badge.get_width() - 1
+                by = cy + radius - badge.get_height()
+                pygame.draw.rect(screen, (0,0,0,180), (bx-2, by-1, badge.get_width()+4, badge.get_height()+2))
+                screen.blit(badge, (bx, by))
+
+        # Concentration ring (teal)
         if entity.concentrating_on:
-            pygame.draw.circle(screen, COLORS["concentration"], (cx, cy), radius+4, 2)
-        # Condition dot
+            pygame.draw.circle(screen, COLORS["concentration"], (cx, cy), radius + 5, 2)
+
+        # Condition count badge (top-right)
         if entity.conditions:
-            pygame.draw.circle(screen, COLORS["spell"], (cx+radius-4, cy-radius+4), 5)
+            n = len(entity.conditions)
+            pygame.draw.circle(screen, COLORS["spell"], (cx + radius - 3, cy - radius + 3), 6)
+            ns = fonts.tiny.render(str(n), True, (255, 255, 255))
+            screen.blit(ns, (cx + radius - 3 - ns.get_width()//2, cy - radius + 3 - ns.get_height()//2))
 
     # ------------------------------------------------------------------ #
     # Event handling                                                       #
@@ -506,6 +581,12 @@ class BattleState(GameState):
         curr = self.battle.get_current_entity()
         for event in events:
             try:
+                # Condition reminder: any click dismisses it
+                if self.condition_reminder:
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        self.condition_reminder = None
+                    continue
+
                 # Context menu
                 if self.ctx_open:
                     if event.type == pygame.MOUSEBUTTONDOWN:
@@ -517,6 +598,19 @@ class BattleState(GameState):
                                 break
                         self.ctx_open = False
                     continue
+
+                # Terrain palette
+                if self.terrain_palette_open:
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        clicked = False
+                        for i, (ttype, props) in enumerate(TERRAIN_TYPES.items()):
+                            r = pygame.Rect(10, TOP_BAR_H + 10 + i * 30, 130, 28)
+                            if r.collidepoint(event.pos):
+                                self.terrain_selected_type = ttype
+                                clicked = True
+                                break
+                        if not clicked:
+                            self.terrain_palette_open = False
 
                 # Pending AI confirmation
                 if self.pending_plan:
@@ -538,19 +632,34 @@ class BattleState(GameState):
                     if mx < GRID_W and my >= 0:
                         gx = mx / self.battle.grid_size
                         gy = my / self.battle.grid_size
-                        ent = self.battle.get_entity_at(gx, gy)
-                        if ent:
-                            self.selected_entity = ent
-                            self.dragging = ent
-                            self.drag_start = (ent.grid_x, ent.grid_y)
+                        igx, igy = int(gx), int(gy)
+                        if self.terrain_mode:
+                            # Place terrain
+                            t = TerrainObject(self.terrain_selected_type, igx, igy)
+                            self.battle.add_terrain(t)
+                            self._log(f"[TERRAIN] Placed {t.label} at ({igx},{igy})")
+                        else:
+                            ent = self.battle.get_entity_at(gx, gy)
+                            if ent:
+                                self.selected_entity = ent
+                                self.dragging = ent
+                                self.drag_start = (ent.grid_x, ent.grid_y)
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                     mx, raw_my = event.pos
                     my = raw_my - TOP_BAR_H
                     if mx < GRID_W and my >= 0:
-                        ent = self.battle.get_entity_at(mx / self.battle.grid_size, my / self.battle.grid_size)
-                        if ent:
-                            self._open_ctx_menu(event.pos, ent)
+                        gx = mx / self.battle.grid_size
+                        gy = my / self.battle.grid_size
+                        if self.terrain_mode:
+                            # Remove terrain at right-click
+                            igx, igy = int(gx), int(gy)
+                            self.battle.remove_terrain_at(igx, igy)
+                            self._log(f"[TERRAIN] Removed terrain at ({igx},{igy})")
+                        else:
+                            ent = self.battle.get_entity_at(gx, gy)
+                            if ent:
+                                self._open_ctx_menu(event.pos, ent)
 
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self.dragging:
@@ -623,6 +732,9 @@ class BattleState(GameState):
                 self.btn_next.handle_event(event)
                 self.btn_menu.handle_event(event)
                 self.btn_log_pl.handle_event(event)
+                self.btn_save.handle_event(event)
+                self.btn_load.handle_event(event)
+                self.btn_terrain.handle_event(event)
                 if not curr.is_player:
                     self.btn_ai.handle_event(event)
 
@@ -648,11 +760,18 @@ class BattleState(GameState):
 
         self._draw_top_bar(screen, curr)
         self._draw_grid(screen)
+        self._draw_terrain(screen)
+        self._draw_aoe_overlays(screen)
         self._draw_entities(screen, curr, sel)
         self._draw_drag(screen)
+        self._draw_grid_buttons(screen, mp)
         self._draw_panel(screen, curr, sel, mp)
         self._draw_bottom_bar(screen, curr, mp)
 
+        if self.terrain_palette_open:
+            self._draw_terrain_palette(screen, mp)
+        if self.condition_reminder:
+            self._draw_condition_reminder(screen, mp)
         if self.pending_plan:
             self._draw_ai_confirm_dialog(screen, mp)
         if self.player_action_mode:
@@ -716,6 +835,100 @@ class BattleState(GameState):
             pygame.draw.line(screen, COLORS["grid"], (x, TOP_BAR_H), (x, SCREEN_HEIGHT))
         for y in range(TOP_BAR_H, SCREEN_HEIGHT, gsz):
             pygame.draw.line(screen, COLORS["grid"], (0, y), (GRID_W, y))
+
+    # --- Terrain tiles ---
+    def _draw_terrain(self, screen):
+        gsz = self.battle.grid_size
+        for t in self.battle.terrain:
+            rx = t.grid_x * gsz
+            ry = t.grid_y * gsz + TOP_BAR_H
+            rw = t.width * gsz
+            rh = t.height * gsz
+            # Filled tile
+            s = pygame.Surface((rw, rh), pygame.SRCALPHA)
+            r, g, b = t.color
+            s.fill((r, g, b, 200))
+            screen.blit(s, (rx, ry))
+            # Border
+            pygame.draw.rect(screen, tuple(min(255, c+40) for c in t.color), (rx, ry, rw, rh), 2)
+            # Label
+            lbl = fonts.tiny.render(t.label[:6], True, (255, 255, 255))
+            screen.blit(lbl, (rx + 2, ry + 2))
+            # Hazard indicator
+            if t.is_hazard:
+                hz = fonts.tiny.render(t.hazard_damage, True, (255, 220, 0))
+                screen.blit(hz, (rx + 2, ry + gsz - 16))
+
+    # --- AOE spell overlays ---
+    def _draw_aoe_overlays(self, screen):
+        if not self.pending_plan:
+            return
+        steps = self.pending_plan.steps
+        idx = self.pending_step_idx
+        if idx >= len(steps):
+            return
+        step = steps[idx]
+        if step.step_type != "spell" or not step.spell:
+            return
+        sp = step.spell
+        if sp.aoe_radius <= 0 or not step.aoe_center:
+            return
+
+        gsz = self.battle.grid_size
+        cx_grid, cy_grid = step.aoe_center
+        cx_px = int(cx_grid * gsz + gsz // 2)
+        cy_px = int(cy_grid * gsz + gsz // 2 + TOP_BAR_H)
+        radius_px = int(sp.aoe_radius / 5 * gsz)
+
+        # Semi-transparent overlay
+        aoe_surf = pygame.Surface((radius_px * 2 + 4, radius_px * 2 + 4), pygame.SRCALPHA)
+        if sp.damage_type == "fire":
+            color = (255, 80, 20, 60)
+            border = (255, 140, 0, 200)
+        elif sp.damage_type == "cold":
+            color = (80, 180, 255, 60)
+            border = (140, 210, 255, 200)
+        elif sp.damage_type == "lightning":
+            color = (200, 200, 50, 60)
+            border = (255, 255, 100, 200)
+        elif sp.damage_type in ("necrotic", "poison"):
+            color = (100, 50, 150, 60)
+            border = (170, 80, 220, 200)
+        else:
+            color = (100, 100, 200, 60)
+            border = (150, 150, 255, 200)
+
+        if sp.aoe_shape == "cone":
+            # Draw a 60-degree cone toward the nearest enemy cluster
+            pts = [(radius_px + 2, radius_px + 2)]
+            for deg in range(-30, 31, 5):
+                rad = math.radians(deg)
+                px = radius_px + 2 + math.cos(rad) * radius_px
+                py = radius_px + 2 + math.sin(rad) * radius_px
+                pts.append((px, py))
+            if len(pts) >= 3:
+                pygame.draw.polygon(aoe_surf, color, pts)
+                pygame.draw.lines(aoe_surf, border, True, pts, 2)
+        else:
+            pygame.draw.circle(aoe_surf, color, (radius_px + 2, radius_px + 2), radius_px)
+            pygame.draw.circle(aoe_surf, border, (radius_px + 2, radius_px + 2), radius_px, 3)
+
+        screen.blit(aoe_surf, (cx_px - radius_px - 2, cy_px - radius_px - 2))
+
+        # Label
+        lbl = fonts.tiny.render(f"{sp.name} ({sp.aoe_radius}ft)", True, (255, 255, 200))
+        screen.blit(lbl, (cx_px - lbl.get_width() // 2, cy_px - radius_px - 20))
+
+    # --- Grid-area utility buttons (Save/Load/Terrain) ---
+    def _draw_grid_buttons(self, screen, mp):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain):
+            b.draw(screen, mp)
+        # Terrain mode indicator
+        if self.terrain_mode:
+            tc = COLORS["warning"]
+            pygame.draw.rect(screen, tc, self.btn_terrain.rect, 2, border_radius=5)
+            sel = fonts.tiny.render(f"[{self.terrain_selected_type}]", True, tc)
+            screen.blit(sel, (self.btn_terrain.rect.right + 4, self.btn_terrain.rect.y + 8))
 
     # --- Entities on grid ---
     def _draw_entities(self, screen, curr, sel):
@@ -1159,3 +1372,111 @@ class BattleState(GameState):
                 pygame.draw.rect(screen, COLORS["accent"], rect)
             t = fonts.tiny.render(txt, True, COLORS["text_main"])
             screen.blit(t, (rect.x+8, rect.y+5))
+
+    # --- Condition reminder popup ---
+    def _draw_condition_reminder(self, screen, mp):
+        ent = self.condition_reminder
+        if not ent:
+            return
+        lines = [f"=== {ent.name}'s Turn ==="]
+        if ent.concentrating_on:
+            lines.append(f"[C] Concentrating: {ent.concentrating_on.name}")
+        for cond in sorted(ent.conditions):
+            desc = CONDITIONS.get(cond, "")
+            lines.append(f"• {cond}: {desc[:70]}")
+        lines.append("")
+        lines.append("(Click anywhere to dismiss)")
+
+        pad = 14
+        line_h = 22
+        bw = 580
+        bh = pad * 2 + len(lines) * line_h + 10
+        bx = SCREEN_WIDTH // 2 - bw // 2
+        by = TOP_BAR_H + 20
+
+        # Dim everything else slightly
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 100))
+        screen.blit(ov, (0, 0))
+
+        pygame.draw.rect(screen, (38, 40, 44), (bx, by, bw, bh), border_radius=10)
+        pygame.draw.rect(screen, COLORS["warning"], (bx, by, bw, 36),
+                         border_top_left_radius=10, border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 2, border_radius=10)
+
+        y = by + pad
+        for i, line in enumerate(lines):
+            if i == 0:
+                t = fonts.body.render(line, True, (255, 255, 255))
+            elif line.startswith("[C]"):
+                t = fonts.small.render(line, True, COLORS["concentration"])
+            elif line.startswith("•"):
+                t = fonts.small.render(line, True, COLORS["warning"])
+            else:
+                t = fonts.tiny.render(line, True, COLORS["text_dim"])
+            screen.blit(t, (bx + pad, y))
+            y += line_h
+
+    # --- Terrain palette ---
+    def _draw_terrain_palette(self, screen, mp):
+        bw = 150
+        pad = 8
+        item_h = 28
+        n = len(TERRAIN_TYPES)
+        bh = n * item_h + pad * 2 + 30
+
+        bx = 10
+        by = TOP_BAR_H + 10
+
+        pygame.draw.rect(screen, (35, 37, 42), (bx, by, bw, bh), border_radius=6)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 1, border_radius=6)
+        hdr = fonts.small.render("Select Terrain", True, COLORS["accent"])
+        screen.blit(hdr, (bx + 6, by + 6))
+
+        y = by + pad + 22
+        for ttype, props in TERRAIN_TYPES.items():
+            r = pygame.Rect(bx + 4, y, bw - 8, item_h - 2)
+            is_sel = ttype == self.terrain_selected_type
+            bg = COLORS["accent"] if is_sel else (50, 52, 57)
+            if r.collidepoint(mp):
+                bg = COLORS["accent_hover"]
+            pygame.draw.rect(screen, bg, r, border_radius=3)
+            # Color swatch
+            pygame.draw.rect(screen, props["color"], (r.x + 3, r.y + 4, 16, 16), border_radius=2)
+            pygame.draw.rect(screen, (0, 0, 0), (r.x + 3, r.y + 4, 16, 16), 1, border_radius=2)
+            lbl = fonts.tiny.render(props["label"], True, COLORS["text_main"])
+            screen.blit(lbl, (r.x + 22, r.y + 6))
+            y += item_h
+
+    # --- Terrain mode toggle ---
+    def _toggle_terrain_mode(self):
+        self.terrain_mode = not self.terrain_mode
+        self.terrain_palette_open = self.terrain_mode
+        if self.terrain_mode:
+            self._log("[TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove.")
+        else:
+            self._log("[TERRAIN] Terrain placement mode OFF.")
+
+    # --- Save / Load ---
+    def _save_encounter(self):
+        try:
+            self.battle.save_state(SAVE_FILE)
+            self._log("[SAVE] Encounter saved.")
+        except Exception as ex:
+            self._log(f"[SAVE ERROR] {ex}")
+
+    def _load_encounter(self):
+        if not os.path.exists(SAVE_FILE):
+            self._log("[LOAD] No save file found.")
+            return
+        try:
+            new_battle = BattleSystem.from_save(SAVE_FILE, self._log)
+            new_battle.log = self._log
+            self.battle = new_battle
+            self.selected_entity = None
+            self.pending_plan = None
+            self.condition_reminder = None
+            self._log("[LOAD] Encounter loaded.")
+        except Exception as ex:
+            import traceback; traceback.print_exc()
+            self._log(f"[LOAD ERROR] {ex}")

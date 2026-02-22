@@ -135,7 +135,7 @@ class TacticalAI:
         return None
 
     def _move_toward(self, entity, target, allies, battle):
-        """Move toward target, trying flanking position."""
+        """Move toward target, trying flanking position. Respects terrain."""
         speed_sq = int(entity.movement_left // 5)
         flank = self._flanking_position(entity, target, allies, battle)
         dest_x = flank[0] if flank else target.grid_x
@@ -154,8 +154,19 @@ class TacticalAI:
                 nx += 1 if dx > 0 else -1
             else:
                 ny += 1 if dy > 0 else -1
-            if not battle.is_occupied(nx, ny, exclude=entity):
+            if battle.is_passable(nx, ny, exclude=entity):
                 entity.grid_x, entity.grid_y = nx, ny
+            else:
+                # Try the other axis as fallback
+                nx2, ny2 = entity.grid_x, entity.grid_y
+                if abs(dx) >= abs(dy):
+                    ny2 += 1 if dy > 0 else (-1 if dy < 0 else 0)
+                else:
+                    nx2 += 1 if dx > 0 else (-1 if dx < 0 else 0)
+                if battle.is_passable(nx2, ny2, exclude=entity):
+                    entity.grid_x, entity.grid_y = nx2, ny2
+                else:
+                    break  # Fully blocked
 
         moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
         if moved_ft < 0.5:
@@ -181,8 +192,10 @@ class TacticalAI:
             ny = entity.grid_y + (1 if dy > 0 else -1 if dy < 0 else 0)
             if abs(dx) < abs(dy):
                 nx, ny = entity.grid_x, entity.grid_y + (1 if dy > 0 else -1)
-            if not battle.is_occupied(nx, ny, exclude=entity):
+            if battle.is_passable(nx, ny, exclude=entity):
                 entity.grid_x, entity.grid_y = nx, ny
+            else:
+                break
         moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
         if moved_ft < 0.5:
             return None
@@ -204,8 +217,10 @@ class TacticalAI:
             else:
                 nx = entity.grid_x
                 ny = entity.grid_y + (1 if dy >= 0 else -1)
-            if not battle.is_occupied(nx, ny, exclude=entity):
+            if battle.is_passable(nx, ny, exclude=entity):
                 entity.grid_x, entity.grid_y = nx, ny
+            else:
+                break
         moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
         if moved_ft < 0.5:
             return None
@@ -703,7 +718,7 @@ class TacticalAI:
                 dy = target.grid_y - ally.grid_y
                 fx = target.grid_x + dx
                 fy = target.grid_y + dy
-                if not battle.is_occupied(fx, fy):
+                if battle.is_passable(fx, fy):
                     return (fx, fy)
         return None
 
