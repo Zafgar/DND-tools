@@ -1,0 +1,42 @@
+from data.models import CreatureStats, AbilityScores, Action, Feature
+
+monsters = [
+    CreatureStats(name="Orc", size="Medium", creature_type="Humanoid",
+        armor_class=13, hit_points=15, hit_dice="2d8+6", speed=30,
+        abilities=AbilityScores(strength=16,dexterity=12,constitution=16,intelligence=7,wisdom=11,charisma=10),
+        actions=[Action("Greataxe","Melee",5,"1d12",3,"slashing"),
+                 Action("Javelin","Ranged",5,"1d6",3,"piercing",range=30)],
+        skills={"Intimidation":2},
+        features=[Feature("Aggressive","Bonus action move toward enemy")],
+        challenge_rating=0.5, xp=100, proficiency_bonus=2),
+
+    CreatureStats(name="Hobgoblin", size="Medium", creature_type="Humanoid",
+        armor_class=18, hit_points=11, hit_dice="2d8+2", speed=30,
+        abilities=AbilityScores(strength=13,dexterity=12,constitution=12,intelligence=10,wisdom=10,charisma=9),
+        actions=[Action("Longsword","Melee",3,"1d8",1,"slashing"),
+                 Action("Longbow","Ranged",3,"1d8",1,"piercing",range=150)],
+        saving_throws={},
+        features=[Feature("Martial Advantage","Once per turn 2d6 extra dmg if ally adjacent to target")],
+        challenge_rating=0.5, xp=100, proficiency_bonus=2),
+
+    CreatureStats(name="Scout", size="Medium", creature_type="Humanoid",
+        armor_class=13, hit_points=16, hit_dice="3d8+3", speed=30,
+        abilities=AbilityScores(strength=11,dexterity=14,constitution=12,intelligence=11,wisdom=13,charisma=11),
+        actions=[Action("Shortsword","Melee",4,"1d6",2,"piercing"),
+                 Action("Longbow","Ranged",4,"1d8",2,"piercing",range=150)],
+        skills={"Nature":4,"Perception":5,"Stealth":6,"Survival":5},
+        features=[Feature("Keen Hearing and Sight","Adv on Perception checks involving hearing/sight")],
+        challenge_rating=0.5, xp=100, proficiency_bonus=2),
+
+    CreatureStats(name="Shadow", size="Medium", creature_type="Undead",
+        armor_class=12, hit_points=16, hit_dice="3d8+3", speed=40, fly_speed=0,
+        abilities=AbilityScores(strength=6,dexterity=14,constitution=13,intelligence=6,wisdom=10,charisma=8),
+        actions=[Action("Strength Drain","Melee",4,"2d6+2","necrotic",
+                        applies_condition="",condition_save="Constitution",condition_dc=13)],
+        damage_resistances=["acid","fire","lightning","thunder","bludgeoning","piercing","slashing"],
+        damage_immunities=["necrotic","poison","cold"],
+        condition_immunities=["Exhaustion","Frightened","Grappled","Paralyzed","Petrified","Poisoned","Prone","Restrained"],
+        features=[Feature("Amorphous","Move through 1inch space"),
+                  Feature("Shadow Stealth","Hide in dim light as bonus action")],
+        challenge_rating=0.5, xp=100, proficiency_bonus=2),
+]
