@@ -1,55 +1,55 @@
-from data.models import CreatureStats, AbilityScores, Action
-
-# D&D 5e SRD CR 1 Monsters
+from data.models import CreatureStats, AbilityScores, Action, Feature
 
 monsters = [
-    CreatureStats(
-        name="Bugbear",
-        size="Medium",
-        type="Humanoid",
-        armor_class=16, # Hide armor + shield
-        hit_points=27,
-        speed=30,
-        abilities=AbilityScores(strength=15, dexterity=14, constitution=13, intelligence=8, wisdom=11, charisma=9),
-        actions=[
-            Action("Morningstar", "Melee Weapon Attack", attack_bonus=4, damage_dice="2d8", damage_bonus=2),
-            Action("Javelin", "Melee or Ranged Weapon Attack", attack_bonus=4, damage_dice="1d6", damage_bonus=2, range=30)
-        ],
-        challenge_rating=1.0,
-        xp=200,
-        skills={"Stealth": 6, "Survival": 2},
-        saving_throws={}
-    ),
-    CreatureStats(
-        name="Dire Wolf",
-        size="Large",
-        type="Beast",
-        armor_class=14, # Natural armor
-        hit_points=37,
-        speed=50,
-        abilities=AbilityScores(strength=17, dexterity=15, constitution=15, intelligence=3, wisdom=12, charisma=7),
-        actions=[
-            Action("Bite", "Melee Weapon Attack", attack_bonus=5, damage_dice="2d6", damage_bonus=3)
-        ],
-        challenge_rating=1.0,
-        xp=200,
-        skills={"Perception": 3, "Stealth": 4},
-        saving_throws={}
-    ),
-    CreatureStats(
-        name="Ghoul",
-        size="Medium",
-        type="Undead",
-        armor_class=12,
-        hit_points=22,
-        speed=30,
-        abilities=AbilityScores(strength=13, dexterity=15, constitution=10, intelligence=7, wisdom=10, charisma=6),
-        actions=[
-            Action("Claws", "Melee Weapon Attack", attack_bonus=4, damage_dice="2d4", damage_bonus=2)
-        ],
-        challenge_rating=1.0,
-        xp=200,
-        condition_immunities=["Charmed", "Exhaustion", "Poisoned"],
-        saving_throws={}
-    )
+    CreatureStats(name="Bugbear", size="Medium", creature_type="Humanoid",
+        armor_class=16, hit_points=27, hit_dice="5d8+5", speed=30,
+        abilities=AbilityScores(strength=15,dexterity=14,constitution=13,intelligence=8,wisdom=11,charisma=9),
+        actions=[Action("Morningstar","Melee",4,"2d8",2,"piercing"),
+                 Action("Javelin","Ranged",4,"1d6",2,"piercing",range=30)],
+        skills={"Stealth":6,"Survival":2},
+        features=[Feature("Brute","Melee weapons do extra 1d8 on hit (included in Morningstar)"),
+                  Feature("Surprise Attack","Extra 2d6 on first hit if target surprised")],
+        challenge_rating=1.0, xp=200, proficiency_bonus=2),
+
+    CreatureStats(name="Dire Wolf", size="Large", creature_type="Beast",
+        armor_class=14, hit_points=37, hit_dice="5d10+10", speed=50,
+        abilities=AbilityScores(strength=17,dexterity=15,constitution=15,intelligence=3,wisdom=12,charisma=7),
+        actions=[Action("Bite","Melee",5,"2d6",3,"piercing",
+                        applies_condition="Prone",condition_save="Strength",condition_dc=13)],
+        skills={"Perception":3,"Stealth":4},
+        features=[Feature("Pack Tactics","Adv on attack when ally adjacent to target"),
+                  Feature("Keen Hearing and Smell","Adv on Perception with hearing/smell")],
+        challenge_rating=1.0, xp=200, proficiency_bonus=2),
+
+    CreatureStats(name="Ghoul", size="Medium", creature_type="Undead",
+        armor_class=12, hit_points=22, hit_dice="5d8", speed=30,
+        abilities=AbilityScores(strength=13,dexterity=15,constitution=10,intelligence=7,wisdom=10,charisma=6),
+        actions=[Action("Claws","Melee",4,"2d4",2,"slashing",
+                        applies_condition="Paralyzed",condition_save="Constitution",condition_dc=10),
+                 Action("Bite","Melee",2,"2d6+2","piercing")],
+        damage_immunities=["poison"],
+        condition_immunities=["Charmed","Exhaustion","Poisoned"],
+        challenge_rating=1.0, xp=200, proficiency_bonus=2),
+
+    CreatureStats(name="Goblin Boss", size="Small", creature_type="Humanoid",
+        armor_class=17, hit_points=21, hit_dice="6d6", speed=30,
+        abilities=AbilityScores(strength=10,dexterity=14,constitution=10,intelligence=10,wisdom=8,charisma=10),
+        actions=[Action("Multiattack","x2 Scimitar",0,"",0,"",range=5,is_multiattack=True,
+                        multiattack_count=2,multiattack_targets=["Scimitar","Scimitar"]),
+                 Action("Scimitar","Melee",4,"1d6",2,"slashing"),
+                 Action("Shortbow","Ranged",4,"1d6",2,"piercing",range=60)],
+        bonus_actions=[Action("Redirect Attack","Redirect a miss to another goblin","bonus")],
+        skills={"Stealth":6},
+        features=[Feature("Nimble Escape","Disengage or Hide as bonus action")],
+        challenge_rating=1.0, xp=200, proficiency_bonus=2),
+
+    CreatureStats(name="Brown Bear", size="Large", creature_type="Beast",
+        armor_class=11, hit_points=34, hit_dice="4d10+12", speed=40, climb_speed=30,
+        abilities=AbilityScores(strength=19,dexterity=10,constitution=16,intelligence=2,wisdom=13,charisma=7),
+        actions=[Action("Multiattack","Bite + Claws",0,"",0,"",range=5,is_multiattack=True,
+                        multiattack_count=2,multiattack_targets=["Bite","Claws"]),
+                 Action("Bite","Melee",5,"1d8",4,"piercing"),
+                 Action("Claws","Melee",5,"2d6",4,"slashing")],
+        skills={"Perception":3},
+        challenge_rating=1.0, xp=200, proficiency_bonus=2),
 ]

@@ -2,30 +2,70 @@ import random
 import re
 
 def roll_dice(dice_str: str) -> int:
-    """
-    Heittää noppaa D&D-muotoisen merkkijonon perusteella (esim. "2d6+3").
-    Tukee muotoja:
-    - XdY: Heitä X kappaletta Y-sivuista noppaa.
-    - XdY+Z: Lisää Z tulokseen.
-    - XdY-Z: Vähennä Z tuloksesta.
-    """
+    """Roll dice from a D&D notation string like '2d6+3', '1d8-1', '10'."""
+    if not dice_str:
+        return 0
+    dice_str = str(dice_str).strip()
     match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", dice_str)
-    
     if not match:
-        # Käsittelee yksinkertaiset luvut, kuten "5"
-        if dice_str.isdigit():
+        try:
             return int(dice_str)
-        raise ValueError(f"Invalid dice string format: '{dice_str}'")
-
+        except ValueError:
+            return 0
     num_dice = int(match.group(1))
     num_sides = int(match.group(2))
     modifier_str = match.group(3)
-
-    total = 0
-    for _ in range(num_dice):
-        total += random.randint(1, num_sides)
-
+    total = sum(random.randint(1, num_sides) for _ in range(num_dice))
     if modifier_str:
         total += int(modifier_str)
+    return max(0, total)
 
-    return max(0, total) # Varmistetaan, ettei tulos ole negatiivinen
+def roll_dice_critical(dice_str: str) -> int:
+    """Critical hit: double the dice (add extra dice, not doubled total)."""
+    if not dice_str:
+        return 0
+    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", str(dice_str))
+    if not match:
+        try:
+            return int(dice_str)
+        except ValueError:
+            return 0
+    num_dice = int(match.group(1))
+    num_sides = int(match.group(2))
+    modifier_str = match.group(3)
+    # Double dice for critical hit
+    total = sum(random.randint(1, num_sides) for _ in range(num_dice * 2))
+    if modifier_str:
+        total += int(modifier_str)
+    return max(0, total)
+
+def roll_d20(advantage: bool = False, disadvantage: bool = False):
+    """Roll 1d20, returning (result, roll_description)."""
+    r1 = random.randint(1, 20)
+    if advantage and not disadvantage:
+        r2 = random.randint(1, 20)
+        return max(r1, r2), f"({r1},{r2}) Adv"
+    elif disadvantage and not advantage:
+        r2 = random.randint(1, 20)
+        return min(r1, r2), f"({r1},{r2}) Dis"
+    return r1, str(r1)
+
+def roll_attack(attack_bonus: int, advantage: bool = False, disadvantage: bool = False):
+    """Roll attack, returns (total, nat_roll, is_crit, is_fumble, roll_str)."""
+    nat, roll_str = roll_d20(advantage, disadvantage)
+    return nat + attack_bonus, nat, nat == 20, nat == 1, roll_str
+
+def average_damage(dice_str: str) -> float:
+    """Calculate average damage for AI evaluation."""
+    if not dice_str:
+        return 0.0
+    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", str(dice_str))
+    if not match:
+        try:
+            return float(dice_str)
+        except ValueError:
+            return 0.0
+    num_dice = int(match.group(1))
+    num_sides = int(match.group(2))
+    modifier = int(match.group(3)) if match.group(3) else 0
+    return num_dice * (num_sides + 1) / 2 + modifier
