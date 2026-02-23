@@ -23,6 +23,12 @@ TERRAIN_TYPES = {
                   "hazard_damage": "1d6",  "damage_type": "acid",  "label": "Acid",   "icon": "☣"},
     "poison":    {"color": (130, 50, 160), "passable": True,
                   "hazard_damage": "1d4",  "damage_type": "poison","label": "Poison", "icon": "☠"},
+    "wall_fire": {"color": (255, 60, 0),   "passable": True,
+                  "hazard_damage": "5d8",  "damage_type": "fire",  "label": "Wall of Fire", "icon": "🔥"},
+    "wall_thorns":{"color": (40, 100, 40), "passable": True, "difficult": True,
+                  "hazard_damage": "2d4",  "damage_type": "piercing","label": "Wall of Thorns", "icon": "🌵"},
+    "spirit_guardians":{"color": (200, 200, 100), "passable": True, "difficult": True,
+                  "hazard_damage": "3d8",  "damage_type": "radiant", "label": "Spirit Guardians", "icon": "👼"},
 }
 
 

@@ -55,6 +55,8 @@ class Action:
     applies_condition: str = ""
     condition_save: str = ""          # "STR", "DEX" etc for condition save
     condition_dc: int = 0
+    aoe_radius: int = 0
+    aoe_shape: str = ""               # "cone", "sphere", "line", "cube"
 
 @dataclass
 class Feature:
@@ -64,6 +66,13 @@ class Feature:
     uses_per_day: int = -1            # -1 = unlimited/passive
     legendary_cost: int = 1           # cost in legendary actions
     recharge: str = ""                # "5-6", "short rest", "long rest"
+    # Aura / Turn Start Trigger fields
+    aura_radius: int = 0
+    save_dc: int = 0
+    save_ability: str = ""            # "Constitution", "Wisdom", etc.
+    applies_condition: str = ""
+    damage_dice: str = ""
+    damage_type: str = ""
 
 @dataclass
 class Item:

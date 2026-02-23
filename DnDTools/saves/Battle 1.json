@@ -1,0 +1,373 @@
+{
+  "combat_started": true,
+  "round": 1,
+  "turn_index": 0,
+  "entities": [
+    {
+      "name": "Dire Wolf",
+      "base_name": "Dire Wolf",
+      "is_player": false,
+      "grid_x": 16.0,
+      "grid_y": 3.0,
+      "hp": 37,
+      "max_hp": 37,
+      "temp_hp": 0,
+      "initiative": 18,
+      "conditions": [],
+      "spell_slots": {},
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {},
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 50.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null
+    },
+    {
+      "name": "Holy Paladin",
+      "base_name": "Holy Paladin",
+      "is_player": true,
+      "grid_x": 3.0,
+      "grid_y": 2.0,
+      "hp": 85,
+      "max_hp": 85,
+      "temp_hp": 0,
+      "initiative": 11,
+      "conditions": [],
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Lay on Hands": 1
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null
+    },
+    {
+      "name": "Ghoul",
+      "base_name": "Ghoul",
+      "is_player": false,
+      "grid_x": 14.0,
+      "grid_y": 3.0,
+      "hp": 22,
+      "max_hp": 22,
+      "temp_hp": 0,
+      "initiative": 10,
+      "conditions": [],
+      "spell_slots": {},
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {},
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null
+    },
+    {
+      "name": "War Cleric",
+      "base_name": "War Cleric",
+      "is_player": true,
+      "grid_x": 3.0,
+      "grid_y": 4.0,
+      "hp": 76,
+      "max_hp": 76,
+      "temp_hp": 0,
+      "initiative": 6,
+      "conditions": [],
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 3,
+        "4th": 3,
+        "5th": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Channel Divinity: Turn Undead": 2,
+        "War Priest": 4,
+        "Divine Intervention": 1
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null
+    }
+  ],
+  "terrain": [
+    {
+      "terrain_type": "bridge",
+      "grid_x": 6,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 7,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 8,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 7,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 6,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 6,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 7,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 9,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 10,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 9,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "bridge",
+      "grid_x": 8,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Bridge"
+    },
+    {
+      "terrain_type": "acid",
+      "grid_x": 0,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Acid"
+    },
+    {
+      "terrain_type": "acid",
+      "grid_x": 0,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Acid"
+    },
+    {
+      "terrain_type": "acid",
+      "grid_x": -1,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Acid"
+    },
+    {
+      "terrain_type": "acid",
+      "grid_x": -1,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Acid"
+    },
+    {
+      "terrain_type": "acid",
+      "grid_x": 0,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Acid"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 6,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 7,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 8,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 9,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 9,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 10,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 10,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 11,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 11,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 12,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 12,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 12,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": 13,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    },
+    {
+      "terrain_type": "fire",
+      "grid_x": -1,
+      "grid_y": 10,
+      "width": 1,
+      "height": 1,
+      "name": "Fire"
+    }
+  ]
+}

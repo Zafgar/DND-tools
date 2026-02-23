@@ -4,6 +4,7 @@ Computes an optimal TurnPlan for a given entity.
 """
 import math
 import random
+import heapq
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 from data.models import Action, SpellInfo
@@ -23,6 +24,7 @@ class ActionStep:
     target: Optional["Entity"] = None
     targets: List["Entity"] = field(default_factory=list)
     action_name: str = ""
+    action: Optional[Action] = None
     spell: Optional[SpellInfo] = None
     slot_used: int = 0
     attack_roll: int = 0
@@ -35,9 +37,12 @@ class ActionStep:
     save_dc: int = 0
     save_ability: str = ""
     applies_condition: str = ""
+    condition_dc: int = 0
     new_x: float = 0.0
     new_y: float = 0.0
     movement_ft: float = 0.0
+    old_x: float = 0.0
+    old_y: float = 0.0
     aoe_center: tuple = field(default_factory=tuple)
 
 
@@ -54,6 +59,52 @@ class TacticalAI:
 
     def calculate_turn(self, entity: "Entity", battle: "BattleSystem") -> TurnPlan:
         plan = TurnPlan(entity=entity)
+
+        if entity.is_lair:
+            owner = entity.lair_owner
+            if not owner or owner.hp <= 0:
+                plan.skipped = True
+                plan.skip_reason = "Lair owner defeated"
+                return plan
+            
+            lair_actions = [a for a in owner.stats.actions if a.action_type == "lair"]
+            if not lair_actions:
+                plan.skipped = True
+                plan.skip_reason = "No lair actions found"
+                return plan
+            
+            action = random.choice(lair_actions)
+            enemies = battle.get_enemies_of(owner)
+            
+            # AoE Lair Action
+            if action.aoe_radius > 0:
+                clusters = self._best_aoe_cluster(owner, enemies, battle, action.aoe_radius)
+                if clusters:
+                    cx, cy = self._cluster_center(clusters)
+                    raw_dmg = roll_dice(action.damage_dice)
+                    step = ActionStep(
+                        step_type="legendary",
+                        description=f"[LAIR] {owner.name} uses {action.name}",
+                        attacker=owner, targets=clusters, action=action, damage=raw_dmg,
+                        damage_type=action.damage_type, action_name=action.name,
+                        aoe_center=(cx, cy),
+                        save_dc=action.condition_dc, save_ability=action.condition_save
+                    )
+                    plan.steps.append(step)
+                    return plan
+
+            # Single Target Lair Action
+            target = self._pick_target(owner, enemies)
+            if target:
+                step = self._execute_attack(owner, action, target, battle)
+                step.step_type = "legendary"
+                step.description = f"[LAIR] {step.description}"
+                plan.steps.append(step)
+                return plan
+            
+            plan.skipped = True
+            plan.skip_reason = "No valid targets for Lair Action"
+            return plan
 
         if entity.is_incapacitated():
             plan.skipped = True
@@ -74,10 +125,16 @@ class TacticalAI:
         if move_step:
             plan.steps.append(move_step)
 
+        # ----- 1.5. AOE ACTION (Breath Weapon etc) -----
+        aoe_action_step = self._try_aoe_action(entity, enemies, battle)
+        if aoe_action_step:
+            plan.steps.append(aoe_action_step)
+            entity.action_used = True
+
         # ----- 2. MAIN ACTION -----
-        action_step = self._decide_action(entity, enemies, allies, battle)
-        if action_step:
-            plan.steps.append(action_step)
+        action_steps = self._decide_action(entity, enemies, allies, battle)
+        if action_steps:
+            plan.steps.extend(action_steps)
 
         # ----- 3. BONUS ACTION -----
         if not entity.bonus_action_used:
@@ -134,153 +191,332 @@ class TacticalAI:
 
         return None
 
+    def _is_safe_passable(self, battle, x, y, entity):
+        if not battle.is_passable(x, y, exclude=entity):
+            return False
+        t = battle.get_terrain_at(int(x), int(y))
+        if t and t.is_hazard:
+            return False
+        return True
+
+    def _find_path(self, start, end, battle, entity):
+        """A* Pathfinding to find optimal path around obstacles."""
+        def heuristic(a, b):
+            # Chebyshev distance (diagonals count as 1 step in 5e)
+            return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        came_from = {}
+        g_score = {start: 0}
+
+        if start == end:
+            return []
+
+        visited = set()
+        
+        while open_set:
+            _, current = heapq.heappop(open_set)
+            
+            if current == end:
+                path = []
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                return path[::-1]
+            
+            if current in visited: continue
+            visited.add(current)
+
+            cx, cy = current
+            # Check all 8 neighbors
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0: continue
+                    nx, ny = cx + dx, cy + dy
+                    neighbor = (nx, ny)
+
+                    if not self._is_safe_passable(battle, nx, ny, entity):
+                        continue
+
+                    # Movement cost (1.0 normal, 2.0 difficult)
+                    move_cost = battle.get_terrain_movement_cost(nx, ny)
+                    tentative_g = g_score[current] + move_cost
+
+                    if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                        came_from[neighbor] = current
+                        g_score[neighbor] = tentative_g
+                        f = tentative_g + heuristic(neighbor, end)
+                        heapq.heappush(open_set, (f, neighbor))
+        return None
+
     def _move_toward(self, entity, target, allies, battle):
         """Move toward target, trying flanking position. Respects terrain."""
-        speed_sq = int(entity.movement_left // 5)
         flank = self._flanking_position(entity, target, allies, battle)
         dest_x = flank[0] if flank else target.grid_x
         dest_y = flank[1] if flank else target.grid_y
 
-        start_x, start_y = entity.grid_x, entity.grid_y
-        for _ in range(speed_sq):
-            if math.hypot(entity.grid_x - dest_x, entity.grid_y - dest_y) < 0.5:
-                break
-            if battle.is_adjacent(entity, target):
-                break
-            dx = dest_x - entity.grid_x
-            dy = dest_y - entity.grid_y
-            nx, ny = entity.grid_x, entity.grid_y
-            if abs(dx) >= abs(dy):
-                nx += 1 if dx > 0 else -1
+        # If destination is occupied (e.g. target is there), find closest free spot
+        if not battle.is_passable(dest_x, dest_y, exclude=entity):
+            valid_adj = []
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0: continue
+                    nx, ny = int(dest_x + dx), int(dest_y + dy)
+                    if self._is_safe_passable(battle, nx, ny, entity):
+                        valid_adj.append((nx, ny))
+            
+            if valid_adj:
+                # Pick neighbor closest to entity
+                dest_x, dest_y = min(valid_adj, key=lambda p: math.hypot(p[0]-entity.grid_x, p[1]-entity.grid_y))
             else:
-                ny += 1 if dy > 0 else -1
-            if battle.is_passable(nx, ny, exclude=entity):
-                entity.grid_x, entity.grid_y = nx, ny
-            else:
-                # Try the other axis as fallback
-                nx2, ny2 = entity.grid_x, entity.grid_y
-                if abs(dx) >= abs(dy):
-                    ny2 += 1 if dy > 0 else (-1 if dy < 0 else 0)
-                else:
-                    nx2 += 1 if dx > 0 else (-1 if dx < 0 else 0)
-                if battle.is_passable(nx2, ny2, exclude=entity):
-                    entity.grid_x, entity.grid_y = nx2, ny2
-                else:
-                    break  # Fully blocked
+                # No valid spot near target?
+                return None
 
-        moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
-        if moved_ft < 0.5:
+        start_x, start_y = entity.grid_x, entity.grid_y
+        start_movement = entity.movement_left
+
+        # Calculate Path
+        start_node = (int(entity.grid_x), int(entity.grid_y))
+        end_node = (int(dest_x), int(dest_y))
+        path = self._find_path(start_node, end_node, battle, entity)
+
+        if path:
+            for (nx, ny) in path:
+                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny)
+                if entity.movement_left < cost:
+                    break
+                
+                entity.grid_x, entity.grid_y = nx, ny
+                entity.movement_left -= cost
+                
+                # Stop if adjacent to target (so we can attack)
+                if battle.is_adjacent(entity, target):
+                    break
+
+        moved_cost = start_movement - entity.movement_left
+        dist_moved = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y)
+        
+        if dist_moved < 0.1:
             return None
-        entity.movement_left -= moved_ft
+            
         return ActionStep(
             step_type="move",
-            description=f"{entity.name} moves {moved_ft:.0f} ft.",
+            description=f"{entity.name} moves {moved_cost:.0f} ft.",
             attacker=entity,
             new_x=entity.grid_x, new_y=entity.grid_y,
-            movement_ft=moved_ft,
+            movement_ft=moved_cost, old_x=start_x, old_y=start_y,
         )
 
     def _move_toward_point(self, entity, tx, ty, battle):
-        speed_sq = int(entity.movement_left // 5)
         start_x, start_y = entity.grid_x, entity.grid_y
-        for _ in range(speed_sq):
-            if math.hypot(entity.grid_x - tx, entity.grid_y - ty) < 0.5:
-                break
-            dx = tx - entity.grid_x
-            dy = ty - entity.grid_y
-            nx = entity.grid_x + (1 if dx > 0 else -1 if dx < 0 else 0)
-            ny = entity.grid_y + (1 if dy > 0 else -1 if dy < 0 else 0)
-            if abs(dx) < abs(dy):
-                nx, ny = entity.grid_x, entity.grid_y + (1 if dy > 0 else -1)
-            if battle.is_passable(nx, ny, exclude=entity):
+        start_movement = entity.movement_left
+
+        # If target point is blocked, find closest free spot
+        dest_x, dest_y = tx, ty
+        if not battle.is_passable(dest_x, dest_y, exclude=entity):
+            valid_adj = []
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0: continue
+                    nx, ny = int(dest_x + dx), int(dest_y + dy)
+                    if self._is_safe_passable(battle, nx, ny, entity):
+                        valid_adj.append((nx, ny))
+            if valid_adj:
+                dest_x, dest_y = min(valid_adj, key=lambda p: math.hypot(p[0]-entity.grid_x, p[1]-entity.grid_y))
+
+        path = self._find_path((int(entity.grid_x), int(entity.grid_y)), (int(dest_x), int(dest_y)), battle, entity)
+
+        if path:
+            for (nx, ny) in path:
+                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny)
+                if entity.movement_left < cost:
+                    break
                 entity.grid_x, entity.grid_y = nx, ny
-            else:
-                break
-        moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
-        if moved_ft < 0.5:
+                entity.movement_left -= cost
+
+        moved_cost = start_movement - entity.movement_left
+        dist_moved = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y)
+        
+        if dist_moved < 0.1:
             return None
-        entity.movement_left -= moved_ft
+            
         return ActionStep(step_type="move",
-                          description=f"{entity.name} repositions {moved_ft:.0f} ft.",
+                          description=f"{entity.name} repositions {moved_cost:.0f} ft.",
                           attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
-                          movement_ft=moved_ft)
+                          movement_ft=moved_cost, old_x=start_x, old_y=start_y)
 
     def _move_away(self, entity, threat, battle):
-        speed_sq = int(entity.movement_left // 5)
         start_x, start_y = entity.grid_x, entity.grid_y
-        for _ in range(speed_sq):
+        start_movement = entity.movement_left
+
+        while entity.movement_left >= 5.0:
             dx = entity.grid_x - threat.grid_x
             dy = entity.grid_y - threat.grid_y
+            
+            # Move away logic
+            move_1 = (0, 0)
+            move_2 = (0, 0)
+            
             if abs(dx) >= abs(dy):
-                nx = entity.grid_x + (1 if dx >= 0 else -1)
-                ny = entity.grid_y
+                move_1 = (1 if dx >= 0 else -1, 0)
+                move_2 = (0, 1 if dy >= 0 else -1)
             else:
-                nx = entity.grid_x
-                ny = entity.grid_y + (1 if dy >= 0 else -1)
-            if battle.is_passable(nx, ny, exclude=entity):
-                entity.grid_x, entity.grid_y = nx, ny
+                move_1 = (0, 1 if dy >= 0 else -1)
+                move_2 = (1 if dx >= 0 else -1, 0)
+
+            nx, ny = entity.grid_x + move_1[0], entity.grid_y + move_1[1]
+            chosen = None
+            if self._is_safe_passable(battle, nx, ny, entity):
+                chosen = (nx, ny)
+            else:
+                nx2, ny2 = entity.grid_x + move_2[0], entity.grid_y + move_2[1]
+                if self._is_safe_passable(battle, nx2, ny2, entity):
+                    chosen = (nx2, ny2)
+            
+            if chosen:
+                cost = 5.0 * battle.get_terrain_movement_cost(chosen[0], chosen[1])
+                if entity.movement_left >= cost:
+                    entity.grid_x, entity.grid_y = chosen
+                    entity.movement_left -= cost
+                else:
+                    break
             else:
                 break
-        moved_ft = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y) * 5
-        if moved_ft < 0.5:
+
+        moved_cost = start_movement - entity.movement_left
+        dist_moved = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y)
+        
+        if dist_moved < 0.1:
             return None
-        entity.movement_left -= moved_ft
+            
         return ActionStep(step_type="move",
-                          description=f"{entity.name} disengages and moves {moved_ft:.0f} ft.",
+                          description=f"{entity.name} disengages and moves {moved_cost:.0f} ft.",
                           attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
-                          movement_ft=moved_ft)
+                          movement_ft=moved_cost, old_x=start_x, old_y=start_y)
 
     # ------------------------------------------------------------------ #
     # Main Action                                                          #
     # ------------------------------------------------------------------ #
 
-    def _decide_action(self, entity, enemies, allies, battle):
+    def _decide_action(self, entity, enemies, allies, battle) -> List[ActionStep]:
         if entity.action_used:
-            return None
+            return []
 
         # Self-heal if critical and has healing ability
-        if entity.hp / entity.max_hp < 0.25:
+        if entity.max_hp > 0 and (entity.hp / entity.max_hp < 0.25):
             heal_step = self._try_heal_action(entity)
             if heal_step:
                 entity.action_used = True
-                return heal_step
+                return [heal_step]
+
+        # Disengage if critical and threatened
+        if entity.max_hp > 0 and (entity.hp / entity.max_hp < 0.3):
+            disengage_step = self._try_disengage_action(entity, enemies, battle)
+            if disengage_step:
+                entity.action_used = True
+                return [disengage_step]
 
         # AoE spell if 3+ enemies grouped
         if entity.has_spell_slot(1) or entity.stats.cantrips:
             aoe_step = self._try_aoe_spell(entity, enemies, battle)
             if aoe_step:
                 entity.action_used = True
-                return aoe_step
+                return [aoe_step]
 
         # Debuff spell (high-value target)
         if entity.has_spell_slot(1):
             debuff_step = self._try_debuff_spell(entity, enemies, battle)
             if debuff_step:
                 entity.action_used = True
-                return debuff_step
+                return [debuff_step]
 
         # Best damage spell / cantrip
         if entity.stats.spells_known or entity.stats.cantrips:
             spell_step = self._try_damage_spell(entity, enemies, battle)
             if spell_step:
                 entity.action_used = True
-                return spell_step
+                return [spell_step]
 
         # Multiattack
         multi = next((a for a in entity.stats.actions if a.is_multiattack), None)
         if multi:
-            step = self._execute_multiattack(entity, multi, enemies, battle)
+            steps = self._execute_multiattack(entity, multi, enemies, battle)
             entity.action_used = True
-            return step
+            return steps
 
-        # Single best attack
-        target = self._pick_target(entity, enemies)
-        best_action = self._best_melee_or_ranged(entity, target, battle)
-        if best_action:
-            step = self._execute_attack(entity, best_action, target, battle)
-            entity.action_used = True
-            return step
+        # Single best attack - Iterate targets by priority to find one we can actually hit
+        alive_enemies = [e for e in enemies if e.hp > 0]
+        sorted_enemies = sorted(alive_enemies, key=lambda e: self._score_target(entity, e), reverse=True)
 
+        for target in sorted_enemies:
+            # --- TACTICAL MANEUVERS (Shove/Grapple) ---
+            if battle.is_adjacent(entity, target):
+                # Check if we have allies engaging this target (Pack Tactics / Mob mentality)
+                engaging_allies = [a for a in allies if battle.is_adjacent(a, target)]
+                str_score = entity.stats.abilities.strength
+                
+                # 1. SHOVE (Prone) - Great if allies are ready to beat them up
+                # Attempt if we have allies nearby OR we are strong enough
+                if not target.has_condition("Prone") and (len(engaging_allies) >= 1 or str_score >= 14):
+                    # 30% chance to try Shove to set up allies
+                    if random.random() < 0.3:
+                        shove_step = self._try_shove_action(entity, target)
+                        if shove_step:
+                            entity.action_used = True
+                            return [shove_step]
+
+                # 2. GRAPPLE - Lock them down
+                # Relaxed constraint: STR >= 12 OR (STR >= 10 AND allies present)
+                if not target.has_condition("Grappled"):
+                    can_grapple = str_score >= 12 or (str_score >= 10 and len(engaging_allies) >= 1)
+                    if can_grapple and random.random() < 0.2:
+                        grapple_step = self._try_grapple_action(entity, target)
+                        if grapple_step:
+                            entity.action_used = True
+                            return [grapple_step]
+            # ------------------------------------------
+
+            best_action = self._best_melee_or_ranged(entity, target, battle)
+            if best_action:
+                step = self._execute_attack(entity, best_action, target, battle)
+                entity.action_used = True
+                return [step]
+
+        # If no attacks possible, try to Dash to get closer
+        return self._try_dash_action(entity, enemies, allies, battle)
+
+    def _try_aoe_action(self, entity, enemies, battle):
+        """Try to use a non-spell AoE action (like Breath Weapon)."""
+        if entity.action_used:
+            return None
+        
+        # Find AoE actions
+        aoe_actions = [a for a in entity.stats.actions if a.aoe_radius > 0 and a.damage_dice]
+        if not aoe_actions:
+            return None
+            
+        # Sort by damage
+        aoe_actions.sort(key=lambda a: average_damage(a.damage_dice), reverse=True)
+        
+        for action in aoe_actions:
+            # For cones, we need a cluster relative to self
+            # For spheres (if any actions are spheres), we need a cluster anywhere in range
+            # Simplified: use same cluster logic
+            clusters = self._best_aoe_cluster(entity, enemies, battle, action.aoe_radius)
+            if not clusters or len(clusters) < 2:
+                continue
+            
+            cx, cy = self._cluster_center(clusters)
+            raw_dmg = roll_dice(action.damage_dice)
+            
+            return ActionStep(
+                step_type="attack", # or "action"
+                description=f"{entity.name} uses {action.name} (DC {action.condition_dc or '??'} {action.condition_save})",
+                attacker=entity, targets=clusters, action=action, damage=raw_dmg, damage_type=action.damage_type,
+                action_name=action.name, aoe_center=(cx, cy),
+                save_dc=action.condition_dc, save_ability=action.condition_save
+            )
         return None
 
     def _try_heal_action(self, entity):
@@ -291,7 +527,6 @@ class TacticalAI:
                 slot = entity.get_slot_for_level(spell.level) if spell.level > 0 else 0
                 if spell.level == 0 or entity.use_spell_slot(spell.level):
                     healed = roll_dice(spell.heals)
-                    entity.heal(healed)
                     return ActionStep(
                         step_type="spell",
                         description=f"{entity.name} casts {spell.name} on self, healing {healed} HP.",
@@ -303,13 +538,69 @@ class TacticalAI:
             if item.heals and item.uses > 0:
                 item.uses -= 1
                 healed = roll_dice(item.heals)
-                entity.heal(healed)
                 return ActionStep(
                     step_type="bonus_attack",
                     description=f"{entity.name} uses {item.name}, healing {healed} HP.",
                     attacker=entity, target=entity, action_name=item.name,
                 )
         return None
+
+    def _try_disengage_action(self, entity, enemies, battle):
+        """If threatened, use Disengage and move away."""
+        # Check if adjacent to any enemy
+        threats = [e for e in enemies if battle.is_adjacent(entity, e)]
+        if not threats:
+            return None
+        
+        # Calculate retreat move
+        threat = threats[0]
+        entity.movement_left += entity.stats.speed # Assume we use movement for this
+        move_step = self._move_away(entity, threat, battle)
+        
+        if move_step:
+            move_step.description = f"{entity.name} Disengages (Action) and retreats."
+            move_step.step_type = "move"
+            return move_step
+        return None
+
+    def _try_dash_action(self, entity, enemies, allies, battle):
+        """Use Action to Dash if out of range."""
+        target = self._pick_target(entity, enemies)
+        if not target:
+            return []
+        
+        # Grant extra movement
+        entity.movement_left += entity.stats.speed
+        step = self._move_toward(entity, target, allies, battle)
+        
+        if step:
+            step.description = f"{entity.name} Dashes (Action): " + step.description
+            entity.action_used = True
+            return [step]
+        return []
+
+    def _try_grapple_action(self, entity, target):
+        """Perform a grapple check (simulated as an attack for now)."""
+        # DC = 8 + STR mod + Prof (Passive Athletics approximation)
+        prof = entity.stats.proficiency_bonus
+        dc = 8 + entity.get_modifier("Strength") + prof
+        desc = f"{entity.name} attempts to Grapple {target.name} (DC {dc} STR/DEX check)"
+        return ActionStep(
+            step_type="attack", description=desc,
+            attacker=entity, target=target, action_name="Grapple",
+            applies_condition="Grappled", condition_dc=dc, save_ability="Strength"
+        )
+
+    def _try_shove_action(self, entity, target):
+        """Attempt to Shove target Prone (Action)."""
+        prof = entity.stats.proficiency_bonus
+        dc = 8 + entity.get_modifier("Strength") + prof
+        desc = f"{entity.name} attempts to Shove {target.name} Prone (DC {dc} STR/DEX check)"
+        return ActionStep(
+            step_type="attack", description=desc,
+            attacker=entity, target=target, action_name="Shove",
+            applies_condition="Prone", condition_dc=dc, save_ability="Strength"
+        )
 
     def _try_aoe_spell(self, entity, enemies, battle):
         """Cast best AoE spell if cluster >= 3 enemies (or 2 if high damage)."""
@@ -331,33 +622,16 @@ class TacticalAI:
                 slot = spell.level
                 cx, cy = self._cluster_center(clusters)
                 # Roll saves and compute damage for each target
-                target_results = []
-                total_desc = f"{entity.name} casts {spell.name} (Level {slot})"
-                for t in clusters:
-                    save_bonus = t.get_save_bonus(spell.save_ability)
-                    roll = random.randint(1, 20) + save_bonus
-                    dc = spell.save_dc_fixed if spell.save_dc_fixed else \
-                         (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
-                          + entity.get_modifier(entity.stats.spellcasting_ability))
-                    saved = roll >= dc
-                    dmg = roll_dice(spell.damage_dice)
-                    if saved and spell.half_on_save:
-                        dmg //= 2
-                    elif saved:
-                        dmg = 0
-                    dmg_dealt, _ = t.take_damage(dmg, spell.damage_type)
-                    if not saved and spell.applies_condition:
-                        t.add_condition(spell.applies_condition)
-                    target_results.append((t, dmg_dealt, saved))
-
-                desc_parts = []
-                for t, d, s in target_results:
-                    saved_str = " (saved, half)" if s and spell.half_on_save else " (saved)" if s else ""
-                    desc_parts.append(f"{t.name} {d} dmg{saved_str}")
+                dc = spell.save_dc_fixed if spell.save_dc_fixed else \
+                     (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
+                      + entity.get_modifier(entity.stats.spellcasting_ability))
+                
+                raw_dmg = roll_dice(spell.damage_dice)
+                
                 return ActionStep(
                     step_type="spell",
-                    description=f"{total_desc}: " + ", ".join(desc_parts),
-                    attacker=entity, targets=clusters, spell=spell, slot_used=slot,
+                    description=f"{entity.name} casts {spell.name} (DC {dc} {spell.save_ability})",
+                    attacker=entity, targets=clusters, spell=spell, slot_used=slot, damage=raw_dmg, damage_type=spell.damage_type,
                     action_name=spell.name, aoe_center=(cx, cy),
                     save_dc=dc if dc else 0,
                     save_ability=spell.save_ability,
@@ -389,21 +663,13 @@ class TacticalAI:
             dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                  (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                   + entity.get_modifier(entity.stats.spellcasting_ability))
-            save_bonus = target.get_save_bonus(spell.save_ability)
-            roll = random.randint(1, 20) + save_bonus
-            saved = roll >= dc
-            if not saved:
-                target.add_condition(spell.applies_condition)
-                if spell.concentration:
-                    entity.start_concentration(spell)
-                desc = f"{entity.name} casts {spell.name} → {target.name}: FAILED save, {spell.applies_condition}!"
-            else:
-                desc = f"{entity.name} casts {spell.name} → {target.name}: saved ({roll} vs DC {dc})."
+            
+            desc = f"{entity.name} casts {spell.name} on {target.name} (DC {dc} {spell.save_ability})"
             return ActionStep(
                 step_type="spell", description=desc,
                 attacker=entity, target=target, spell=spell, slot_used=slot,
                 action_name=spell.name, save_dc=dc, save_ability=spell.save_ability,
-                applies_condition=spell.applies_condition if not saved else "",
+                applies_condition=spell.applies_condition,
             )
         return None
 
@@ -442,23 +708,13 @@ class TacticalAI:
                          (entity.stats.spell_attack_bonus or
                           entity.stats.proficiency_bonus + entity.get_modifier(entity.stats.spellcasting_ability)))
             if spell.save_ability:
-                # Save-based spell
-                save_bonus = target.get_save_bonus(spell.save_ability)
-                roll = random.randint(1, 20) + save_bonus
-                saved = roll >= dc
+                # Save-based damage spell
                 dmg = roll_dice(spell.damage_dice)
-                if saved and spell.half_on_save:
-                    dmg //= 2
-                elif saved:
-                    dmg = 0
-                dmg_dealt, _ = target.take_damage(dmg, spell.damage_type)
-                saved_str = " (save, half)" if saved and spell.half_on_save else " (saved)" if saved else ""
-                desc = (f"{entity.name} casts {spell.name} → {target.name}: "
-                        f"{dmg_dealt} {spell.damage_type} dmg{saved_str}")
+                desc = f"{entity.name} casts {spell.name} on {target.name} (DC {dc} {spell.save_ability})"
                 return ActionStep(
                     step_type="spell", description=desc,
                     attacker=entity, target=target, spell=spell, slot_used=slot,
-                    action_name=spell.name, damage=dmg_dealt,
+                    action_name=spell.name, damage=dmg,
                     damage_type=spell.damage_type, save_dc=dc,
                     save_ability=spell.save_ability,
                 )
@@ -468,14 +724,11 @@ class TacticalAI:
                 dis = entity.has_attack_disadvantage(target, is_ranged=True)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
                 is_hit = total >= target.stats.armor_class and not is_fumble
-                dmg = 0
-                if is_hit:
-                    dmg = roll_dice_critical(spell.damage_dice) if is_crit else roll_dice(spell.damage_dice)
-                    dmg_dealt, _ = target.take_damage(dmg, spell.damage_type)
-                    dmg = dmg_dealt
-                hit_str = "CRIT! " if is_crit else "Hit " if is_hit else "Miss "
+                dmg = roll_dice_critical(spell.damage_dice) if is_crit else roll_dice(spell.damage_dice)
+                
+                hit_str = "CRIT! " if is_crit else "Hit? "
                 desc = (f"{entity.name} casts {spell.name} ({roll_str}+{atk_bonus}={total} "
-                        f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}: {dmg} {spell.damage_type}")
+                        f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}")
                 return ActionStep(
                     step_type="spell", description=desc,
                     attacker=entity, target=target, spell=spell, slot_used=slot,
@@ -485,11 +738,9 @@ class TacticalAI:
                 )
         return None
 
-    def _execute_multiattack(self, entity, multi_action, enemies, battle):
+    def _execute_multiattack(self, entity, multi_action, enemies, battle) -> List[ActionStep]:
         """Execute all attacks in a multiattack action."""
-        steps_desc = []
-        total_damage = 0
-        primary_target = self._pick_target(entity, enemies)
+        steps = []
         primary_action_names = multi_action.multiattack_targets or []
         sub_actions = []
         for name in primary_action_names:
@@ -503,7 +754,6 @@ class TacticalAI:
             if non_multi:
                 sub_actions = [non_multi[0]] * multi_action.multiattack_count
 
-        targets_used = []
         for sub in sub_actions:
             t = self._pick_target(entity, [e for e in enemies if e.hp > 0])
             if not t:
@@ -511,49 +761,11 @@ class TacticalAI:
             dist = battle.get_distance(entity, t)
             if sub.range // 5 < dist - 0.5:
                 continue
-            adv = entity.has_attack_advantage(t, is_ranged=sub.range > 5)
-            dis = entity.has_attack_disadvantage(t, is_ranged=sub.range > 5)
-            # Check flanking bonus
-            allies_adj = [a for a in battle.get_allies_of(entity) if battle.is_adjacent(a, t)]
-            if allies_adj:
-                adv = True
-            total, nat, is_crit, is_fumble, roll_str = roll_attack(sub.attack_bonus, adv, dis)
-            is_hit = total >= t.stats.armor_class and not is_fumble
-            crit_auto = (t.has_condition("Paralyzed") or t.has_condition("Unconscious")) and dist <= 1.5
-            if crit_auto:
-                is_crit, is_hit = True, True
-            dmg = 0
-            dtype = sub.damage_type
-            if is_hit:
-                dmg_str = f"{sub.damage_dice}+{sub.damage_bonus}" if sub.damage_bonus else sub.damage_dice
-                dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
-                dmg_dealt, broke = t.take_damage(dmg, dtype)
-                dmg = dmg_dealt
-                total_damage += dmg
-                if sub.applies_condition and not t.has_condition(sub.applies_condition):
-                    if sub.condition_save:
-                        save_bonus = t.get_save_bonus(sub.condition_save)
-                        save_roll = random.randint(1, 20) + save_bonus
-                        if save_roll < sub.condition_dc:
-                            t.add_condition(sub.applies_condition)
-                    else:
-                        t.add_condition(sub.applies_condition)
+            
+            step = self._execute_attack(entity, sub, t, battle)
+            steps.append(step)
 
-            hit_str = "CRIT! " if is_crit else "HIT " if is_hit else "MISS "
-            steps_desc.append(f"{sub.name} vs {t.name} ({roll_str}+{sub.attack_bonus}={total} "
-                               f"vs AC {t.stats.armor_class}): {hit_str}{dmg} {dtype}")
-            targets_used.append(t)
-
-        return ActionStep(
-            step_type="attack",
-            description=f"{entity.name} Multiattack: " + " | ".join(steps_desc),
-            attacker=entity,
-            target=primary_target,
-            targets=list(set(targets_used)),
-            action_name=multi_action.name,
-            damage=total_damage,
-            is_hit=True,
-        )
+        return steps
 
     def _execute_attack(self, entity, action: Action, target: "Entity", battle) -> ActionStep:
         dist = battle.get_distance(entity, target)
@@ -571,30 +783,19 @@ class TacticalAI:
         else:
             is_hit = total >= target.stats.armor_class and not is_fumble
 
-        dmg = 0
-        if is_hit:
-            dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
-            dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
-            dmg_dealt, _ = target.take_damage(dmg, action.damage_type)
-            dmg = dmg_dealt
-            if action.applies_condition and not target.has_condition(action.applies_condition):
-                if action.condition_save:
-                    save_bonus = target.get_save_bonus(action.condition_save)
-                    save_roll = random.randint(1, 20) + save_bonus
-                    if save_roll < action.condition_dc:
-                        target.add_condition(action.applies_condition)
-                else:
-                    target.add_condition(action.applies_condition)
+        dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
+        dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
 
-        hit_str = "CRIT! " if is_crit else "HIT " if is_hit else "MISS "
+        hit_str = "CRIT! " if is_crit else "Hit? "
         desc = (f"{entity.name} {action.name} ({roll_str}+{action.attack_bonus}={total} "
-                f"vs AC {target.stats.armor_class}): {hit_str}{dmg} {action.damage_type} → {target.name}")
+                f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}")
         return ActionStep(
             step_type="attack", description=desc,
             attacker=entity, target=target, action_name=action.name,
             attack_roll=total, attack_roll_str=roll_str, nat_roll=nat,
             is_crit=is_crit, is_hit=is_hit,
-            damage=dmg, damage_type=action.damage_type,
+            damage=dmg, damage_type=action.damage_type, applies_condition=action.applies_condition,
+            condition_dc=action.condition_dc, save_ability=action.condition_save
         )
 
     # ------------------------------------------------------------------ #
@@ -607,6 +808,9 @@ class TacticalAI:
 
         # Check bonus action attacks
         for ba in entity.stats.bonus_actions:
+            # Skip actions that have no damage dice (likely utility/heal actions)
+            if not ba.damage_dice:
+                continue
             target = self._pick_target(entity, enemies)
             if not target:
                 continue
@@ -617,16 +821,36 @@ class TacticalAI:
                 entity.bonus_action_used = True
                 return step
 
-        # Healing bonus action spell
+        # Bonus Action Spells (Heals, Buffs, Utility)
         for spell in entity.stats.spells_known:
-            if spell.heals and spell.action_type == "bonus" and entity.hp < entity.max_hp * 0.7:
+            if spell.action_type != "bonus":
+                continue
+            if spell.level > 0 and not entity.has_spell_slot(spell.level):
+                continue
+
+            # 1. Healing (if hurt)
+            if spell.heals and entity.hp < entity.max_hp * 0.7:
                 if spell.level == 0 or entity.use_spell_slot(spell.level):
                     healed = roll_dice(spell.heals)
-                    entity.heal(healed)
                     entity.bonus_action_used = True
                     return ActionStep(
                         step_type="bonus_attack",
                         description=f"{entity.name} uses bonus {spell.name}, heals {healed} HP.",
+                        attacker=entity, target=entity, spell=spell, slot_used=spell.level, damage=healed,
+                        action_name=spell.name,
+                    )
+            
+            # 2. Buffs / Damage Boosts (Concentration)
+            # E.g. Hunter's Mark, Divine Favor, Shield of Faith
+            if spell.concentration and not entity.concentrating_on:
+                # Simple logic: cast if we have a target
+                target = self._pick_target(entity, enemies)
+                if target and (spell.level == 0 or entity.use_spell_slot(spell.level)):
+                    entity.start_concentration(spell)
+                    entity.bonus_action_used = True
+                    return ActionStep(
+                        step_type="bonus_attack",
+                        description=f"{entity.name} casts bonus {spell.name} (Concentration).",
                         attacker=entity, target=entity, spell=spell, slot_used=spell.level,
                         action_name=spell.name,
                     )
@@ -688,15 +912,16 @@ class TacticalAI:
         alive = [e for e in enemies if e.hp > 0]
         if not alive:
             return None
-        def score(e):
-            hp_pct = e.hp / e.max_hp
-            dist = math.hypot(entity.grid_x - e.grid_x, entity.grid_y - e.grid_y)
-            s = -dist * 2
-            if hp_pct < 0.4:
-                s += 20
-            s -= (e.stats.armor_class - 12)
-            return s
-        return max(alive, key=score)
+        return max(alive, key=lambda e: self._score_target(entity, e))
+
+    def _score_target(self, entity, target):
+        hp_pct = target.hp / target.max_hp
+        dist = math.hypot(entity.grid_x - target.grid_x, entity.grid_y - target.grid_y)
+        s = -dist * 2
+        if hp_pct < 0.4:
+            s += 20
+        s -= (target.stats.armor_class - 12)
+        return s
 
     def _best_melee_or_ranged(self, entity, target, battle):
         if not target:

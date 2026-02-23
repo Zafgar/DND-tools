@@ -13,11 +13,17 @@ class Entity:
         self.grid_x = float(x)
         self.grid_y = float(y)
         self.is_player = is_player
+        self.is_lair = False
+        self.lair_owner = None  # Reference to the entity that owns this lair action
 
         # Dynamic HP
         self.hp = stats.hit_points
         self.max_hp = stats.hit_points
         self.temp_hp = 0
+
+        # Duration tracking & Notes
+        self.active_effects = {}  # "Effect Name": rounds_remaining (int)
+        self.notes = ""           # DM notes for this entity
 
         # Visuals
         self.color = COLORS["player"] if is_player else COLORS["enemy"]
@@ -27,6 +33,7 @@ class Entity:
 
         # Conditions: set of strings
         self.conditions: set = set()
+        self.condition_metadata: dict = {}  # "Condition": {"dc": 15, "save": "Wisdom"}
 
         # Resources
         self.spell_slots: dict = copy.deepcopy(stats.spell_slots)
@@ -40,6 +47,9 @@ class Entity:
         for feat in stats.features:
             if feat.uses_per_day > 0:
                 self.feature_uses[feat.name] = feat.uses_per_day
+            elif feat.recharge:
+                # Recharge abilities usually start charged (1 use)
+                self.feature_uses[feat.name] = 1
 
         # Turn economy
         self.action_used: bool = False
@@ -54,6 +64,14 @@ class Entity:
         self.death_save_successes: int = 0
         self.death_save_failures: int = 0
         self.is_stable: bool = False
+
+    @property
+    def size_in_squares(self) -> int:
+        s = self.stats.size.lower()
+        if "large" in s: return 2
+        if "huge" in s: return 3
+        if "gargantuan" in s: return 4
+        return 1
 
     # ------------------------------------------------------------------ #
     # HP / Damage                                                          #
@@ -104,8 +122,10 @@ class Entity:
     # Concentration                                                        #
     # ------------------------------------------------------------------ #
 
-    def start_concentration(self, spell: SpellInfo):
+    def start_concentration(self, spell: SpellInfo) -> SpellInfo | None:
+        dropped = self.concentrating_on
         self.concentrating_on = spell
+        return dropped
 
     def drop_concentration(self):
         dropped = self.concentrating_on
@@ -116,15 +136,18 @@ class Entity:
     # Conditions                                                           #
     # ------------------------------------------------------------------ #
 
-    def add_condition(self, condition: str):
+    def add_condition(self, condition: str, save_ability: str = None, save_dc: int = 0):
         immune = [x.lower() for x in self.stats.condition_immunities]
         if condition.lower() not in immune:
             self.conditions.add(condition)
+            if save_ability and save_dc > 0:
+                self.condition_metadata[condition] = {"save": save_ability, "dc": save_dc}
             if condition in INCAPACITATING_CONDITIONS and self.concentrating_on:
                 self.drop_concentration()
 
     def remove_condition(self, condition: str):
         self.conditions.discard(condition)
+        self.condition_metadata.pop(condition, None)
 
     def has_condition(self, condition: str) -> bool:
         return condition in self.conditions
@@ -271,6 +294,7 @@ class Entity:
         self.temp_hp = 0
         self.spell_slots = copy.deepcopy(self.stats.spell_slots)
         self.conditions.clear()
+        self.condition_metadata.clear()
         self.concentrating_on = None
         self.death_save_successes = 0
         self.death_save_failures = 0
@@ -283,3 +307,66 @@ class Entity:
 
     def short_rest(self):
         pass  # Classes handle their own short rest abilities
+
+    def recharge_features(self) -> list[str]:
+        """Rolls for recharge abilities (e.g. Dragon Breath). Returns logs."""
+        logs = []
+        for feat in self.stats.features:
+            if not feat.recharge:
+                continue
+            
+            # Check if used
+            current = self.feature_uses.get(feat.name, 0)
+            max_uses = feat.uses_per_day if feat.uses_per_day > 0 else 1
+            
+            if current < max_uses:
+                # Parse recharge string "5-6" or "6"
+                req_str = feat.recharge.replace("-", " ")
+                req = [int(s) for s in req_str.split() if s.isdigit()]
+                if not req: continue
+                
+                roll = random.randint(1, 6)
+                success = False
+                # "Recharge 5-6" means 5 or 6. "Recharge 6" means 6.
+                if len(req) == 1:
+                    if roll >= req[0]: success = True
+                elif len(req) >= 2:
+                    if req[0] <= roll <= req[1]: success = True
+                
+                if success:
+                    self.feature_uses[feat.name] = max_uses
+                    logs.append(f"{feat.name} recharged! (Rolled {roll})")
+        return logs
+
+    def roll_death_save(self) -> str:
+        """Rolls a death saving throw. Returns status string."""
+        if self.hp > 0 or self.is_stable or self.death_save_failures >= 3 or self.death_save_successes >= 3:
+            return ""
+        
+        roll = random.randint(1, 20)
+        msg = f"Death Save: {roll}"
+        
+        if roll == 1:
+            self.death_save_failures += 2
+            msg += " (CRITICAL FAIL! +2 failures)"
+        elif roll == 20:
+            self.hp = 1
+            self.death_save_failures = 0
+            self.death_save_successes = 0
+            msg += " (CRITICAL SUCCESS! Regain 1 HP)"
+        elif roll >= 10:
+            self.death_save_successes += 1
+            msg += " (Success)"
+        else:
+            self.death_save_failures += 1
+            msg += " (Failure)"
+            
+        if self.death_save_successes >= 3:
+            self.is_stable = True
+            self.death_save_successes = 0
+            self.death_save_failures = 0
+            msg += " -> STABILIZED!"
+        elif self.death_save_failures >= 3:
+            msg += " -> DIED!"
+            
+        return msg

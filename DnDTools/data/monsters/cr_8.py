@@ -1,4 +1,5 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature, SpellInfo
+from data.spells import get_spell
 
 monsters = [
     CreatureStats(name="Assassin", size="Medium", creature_type="Humanoid",
@@ -40,16 +41,11 @@ monsters = [
         spellcasting_ability="Intelligence", spell_save_dc=15, spell_attack_bonus=7,
         spell_slots={"1st":4,"2nd":3,"3rd":2,"4th":1},
         spells_known=[
-            SpellInfo(name="Dominate Monster",level=8,action_type="action",range=60,targets="single",
-                      save_ability="Wisdom",applies_condition="Charmed",half_on_save=False,
-                      concentration=True,duration="1 hour"),
-            SpellInfo(name="Plane Shift",level=7,action_type="action",range=0,targets="self",
-                      description="Teleport to another plane"),
+            get_spell("Dominate Monster"),
+            get_spell("Plane Shift"),
         ],
         cantrips=[
-            SpellInfo(name="Mind Blast",level=0,action_type="action",range=60,
-                      aoe_radius=12,aoe_shape="cone",damage_dice="5d8",damage_type="psychic",
-                      save_ability="Intelligence",applies_condition="Stunned",half_on_save=False,targets="aoe"),
+            get_spell("Mind Blast"),
         ],
         features=[Feature("Magic Resistance","Adv on saves vs spells and magical effects"),
                   Feature("Innate Spellcasting","INT-based; no components")],

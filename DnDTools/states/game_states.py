@@ -4,18 +4,20 @@ import os
 import json
 import copy
 import random
+import re
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, fonts, hp_bar
 from engine.battle import BattleSystem
 from engine.ai import TurnPlan, ActionStep
 from engine.terrain import TerrainObject, TERRAIN_TYPES
+from engine.dice import roll_d20, roll_dice, roll_attack, roll_dice_critical
 from data.library import library
 from engine.entities import Entity
 from data.models import CreatureStats, AbilityScores, Action
 from data.heroes import hero_list
 from data.conditions import CONDITIONS
 
-SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "saves", "encounter.json")
+SAVES_DIR = os.path.join(os.path.dirname(__file__), "..", "saves")
 
 
 # ============================================================
@@ -27,6 +29,246 @@ class GameState:
     def update(self): pass
     def draw(self, screen): pass
 
+# ============================================================
+# Scenario Modal (Save/Load UI)
+# ============================================================
+class ScenarioModal:
+    def __init__(self, mode, callback):
+        self.mode = mode  # "save" or "load"
+        self.callback = callback
+        self.w, self.h = 600, 500
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+        
+        if not os.path.exists(SAVES_DIR):
+            os.makedirs(SAVES_DIR)
+        self.files = sorted([f for f in os.listdir(SAVES_DIR) if f.endswith(".json")])
+        
+        self.selected_file = None
+        self.input_text = "encounter" if mode == "save" else ""
+        self.scroll_y = 0
+        
+        self.btn_action = Button(self.x + self.w - 150, self.y + self.h - 60, 130, 45, 
+                                 "SAVE" if mode == "save" else "LOAD", self._confirm, color=COLORS["success"])
+        self.btn_cancel = Button(self.x + 20, self.y + self.h - 60, 130, 45, 
+                                 "CANCEL", lambda: self.callback(None), color=COLORS["danger"])
+
+    def _confirm(self):
+        fname = self.input_text
+        if self.mode == "load":
+            if not self.selected_file: return
+            fname = self.selected_file
+        
+        if not fname: return
+        if not fname.endswith(".json"): fname += ".json"
+        self.callback(os.path.join(SAVES_DIR, fname))
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.callback(None)
+            elif self.mode == "save":
+                if event.key == pygame.K_BACKSPACE:
+                    self.input_text = self.input_text[:-1]
+                elif event.key == pygame.K_RETURN:
+                    self._confirm()
+                elif event.unicode.isprintable() and len(self.input_text) < 30:
+                    self.input_text += event.unicode
+        
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            mx, my = event.pos
+            # File list
+            list_rect = pygame.Rect(self.x + 20, self.y + 60, self.w - 40, self.h - 140)
+            if list_rect.collidepoint(mx, my):
+                rel_y = my - (self.y + 60) - self.scroll_y
+                idx = rel_y // 30
+                if 0 <= idx < len(self.files):
+                    self.selected_file = self.files[int(idx)]
+                    if self.mode == "save":
+                        self.input_text = self.selected_file.replace(".json", "")
+            
+            # Scroll (simple)
+            if event.button == 4: self.scroll_y = min(0, self.scroll_y + 20)
+            if event.button == 5: self.scroll_y = max(-(len(self.files)*30 - list_rect.height), self.scroll_y - 20)
+
+        self.btn_action.handle_event(event)
+        self.btn_cancel.handle_event(event)
+
+    def draw(self, screen, mp):
+        # Overlay
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,180))
+        screen.blit(ov, (0,0))
+        
+        # Box
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h), 2, border_radius=10)
+        
+        # Header
+        title = "Save Scenario" if self.mode == "save" else "Load Scenario"
+        t = fonts.header.render(title, True, COLORS["accent"])
+        screen.blit(t, (self.x + 20, self.y + 15))
+        
+        # File list area
+        list_rect = pygame.Rect(self.x + 20, self.y + 60, self.w - 40, self.h - 140)
+        pygame.draw.rect(screen, (20,22,25), list_rect)
+        pygame.draw.rect(screen, COLORS["border"], list_rect, 1)
+        
+        screen.set_clip(list_rect)
+        fy = self.y + 60 + self.scroll_y
+        for f in self.files:
+            col = COLORS["text_main"]
+            if f == self.selected_file:
+                pygame.draw.rect(screen, COLORS["accent"], (self.x+22, fy, self.w-44, 28))
+                col = (255,255,255)
+            
+            txt = fonts.body.render(f, True, col)
+            screen.blit(txt, (self.x + 30, fy + 2))
+            fy += 30
+        screen.set_clip(None)
+        
+        # Input box (Save mode)
+        if self.mode == "save":
+            lbl = fonts.small.render("Filename:", True, COLORS["text_dim"])
+            screen.blit(lbl, (self.x + 20, self.y + self.h - 110))
+            
+            in_rect = pygame.Rect(self.x + 100, self.y + self.h - 115, 300, 30)
+            pygame.draw.rect(screen, (10,10,10), in_rect)
+            pygame.draw.rect(screen, COLORS["border"], in_rect, 1)
+            
+            it = fonts.body.render(self.input_text, True, (255,255,255))
+            screen.blit(it, (in_rect.x + 5, in_rect.y + 2))
+            
+        self.btn_action.draw(screen, mp)
+        self.btn_cancel.draw(screen, mp)
+
+# ============================================================
+# Notes Modal
+# ============================================================
+class NotesModal:
+    def __init__(self, entity, callback):
+        self.entity = entity
+        self.callback = callback
+        self.text = entity.notes
+        self.w, self.h = 600, 400
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+        self.btn_save = Button(self.x + self.w - 120, self.y + self.h - 50, 100, 40, "SAVE", self._save, color=COLORS["success"])
+        self.btn_cancel = Button(self.x + 20, self.y + self.h - 50, 100, 40, "CANCEL", lambda: callback(None), color=COLORS["danger"])
+
+    def _save(self):
+        self.entity.notes = self.text
+        self.callback(self.text)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.callback(None)
+            elif event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
+            elif event.key == pygame.K_RETURN:
+                self.text += "\n"
+            elif event.unicode.isprintable():
+                self.text += event.unicode
+        self.btn_save.handle_event(event)
+        self.btn_cancel.handle_event(event)
+
+    def draw(self, screen, mp):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,180))
+        screen.blit(ov, (0,0))
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h), 2, border_radius=10)
+        
+        t = fonts.header.render(f"Notes: {self.entity.name}", True, COLORS["accent"])
+        screen.blit(t, (self.x + 20, self.y + 15))
+
+        # Text area
+        area = pygame.Rect(self.x + 20, self.y + 60, self.w - 40, self.h - 120)
+        pygame.draw.rect(screen, (20,22,25), area)
+        pygame.draw.rect(screen, COLORS["border"], area, 1)
+        
+        # Draw text (simple wrap)
+        y = area.y + 5
+        lines = self.text.split('\n')
+        for line in lines:
+            # Simple char wrap would be better but simple line split is ok for now
+            s = fonts.body.render(line, True, COLORS["text_main"])
+            screen.blit(s, (area.x + 5, y))
+            y += 24
+
+        self.btn_save.draw(screen, mp)
+        self.btn_cancel.draw(screen, mp)
+
+# ============================================================
+# Add Effect Modal
+# ============================================================
+class EffectModal:
+    def __init__(self, entity, callback):
+        self.entity = entity
+        self.callback = callback
+        self.name = ""
+        self.duration = 10 # default 1 min
+        self.w, self.h = 500, 350
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+        
+        self.presets = [
+            ("1 Rnd", 1), ("1 Min", 10), ("10 Min", 100), ("1 Hr", 600)
+        ]
+        self.preset_btns = []
+        bx = self.x + 20
+        for lbl, val in self.presets:
+            self.preset_btns.append(Button(bx, self.y + 140, 100, 35, lbl, lambda v=val: self._set_dur(v), color=COLORS["panel"]))
+            bx += 110
+
+        self.btn_add = Button(self.x + self.w - 120, self.y + self.h - 50, 100, 40, "ADD", self._confirm, color=COLORS["success"])
+        self.btn_cancel = Button(self.x + 20, self.y + self.h - 50, 100, 40, "CANCEL", lambda: callback(None), color=COLORS["danger"])
+
+    def _set_dur(self, v): self.duration = v
+    def _confirm(self):
+        if self.name:
+            self.entity.active_effects[self.name] = self.duration
+            self.callback(f"{self.name} ({self.duration} rnds)")
+        else:
+            self.callback(None)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.callback(None)
+            elif event.key == pygame.K_BACKSPACE:
+                self.name = self.name[:-1]
+            elif event.unicode.isprintable() and len(self.name) < 30:
+                self.name += event.unicode
+        for b in self.preset_btns: b.handle_event(event)
+        self.btn_add.handle_event(event)
+        self.btn_cancel.handle_event(event)
+
+    def draw(self, screen, mp):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,180))
+        screen.blit(ov, (0,0))
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h), 2, border_radius=10)
+        
+        t = fonts.header.render(f"Add Effect: {self.entity.name}", True, COLORS["accent"])
+        screen.blit(t, (self.x + 20, self.y + 15))
+
+        # Name input
+        lbl = fonts.body.render("Effect Name:", True, COLORS["text_dim"])
+        screen.blit(lbl, (self.x + 20, self.y + 70))
+        pygame.draw.rect(screen, (20,20,20), (self.x + 150, self.y + 65, 300, 30))
+        nm = fonts.body.render(self.name, True, (255,255,255))
+        screen.blit(nm, (self.x + 155, self.y + 67))
+
+        # Duration
+        dl = fonts.body.render(f"Duration: {self.duration} rounds", True, COLORS["text_main"])
+        screen.blit(dl, (self.x + 20, self.y + 110))
+
+        for b in self.preset_btns: b.draw(screen, mp)
+        self.btn_add.draw(screen, mp)
+        self.btn_cancel.draw(screen, mp)
 
 # ============================================================
 # MenuState
@@ -37,26 +279,41 @@ class MenuState(GameState):
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         self.buttons = [
             Button(cx-160, cy-70,  320, 60, "New Encounter",    lambda: manager.change_state("SETUP")),
-            Button(cx-160, cy+10,  320, 60, "Load Encounter",   lambda: self._load_from_menu(manager),
+            Button(cx-160, cy+10,  320, 60, "Load Scenario",    lambda: self._open_load_modal(),
                    color=COLORS["panel"]),
-            Button(cx-160, cy+90,  320, 60, "Exit",             lambda: manager.quit()),
+            Button(cx-160, cy+90,  320, 60, "Import from TaleSpire", lambda: self._import_from_talespire(),
+                   color=COLORS["accent"]),
+            Button(cx-160, cy+170, 320, 60, "Exit",             lambda: manager.quit()),
         ]
+        self.scenario_modal = None
 
-    def _load_from_menu(self, manager):
-        if not os.path.exists(SAVE_FILE):
+    def _import_from_talespire(self):
+        self.manager.change_state("SETUP")
+        # Activate import mode in the setup state
+        if hasattr(self.manager.current_state, "enable_import"):
+            self.manager.current_state.enable_import()
+
+    def _open_load_modal(self):
+        self.scenario_modal = ScenarioModal("load", self._on_load_file)
+
+    def _on_load_file(self, filepath):
+        self.scenario_modal = None
+        if not filepath or not os.path.exists(filepath):
             return
         try:
-            bs = BattleState(manager)
-            bs.battle = BattleSystem.from_save(SAVE_FILE, bs._log)
+            bs = BattleState(self.manager)
+            bs.battle = BattleSystem.from_save(filepath, bs._log)
             bs.battle.log = bs._log
-            manager.states["BATTLE"] = bs
-            manager.change_state("BATTLE")
+            self.manager.states["BATTLE"] = bs
+            self.manager.change_state("BATTLE")
         except Exception as ex:
-            import traceback; traceback.print_exc()
             print(f"Load error: {ex}")
 
     def handle_events(self, events):
         for e in events:
+            if self.scenario_modal:
+                self.scenario_modal.handle_event(e)
+                continue
             for b in self.buttons:
                 b.handle_event(e)
 
@@ -69,6 +326,8 @@ class MenuState(GameState):
         mp = pygame.mouse.get_pos()
         for b in self.buttons:
             b.draw(screen, mp)
+        if self.scenario_modal:
+            self.scenario_modal.draw(screen, mp)
 
 
 # ============================================================
@@ -80,6 +339,8 @@ class EncounterSetupState(GameState):
         self.roster = []
         self.scroll_monster = 0
         self.scroll_hero    = 0
+        self.importing = False
+        self.ts_last_update = 0
         all_monsters = library.get_all_monsters()
         self.monsters_by_cr: dict = {}
         for m in all_monsters:
@@ -88,6 +349,8 @@ class EncounterSetupState(GameState):
         self.sorted_crs = sorted(self.monsters_by_cr.keys())
         self.selected_cr = None
         self.active_monster_btns = []
+        self.search_text = ""
+        self.search_active = False
 
         self.cr_btns = []
         y = 130
@@ -116,14 +379,115 @@ class EncounterSetupState(GameState):
                    lambda: self.roster.clear(), color=COLORS["danger"]),
         ]
 
+    def enable_import(self):
+        self.importing = True
+        self.roster.clear()
+
+    def update_external_data(self, data):
+        """Called by main.py when TaleSpire data arrives."""
+        if not self.importing:
+            return
+
+        self.ts_last_update = pygame.time.get_ticks()
+
+        new_roster = []
+        for mini in data:
+            name = mini.get("name", "Unknown").strip()
+            raw_x = float(mini.get("x", 0))
+            raw_z = float(mini.get("z", 0))
+            
+            # Convert coordinates (TaleSpire units -> Grid units)
+            # Assuming 1 TS unit = 5ft = 1 Grid unit
+            gx = raw_x
+            gy = raw_z
+
+            # Try to match stats
+            stats = None
+            is_player = False
+
+            # 1. Check Heroes
+            for h in hero_list:
+                if h.name.lower() == name.lower():
+                    stats = h
+                    is_player = True
+                    break
+            
+            # 2. Check Monsters
+            if not stats:
+                try:
+                    stats = library.get_monster(name)
+                except ValueError:
+                    # Try stripping numbers (e.g. "Goblin 1" -> "Goblin")
+                    base = re.sub(r'\s+\d+$', '', name)
+                    try:
+                        stats = library.get_monster(base)
+                    except ValueError:
+                        # 3. Fallback
+                        from data.models import CreatureStats
+                        stats = CreatureStats(name=name, hit_points=10, armor_class=10, challenge_rating=0)
+
+            # Create entity
+            ent = Entity(stats, gx, gy, is_player=is_player)
+            # Ensure name matches TaleSpire exactly (for tracking)
+            ent.name = name
+            new_roster.append(ent)
+
+        self.roster = new_roster
+
+    def _calculate_difficulty(self):
+        heroes = [e for e in self.roster if e.is_player]
+        monsters = [e for e in self.roster if not e.is_player]
+        if not heroes or not monsters:
+            return "N/A", 0, 0
+
+        # Calculate Party Thresholds (simplified: assuming lvl 5 for demo heroes if not specified)
+        # In a real app, we'd track levels. Using CR/Level approximation.
+        # Easy/Med/Hard/Deadly thresholds for Lvl 5: 250, 500, 750, 1100
+        # Let's use a rough average level of 5 for calculations
+        party_len = len(heroes)
+        thresholds = [250 * party_len, 500 * party_len, 750 * party_len, 1100 * party_len]
+
+        total_xp = sum(m.stats.xp for m in monsters)
+        
+        # Multiplier based on monster count
+        count = len(monsters)
+        mult = 1.0
+        if count == 2: mult = 1.5
+        elif count >= 3 and count <= 6: mult = 2.0
+        elif count >= 7 and count <= 10: mult = 2.5
+        elif count >= 11: mult = 3.0
+        
+        adj_xp = total_xp * mult
+        
+        diff = "Easy"
+        if adj_xp >= thresholds[3]: diff = "Deadly"
+        elif adj_xp >= thresholds[2]: diff = "Hard"
+        elif adj_xp >= thresholds[1]: diff = "Medium"
+        return diff, total_xp, int(adj_xp)
+
+    def _update_monster_list(self):
+        self.active_monster_btns = []
+        self.scroll_monster = 0
+        
+        if self.search_text:
+            # Search mode
+            all_mons = library.get_all_monsters()
+            filtered = [m for m in all_mons if self.search_text.lower() in m.name.lower()]
+            for m in filtered:
+                self.active_monster_btns.append(
+                    Button(160, 0, 250, 35, m.name, lambda mon=m: self._add_monster(mon),
+                           color=COLORS["panel"]))
+        elif self.selected_cr is not None:
+            # CR mode
+            for m in self.monsters_by_cr[self.selected_cr]:
+                self.active_monster_btns.append(
+                    Button(160, 0, 250, 35, m.name, lambda mon=m: self._add_monster(mon),
+                           color=COLORS["panel"]))
+
     def _select_cr(self, cr):
         self.selected_cr = cr
-        self.scroll_monster = 0
-        self.active_monster_btns = []
-        for m in self.monsters_by_cr[cr]:
-            self.active_monster_btns.append(
-                Button(160, 0, 250, 35, m.name, lambda mon=m: self._add_monster(mon),
-                       color=COLORS["panel"]))
+        self.search_text = "" # Clear search when picking CR
+        self._update_monster_list()
 
     def _add_hero(self, stats):
         y_pos = 2 + len([e for e in self.roster if e.is_player]) * 2
@@ -149,10 +513,24 @@ class EncounterSetupState(GameState):
         if not self.roster:
             return
         self.manager.states["BATTLE"] = BattleState(self.manager, list(self.roster))
+        self.importing = False  # Stop syncing setup
         self.manager.change_state("BATTLE")
 
     def handle_events(self, events):
         for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if pygame.Rect(160, 75, 250, 30).collidepoint(event.pos):
+                    self.search_active = True
+                else:
+                    self.search_active = False
+            
+            if event.type == pygame.KEYDOWN and self.search_active:
+                if event.key == pygame.K_BACKSPACE:
+                    self.search_text = self.search_text[:-1]
+                elif event.unicode.isprintable():
+                    self.search_text += event.unicode
+                self._update_monster_list()
+
             if event.type == pygame.MOUSEWHEEL:
                 if pygame.mouse.get_pos()[0] < 160:
                     self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
@@ -173,6 +551,25 @@ class EncounterSetupState(GameState):
         # Header
         t = fonts.header.render("Encounter Setup", True, COLORS["accent"])
         screen.blit(t, (30, 80))
+        
+        if self.importing:
+            is_connected = (pygame.time.get_ticks() - self.ts_last_update) < 3000
+            color = COLORS["success"] if is_connected else COLORS["warning"]
+            text = "SYNCING WITH TALESPIRE..." if is_connected else "WAITING FOR TALESPIRE..."
+            imp_msg = fonts.header.render(text, True, color)
+            screen.blit(imp_msg, (450, 80))
+
+        # Search box
+        search_rect = pygame.Rect(160, 75, 250, 30)
+        col = COLORS["accent"] if self.search_active else COLORS["border"]
+        pygame.draw.rect(screen, (10,10,10), search_rect)
+        pygame.draw.rect(screen, col, search_rect, 2)
+        txt_surf = fonts.small.render(self.search_text, True, COLORS["text_main"])
+        screen.blit(txt_surf, (search_rect.x + 5, search_rect.y + 5))
+        if not self.search_text and not self.search_active:
+            placeholder = fonts.small.render("Search...", True, COLORS["text_dim"])
+            screen.blit(placeholder, (search_rect.x + 5, search_rect.y + 5))
+
         # Column labels
         for lbl, x in [("CR Level", 30), ("Monsters", 160), ("Heroes", 430), ("Roster", 700)]:
             screen.blit(fonts.small.render(lbl, True, COLORS["text_dim"]), (x, 110))
@@ -202,6 +599,13 @@ class EncounterSetupState(GameState):
             txt = fonts.small.render(f"{'[P]' if e.is_player else '[M]'} {e.name}  HP:{e.hp}/{e.max_hp}  AC:{e.stats.armor_class}", True, c)
             screen.blit(txt, (700, y))
             y += 22
+            
+        # Difficulty Display
+        diff, raw_xp, adj_xp = self._calculate_difficulty()
+        diff_c = COLORS["danger"] if diff in ("Hard", "Deadly") else COLORS["success"]
+        stats_s = fonts.header.render(f"Difficulty: {diff}  (XP: {raw_xp} / Adj: {adj_xp})", True, diff_c)
+        screen.blit(stats_s, (700, SCREEN_HEIGHT - 100))
+
         # Action buttons
         for b in self.action_btns:
             b.draw(screen, mp)
@@ -216,6 +620,40 @@ GRID_W = SCREEN_WIDTH - PANEL_W
 
 TABS = ["Stats", "Spells", "Log"]
 
+class FloatingText:
+    def __init__(self, gx, gy, text, color):
+        self.gx = gx
+        self.gy = gy
+        self.text = str(text)
+        self.color = color
+        self.life = 90  # frames (1.5 sec)
+        self.anim_offset = 0.0
+
+    def update(self):
+        self.anim_offset -= 0.015  # float up
+        self.life -= 1
+
+    def draw(self, screen, get_screen_pos_func, grid_size):
+        if self.life > 0:
+            sx, sy = get_screen_pos_func(self.gx, self.gy)
+            cx = sx + grid_size // 2
+            cy = sy + grid_size // 2 + int(self.anim_offset * grid_size)
+            
+            # Outline for readability
+            txt = fonts.header.render(self.text, True, self.color)
+            outline = fonts.header.render(self.text, True, (0,0,0))
+            
+            alpha = 255
+            if self.life < 20:
+                alpha = int(255 * (self.life / 20))
+            
+            txt.set_alpha(alpha)
+            outline.set_alpha(alpha)
+            
+            screen.blit(outline, (cx - txt.get_width()//2 + 2, cy + 2))
+            screen.blit(txt, (cx - txt.get_width()//2, cy))
+
+
 class BattleState(GameState):
     def __init__(self, manager, entities=None):
         super().__init__(manager)
@@ -227,10 +665,24 @@ class BattleState(GameState):
         self.token_cache = {}
         self.active_tab = 0
         self.panel_scroll = 0
+        self.camera_x = 0
+        self.camera_y = 0
+        self.active_tooltip = None  # For drawing tooltips on top of everything
+        self.pending_move = None    # (entity, x, y) for delayed movement (OA)
+        self.undo_stack = []        # Stack of full state dicts
+        self.ts_last_update = 0     # Timestamp of last TaleSpire update
+        self.auto_battle = False    # Auto-play toggle
+        self.auto_timer = 0         # Timer for auto-play ticks
+
+        # Visual FX
+        self.floating_texts = []
+        self.turn_banner_text = ""
+        self.turn_banner_timer = 0
 
         # AI turn state
         self.pending_plan: TurnPlan | None = None
         self.pending_step_idx: int = 0
+        self.current_step_outcomes = {} # target -> "hit"/"miss"/"save"/"fail"
 
         # Player action panel state
         self.player_action_mode = False
@@ -239,6 +691,12 @@ class BattleState(GameState):
 
         # Reaction popup
         self.reaction_pending = []  # list of (reactor, mover)
+        self.reaction_type = None   # "oa" or "counterspell"
+        self.reaction_context = None # dict with extra info
+
+        # Aura / Turn Start triggers
+        self.aura_triggers = []
+        self.current_aura_trigger = None
 
         # Context menu
         self.ctx_open = False
@@ -249,11 +707,62 @@ class BattleState(GameState):
         self.terrain_mode = False
         self.terrain_selected_type = "wall"
         self.terrain_palette_open = False
+        self.drawing_button = None  # None, 1 (left/paint), or 3 (right/erase)
+
+        # Roll Result Modal
+        self.roll_modal_open = False
+        self.roll_modal_title = ""
+        self.roll_modal_expression = ""
+        self.roll_modal_total = 0
+        self.roll_modal_nat = 0
+
+        # Dynamic UI click zones (rect, callback) - populated during draw
+        self.ui_click_zones = []
+        self.ui_right_click_zones = []
+
+        # Damage Application Modal
+        self.dmg_modal_open = False
+        self.dmg_target: Entity | None = None
+        self.dmg_value_str = ""
+        self.dmg_type = "slashing"
 
         # Condition reminder (set when player turn starts with active conditions)
         self.condition_reminder: Entity | None = None
 
+        # Scenario Modal
+        self.scenario_modal = None
+        self.notes_modal = None
+        self.effect_modal = None
+
         self._build_buttons()
+
+        if not self.battle.combat_started:
+            self._log("=== DEPLOYMENT PHASE ===")
+            self._log("Drag characters to position them. Click START COMBAT when ready.")
+
+    def update_external_positions(self, minis_data):
+        """Updates entity positions based on external JSON data (e.g. from TaleSpire)."""
+        self.ts_last_update = pygame.time.get_ticks()
+        
+        for mini in minis_data:
+            name = mini.get("name", "").strip()
+            raw_x = float(mini.get("x", 0))
+            raw_z = float(mini.get("z", 0)) # TaleSpire uses Z for depth/ground plane
+
+            # Requirement: Convert to feet by multiplying by 5
+            feet_x = raw_x * 5
+            feet_y = raw_z * 5
+
+            # Engine uses grid units (1 unit = 5 ft). Convert feet back to grid units.
+            gx = feet_x / 5.0
+            gy = feet_y / 5.0
+
+            # Find and update the entity
+            # We use 'base_name' or 'name' matching.
+            for ent in self.battle.entities:
+                if ent.name.lower() == name.lower():
+                    ent.grid_x = gx
+                    ent.grid_y = gy
 
     # ------------------------------------------------------------------ #
     # Build UI buttons                                                     #
@@ -264,12 +773,16 @@ class BattleState(GameState):
         # Bottom bar
         self.btn_next   = Button(bx+20,  SCREEN_HEIGHT-65, 145, 50, "NEXT TURN >>", self._do_next_turn,      color=COLORS["success"])
         self.btn_ai     = Button(bx+175, SCREEN_HEIGHT-65, 145, 50, "AI AUTO-PLAY", self._do_ai_turn,        color=COLORS["accent"])
+        self.btn_start  = Button(bx+20,  SCREEN_HEIGHT-65, 300, 50, "START COMBAT", self._do_start_combat,   color=COLORS["success"])
         self.btn_menu   = Button(10, 10, 80, 30, "Menu",          lambda: self.manager.change_state("MENU"), color=COLORS["panel"])
         self.btn_log_pl = Button(bx+330, SCREEN_HEIGHT-65, 165, 50, "LOG PLAYER ACTION", self._open_player_action_panel, color=COLORS["neutral"])
         # Grid area bottom-left utilities
-        self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._save_encounter,       color=COLORS["panel"])
-        self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._load_encounter,       color=COLORS["panel"])
+        self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._open_save_modal,      color=COLORS["panel"])
+        self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
         self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
+        self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
+        self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
+        self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
 
         # HP quick buttons
         vals = [-10, -5, -1, 1, 5, 10]
@@ -288,7 +801,7 @@ class BattleState(GameState):
         self.btn_confirm = Button(SCREEN_WIDTH//2-130, SCREEN_HEIGHT//2+120, 120, 48,
                                   "CONFIRM", lambda: self._confirm_step(), color=COLORS["success"])
         self.btn_deny    = Button(SCREEN_WIDTH//2+10,  SCREEN_HEIGHT//2+120, 120, 48,
-                                  "SKIP",    lambda: self._skip_step(),   color=COLORS["danger"])
+                                  "DENY",    lambda: self._skip_step(),   color=COLORS["danger"])
         self.btn_approve_all = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+180, 130, 38,
                                       "APPROVE ALL", lambda: self._approve_all(), color=COLORS["accent"])
 
@@ -304,34 +817,199 @@ class BattleState(GameState):
             Button(0, 0, 120, 35, "Done",      lambda: self._close_player_panel(),  color=COLORS["text_dim"]),
         ]
 
+    def _toggle_auto_battle(self):
+        self.auto_battle = not self.auto_battle
+        if self.auto_battle:
+            self.btn_auto.color = COLORS["success"]
+            self.btn_auto.text = "STOP"
+            self._log("[SYSTEM] Auto-Battle STARTED.")
+        else:
+            self.btn_auto.color = COLORS["panel"]
+            self.btn_auto.text = "AUTO"
+            self._log("[SYSTEM] Auto-Battle STOPPED.")
+
+    def _process_auto_battle(self):
+        """Handle one tick of auto-battle logic."""
+        # 1. Handle Aura Triggers (Auto-roll saves)
+        if self.current_aura_trigger:
+            feat = self.current_aura_trigger["feature"]
+            target = self.current_aura_trigger["target"]
+            bonus = target.get_save_bonus(feat.save_ability)
+            roll = random.randint(1, 20) + bonus
+            success = roll >= feat.save_dc
+            self._resolve_aura(success)
+            return
+
+        # 2. Handle Reactions (Auto-accept for maximum chaos)
+        if self.reaction_pending:
+            self._resolve_reaction(True)
+            return
+
+        # 3. Handle Pending Plan (Execute steps)
+        if self.pending_plan:
+            self._confirm_step()
+            return
+
+        # 4. Decide Next Action
+        curr = self.battle.get_current_entity()
+        
+        # If current entity has done nothing yet, try to generate AI plan
+        # (Even for players in auto mode)
+        if not curr.action_used and not curr.is_incapacitated():
+            # Try to generate a plan
+            self._do_ai_turn(force_auto=True)
+            
+            # If no plan was generated (e.g. skipped/no targets), end turn
+            if not self.pending_plan:
+                self._do_next_turn()
+        else:
+            # Turn done, next
+            self._do_next_turn()
+
     # ------------------------------------------------------------------ #
     # Logging                                                              #
     # ------------------------------------------------------------------ #
+
+    def update(self):
+        # Camera movement
+        keys = pygame.key.get_pressed()
+        speed = 15  # pixels per frame
+        if keys[pygame.K_w]: self.camera_y -= speed
+        if keys[pygame.K_s]: self.camera_y += speed
+        if keys[pygame.K_a]: self.camera_x -= speed
+        if keys[pygame.K_d]: self.camera_x += speed
+
+        # Rain animation
+        if self.battle.weather in ("Rain", "Ash"):
+            self._update_weather_fx()
+
+        # Update FX
+        for ft in self.floating_texts:
+            ft.update()
+        self.floating_texts = [ft for ft in self.floating_texts if ft.life > 0]
+        if self.turn_banner_timer > 0:
+            self.turn_banner_timer -= 1
+            
+        # Auto Battle Tick
+        if self.auto_battle and self.battle.combat_started:
+            self.auto_timer += 1
+            if self.auto_timer > 10:  # Adjust speed here (frames per tick)
+                self.auto_timer = 0
+                self._process_auto_battle()
+
+    def _update_weather_fx(self):
+        # Simple particle system could go here, for now we just use draw time randomization
+        pass
+
+    def _screen_to_grid(self, mx, my):
+        world_x = mx + self.camera_x
+        world_y = (my - TOP_BAR_H) + self.camera_y
+        return world_x / self.battle.grid_size, world_y / self.battle.grid_size
+
+    def _grid_to_screen(self, gx, gy):
+        gsz = self.battle.grid_size
+        sx = gx * gsz - self.camera_x
+        sy = gy * gsz - self.camera_y + TOP_BAR_H
+        return int(sx), int(sy)
+
+    def _center_camera_on(self, entity):
+        gsz = self.battle.grid_size
+        # Center of entity in world pixels
+        world_cx = entity.grid_x * gsz + gsz / 2
+        world_cy = entity.grid_y * gsz + gsz / 2
+        
+        # Viewport dimensions
+        view_w = GRID_W
+        view_h = SCREEN_HEIGHT - TOP_BAR_H
+        
+        self.camera_x = world_cx - view_w / 2
+        self.camera_y = world_cy - view_h / 2
 
     def _log(self, msg):
         self.logs.append(msg)
         if len(self.logs) > 80:
             self.logs.pop(0)
 
+    def _spawn_damage_text(self, entity, amount, is_heal=False):
+        color = COLORS["success"] if is_heal else COLORS["danger"]
+        prefix = "+" if is_heal else "-"
+        text = f"{prefix}{abs(amount)}"
+        ft = FloatingText(entity.grid_x, entity.grid_y, text, color)
+        self.floating_texts.append(ft)
+
+    def _save_undo_snapshot(self):
+        """Save current state to undo stack."""
+        state = self.battle.get_state_dict()
+        self.undo_stack.append(state)
+        if len(self.undo_stack) > 20:
+            self.undo_stack.pop(0)
+
+    def _undo_last_action(self):
+        if not self.undo_stack:
+            self._log("[UNDO] Nothing to undo.")
+            return
+        state = self.undo_stack.pop()
+        self.battle.restore_state(state)
+        self.selected_entity = None
+        self.pending_plan = None
+        self.condition_reminder = None
+        self._log("[UNDO] Reverted to previous state.")
+
     # ------------------------------------------------------------------ #
     # Turn management                                                      #
     # ------------------------------------------------------------------ #
 
+    def _do_start_combat(self):
+        self.battle.start_combat()
+        self._log("Combat started! Initiative rolled.")
+        # Refresh current entity since order changed
+        curr = self.battle.get_current_entity()
+        self._log(f"--- Round {self.battle.round}: {curr.name}'s turn ---")
+
     def _do_next_turn(self):
+        self._save_undo_snapshot()
+        # 1. Check for pending Legendary Actions from the previous turn
+        leg_ent, leg_step = self.battle.get_pending_legendary_action()
+        if leg_ent and leg_step:
+            # Create a temporary plan for this single legendary action
+            plan = TurnPlan(entity=leg_ent)
+            plan.steps.append(leg_step)
+            self.pending_plan = plan
+            self.pending_step_idx = 0
+            self._prepare_step_outcomes()
+            self._log(f"[LEGENDARY] {leg_ent.name} is taking a Legendary Action!")
+            # Remove from queue so we don't loop forever on the same action
+            self.battle.commit_legendary_action(leg_ent)
+            return
+
         self.pending_plan = None
         self.player_action_mode = False
         self.condition_reminder = None
         curr = self.battle.next_turn()
+        if curr is None:
+            self._log("[SYSTEM] No entities in battle.")
+            return
+
         self.selected_entity = curr
         # If player, open action panel hint and show condition reminder
         if curr.is_player:
             self._log(f"[PLAYER TURN] {curr.name} – log their action with 'LOG PLAYER ACTION'")
             if curr.conditions or curr.concentrating_on:
                 self.condition_reminder = curr
+        
+        # Turn Banner
+        self.turn_banner_text = f"{curr.name}'s Turn"
+        self.turn_banner_timer = 120 # 2 seconds
+        
+        # Check auras
+        auras = self.battle.check_turn_start_auras(curr)
+        if auras:
+            self.aura_triggers = auras
+            self._open_next_aura_modal()
 
-    def _do_ai_turn(self):
+    def _do_ai_turn(self, force_auto=False):
         curr = self.battle.get_current_entity()
-        if curr.is_player:
+        if curr.is_player and not force_auto:
             self._log("Current turn is a player – use 'Log Player Action' instead.")
             return
         if self.pending_plan and self.pending_plan.entity == curr:
@@ -345,15 +1023,56 @@ class BattleState(GameState):
         self.pending_step_idx = 0
         if plan.steps:
             self._log(f"[AI PLAN] {curr.name}: {len(plan.steps)} step(s) queued – review below.")
+            self._prepare_step_outcomes()
+
+    def _prepare_step_outcomes(self):
+        """Pre-calculate hits/saves for the current step so the DM just reviews them."""
+        self.current_step_outcomes = {}
+        if not self.pending_plan or self.pending_step_idx >= len(self.pending_plan.steps):
+            return
+
+        step = self.pending_plan.steps[self.pending_step_idx]
+        targets = step.targets if step.targets else ([step.target] if step.target else [])
+
+        for t in targets:
+            if step.save_dc > 0:
+                # Logic change: If target is player and NOT auto-battle, don't auto-roll save.
+                # Let DM check TaleSpire and toggle result manually. Default to 'fail' (full damage).
+                if t.is_player and not self.auto_battle:
+                    self.current_step_outcomes[t] = "fail"
+                else:
+                    # Auto mode or NPC target: Engine rolls automatically
+                    bonus = t.get_save_bonus(step.save_ability)
+                    roll = random.randint(1, 20) + bonus
+                    if roll >= step.save_dc:
+                        self.current_step_outcomes[t] = "save"
+                    else:
+                        self.current_step_outcomes[t] = "fail"
+            elif step.step_type in ("attack", "multiattack", "reaction", "bonus_attack", "legendary"):
+                # Attack roll already done by AI
+                if step.is_hit:
+                    self.current_step_outcomes[t] = "hit"
+                else:
+                    self.current_step_outcomes[t] = "miss"
+            else:
+                # Auto-hit / buff / heal
+                self.current_step_outcomes[t] = "hit"
 
     def _confirm_step(self):
         if not self.pending_plan:
             return
+        self._save_undo_snapshot()
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
-            self._log(f"[CONFIRMED] {step.description}")
+            
+            # Apply all outcomes
+            for t, outcome in self.current_step_outcomes.items():
+                self._resolve_target_outcome(step, t, outcome)
+            
             self.pending_step_idx += 1
+            self._prepare_step_outcomes()
+            
         if self.pending_step_idx >= len(steps):
             self.pending_plan = None
             self._log("[AI] Turn complete.")
@@ -364,8 +1083,16 @@ class BattleState(GameState):
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
+            
+            # Revert Movement if it happened
+            if step.step_type == "move" and step.attacker:
+                step.attacker.grid_x = step.old_x
+                step.attacker.grid_y = step.old_y
+                step.attacker.movement_left += step.movement_ft
+            
             self._log(f"[SKIPPED] {step.description}")
             self.pending_step_idx += 1
+            self._prepare_step_outcomes()
         if self.pending_step_idx >= len(steps):
             self.pending_plan = None
 
@@ -373,9 +1100,83 @@ class BattleState(GameState):
         if not self.pending_plan:
             return
         for step in self.pending_plan.steps[self.pending_step_idx:]:
-            self._log(f"[CONFIRMED] {step.description}")
+            # Auto-resolve everything (assuming hits/fails for speed)
+            targets = step.targets if step.targets else ([step.target] if step.target else [])
+            for t in targets:
+                self._resolve_target_outcome(step, t, "hit" if step.step_type=="attack" else "fail")
+            self._log(f"[AUTO-CONFIRM] {step.description}")
         self.pending_plan = None
         self._log("[AI] All steps approved.")
+
+    def _resolve_target_outcome(self, step, target, outcome):
+        """Apply effects based on user choice."""
+        if not target: return
+        
+        dmg = step.damage
+        cond = step.applies_condition
+        
+        if outcome == "hit" or outcome == "fail":
+            # Full effect
+            if dmg > 0:
+                dealt, broke = target.take_damage(dmg, step.damage_type)
+                self._log(f"  -> {target.name} takes {dealt} {step.damage_type}")
+                self._spawn_damage_text(target, dealt)
+            if cond:
+                # Determine DC and Save Ability for the condition
+                dc = step.condition_dc if step.condition_dc else step.save_dc
+                save_ab = step.save_ability
+                target.add_condition(cond, save_ability=save_ab, save_dc=dc)
+                
+                if step.spell and step.spell.concentration and step.attacker:
+                    dropped_spell = step.attacker.start_concentration(step.spell)
+                    if dropped_spell:
+                        self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
+                self._log(f"  -> {target.name} is {cond}")
+        
+        elif outcome == "save":
+            # Half damage (usually), no condition
+            half_dmg = dmg // 2
+            if half_dmg > 0:
+                dealt, broke = target.take_damage(half_dmg, step.damage_type)
+                self._log(f"  -> {target.name} saves: takes {dealt} {step.damage_type}")
+                self._spawn_damage_text(target, dealt)
+            else:
+                self._log(f"  -> {target.name} saves: no damage")
+        
+        elif outcome == "crit":
+            # Double dice damage (simplified here as 1.5x or just raw since we pre-rolled)
+            final_dmg = dmg
+            # If AI didn't crit but user forced crit, roll extra dice
+            if not step.is_crit:
+                dice_str = ""
+                if step.action: dice_str = step.action.damage_dice
+                elif step.spell: dice_str = step.spell.damage_dice
+                
+                if dice_str:
+                    extra = roll_dice(dice_str)
+                    final_dmg += extra
+                    self._log(f"[DM] Crit override! Added {extra} extra damage.")
+            
+            if final_dmg > 0:
+                dealt, broke = target.take_damage(final_dmg, step.damage_type)
+                self._log(f"  -> {target.name} takes {dealt} {step.damage_type} (CRIT)")
+                self._spawn_damage_text(target, dealt)
+            # Apply conditions as normal
+            if cond:
+                dc = step.condition_dc if step.condition_dc else step.save_dc
+                save_ab = step.save_ability
+                target.add_condition(cond, save_ability=save_ab, save_dc=dc)
+
+    def _toggle_outcome(self, target):
+        if target not in self.current_step_outcomes: return
+        curr = self.current_step_outcomes[target]
+        if curr == "hit": new = "crit"
+        elif curr == "crit": new = "miss"
+        elif curr == "miss": new = "hit"
+        elif curr == "fail": new = "save"
+        elif curr == "save": new = "fail"
+        else: new = curr
+        self.current_step_outcomes[target] = new
 
     # ------------------------------------------------------------------ #
     # Player action panel                                                  #
@@ -424,24 +1225,29 @@ class BattleState(GameState):
         sel = self.selected_entity
         if not sel:
             return
+        self._save_undo_snapshot()
         if amount < 0:
             dealt, broke = sel.take_damage(-amount)
             action_str = f"takes {dealt} damage"
             if broke:
                 action_str += " [CONCENTRATION BROKEN]"
+            self._spawn_damage_text(sel, dealt)
         else:
             sel.heal(amount)
             action_str = f"healed {amount} HP"
+            self._spawn_damage_text(sel, amount, is_heal=True)
         self._log(f"[DM] {sel.name} {action_str}. HP: {sel.hp}/{sel.max_hp}")
 
     def _modify_init(self, delta):
         if self.selected_entity:
+            self._save_undo_snapshot()
             self.battle.update_initiative(self.selected_entity, delta)
 
     def _toggle_condition(self, cond):
         sel = self.selected_entity
         if not sel:
             return
+        self._save_undo_snapshot()
         if sel.has_condition(cond):
             sel.remove_condition(cond)
             self._log(f"[DM] {sel.name}: {cond} removed.")
@@ -450,15 +1256,33 @@ class BattleState(GameState):
             self._log(f"[DM] {sel.name}: {cond} applied.")
 
     def _use_spell_slot(self, level):
+        self._modify_spell_slot(level, -1)
+
+    def _modify_spell_slot(self, level, delta):
         sel = self.selected_entity
         if not sel:
             return
+        self._save_undo_snapshot()
         key = {1:"1st",2:"2nd",3:"3rd"}.get(level, f"{level}th")
-        if sel.spell_slots.get(key, 0) > 0:
-            sel.spell_slots[key] -= 1
-            self._log(f"[DM] {sel.name} uses {key}-level slot. Remaining: {sel.spell_slots[key]}")
-        else:
-            self._log(f"[DM] {sel.name} has no {key}-level slots left!")
+        
+        current = sel.spell_slots.get(key, 0)
+        max_slots = sel.stats.spell_slots.get(key, 0)
+        
+        # Calculate new value clamped between 0 and max
+        new_val = max(0, min(max_slots, current + delta))
+        
+        if new_val != current:
+            sel.spell_slots[key] = new_val
+            action = "uses" if delta < 0 else "restores"
+            self._log(f"[DM] {sel.name} {action} {key}-level slot. ({new_val}/{max_slots})")
+            
+            # Check Counterspell only if using a slot (casting)
+            if delta < 0:
+                counters = self.battle.check_counterspell_reaction(sel, level)
+                if counters:
+                    self.reaction_pending = counters
+                    self.reaction_type = "counterspell"
+                    self.reaction_context = {"caster": sel, "level": level}
 
     # ------------------------------------------------------------------ #
     # Context menu                                                         #
@@ -469,6 +1293,7 @@ class BattleState(GameState):
         self.ctx_open = True
         self.ctx_pos = pos
         options = [
+            (f"APPLY DAMAGE...", lambda: self._open_damage_modal(entity)),
             (f"Dmg  5", lambda: self._modify_hp(-5)),
             (f"Dmg 10", lambda: self._modify_hp(-10)),
             (f"Heal  5", lambda: self._modify_hp(5)),
@@ -480,12 +1305,67 @@ class BattleState(GameState):
             (f"Init +1", lambda: self._modify_init(1)),
             (f"Init -1", lambda: self._modify_init(-1)),
             (f"Drop Concentration", lambda: entity.drop_concentration() or self._log(f"{entity.name} drops concentration.")),
+            (f"Add Effect...", lambda: self._open_effect_modal(entity)),
+            (f"Edit Notes...", lambda: self._open_notes_modal(entity)),
+            (f"Clear Dead", lambda: self._clear_dead_monsters()),
         ]
         x, y = pos
         w, h = 170, 28
         self.ctx_rects = []
         for i, (txt, cb) in enumerate(options):
             self.ctx_rects.append((pygame.Rect(x, y + i*h, w, h), cb, txt))
+
+    def _open_notes_modal(self, entity):
+        self.ctx_open = False
+        self.notes_modal = NotesModal(entity, self._close_notes_modal)
+
+    def _close_notes_modal(self, result):
+        if result is not None: self._save_undo_snapshot()
+        self.notes_modal = None
+
+    def _open_effect_modal(self, entity):
+        self.ctx_open = False
+        self.effect_modal = EffectModal(entity, self._close_effect_modal)
+
+    def _close_effect_modal(self, result):
+        if result: self._save_undo_snapshot()
+        self.effect_modal = None
+        if result: self._log(f"[DM] Added effect: {result}")
+
+    def _clear_dead_monsters(self):
+        self._save_undo_snapshot()
+        # Remove non-player entities with <= 0 HP
+        before = len(self.battle.entities)
+        
+        # Save current entity to restore index
+        current_ent = None
+        if self.battle.entities and 0 <= self.battle.turn_index < len(self.battle.entities):
+             current_ent = self.battle.entities[self.battle.turn_index]
+
+        self.battle.entities = [e for e in self.battle.entities if e.is_player or e.hp > 0 or e.is_lair]
+        
+        # Re-calculate turn_index
+        if current_ent and current_ent in self.battle.entities:
+            self.battle.turn_index = self.battle.entities.index(current_ent)
+        elif self.battle.entities:
+            self.battle.turn_index = self.battle.turn_index % len(self.battle.entities)
+        else:
+            self.battle.turn_index = 0
+
+        removed = before - len(self.battle.entities)
+        self._log(f"[DM] Removed {removed} dead monsters.")
+
+    def _cycle_weather(self):
+        self._save_undo_snapshot()
+        modes = ["Clear", "Rain", "Fog", "Ash"]
+        try:
+            idx = modes.index(self.battle.weather)
+        except ValueError:
+            idx = 0
+        new_idx = (idx + 1) % len(modes)
+        self.battle.weather = modes[new_idx]
+        self.btn_weather.text = self.battle.weather.upper()
+        self._log(f"[DM] Weather changed to {self.battle.weather}")
 
     # ------------------------------------------------------------------ #
     # Token images                                                         #
@@ -494,16 +1374,43 @@ class BattleState(GameState):
     def _get_token_image(self, name):
         if name in self.token_cache:
             return self.token_cache[name]
-        path = os.path.join("data", "tokens", f"{name}.png")
-        if os.path.exists(path):
+
+        search_dir = os.path.join("data", "tokens")
+        
+        def find_image_path(target_name):
+            if not os.path.exists(search_dir):
+                return None
+            # 1. Exact match with extensions
+            for ext in [".png", ".jpg", ".jpeg"]:
+                path = os.path.join(search_dir, target_name + ext)
+                if os.path.exists(path):
+                    return path
+            # 2. Case-insensitive match
+            try:
+                target_lower = target_name.lower()
+                for f in os.listdir(search_dir):
+                    base, ext = os.path.splitext(f)
+                    if base.lower() == target_lower and ext.lower() in [".png", ".jpg", ".jpeg"]:
+                        return os.path.join(search_dir, f)
+            except OSError:
+                pass
+            return None
+
+        path = find_image_path(name)
+        if not path:
+            base_name = re.sub(r'\s+\d+$', '', name)
+            if base_name != name: 
+                path = find_image_path(base_name)
+
+        img = None
+        if path:
             try:
                 img = pygame.image.load(path).convert_alpha()
-                self.token_cache[name] = img
-                return img
             except Exception:
                 pass
-        self.token_cache[name] = None
-        return None
+
+        self.token_cache[name] = img
+        return img
 
     def _draw_token(self, screen, entity, cx, cy, radius):
         # Drop shadow
@@ -574,6 +1481,135 @@ class BattleState(GameState):
             screen.blit(ns, (cx + radius - 3 - ns.get_width()//2, cy - radius + 3 - ns.get_height()//2))
 
     # ------------------------------------------------------------------ #
+    # Dice Rolling Helpers                                                 #
+    # ------------------------------------------------------------------ #
+
+    def _roll_save(self, ability, bonus):
+        val, text = roll_d20()
+        total = val + bonus
+        self._log(f"[SAVE] {self.selected_entity.name} {ability} Save: {text} + {bonus} = {total}")
+        
+        self.roll_modal_title = f"{ability} Save"
+        self.roll_modal_expression = f"d20({val}) + {bonus}"
+        self.roll_modal_total = total
+        self.roll_modal_nat = val
+        self.roll_modal_open = True
+
+    def _roll_skill(self, skill, bonus):
+        val, text = roll_d20()
+        total = val + bonus
+        self._log(f"[SKILL] {self.selected_entity.name} {skill}: {text} + {bonus} = {total}")
+
+        self.roll_modal_title = f"{skill} Check"
+        self.roll_modal_expression = f"d20({val}) + {bonus}"
+        self.roll_modal_total = total
+        self.roll_modal_nat = val
+        self.roll_modal_open = True
+
+    # ------------------------------------------------------------------ #
+    # Damage Application Modal                                             #
+    # ------------------------------------------------------------------ #
+
+    def _open_damage_modal(self, entity):
+        self.dmg_modal_open = True
+        self.dmg_target = entity
+        self.dmg_value_str = ""
+        self.dmg_type = "slashing"
+        self.ctx_open = False  # Close context menu
+
+    def _apply_damage_confirm(self):
+        self._save_undo_snapshot()
+        if not self.dmg_target:
+            self.dmg_modal_open = False
+            return
+        try:
+            amount = int(self.dmg_value_str) if self.dmg_value_str else 0
+        except ValueError:
+            amount = 0
+
+        if amount > 0:
+            # Calculate damage using entity's logic (handles resistances)
+            dealt, broke = self.dmg_target.take_damage(amount, self.dmg_type)
+            
+            # Log the result
+            log_msg = f"[DMG] {self.dmg_target.name} takes {dealt} {self.dmg_type} damage"
+            if dealt < amount:
+                log_msg += f" (resisted from {amount})"
+            if broke:
+                log_msg += " [CONC BROKEN]"
+            self._log(log_msg)
+            self._spawn_damage_text(self.dmg_target, dealt)
+        
+        self.dmg_modal_open = False
+
+    def _handle_damage_modal_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dmg_modal_open = False
+            elif event.key == pygame.K_BACKSPACE:
+                self.dmg_value_str = self.dmg_value_str[:-1]
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                self._apply_damage_confirm()
+            elif event.unicode.isdigit():
+                if len(self.dmg_value_str) < 4:
+                    self.dmg_value_str += event.unicode
+
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            mx, my = event.pos
+            cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+            w, h = 500, 400
+            bx, by = cx - w//2, cy - h//2
+            
+            # Close if clicked outside
+            if not pygame.Rect(bx, by, w, h).collidepoint(mx, my):
+                self.dmg_modal_open = False
+                return
+
+            # Type buttons
+            types = ["slashing", "piercing", "bludgeoning", "fire", "cold", "lightning", 
+                     "acid", "poison", "necrotic", "radiant", "force", "psychic", "thunder"]
+            
+            start_x = bx + 20
+            start_y = by + 120
+            col_w, row_h = 110, 35
+            for i, t in enumerate(types):
+                c = i % 4
+                r = i // 4
+                rect = pygame.Rect(start_x + c*col_w, start_y + r*row_h, 100, 30)
+                if rect.collidepoint(mx, my):
+                    self.dmg_type = t
+
+            # Numpad buttons (visual only, mostly for touch/mouse users)
+            # (Skipping implementation for brevity, keyboard works)
+
+            # Action buttons
+            btn_w, btn_h = 140, 45
+            btn_y = by + h - 60
+            
+            # Cancel
+            if pygame.Rect(bx + 20, btn_y, btn_w, btn_h).collidepoint(mx, my):
+                self.dmg_modal_open = False
+            
+            # Apply
+            if pygame.Rect(bx + w - 20 - btn_w, btn_y, btn_w, btn_h).collidepoint(mx, my):
+                self._apply_damage_confirm()
+
+    # ------------------------------------------------------------------ #
+    # Terrain Painting Helper                                              #
+    # ------------------------------------------------------------------ #
+
+    def _paint_terrain_at(self, pos, button):
+        mx, raw_my = pos
+        if mx < GRID_W and raw_my >= TOP_BAR_H:
+            gx, gy = self._screen_to_grid(mx, raw_my)
+            gx, gy = int(gx), int(gy)
+            if button == 1:  # Paint
+                t = TerrainObject(self.terrain_selected_type, gx, gy)
+                self.battle.add_terrain(t)
+            elif button == 3:  # Erase
+                self.battle.remove_terrain_at(gx, gy)
+
+    # ------------------------------------------------------------------ #
     # Event handling                                                       #
     # ------------------------------------------------------------------ #
 
@@ -581,6 +1617,38 @@ class BattleState(GameState):
         curr = self.battle.get_current_entity()
         for event in events:
             try:
+                # Scenario Modal
+                if self.scenario_modal:
+                    self.scenario_modal.handle_event(event)
+                    continue
+                if self.notes_modal:
+                    self.notes_modal.handle_event(event)
+                    continue
+                if self.effect_modal:
+                    self.effect_modal.handle_event(event)
+                    continue
+
+                # Shortcut: ESC to exit terrain mode / close menus
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    if self.terrain_mode: self._toggle_terrain_mode()
+                    self.ctx_open = False
+                    self.roll_modal_open = False
+                
+                # Undo Move (Z)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_z:
+                    self._undo_last_action()
+
+                # Roll Result Modal - Close on any click or key
+                if self.roll_modal_open:
+                    if event.type == pygame.MOUSEBUTTONDOWN or (event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN)):
+                        self.roll_modal_open = False
+                    continue
+
+                # Damage Modal
+                if self.dmg_modal_open:
+                    self._handle_damage_modal_event(event)
+                    continue
+
                 # Condition reminder: any click dismisses it
                 if self.condition_reminder:
                     if event.type == pygame.MOUSEBUTTONDOWN:
@@ -602,21 +1670,54 @@ class BattleState(GameState):
                 # Terrain palette
                 if self.terrain_palette_open:
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        clicked = False
-                        for i, (ttype, props) in enumerate(TERRAIN_TYPES.items()):
-                            r = pygame.Rect(10, TOP_BAR_H + 10 + i * 30, 130, 28)
-                            if r.collidepoint(event.pos):
-                                self.terrain_selected_type = ttype
-                                clicked = True
-                                break
-                        if not clicked:
-                            self.terrain_palette_open = False
+                        # Calculate palette bounds to prevent click-through
+                        pal_x, pal_y = 10, TOP_BAR_H + 10
+                        pal_w = 160
+                        pal_h = min(15, len(TERRAIN_TYPES)) * 28 + 20 + 30
+                        pal_rect = pygame.Rect(pal_x, pal_y, pal_w, pal_h)
+
+                        if pal_rect.collidepoint(event.pos):
+                            for i, (ttype, props) in enumerate(TERRAIN_TYPES.items()):
+                                r = pygame.Rect(pal_x + 4, pal_y + 22 + 8 + i * 28, 130, 26)
+                                if r.collidepoint(event.pos):
+                                    self.terrain_selected_type = ttype
+                                    break
+                            # Consume event so we don't paint on the grid through the palette
+                            continue
 
                 # Pending AI confirmation
                 if self.pending_plan:
-                    self.btn_confirm.handle_event(event)
-                    self.btn_deny.handle_event(event)
-                    self.btn_approve_all.handle_event(event)
+                    # Check dynamic resolution buttons
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
+                    
+                    # Global buttons
+                    if self.pending_step_idx < len(self.pending_plan.steps):
+                        self.btn_confirm.handle_event(event)
+                        self.btn_deny.handle_event(event)
+                        self.btn_approve_all.handle_event(event)
+                    continue
+
+                # Pending Aura Trigger
+                if self.current_aura_trigger:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
+                    # Block other input while modal is open
+                    continue
+
+                # Pending Reaction (Opportunity Attack)
+                if self.reaction_pending:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
                     continue
 
                 # Player action panel
@@ -628,16 +1729,28 @@ class BattleState(GameState):
                 # Mouse clicks on grid
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mx, raw_my = event.pos
+
+                    # Check Top Bar (Initiative Cards) selection
+                    if raw_my < TOP_BAR_H:
+                        card_x = 130
+                        card_w, card_h = 130, 82
+                        for ent in self.battle.entities:
+                            if card_x > SCREEN_WIDTH - 200:
+                                break
+                            if pygame.Rect(card_x, 8, card_w, card_h).collidepoint(event.pos):
+                                self.selected_entity = ent
+                                self._center_camera_on(ent)
+                                break
+                            card_x += card_w + 6
+
                     my = raw_my - TOP_BAR_H
                     if mx < GRID_W and my >= 0:
-                        gx = mx / self.battle.grid_size
-                        gy = my / self.battle.grid_size
+                        gx, gy = self._screen_to_grid(mx, raw_my)
                         igx, igy = int(gx), int(gy)
                         if self.terrain_mode:
-                            # Place terrain
-                            t = TerrainObject(self.terrain_selected_type, igx, igy)
-                            self.battle.add_terrain(t)
-                            self._log(f"[TERRAIN] Placed {t.label} at ({igx},{igy})")
+                            # Start painting
+                            self.drawing_button = 1
+                            self._paint_terrain_at(event.pos, 1)
                         else:
                             ent = self.battle.get_entity_at(gx, gy)
                             if ent:
@@ -649,94 +1762,123 @@ class BattleState(GameState):
                     mx, raw_my = event.pos
                     my = raw_my - TOP_BAR_H
                     if mx < GRID_W and my >= 0:
-                        gx = mx / self.battle.grid_size
-                        gy = my / self.battle.grid_size
+                        gx, gy = self._screen_to_grid(mx, raw_my)
                         if self.terrain_mode:
-                            # Remove terrain at right-click
-                            igx, igy = int(gx), int(gy)
-                            self.battle.remove_terrain_at(igx, igy)
-                            self._log(f"[TERRAIN] Removed terrain at ({igx},{igy})")
+                            # Start erasing
+                            self.drawing_button = 3
+                            self._paint_terrain_at(event.pos, 3)
                         else:
                             ent = self.battle.get_entity_at(gx, gy)
                             if ent:
                                 self._open_ctx_menu(event.pos, ent)
 
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if self.terrain_mode:
+                        self.drawing_button = None
+                    
                     if self.dragging:
                         mx, raw_my = event.pos
                         my = raw_my - TOP_BAR_H
                         if mx < GRID_W and my >= 0:
-                            gx = mx / self.battle.grid_size
-                            gy = my / self.battle.grid_size
+                            # Calculate grid position based on CENTER of the token (free placement)
+                            gx, gy = self._screen_to_grid(mx - self.battle.grid_size / 2, raw_my - self.battle.grid_size / 2)
+                            
                             if not self.battle.is_occupied(gx, gy, exclude=self.dragging):
                                 old_x, old_y = self.dragging.grid_x, self.dragging.grid_y
+                                
+                                # Temporarily move to check OA
                                 self.dragging.grid_x = gx
                                 self.dragging.grid_y = gy
-                                dist_ft = math.hypot(gx - old_x, gy - old_y) * 5
-                                self._log(f"[MOVE] {self.dragging.name} moved {dist_ft:.0f} ft.")
+                                oas = self.battle.check_opportunity_attacks(self.dragging, old_x, old_y)
+                                
+                                # Revert position for now
+                                self.dragging.grid_x = old_x
+                                self.dragging.grid_y = old_y
+
+                                if oas:
+                                    self.reaction_pending = oas
+                                    self.reaction_type = "oa"
+                                    self.pending_move = (self.dragging, gx, gy)
+                                    self._log(f"[REACTION] Movement triggered {len(oas)} opportunity attack(s)!")
+                                else:
+                                    # No OA, commit move
+                                    self.dragging.grid_x = gx
+                                    self.dragging.grid_y = gy
+                                    # Save full state for Undo
+                                    self._save_undo_snapshot()
+                                    
+                                    dist_ft = math.hypot(gx - old_x, gy - old_y) * 5
+                                    self._log(f"[MOVE] {self.dragging.name} moved {dist_ft:.0f} ft.")
                             else:
                                 self._log("Cannot move: space occupied.")
                         self.dragging = None
 
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+                    if self.terrain_mode:
+                        self.drawing_button = None
+
+                elif event.type == pygame.MOUSEMOTION:
+                    if self.terrain_mode and self.drawing_button:
+                        self._paint_terrain_at(event.pos, self.drawing_button)
+
                 # Tab clicks
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for i, tab in enumerate(TABS):
-                        tab_rect = pygame.Rect(GRID_W + i * 120, TOP_BAR_H + 5, 115, 28)
+                        tab_rect = pygame.Rect(GRID_W + i * 118, TOP_BAR_H + 38, 116, 28)
                         if tab_rect.collidepoint(event.pos):
                             self.active_tab = i
                             self.panel_scroll = 0
 
-                    # Condition toggles
-                    if self.selected_entity:
-                        start_x = GRID_W + 20
-                        start_y = TOP_BAR_H + 285
-                        col_w, row_h = 120, 24
-                        mx2, my2 = event.pos
-                        for i, cond in enumerate(CONDITIONS.keys()):
-                            col = i % 4
-                            row = i // 4
-                            r = pygame.Rect(start_x + col * col_w, start_y + row * row_h, 115, 22)
-                            if r.collidepoint(mx2, my2):
-                                self._toggle_condition(cond)
+                    # Check dynamic UI zones (Conditions, Spells, Saves)
+                    # We check if the click is within the visible panel area to avoid clicking hidden scrolled items
+                    panel_clip_rect = pygame.Rect(GRID_W, TOP_BAR_H+68, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H - 68 - 70)
+                    if panel_clip_rect.collidepoint(event.pos):
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
 
-                    # HP buttons
+                # Right click on panel (Spell slots increment)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    panel_clip_rect = pygame.Rect(GRID_W, TOP_BAR_H+68, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H - 68 - 70)
+                    if panel_clip_rect.collidepoint(event.pos):
+                        for rect, callback in self.ui_right_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
+
+                    # HP buttons (always visible at bottom)
                     if self.selected_entity:
                         for b in self.hp_btns:
                             b.handle_event(event)
                         for b in self.init_btns:
                             b.handle_event(event)
 
-                # Spell slot quick-use (click on slot pip)
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.active_tab == 1:
-                    if self.selected_entity:
-                        mx2, my2 = event.pos
-                        sx = GRID_W + 20
-                        sy = TOP_BAR_H + 50
-                        for lvl in range(1, 10):
-                            key = {1:"1st",2:"2nd",3:"3rd"}.get(lvl, f"{lvl}th")
-                            slots = self.selected_entity.spell_slots.get(key, 0)
-                            if slots == 0:
-                                continue
-                            for pip in range(slots):
-                                pr = pygame.Rect(sx + pip * 22, sy, 18, 18)
-                                if pr.collidepoint(mx2, my2):
-                                    self._use_spell_slot(lvl)
-                            sy += 25
-
                 # Panel scroll
                 if event.type == pygame.MOUSEWHEEL:
-                    if pygame.mouse.get_pos()[0] > GRID_W:
+                    mx = pygame.mouse.get_pos()[0]
+                    if mx > GRID_W:
                         self.panel_scroll = max(-600, min(0, self.panel_scroll + event.y * 20))
+                    else:
+                        # Zoom grid
+                        self.battle.grid_size = max(20, min(150, self.battle.grid_size + event.y * 5))
 
                 # Global buttons
-                self.btn_next.handle_event(event)
+                if not self.battle.combat_started:
+                    self.btn_start.handle_event(event)
+                else:
+                    self.btn_next.handle_event(event)
+                    if not curr.is_player:
+                        self.btn_ai.handle_event(event)
+
                 self.btn_menu.handle_event(event)
                 self.btn_log_pl.handle_event(event)
                 self.btn_save.handle_event(event)
                 self.btn_load.handle_event(event)
                 self.btn_terrain.handle_event(event)
-                if not curr.is_player:
-                    self.btn_ai.handle_event(event)
+                self.btn_weather.handle_event(event)
+                self.btn_undo.handle_event(event)
+                self.btn_auto.handle_event(event)
 
                 for b in self.hp_btns:
                     b.handle_event(event)
@@ -761,12 +1903,38 @@ class BattleState(GameState):
         self._draw_top_bar(screen, curr)
         self._draw_grid(screen)
         self._draw_terrain(screen)
+        self._draw_weather(screen)
         self._draw_aoe_overlays(screen)
         self._draw_entities(screen, curr, sel)
         self._draw_drag(screen)
+        for ft in self.floating_texts:
+            ft.draw(screen, self._grid_to_screen, self.battle.grid_size)
         self._draw_grid_buttons(screen, mp)
         self._draw_panel(screen, curr, sel, mp)
         self._draw_bottom_bar(screen, curr, mp)
+
+        if not self.battle.combat_started:
+            # Draw Deployment Banner
+            ban = fonts.title.render("DEPLOYMENT PHASE", True, COLORS["accent"])
+            screen.blit(ban, (GRID_W//2 - ban.get_width()//2, TOP_BAR_H + 30))
+
+        # Turn Banner
+        if self.turn_banner_timer > 0:
+            alpha = 255
+            if self.turn_banner_timer < 30:
+                alpha = int(255 * (self.turn_banner_timer / 30))
+            
+            # Draw centered banner
+            txt = fonts.title.render(self.turn_banner_text, True, (255, 255, 255))
+            txt.set_alpha(alpha)
+            
+            # Background strip
+            bg_h = 80
+            bg_y = SCREEN_HEIGHT // 2 - bg_h // 2 - 100
+            s = pygame.Surface((GRID_W, bg_h), pygame.SRCALPHA)
+            s.fill((0, 0, 0, int(180 * (alpha/255))))
+            screen.blit(s, (0, bg_y))
+            screen.blit(txt, (GRID_W//2 - txt.get_width()//2, bg_y + bg_h//2 - txt.get_height()//2))
 
         if self.terrain_palette_open:
             self._draw_terrain_palette(screen, mp)
@@ -776,8 +1944,28 @@ class BattleState(GameState):
             self._draw_ai_confirm_dialog(screen, mp)
         if self.player_action_mode:
             self._draw_player_action_panel(screen, mp)
+        if self.dmg_modal_open:
+            self._draw_damage_modal(screen, mp)
+        if self.roll_modal_open:
+            self._draw_roll_result_modal(screen)
+        if self.reaction_pending:
+            self._draw_reaction_modal(screen, mp)
+        if self.current_aura_trigger:
+            self._draw_aura_modal(screen, mp)
         if self.ctx_open:
             self._draw_ctx_menu(screen, mp)
+        if self.scenario_modal:
+            self.scenario_modal.draw(screen, mp)
+        if self.notes_modal:
+            self.notes_modal.draw(screen, mp)
+        if self.effect_modal:
+            self.effect_modal.draw(screen, mp)
+        
+        self._draw_hover_info(screen, mp)
+        
+        # Draw tooltip last so it's on top of everything
+        if self.active_tooltip:
+            self._draw_tooltip(screen)
 
     # --- Top bar ---
     def _draw_top_bar(self, screen, curr):
@@ -786,6 +1974,13 @@ class BattleState(GameState):
         # Round counter
         rt = fonts.header.render(f"ROUND {self.battle.round}", True, COLORS["accent"])
         screen.blit(rt, (15, TOP_BAR_H//2 - rt.get_height()//2))
+        
+        # TaleSpire Indicator
+        if pygame.time.get_ticks() - self.ts_last_update < 3000:
+            ts_lbl = fonts.tiny.render("TaleSpire Linked", True, COLORS["success"])
+            screen.blit(ts_lbl, (SCREEN_WIDTH - 130, 12))
+            pygame.draw.circle(screen, COLORS["success"], (SCREEN_WIDTH - 140, 19), 4)
+
         self.btn_menu.draw(screen, pygame.mouse.get_pos())
         # Initiative cards
         card_x = 130
@@ -793,8 +1988,11 @@ class BattleState(GameState):
         for i, ent in enumerate(self.battle.entities):
             if card_x > SCREEN_WIDTH - 200:
                 break
-            is_curr = (ent == curr)
-            bg   = COLORS["accent"] if is_curr else (45, 47, 52)
+            is_curr = (ent == curr) and self.battle.combat_started
+            if ent.is_lair:
+                bg = (60, 40, 80) if not is_curr else COLORS["accent"]
+            else:
+                bg = COLORS["accent"] if is_curr else (45, 47, 52)
             bord = COLORS["success"] if is_curr else COLORS["border"]
             r = pygame.Rect(card_x, 8, card_w, card_h)
             pygame.draw.rect(screen, bg, r, border_radius=7)
@@ -810,7 +2008,10 @@ class BattleState(GameState):
             pygame.draw.rect(screen, (20,20,20), (card_x+4, 75, card_w-8, 6))
             pygame.draw.rect(screen, bar_c,      (card_x+4, 75, int((card_w-8)*pct), 6))
             # Name & initiative
-            ns = fonts.tiny.render(ent.name[:14], True, COLORS["text_main"])
+            name_col = COLORS["text_main"]
+            if ent.is_lair:
+                name_col = COLORS["legendary"]
+            ns = fonts.tiny.render(ent.name[:14], True, name_col)
             is_ = fonts.header.render(str(ent.initiative), True, (255,255,255))
             hp_s = fonts.tiny.render(f"{ent.hp}/{ent.max_hp}", True, bar_c)
             screen.blit(ns, (card_x+6, 12))
@@ -831,17 +2032,28 @@ class BattleState(GameState):
     # --- Grid ---
     def _draw_grid(self, screen):
         gsz = self.battle.grid_size
-        for x in range(0, GRID_W, gsz):
-            pygame.draw.line(screen, COLORS["grid"], (x, TOP_BAR_H), (x, SCREEN_HEIGHT))
-        for y in range(TOP_BAR_H, SCREEN_HEIGHT, gsz):
-            pygame.draw.line(screen, COLORS["grid"], (0, y), (GRID_W, y))
+        
+        # Vertical lines
+        start_x = int(self.camera_x // gsz) * gsz
+        sx = start_x - self.camera_x
+        while sx < GRID_W:
+            if sx >= 0:
+                pygame.draw.line(screen, COLORS["grid"], (sx, TOP_BAR_H), (sx, SCREEN_HEIGHT))
+            sx += gsz
+            
+        # Horizontal lines
+        start_y = int(self.camera_y // gsz) * gsz
+        sy = start_y - self.camera_y + TOP_BAR_H
+        while sy < SCREEN_HEIGHT:
+            if sy >= TOP_BAR_H:
+                pygame.draw.line(screen, COLORS["grid"], (0, sy), (GRID_W, sy))
+            sy += gsz
 
     # --- Terrain tiles ---
     def _draw_terrain(self, screen):
         gsz = self.battle.grid_size
         for t in self.battle.terrain:
-            rx = t.grid_x * gsz
-            ry = t.grid_y * gsz + TOP_BAR_H
+            rx, ry = self._grid_to_screen(t.grid_x, t.grid_y)
             rw = t.width * gsz
             rh = t.height * gsz
             # Filled tile
@@ -859,6 +2071,32 @@ class BattleState(GameState):
                 hz = fonts.tiny.render(t.hazard_damage, True, (255, 220, 0))
                 screen.blit(hz, (rx + 2, ry + gsz - 16))
 
+    # --- Weather Effects ---
+    def _draw_weather(self, screen):
+        w = self.battle.weather
+        if w == "Clear":
+            return
+        
+        if w == "Fog":
+            # Simple fog overlay
+            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            s.fill((200, 200, 220, 40))
+            screen.blit(s, (0, 0))
+        
+        elif w == "Rain":
+            # Draw random rain drops
+            for _ in range(100):
+                rx = random.randint(0, GRID_W)
+                ry = random.randint(TOP_BAR_H, SCREEN_HEIGHT)
+                pygame.draw.line(screen, (150, 150, 255, 100), (rx, ry), (rx-2, ry+10), 1)
+
+        elif w == "Ash":
+            # Draw falling ash
+            for _ in range(50):
+                rx = random.randint(0, GRID_W)
+                ry = random.randint(TOP_BAR_H, SCREEN_HEIGHT)
+                pygame.draw.circle(screen, (100, 50, 50), (rx, ry), 2)
+
     # --- AOE spell overlays ---
     def _draw_aoe_overlays(self, screen):
         if not self.pending_plan:
@@ -868,41 +2106,69 @@ class BattleState(GameState):
         if idx >= len(steps):
             return
         step = steps[idx]
-        if step.step_type != "spell" or not step.spell:
-            return
-        sp = step.spell
-        if sp.aoe_radius <= 0 or not step.aoe_center:
+        
+        # Determine AoE properties from Spell OR Action
+        radius = 0
+        shape = ""
+        name = ""
+        dtype = ""
+        
+        if step.spell:
+            radius = step.spell.aoe_radius
+            shape = step.spell.aoe_shape
+            name = step.spell.name
+            dtype = step.spell.damage_type
+        elif step.action and step.action.aoe_radius > 0:
+            radius = step.action.aoe_radius
+            shape = step.action.aoe_shape
+            name = step.action.name
+            dtype = step.action.damage_type
+            
+        if radius <= 0 or not step.aoe_center:
             return
 
         gsz = self.battle.grid_size
         cx_grid, cy_grid = step.aoe_center
-        cx_px = int(cx_grid * gsz + gsz // 2)
-        cy_px = int(cy_grid * gsz + gsz // 2 + TOP_BAR_H)
-        radius_px = int(sp.aoe_radius / 5 * gsz)
+        sx, sy = self._grid_to_screen(cx_grid, cy_grid)
+        
+        # For Cone, origin is attacker. For Sphere, origin is target point.
+        origin_x, origin_y = cx_grid, cy_grid
+        if shape == "cone" and step.attacker:
+            origin_x, origin_y = step.attacker.grid_x, step.attacker.grid_y
+            sx, sy = self._grid_to_screen(origin_x, origin_y)
+
+        cx_px = int(sx + gsz // 2)
+        cy_px = int(sy + gsz // 2)
+        radius_px = int(radius / 5 * gsz)
 
         # Semi-transparent overlay
         aoe_surf = pygame.Surface((radius_px * 2 + 4, radius_px * 2 + 4), pygame.SRCALPHA)
-        if sp.damage_type == "fire":
+        if dtype == "fire":
             color = (255, 80, 20, 60)
             border = (255, 140, 0, 200)
-        elif sp.damage_type == "cold":
+        elif dtype == "cold":
             color = (80, 180, 255, 60)
             border = (140, 210, 255, 200)
-        elif sp.damage_type == "lightning":
+        elif dtype == "lightning":
             color = (200, 200, 50, 60)
             border = (255, 255, 100, 200)
-        elif sp.damage_type in ("necrotic", "poison"):
+        elif dtype in ("necrotic", "poison"):
             color = (100, 50, 150, 60)
             border = (170, 80, 220, 200)
         else:
             color = (100, 100, 200, 60)
             border = (150, 150, 255, 200)
 
-        if sp.aoe_shape == "cone":
-            # Draw a 60-degree cone toward the nearest enemy cluster
+        if shape == "cone":
+            # Calculate angle from attacker to target point
+            dx = cx_grid - origin_x
+            dy = cy_grid - origin_y
+            angle_rad = math.atan2(dy, dx)
+            
             pts = [(radius_px + 2, radius_px + 2)]
-            for deg in range(-30, 31, 5):
-                rad = math.radians(deg)
+            # 60 degree cone
+            for deg in range(-30, 31, 10):
+                rad = angle_rad + math.radians(deg)
                 px = radius_px + 2 + math.cos(rad) * radius_px
                 py = radius_px + 2 + math.sin(rad) * radius_px
                 pts.append((px, py))
@@ -916,12 +2182,12 @@ class BattleState(GameState):
         screen.blit(aoe_surf, (cx_px - radius_px - 2, cy_px - radius_px - 2))
 
         # Label
-        lbl = fonts.tiny.render(f"{sp.name} ({sp.aoe_radius}ft)", True, (255, 255, 200))
+        lbl = fonts.tiny.render(f"{name} ({radius}ft)", True, (255, 255, 200))
         screen.blit(lbl, (cx_px - lbl.get_width() // 2, cy_px - radius_px - 20))
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto):
             b.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
@@ -936,15 +2202,23 @@ class BattleState(GameState):
         for ent in self.battle.entities:
             if ent == self.dragging:
                 continue
-            cx = int(ent.grid_x * gsz + gsz//2)
-            cy = int(ent.grid_y * gsz + gsz//2 + TOP_BAR_H)
+            if ent.is_lair:
+                continue
+            sx, sy = self._grid_to_screen(ent.grid_x, ent.grid_y)
+            
+            size = ent.size_in_squares
+            pixel_w = size * gsz
+            cx = int(sx + pixel_w // 2)
+            cy = int(sy + pixel_w // 2)
+            r = (pixel_w // 2) - 3
+
             if ent == sel:
-                pygame.draw.circle(screen, COLORS["warning"], (cx, cy), gsz//2+3, 2)
+                pygame.draw.circle(screen, COLORS["warning"], (cx, cy), r+6, 2)
             if ent == curr:
-                pygame.draw.circle(screen, (255,255,255,80), (cx, cy), gsz//2+1)
-            r = gsz//2 - 3
+                pygame.draw.circle(screen, (255,255,255,80), (cx, cy), r+2)
+            
             self._draw_token(screen, ent, cx, cy, r)
-            hp_bar.draw(screen, cx, cy+r+4, gsz-10, ent.hp, ent.max_hp)
+            hp_bar.draw(screen, cx, cy+r+4, pixel_w-10, ent.hp, ent.max_hp)
             # Dead X
             if ent.hp <= 0:
                 pygame.draw.line(screen, COLORS["danger"], (cx-r, cy-r), (cx+r, cy+r), 2)
@@ -956,29 +2230,49 @@ class BattleState(GameState):
             return
         mx, my = pygame.mouse.get_pos()
         gsz = self.battle.grid_size
-        sx = int(self.drag_start[0] * gsz + gsz//2)
-        sy = int(self.drag_start[1] * gsz + gsz//2 + TOP_BAR_H)
+        screen_sx, screen_sy = self._grid_to_screen(self.drag_start[0], self.drag_start[1])
+        sx = int(screen_sx + gsz//2)
+        sy = int(screen_sy + gsz//2)
         dist_ft = math.hypot(mx-sx, my-sy) / gsz * 5
         can_move = dist_ft <= self.dragging.stats.speed
         lc = COLORS["success"] if can_move else COLORS["danger"]
         pygame.draw.line(screen, lc, (sx, sy), (mx, my), 2)
         dt = fonts.small.render(f"{dist_ft:.0f} ft", True, (255,255,255))
         screen.blit(dt, (mx+12, my+10))
-        r = self.battle.grid_size//2 - 3
+        
+        size = self.dragging.size_in_squares
+        pixel_w = size * gsz
+        r = (pixel_w // 2) - 3
         self._draw_token(screen, self.dragging, mx, my, r)
         # Distance to enemies
         for e in self.battle.entities:
-            if e.is_player == self.dragging.is_player or e.hp <= 0:
+            if e == self.dragging or e.hp <= 0:
                 continue
-            ex = int(e.grid_x * gsz + gsz//2)
-            ey = int(e.grid_y * gsz + gsz//2 + TOP_BAR_H)
+            esx, esy = self._grid_to_screen(e.grid_x, e.grid_y)
+            
+            # Calculate center based on size
+            e_size = e.size_in_squares
+            e_pixel_w = e_size * gsz
+            ex = int(esx + e_pixel_w//2)
+            ey = int(esy + e_pixel_w//2)
+            
             edf = math.hypot(mx-ex, my-ey) / gsz * 5
-            pygame.draw.line(screen, (80,80,80), (mx,my), (ex,ey), 1)
+            line_col = COLORS["danger"] if e.is_player != self.dragging.is_player else COLORS["success"]
+            pygame.draw.line(screen, line_col, (mx,my), (ex,ey), 1)
+            
+            # Draw text above token with background
             eds = fonts.tiny.render(f"{edf:.0f}ft", True, COLORS["text_dim"])
-            screen.blit(eds, (ex, ey-14))
+            text_rect = eds.get_rect(center=(ex, ey - (e_pixel_w//2) - 15))
+            pygame.draw.rect(screen, (0,0,0,180), text_rect.inflate(6,4), border_radius=3)
+            screen.blit(eds, text_rect)
 
     # --- Right panel ---
     def _draw_panel(self, screen, curr, sel, mp):
+        self.active_tooltip = None # Reset tooltip
+        # Clear dynamic click zones for this frame
+        self.ui_click_zones.clear()
+        self.ui_right_click_zones.clear()
+
         panel_rect = pygame.Rect(GRID_W, TOP_BAR_H, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H)
         pygame.draw.rect(screen, COLORS["panel_dark"], panel_rect)
         pygame.draw.line(screen, COLORS["border"], (GRID_W, TOP_BAR_H), (GRID_W, SCREEN_HEIGHT), 3)
@@ -986,7 +2280,10 @@ class BattleState(GameState):
         # Active creature header
         hdr_rect = pygame.Rect(GRID_W, TOP_BAR_H, PANEL_W, 38)
         pygame.draw.rect(screen, (35,37,41), hdr_rect)
-        at = fonts.body.render(f"Active: {curr.name}  (Init {curr.initiative})", True, COLORS["accent"])
+        if not self.battle.combat_started:
+            at = fonts.body.render("DEPLOYMENT PHASE", True, COLORS["accent"])
+        else:
+            at = fonts.body.render(f"Active: {curr.name}  (Init {curr.initiative})", True, COLORS["accent"])
         screen.blit(at, (GRID_W+12, TOP_BAR_H+8))
 
         # Tabs
@@ -1034,6 +2331,7 @@ class BattleState(GameState):
             bx += 42
 
     def _draw_stats_tab(self, screen, sel, x0, y, mp):
+
         def ln(text, color=COLORS["text_main"], indent=0):
             nonlocal y
             s = fonts.small.render(text, True, color)
@@ -1067,9 +2365,46 @@ class BattleState(GameState):
         y += 18
 
         # Saves
-        if sel.stats.saving_throws:
-            saves_str = "  ".join(f"{k[:3]}:{v:+d}" for k,v in sel.stats.saving_throws.items())
-            ln(f"Saves: {saves_str}", COLORS["text_dim"])
+        ln("SAVES (click to roll):", COLORS["text_dim"])
+        sx = x0
+        abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+        for ab in abilities:
+            bonus = sel.get_save_bonus(ab)
+            is_prof = ab in sel.stats.saving_throws
+            txt = f"{ab[:3]} {bonus:+d}"
+            s_surf = fonts.tiny.render(txt, True, COLORS["text_main"] if not is_prof else COLORS["accent"])
+            w = s_surf.get_width() + 10
+            if sx + w > SCREEN_WIDTH - 20:
+                sx = x0
+                y += 24
+            r = pygame.Rect(sx, y, w, 20)
+            bg = (60, 63, 65)
+            if r.collidepoint(mp): bg = (80, 83, 85)
+            pygame.draw.rect(screen, bg, r, border_radius=4)
+            screen.blit(s_surf, (sx+5, y+2))
+            self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_save(a, b)))
+            sx += w + 5
+        y += 24
+
+        # Skills
+        if sel.stats.skills:
+            ln("SKILLS (click to roll):", COLORS["text_dim"])
+            sx = x0
+            for sk, bonus in sel.stats.skills.items():
+                txt = f"{sk} {bonus:+d}"
+                s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
+                w = s_surf.get_width() + 10
+                if sx + w > SCREEN_WIDTH - 20:
+                    sx = x0
+                    y += 24
+                r = pygame.Rect(sx, y, w, 20)
+                bg = (60, 63, 65)
+                if r.collidepoint(mp): bg = (80, 83, 85)
+                pygame.draw.rect(screen, bg, r, border_radius=4)
+                screen.blit(s_surf, (sx+5, y+2))
+                self.ui_click_zones.append((r, lambda s=sk, b=bonus: self._roll_skill(s, b)))
+                sx += w + 5
+            y += 24
 
         # Action economy indicators
         ln("")
@@ -1097,7 +2432,6 @@ class BattleState(GameState):
         start_x = x0
         start_y = y
         col_w, row_h = 120, 22
-        hovered_desc = None
         for i, (cond, desc) in enumerate(CONDITIONS.items()):
             col = i % 4
             row = i // 4
@@ -1106,29 +2440,110 @@ class BattleState(GameState):
             bg = COLORS["accent"] if is_active else (45,47,52)
             if r.collidepoint(mp):
                 bg = COLORS["accent_hover"] if is_active else (60,62,67)
-                hovered_desc = f"{cond}: {desc}"
+                self.active_tooltip = f"{cond}: {desc}"
             pygame.draw.rect(screen, bg, r, border_radius=3)
+            self.ui_click_zones.append((r, lambda c=cond: self._toggle_condition(c)))
             ct = fonts.tiny.render(cond, True, COLORS["text_main"])
             screen.blit(ct, (r.x+4, r.y+3))
         y = start_y + (((len(CONDITIONS)-1)//4)+1) * row_h + 8
 
-        if hovered_desc:
-            mx2, my2 = mp
-            tip = fonts.tiny.render(hovered_desc[:90], True, (255,255,255))
-            tip_bg = pygame.Rect(mx2+15, my2+10, tip.get_width()+10, tip.get_height()+8)
-            pygame.draw.rect(screen, (20,20,20), tip_bg)
-            screen.blit(tip, (mx2+20, my2+14))
+        # Active Effects
+        if sel.active_effects:
+            ln("")
+            ln("ACTIVE EFFECTS:", COLORS["text_dim"])
+            for eff, dur in sel.active_effects.items():
+                ln(f"• {eff} ({dur} rnds)", COLORS["spell"], 8)
+
+        # Notes
+        if sel.notes:
+            ln("")
+            ln("NOTES:", COLORS["text_dim"])
+            # Simple wrap for notes display
+            lines = sel.notes.split('\n')
+            for line in lines:
+                # Wrap long lines roughly
+                parts = [line[i:i+50] for i in range(0, len(line), 50)]
+                for p in parts: ln(p, COLORS["text_main"], 8)
 
         # Features summary
         if sel.stats.features:
             ln("")
             ln("FEATURES:", COLORS["text_dim"])
-            for feat in sel.stats.features[:8]:
+            for feat in sel.stats.features:
                 uses_str = ""
                 if feat.uses_per_day > 0:
                     remaining = sel.feature_uses.get(feat.name, feat.uses_per_day)
                     uses_str = f" [{remaining}/{feat.uses_per_day}]"
-                ln(f"• {feat.name}{uses_str}", COLORS["text_main"], 8)
+                
+                # Render manually to check hover
+                txt_str = f"• {feat.name}{uses_str}"
+                s = fonts.small.render(txt_str, True, COLORS["text_main"])
+                line_rect = pygame.Rect(x0+8, y, s.get_width(), 20)
+                
+                if line_rect.collidepoint(mp):
+                    s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
+                    self.active_tooltip = f"{feat.name}: {feat.description}"
+
+                screen.blit(s, (x0+8, y))
+                y += 20
+
+        # Helper to draw action lists
+        def draw_action_section(title, actions):
+            nonlocal y
+            if not actions: return
+            ln("")
+            ln(title, COLORS["text_dim"])
+            for act in actions:
+                # Build summary string (e.g. "+7, 1d8+4")
+                info = []
+                if act.is_multiattack:
+                    info.append("Multiattack")
+                elif act.attack_bonus:
+                    info.append(f"+{act.attack_bonus}")
+                    if act.damage_dice:
+                        dmg = act.damage_dice
+                        if act.damage_bonus: dmg += f"+{act.damage_bonus}"
+                        info.append(dmg)
+                elif act.damage_dice:
+                    info.append(act.damage_dice)
+                
+                summary = f"• {act.name}"
+                if info:
+                    summary += f" ({', '.join(info)})"
+                
+                # Render
+                s = fonts.small.render(summary, True, COLORS["text_main"])
+                line_rect = pygame.Rect(x0+8, y, s.get_width(), 20)
+                
+                if line_rect.collidepoint(mp):
+                    s = fonts.small.render(summary, True, COLORS["accent_hover"])
+                    # Generate tooltip description
+                    desc = act.description
+                    if not desc:
+                        parts = []
+                        if act.is_multiattack:
+                            parts.append(f"Multiattack: {act.multiattack_count} attacks ({', '.join(act.multiattack_targets)})")
+                        else:
+                            parts.append(f"Type: {act.action_type}")
+                            if act.range: parts.append(f"Range: {act.range}ft")
+                            if act.attack_bonus: parts.append(f"Hit: +{act.attack_bonus}")
+                            if act.damage_dice: 
+                                d = act.damage_dice
+                                if act.damage_bonus: d += f"+{act.damage_bonus}"
+                                parts.append(f"Damage: {d} {act.damage_type}")
+                            if act.applies_condition:
+                                c = f"Applies {act.applies_condition}"
+                                if act.condition_dc: c += f" (DC {act.condition_dc} {act.condition_save})"
+                                parts.append(c)
+                        desc = ". ".join(parts)
+                    self.active_tooltip = f"{act.name}: {desc}"
+
+                screen.blit(s, (x0+8, y))
+                y += 20
+
+        draw_action_section("ACTIONS:", sel.stats.actions)
+        draw_action_section("BONUS ACTIONS:", sel.stats.bonus_actions)
+        draw_action_section("REACTIONS:", sel.stats.reactions)
 
         return y
 
@@ -1164,6 +2579,11 @@ class BattleState(GameState):
                 pygame.draw.rect(screen, c, pr, border_radius=3)
                 if filled:
                     pygame.draw.rect(screen, COLORS["accent"], pr, 1, border_radius=3)
+                    self.ui_click_zones.append((pr, lambda l=lvl: self._use_spell_slot(l)))
+                    self.ui_right_click_zones.append((pr, lambda l=lvl: self._modify_spell_slot(l, 1)))
+                else:
+                    # Empty slot - allow right click to refill
+                    self.ui_right_click_zones.append((pr, lambda l=lvl: self._modify_spell_slot(l, 1)))
                 px += 20
             y += 22
 
@@ -1172,7 +2592,27 @@ class BattleState(GameState):
             ln("")
             ln("CANTRIPS:", COLORS["text_dim"])
             for sp in sel.stats.cantrips:
-                ln(f"  {sp.name}  ({sp.range}ft, {sp.damage_dice or sp.description[:30]})", COLORS["text_main"], 4)
+                # Render text
+                txt = f"  {sp.name}"
+                s = fonts.small.render(txt, True, COLORS["text_main"])
+                line_rect = pygame.Rect(x0+4, y, s.get_width(), 20)
+                
+                # Hover logic
+                if line_rect.collidepoint(mp):
+                    s = fonts.small.render(txt, True, COLORS["accent_hover"])
+                    desc = f"{sp.name} (Cantrip)\nRange: {sp.range}ft\n"
+                    if sp.damage_dice: desc += f"Damage: {sp.damage_dice} {sp.damage_type}\n"
+                    if sp.save_ability: desc += f"Save: {sp.save_ability}\n"
+                    desc += f"\n{sp.description}"
+                    self.active_tooltip = desc
+                
+                screen.blit(s, (x0+4, y))
+                
+                # Extra info string
+                info = f"({sp.range}ft, {sp.damage_dice or sp.description[:30]})"
+                s_info = fonts.small.render(info, True, COLORS["text_dim"])
+                screen.blit(s_info, (x0+4 + s.get_width() + 10, y))
+                y += 20
 
         # Spells
         if sel.stats.spells_known:
@@ -1181,8 +2621,32 @@ class BattleState(GameState):
             for sp in sel.stats.spells_known:
                 key2 = _LEVEL_NAMES.get(sp.level, f"{sp.level}th")
                 conc = " [C]" if sp.concentration else ""
+                
+                # Main text
+                txt = f"  [{key2}]{conc} {sp.name}"
+                s = fonts.small.render(txt, True, COLORS["spell"])
+                line_rect = pygame.Rect(x0+4, y, s.get_width(), 20)
+
+                # Hover logic
+                if line_rect.collidepoint(mp):
+                    s = fonts.small.render(txt, True, COLORS["accent_hover"])
+                    desc = f"{sp.name} (Level {sp.level})\nRange: {sp.range}ft\n"
+                    if sp.damage_dice: desc += f"Damage: {sp.damage_dice} {sp.damage_type}\n"
+                    if sp.heals: desc += f"Heals: {sp.heals}\n"
+                    if sp.save_ability: desc += f"Save: {sp.save_ability} (Half: {sp.half_on_save})\n"
+                    if sp.concentration: desc += "Requires Concentration\n"
+                    desc += f"\n{sp.description}"
+                    self.active_tooltip = desc
+
+                screen.blit(s, (x0+4, y))
+
+                # Info suffix
                 dmg_str = sp.damage_dice or sp.heals or sp.applies_condition or sp.description[:25] or ""
-                ln(f"  [{key2}]{conc} {sp.name}: {dmg_str}", COLORS["spell"], 4)
+                if dmg_str:
+                    s_info = fonts.small.render(f": {dmg_str}", True, COLORS["text_dim"])
+                    screen.blit(s_info, (x0+4 + s.get_width(), y))
+                
+                y += 20
 
         return y
 
@@ -1209,20 +2673,26 @@ class BattleState(GameState):
         pygame.draw.rect(screen, (25,27,30), (GRID_W, bar_y-8, PANEL_W, 80))
         pygame.draw.line(screen, COLORS["border"], (GRID_W, bar_y-8), (SCREEN_WIDTH, bar_y-8), 1)
 
-        self.btn_next.draw(screen, mp)
         self.btn_log_pl.draw(screen, mp)
 
-        if not curr.is_player:
-            if curr.action_used:
-                self.btn_ai.text  = "AI DONE"
-                self.btn_ai.color = COLORS["text_dim"]
-            else:
-                self.btn_ai.text  = "AI AUTO-PLAY"
-                self.btn_ai.color = COLORS["accent"]
-            self.btn_ai.draw(screen, mp)
+        if not self.battle.combat_started:
+            self.btn_start.draw(screen, mp)
+        else:
+            self.btn_next.draw(screen, mp)
+            if not curr.is_player:
+                if curr.action_used:
+                    self.btn_ai.text  = "AI DONE"
+                    self.btn_ai.color = COLORS["text_dim"]
+                else:
+                    self.btn_ai.text  = "AI AUTO-PLAY"
+                    self.btn_ai.color = COLORS["accent"]
+                self.btn_ai.draw(screen, mp)
 
     # --- AI confirm dialog ---
     def _draw_ai_confirm_dialog(self, screen, mp):
+        # Clear dynamic zones for this dialog
+        self.ui_click_zones.clear()
+
         plan = self.pending_plan
         steps = plan.steps
         idx = self.pending_step_idx
@@ -1237,7 +2707,7 @@ class BattleState(GameState):
         ov.fill((0,0,0,170))
         screen.blit(ov, (0,0))
 
-        bw, bh = 620, 360
+        bw, bh = 700, 450
         bx = SCREEN_WIDTH//2 - bw//2
         by = SCREEN_HEIGHT//2 - bh//2
 
@@ -1278,28 +2748,53 @@ class BattleState(GameState):
             screen.blit(ds, (bx+14, y))
             y += 24
 
-        # Hit/damage summary
-        if step.step_type in ("attack","spell") and step.target:
-            y += 8
-            if step.is_crit:
-                cr = fonts.body.render("CRITICAL HIT!", True, COLORS["legendary"])
-                screen.blit(cr, (bx+14, y))
-                y += 28
-            elif step.is_hit:
-                hs = fonts.body.render(f"HIT: {step.damage} {step.damage_type} damage", True, COLORS["danger"])
-                screen.blit(hs, (bx+14, y))
-                y += 28
-            else:
-                ms = fonts.body.render("MISS", True, COLORS["text_dim"])
-                screen.blit(ms, (bx+14, y))
-                y += 28
-            if step.target.hp <= 0:
-                dead = fonts.body.render(f"{step.target.name} is DOWN!", True, COLORS["danger"])
-                screen.blit(dead, (bx+14, y))
-                y += 28
-            elif step.is_hit:
-                rem = fonts.body.render(f"{step.target.name} HP: {step.target.hp}/{step.target.max_hp}", True, COLORS["text_dim"])
-                screen.blit(rem, (bx+14, y))
+        # --- TARGET RESOLUTION LIST ---
+        targets = step.targets if step.targets else ([step.target] if step.target else [])
+        
+        if targets:
+            y += 10
+            pygame.draw.line(screen, COLORS["border"], (bx+10, y), (bx+bw-10, y), 1)
+            y += 10
+            
+            # Headers
+            screen.blit(fonts.tiny.render("TARGET", True, COLORS["text_dim"]), (bx+20, y))
+            screen.blit(fonts.tiny.render("RESULT (Click to change)", True, COLORS["text_dim"]), (bx+200, y))
+            y += 20
+
+            for t in targets:
+                # Name
+                name_str = t.name[:20]
+                
+                # Show Roll or DC info for DM to announce
+                info_str = ""
+                if step.save_dc > 0:
+                    info_str = f" (DC {step.save_dc} {step.save_ability[:3]})"
+                elif step.attack_roll > 0:
+                    info_str = f" (Rolled {step.attack_roll} vs AC)"
+
+                screen.blit(fonts.small.render(name_str + info_str, True, COLORS["text_main"]), (bx+20, y+4))
+
+                # Outcome Toggle
+                outcome = self.current_step_outcomes.get(t, "hit")
+                
+                # Color & Text
+                if outcome == "hit":   txt, col = f"HIT ({step.damage})", COLORS["danger"]
+                elif outcome == "crit": txt, col = "CRIT!", COLORS["legendary"]
+                elif outcome == "miss": txt, col = "MISS", COLORS["text_dim"]
+                elif outcome == "fail": txt, col = "FAIL (Full)", COLORS["danger"]
+                elif outcome == "save": txt, col = "SAVE (Half)", COLORS["success"]
+                else: txt, col = outcome.upper(), COLORS["text_main"]
+
+                r_toggle = pygame.Rect(bx+200, y, 140, 26)
+                pygame.draw.rect(screen, (50,52,55), r_toggle, border_radius=4)
+                pygame.draw.rect(screen, col, r_toggle, 1, border_radius=4)
+                
+                ts = fonts.small.render(txt, True, col)
+                screen.blit(ts, (r_toggle.centerx - ts.get_width()//2, r_toggle.centery - ts.get_height()//2))
+                
+                self.ui_click_zones.append((r_toggle, lambda t=t: self._toggle_outcome(t)))
+
+                y += 32
 
         # Upcoming steps
         if len(steps) > idx + 1:
@@ -1307,11 +2802,205 @@ class BattleState(GameState):
             screen.blit(next_lbl, (bx+14, by+bh-55))
 
         self.btn_confirm.rect.topleft = (bx + bw//2 - 135, by + bh - 55)
+        self.btn_confirm.text = "NEXT STEP" if len(steps) > idx+1 else "FINISH TURN"
+        # Disable confirm if targets pending? Optional. For now allow skipping.
+        
         self.btn_deny.rect.topleft    = (bx + bw//2 + 10,  by + bh - 55)
+        self.btn_deny.text = "SKIP STEP"
+        
         self.btn_approve_all.rect.topleft = (bx + bw//2 - 65, by + bh - 100)
         self.btn_confirm.draw(screen, mp)
         self.btn_deny.draw(screen, mp)
         self.btn_approve_all.draw(screen, mp)
+
+    # --- Reaction / Opportunity Attack Modal ---
+    def _draw_reaction_modal(self, screen, mp):
+        self.ui_click_zones.clear()
+        
+        reactor = self.reaction_pending[0]
+        
+        title_text = "REACTION AVAILABLE"
+        msg_text = ""
+        
+        if self.reaction_type == "oa":
+            mover = self.pending_move[0]
+            title_text = "OPPORTUNITY ATTACK!"
+            msg_text = f"{reactor.name} can react to {mover.name}'s movement."
+        elif self.reaction_type == "counterspell":
+            caster = self.reaction_context["caster"]
+            lvl = self.reaction_context["level"]
+            title_text = "COUNTERSPELL!"
+            msg_text = f"{reactor.name} can Counterspell {caster.name}'s Lvl {lvl} spell."
+
+        # Overlay
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,170))
+        screen.blit(ov, (0,0))
+
+        bw, bh = 500, 250
+        bx = SCREEN_WIDTH//2 - bw//2
+        by = SCREEN_HEIGHT//2 - bh//2
+
+        pygame.draw.rect(screen, (38,40,44), (bx, by, bw, bh), border_radius=10)
+        pygame.draw.rect(screen, COLORS["reaction"], (bx, by, bw, 44), border_top_left_radius=10, border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 2, border_radius=10)
+
+        title = fonts.header.render(title_text, True, (255,255,255))
+        screen.blit(title, (bx+14, by+8))
+
+        y = by + 60
+        msg1 = fonts.body.render(msg_text, True, COLORS["text_main"])
+        screen.blit(msg1, (bx+20, y))
+        y += 30
+        msg2 = fonts.small.render("Allow this reaction?", True, COLORS["text_dim"])
+        screen.blit(msg2, (bx+20, y))
+
+        # Buttons
+        btn_y = by + bh - 60
+        
+        # ALLOW
+        r_allow = pygame.Rect(bx + bw - 160, btn_y, 140, 45)
+        pygame.draw.rect(screen, COLORS["danger"], r_allow, border_radius=5)
+        lbl = fonts.body.render("ALLOW", True, (255,255,255))
+        screen.blit(lbl, (r_allow.centerx - lbl.get_width()//2, r_allow.centery - lbl.get_height()//2))
+        self.ui_click_zones.append((r_allow, lambda: self._resolve_reaction(True)))
+
+        # DENY
+        r_deny = pygame.Rect(bx + 20, btn_y, 140, 45)
+        pygame.draw.rect(screen, COLORS["panel"], r_deny, border_radius=5)
+        lbl = fonts.body.render("DENY", True, (255,255,255))
+        screen.blit(lbl, (r_deny.centerx - lbl.get_width()//2, r_deny.centery - lbl.get_height()//2))
+        self.ui_click_zones.append((r_deny, lambda: self._resolve_reaction(False)))
+
+    def _resolve_reaction(self, allowed):
+        self._save_undo_snapshot()
+        if not self.reaction_pending: return
+        
+        reactor = self.reaction_pending[0]
+        mover, dest_x, dest_y = self.pending_move
+        
+        if allowed:
+            # Execute attack
+            melee_action = next((a for a in reactor.stats.actions if a.range <= 5 and not a.is_multiattack), None)
+            if not melee_action:
+                melee_action = Action("Opportunity Attack", "Melee", 0, "1d4", 0, "bludgeoning")
+            
+            self._log(f"[REACTION] {reactor.name} attacks {mover.name}!")
+            
+            # Roll attack
+            from engine.dice import roll_attack, roll_dice_critical, roll_dice
+            adv = reactor.has_attack_advantage(mover)
+            dis = reactor.has_attack_disadvantage(mover)
+            total, nat, is_crit, is_fumble, roll_str = roll_attack(melee_action.attack_bonus, adv, dis)
+            
+            hit = total >= mover.stats.armor_class and not is_fumble
+            if hit:
+                d_str = f"{melee_action.damage_dice}+{melee_action.damage_bonus}" if melee_action.damage_bonus else melee_action.damage_dice
+                dmg = roll_dice_critical(d_str) if is_crit else roll_dice(d_str)
+                dealt, broke = mover.take_damage(dmg, melee_action.damage_type)
+                self._spawn_damage_text(mover, dealt)
+                self._log(f"  -> {'CRIT!' if is_crit else 'HIT'} ({total})! Dealt {dealt} {melee_action.damage_type}.")
+            else:
+                self._log(f"  -> MISS ({total}).")
+            
+            reactor.reaction_used = True
+        
+        self.reaction_pending.pop(0)
+        if not self.reaction_pending:
+            mover.grid_x = dest_x
+            mover.grid_y = dest_y
+            self.pending_move = None
+
+    # --- Aura Trigger Modal ---
+    def _open_next_aura_modal(self):
+        if self.aura_triggers:
+            self.current_aura_trigger = self.aura_triggers.pop(0)
+        else:
+            self.current_aura_trigger = None
+
+    def _draw_aura_modal(self, screen, mp):
+        self.ui_click_zones.clear()
+        trig = self.current_aura_trigger
+        if not trig: return
+
+        source = trig["source"]
+        target = trig["target"]
+        feat = trig["feature"]
+
+        # Overlay
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,170))
+        screen.blit(ov, (0,0))
+
+        bw, bh = 500, 280
+        bx = SCREEN_WIDTH//2 - bw//2
+        by = SCREEN_HEIGHT//2 - bh//2
+
+        pygame.draw.rect(screen, (38,40,44), (bx, by, bw, bh), border_radius=10)
+        pygame.draw.rect(screen, COLORS["warning"], (bx, by, bw, 44), border_top_left_radius=10, border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 2, border_radius=10)
+
+        title = fonts.header.render("AURA TRIGGERED!", True, (0,0,0))
+        screen.blit(title, (bx+14, by+8))
+
+        y = by + 60
+        msg1 = fonts.body.render(f"{target.name} starts turn near {source.name}.", True, COLORS["text_main"])
+        screen.blit(msg1, (bx+20, y))
+        y += 26
+        msg2 = fonts.body.render(f"Feature: {feat.name}", True, COLORS["accent"])
+        screen.blit(msg2, (bx+20, y))
+        y += 30
+        
+        req = f"Roll DC {feat.save_dc} {feat.save_ability} Save"
+        msg3 = fonts.header.render(req, True, COLORS["text_main"])
+        screen.blit(msg3, (bx+bw//2 - msg3.get_width()//2, y))
+
+        # Buttons
+        btn_y = by + bh - 70
+        
+        # FAIL
+        r_fail = pygame.Rect(bx + 20, btn_y, 140, 45)
+        pygame.draw.rect(screen, COLORS["danger"], r_fail, border_radius=5)
+        lbl = fonts.body.render("FAIL", True, (255,255,255))
+        screen.blit(lbl, (r_fail.centerx - lbl.get_width()//2, r_fail.centery - lbl.get_height()//2))
+        self.ui_click_zones.append((r_fail, lambda: self._resolve_aura(False)))
+
+        # SUCCESS
+        r_succ = pygame.Rect(bx + bw - 160, btn_y, 140, 45)
+        pygame.draw.rect(screen, COLORS["success"], r_succ, border_radius=5)
+        lbl = fonts.body.render("SUCCESS", True, (255,255,255))
+        screen.blit(lbl, (r_succ.centerx - lbl.get_width()//2, r_succ.centery - lbl.get_height()//2))
+        self.ui_click_zones.append((r_succ, lambda: self._resolve_aura(True)))
+
+    def _resolve_aura(self, success):
+        self._save_undo_snapshot()
+        trig = self.current_aura_trigger
+        target = trig["target"]
+        feat = trig["feature"]
+        
+        if success:
+            self._log(f"[SAVE] {target.name} succeeded save vs {feat.name}.")
+            # Usually half damage or no effect. For now assume no effect on save for conditions.
+            if feat.damage_dice:
+                from engine.dice import roll_dice
+                dmg = roll_dice(feat.damage_dice) // 2
+                if dmg > 0:
+                    dealt, _ = target.take_damage(dmg, feat.damage_type)
+                    self._log(f"  -> Takes {dealt} {feat.damage_type} damage (half).")
+                    self._spawn_damage_text(target, dealt)
+        else:
+            self._log(f"[SAVE] {target.name} FAILED save vs {feat.name}.")
+            if feat.damage_dice:
+                from engine.dice import roll_dice
+                dmg = roll_dice(feat.damage_dice)
+                dealt, _ = target.take_damage(dmg, feat.damage_type)
+                self._log(f"  -> Takes {dealt} {feat.damage_type} damage.")
+                self._spawn_damage_text(target, dealt)
+            if feat.applies_condition:
+                target.add_condition(feat.applies_condition, save_ability=feat.save_ability, save_dc=feat.save_dc)
+                self._log(f"  -> Condition applied: {feat.applies_condition}")
+
+        self._open_next_aura_modal()
 
     # --- Player action panel ---
     def _draw_player_action_panel(self, screen, mp):
@@ -1358,6 +3047,142 @@ class BattleState(GameState):
             ss = fonts.tiny.render(f"{key}: {remain}/{total}", True, COLORS["spell"] if remain > 0 else COLORS["text_dim"])
             screen.blit(ss, (x2, y2))
             y2 += 18
+
+    # --- Damage Modal Draw ---
+    def _draw_damage_modal(self, screen, mp):
+        # Dim background
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,180))
+        screen.blit(ov, (0,0))
+
+        w, h = 500, 400
+        bx = SCREEN_WIDTH//2 - w//2
+        by = SCREEN_HEIGHT//2 - h//2
+
+        # Window
+        pygame.draw.rect(screen, (35, 37, 42), (bx, by, w, h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["danger"], (bx, by, w, 50), border_top_left_radius=10, border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, w, h), 2, border_radius=10)
+
+        # Title
+        t = fonts.header.render(f"Apply Damage: {self.dmg_target.name}", True, (255,255,255))
+        screen.blit(t, (bx+20, by+10))
+
+        # Value display
+        val_rect = pygame.Rect(bx+20, by+65, w-40, 40)
+        pygame.draw.rect(screen, (20,20,20), val_rect, border_radius=5)
+        val_s = fonts.title.render(self.dmg_value_str or "0", True, COLORS["text_main"])
+        screen.blit(val_s, (val_rect.right - val_s.get_width() - 10, val_rect.y + 2))
+
+        # Type grid
+        types = ["slashing", "piercing", "bludgeoning", "fire", "cold", "lightning", 
+                 "acid", "poison", "necrotic", "radiant", "force", "psychic", "thunder"]
+        start_x = bx + 20
+        start_y = by + 120
+        col_w, row_h = 110, 35
+        for i, ttype in enumerate(types):
+            c = i % 4
+            r = i // 4
+            rect = pygame.Rect(start_x + c*col_w, start_y + r*row_h, 100, 30)
+            is_sel = (ttype == self.dmg_type)
+            bg = COLORS["accent"] if is_sel else (50,52,57)
+            if rect.collidepoint(mp): bg = COLORS["accent_hover"]
+            pygame.draw.rect(screen, bg, rect, border_radius=4)
+            lbl = fonts.tiny.render(ttype.capitalize(), True, COLORS["text_main"])
+            screen.blit(lbl, (rect.x + 5, rect.y + 8))
+
+        # Buttons
+        cancel_btn = Button(bx+20, by+h-60, 140, 45, "CANCEL", lambda: None, color=COLORS["panel"])
+        apply_btn = Button(bx+w-160, by+h-60, 140, 45, "APPLY", lambda: None, color=COLORS["danger"])
+        cancel_btn.draw(screen, mp)
+        apply_btn.draw(screen, mp)
+
+    # --- Roll Result Modal ---
+    def _draw_roll_result_modal(self, screen):
+        # Dim background
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0,0,0,100))
+        screen.blit(ov, (0,0))
+
+        w, h = 300, 200
+        bx = SCREEN_WIDTH//2 - w//2
+        by = SCREEN_HEIGHT//2 - h//2
+
+        # Box
+        pygame.draw.rect(screen, (40, 42, 46), (bx, by, w, h), border_radius=12)
+        pygame.draw.rect(screen, COLORS["accent"], (bx, by, w, h), 2, border_radius=12)
+
+        # Title
+        ts = fonts.header.render(self.roll_modal_title, True, COLORS["text_dim"])
+        screen.blit(ts, (bx + w//2 - ts.get_width()//2, by + 20))
+
+        # Total (Big)
+        color = COLORS["text_main"]
+        if self.roll_modal_nat == 20: color = COLORS["success"]
+        elif self.roll_modal_nat == 1: color = COLORS["danger"]
+        
+        total_s = fonts.title.render(str(self.roll_modal_total), True, color)
+        screen.blit(total_s, (bx + w//2 - total_s.get_width()//2, by + 70))
+
+        # Expression
+        es = fonts.body.render(self.roll_modal_expression, True, COLORS["text_dim"])
+        screen.blit(es, (bx + w//2 - es.get_width()//2, by + 130))
+
+        # Hint
+        hs = fonts.tiny.render("(Click anywhere to dismiss)", True, (100,100,100))
+        screen.blit(hs, (bx + w//2 - hs.get_width()//2, by + h - 25))
+
+    # --- Tooltip ---
+    def _draw_tooltip(self, screen):
+        if not self.active_tooltip: return
+        
+        mx, my = pygame.mouse.get_pos()
+        tip = fonts.tiny.render(self.active_tooltip, True, (255,255,255))
+        tw, th = tip.get_width() + 10, tip.get_height() + 8
+        
+        # Default position: right-down
+        tx = mx + 15
+        ty = my + 10
+        
+        # Flip to left if off-screen right
+        if tx + tw > SCREEN_WIDTH:
+            tx = mx - tw - 10
+        
+        # Flip up if off-screen bottom
+        if ty + th > SCREEN_HEIGHT:
+            ty = my - th - 10
+        
+        pygame.draw.rect(screen, (20,20,20), (tx, ty, tw, th))
+        pygame.draw.rect(screen, COLORS["border"], (tx, ty, tw, th), 1)
+        screen.blit(tip, (tx+5, ty+4))
+
+    # --- Hover Info (DM Helper) ---
+    def _draw_hover_info(self, screen, mp):
+        # Only show if not dragging and not in a modal
+        if self.dragging or self.ctx_open or self.dmg_modal_open or self.scenario_modal:
+            return
+        
+        mx, raw_my = mp
+        if mx < GRID_W and raw_my >= TOP_BAR_H:
+            gx, gy = self._screen_to_grid(mx, raw_my)
+            ent = self.battle.get_entity_at(gx, gy)
+            if ent and ent.hp > 0:
+                # Draw info box
+                lines = [
+                    f"{ent.name}",
+                    f"HP: {ent.hp}/{ent.max_hp}  AC: {ent.stats.armor_class}",
+                    f"Speed: {ent.stats.speed}ft",
+                    f"P.Perc: {10 + ent.get_skill_bonus('Perception')}"
+                ]
+                
+                bx, by = mx + 20, raw_my + 20
+                w, h = 160, 10 + len(lines)*18
+                pygame.draw.rect(screen, (30,32,35), (bx, by, w, h), border_radius=5)
+                pygame.draw.rect(screen, COLORS["border"], (bx, by, w, h), 1, border_radius=5)
+                for i, line in enumerate(lines):
+                    c = COLORS["accent"] if i == 0 else COLORS["text_main"]
+                    s = fonts.tiny.render(line, True, c)
+                    screen.blit(s, (bx+8, by+5 + i*18))
 
     # --- Context menu ---
     def _draw_ctx_menu(self, screen, mp):
@@ -1422,7 +3247,7 @@ class BattleState(GameState):
         bw = 150
         pad = 8
         item_h = 28
-        n = len(TERRAIN_TYPES)
+        n = min(15, len(TERRAIN_TYPES)) # Limit height, maybe scroll later
         bh = n * item_h + pad * 2 + 30
 
         bx = 10
@@ -1434,7 +3259,10 @@ class BattleState(GameState):
         screen.blit(hdr, (bx + 6, by + 6))
 
         y = by + pad + 22
-        for ttype, props in TERRAIN_TYPES.items():
+        # Filter or scroll if too many. For now just show all or slice
+        keys = list(TERRAIN_TYPES.keys())
+        for i, ttype in enumerate(keys):
+            props = TERRAIN_TYPES[ttype]
             r = pygame.Rect(bx + 4, y, bw - 8, item_h - 2)
             is_sel = ttype == self.terrain_selected_type
             bg = COLORS["accent"] if is_sel else (50, 52, 57)
@@ -1447,36 +3275,48 @@ class BattleState(GameState):
             lbl = fonts.tiny.render(props["label"], True, COLORS["text_main"])
             screen.blit(lbl, (r.x + 22, r.y + 6))
             y += item_h
+            if y > SCREEN_HEIGHT - 100: # Simple overflow check
+                break
 
     # --- Terrain mode toggle ---
     def _toggle_terrain_mode(self):
         self.terrain_mode = not self.terrain_mode
         self.terrain_palette_open = self.terrain_mode
         if self.terrain_mode:
+            self.btn_terrain.text = "STOP PAINTING"
+            self.btn_terrain.color = COLORS["warning"]
             self._log("[TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove.")
         else:
+            self.btn_terrain.text = "TERRAIN"
+            self.btn_terrain.color = COLORS["panel"]
             self._log("[TERRAIN] Terrain placement mode OFF.")
 
-    # --- Save / Load ---
-    def _save_encounter(self):
-        try:
-            self.battle.save_state(SAVE_FILE)
-            self._log("[SAVE] Encounter saved.")
-        except Exception as ex:
-            self._log(f"[SAVE ERROR] {ex}")
+    # Re-implementing separate callbacks for clarity
+    def _open_save_modal(self):
+        self.scenario_modal = ScenarioModal("save", self._perform_save)
 
-    def _load_encounter(self):
-        if not os.path.exists(SAVE_FILE):
-            self._log("[LOAD] No save file found.")
-            return
+    def _open_load_modal(self):
+        self.scenario_modal = ScenarioModal("load", self._perform_load)
+
+    def _perform_save(self, filepath):
+        self.scenario_modal = None
+        if not filepath: return
         try:
-            new_battle = BattleSystem.from_save(SAVE_FILE, self._log)
+            self.battle.save_state(filepath)
+            self._log(f"[SAVE] Saved to {os.path.basename(filepath)}")
+        except Exception as ex:
+            self._log(f"[ERROR] Save failed: {ex}")
+
+    def _perform_load(self, filepath):
+        self.scenario_modal = None
+        if not filepath: return
+        try:
+            new_battle = BattleSystem.from_save(filepath, self._log)
             new_battle.log = self._log
             self.battle = new_battle
             self.selected_entity = None
             self.pending_plan = None
             self.condition_reminder = None
-            self._log("[LOAD] Encounter loaded.")
+            self._log(f"[LOAD] Loaded {os.path.basename(filepath)}")
         except Exception as ex:
-            import traceback; traceback.print_exc()
-            self._log(f"[LOAD ERROR] {ex}")
+            self._log(f"[ERROR] Load failed: {ex}")

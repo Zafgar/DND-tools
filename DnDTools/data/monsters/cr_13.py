@@ -45,7 +45,7 @@ monsters = [
                         multiattack_count=2,multiattack_targets=["Greatsword","Greatsword"]),
                  Action("Greatsword","Melee",14,"6d6",9,"slashing",reach=10),
                  Action("Rock","Ranged",14,"4d12",9,"bludgeoning",range=60),
-                 Action("Lightning Strike","60ft line DC 17 DEX save 12d8 lightning",0,"12d8",0,"lightning",range=60)],
+                 Action("Lightning Strike","60ft line DC 17 DEX save 12d8 lightning",0,"12d8",0,"lightning",range=60,aoe_radius=60,aoe_shape="line",condition_dc=17,condition_save="Dexterity")],
         saving_throws={"Strength":14,"Constitution":10,"Wisdom":9,"Charisma":9},
         skills={"Arcana":8,"Athletics":14,"History":8,"Perception":9},
         damage_immunities=["cold","lightning","thunder"],

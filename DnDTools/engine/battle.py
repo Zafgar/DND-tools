@@ -22,8 +22,10 @@ class BattleSystem:
         self.turn_index = 0
         self.log = log_callback
         self.round = 1
+        self.combat_started = False
         self.ai = TacticalAI()
         self.terrain: List[TerrainObject] = []
+        self.weather = "Clear"  # Clear, Rain, Fog, Ash
 
         # Pending OA reactions: list of (reactor, mover)
         self.pending_reactions: List[tuple] = []
@@ -33,21 +35,35 @@ class BattleSystem:
 
         if not self.entities:
             self._init_demo_entities()
-        self._start_combat()
 
     # ------------------------------------------------------------------ #
     # Setup                                                                #
     # ------------------------------------------------------------------ #
 
-    def _start_combat(self):
+    def start_combat(self):
+        self.combat_started = True
+        
+        # Check for Lair Actions
+        lair_owners = [e for e in self.entities if any(a.action_type == "lair" for a in e.stats.actions)]
+        for owner in lair_owners:
+            from data.models import CreatureStats
+            lair_stats = CreatureStats(name="Lair Action", hit_points=1, speed=0, challenge_rating=0)
+            lair_ent = Entity(lair_stats, -100, -100)
+            lair_ent.initiative = 20
+            lair_ent.is_lair = True
+            lair_ent.lair_owner = owner
+            self.entities.append(lair_ent)
+
         for entity in self.entities:
-            entity.roll_initiative()
+            if not entity.is_lair:
+                entity.roll_initiative()
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
         self.log("=== COMBAT STARTED ===")
         self.log("Initiative order: " + " > ".join(e.name for e in self.entities))
         curr = self.get_current_entity()
         curr.reset_turn()
         self.log(f"--- Round {self.round}: {curr.name}'s turn ---")
+        self._build_legendary_queue()
 
     def _init_demo_entities(self):
         from data.models import AbilityScores, Action
@@ -67,33 +83,78 @@ class BattleSystem:
     # ------------------------------------------------------------------ #
 
     def get_current_entity(self) -> Entity:
+        if not self.entities:
+            raise ValueError("No entities in battle!")
+        if self.turn_index >= len(self.entities):
+            self.turn_index = 0
         return self.entities[self.turn_index]
 
-    def next_turn(self) -> Entity:
-        # Check for legendary actions at end of this turn (for other legendary creatures)
-        self._process_legendary_queue()
+    def next_turn(self) -> Optional[Entity]:
+        if not self.entities:
+            return None
+
+        # --- END OF TURN LOGIC (Previous Entity) ---
+        prev_ent = self.entities[self.turn_index]
+        if prev_ent.hp > 0:
+            self._handle_end_of_turn_saves(prev_ent)
 
         # Advance turn
         self.turn_index += 1
         if self.turn_index >= len(self.entities):
             self.turn_index = 0
             self.round += 1
-            # Reset legendary actions for all creatures
-            for e in self.entities:
-                e.reset_legendary_actions()
             self.log(f"=== ROUND {self.round} ===")
 
-        # Skip dead entities
-        attempts = 0
-        while self.entities[self.turn_index].hp <= 0 and attempts < len(self.entities):
+        # Find next valid entity (Alive OR Dying Player OR Lair)
+        start_index = self.turn_index
+        while True:
+            ent = self.entities[self.turn_index]
+            is_alive = ent.hp > 0
+            # Players roll death saves, so they get a turn even if 0 HP (unless dead-dead or stable)
+            is_dying_player = ent.is_player and ent.hp <= 0 and ent.death_save_failures < 3 and not ent.is_stable
+            
+            if is_alive or is_dying_player or ent.is_lair:
+                break
+            
             self.turn_index = (self.turn_index + 1) % len(self.entities)
-            attempts += 1
+            if self.turn_index == 0:
+                self.round += 1
+                self.log(f"=== ROUND {self.round} ===")
+            
+            if self.turn_index == start_index:
+                break # Everyone dead/skipped
 
         current = self.get_current_entity()
+        
+        # 5e Rule: Legendary Actions reset at start of creature's turn
+        current.reset_legendary_actions()
         current.reset_turn()
 
+        # Handle Effects Duration (decrement at start of turn)
+        expired = []
+        for eff, duration in list(current.active_effects.items()):
+            current.active_effects[eff] -= 1
+            if current.active_effects[eff] <= 0:
+                expired.append(eff)
+        for eff in expired:
+            del current.active_effects[eff]
+            self.log(f"  [EFFECT] '{eff}' expired.")
+
         # Check hazard terrain at start of turn
-        self._check_hazard_damage(current)
+        if current.hp > 0:
+            self._check_hazard_damage(current)
+
+        # Recharge Rolls (only if alive)
+        if current.hp > 0:
+            recharges = current.recharge_features()
+            for r in recharges:
+                self.log(f"  [RECHARGE] {r}")
+
+        # Death Saves
+        if current.hp <= 0 and not current.is_stable and not current.is_lair:
+            res = current.roll_death_save()
+            if res:
+                self.log(f"  [DEATH] {res}")
 
         # Add to legendary queue if this creature has legendary actions
         self._build_legendary_queue()
@@ -105,6 +166,22 @@ class BattleSystem:
         if current.concentrating_on:
             self.log(f"  [CONCENTRATION] {current.concentrating_on.name}")
         return current
+
+    def _handle_end_of_turn_saves(self, entity: Entity):
+        """Check if entity can shake off any conditions at end of turn."""
+        # Iterate a copy since we might modify the dict
+        for cond, meta in list(entity.condition_metadata.items()):
+            ability = meta.get("save")
+            dc = meta.get("dc")
+            if ability and dc:
+                bonus = entity.get_save_bonus(ability)
+                roll = random.randint(1, 20)
+                total = roll + bonus
+                if total >= dc:
+                    entity.remove_condition(cond)
+                    self.log(f"[SAVE] {entity.name} rolled {total} (DC {dc} {ability}) and is no longer {cond}!")
+                else:
+                    self.log(f"[SAVE] {entity.name} rolled {total} (DC {dc} {ability}) and remains {cond}.")
 
     def _check_hazard_damage(self, entity: Entity):
         """Apply hazard terrain damage at the start of an entity's turn."""
@@ -121,14 +198,28 @@ class BattleSystem:
             if e.legendary_actions_left > 0 and e.hp > 0 and e != self.get_current_entity()
         ]
 
-    def _process_legendary_queue(self):
-        """Allow legendary creatures to use actions now."""
-        for leg_entity in self.legendary_queue:
-            if leg_entity.legendary_actions_left <= 0:
+    def get_pending_legendary_action(self) -> tuple[Optional[Entity], Optional[ActionStep]]:
+        """Pop the next legendary action from the queue, if any."""
+        while self.legendary_queue:
+            leg_entity = self.legendary_queue[0]
+            # Verify still valid
+            if leg_entity.legendary_actions_left <= 0 or leg_entity.hp <= 0:
+                self.legendary_queue.pop(0)
                 continue
+            
             step = self.ai.calculate_legendary_action(leg_entity, self)
             if step:
-                self.log(f"[LEG] {step.description}")
+                # Don't pop yet; wait for UI to confirm/execute
+                return leg_entity, step
+            else:
+                # No valid action found for this entity
+                self.legendary_queue.pop(0)
+        return None, None
+
+    def commit_legendary_action(self, entity: Entity):
+        """Call this after the UI has executed the legendary action."""
+        if self.legendary_queue and self.legendary_queue[0] == entity:
+            self.legendary_queue.pop(0)
 
     # ------------------------------------------------------------------ #
     # AI                                                                   #
@@ -152,6 +243,45 @@ class BattleSystem:
                 oas.append(e)
         return oas
 
+    def check_counterspell_reaction(self, caster: Entity, spell_level: int) -> List[Entity]:
+        """Check if any enemy can counterspell."""
+        potential = []
+        for enemy in self.get_enemies_of(caster):
+            if enemy.reaction_used or enemy.is_incapacitated():
+                continue
+            
+            # Check if has Counterspell known
+            has_cs = False
+            for s in enemy.stats.spells_known:
+                if s.name == "Counterspell":
+                    has_cs = True
+                    break
+            if not has_cs:
+                continue
+
+            # Check range (60ft) and slots (needs lvl 3+)
+            if self.get_distance(caster, enemy) * 5 <= 60 and enemy.has_spell_slot(3):
+                potential.append(enemy)
+        return potential
+
+    def check_turn_start_auras(self, entity: Entity) -> List[dict]:
+        """Check if entity is in aura of others at start of turn."""
+        triggers = []
+        for other in self.entities:
+            if other == entity or other.hp <= 0:
+                continue
+            # Check features
+            for feat in other.stats.features:
+                if feat.aura_radius > 0:
+                    dist_ft = self.get_distance(entity, other) * 5
+                    if dist_ft <= feat.aura_radius:
+                        triggers.append({
+                            "source": other,
+                            "target": entity,
+                            "feature": feat
+                        })
+        return triggers
+
     # ------------------------------------------------------------------ #
     # Grid / Geometry                                                      #
     # ------------------------------------------------------------------ #
@@ -166,17 +296,24 @@ class BattleSystem:
         for e in self.entities:
             if e == exclude or e.hp <= 0:
                 continue
-            if math.hypot(e.grid_x - x, e.grid_y - y) < 0.9:
+            # Check if point (x,y) is inside e's footprint
+            s = e.size_in_squares
+            if e.grid_x <= x < e.grid_x + s and e.grid_y <= y < e.grid_y + s:
                 return True
         return False
 
     def is_passable(self, x: float, y: float, exclude: Entity = None) -> bool:
         """Returns True if cell is both unoccupied by entities and traversable terrain."""
-        if self.is_occupied(x, y, exclude=exclude):
-            return False
-        t = self.get_terrain_at(int(x), int(y))
-        if t and not t.passable:
-            return False
+        # Check full footprint if entity is known
+        size = exclude.size_in_squares if exclude else 1
+        for dx in range(size):
+            for dy in range(size):
+                check_x, check_y = x + dx, y + dy
+                if self.is_occupied(check_x, check_y, exclude=exclude):
+                    return False
+                t = self.get_terrain_at(int(check_x), int(check_y))
+                if t and not t.passable:
+                    return False
         return True
 
     def get_terrain_movement_cost(self, x: float, y: float) -> float:
@@ -187,14 +324,11 @@ class BattleSystem:
         return 1.0
 
     def get_entity_at(self, x: float, y: float) -> Optional[Entity]:
-        best = None
-        best_dist = 0.6
         for e in self.entities:
-            d = math.hypot(e.grid_x + 0.5 - x, e.grid_y + 0.5 - y)
-            if d < best_dist:
-                best_dist = d
-                best = e
-        return best
+            s = e.size_in_squares
+            if e.grid_x <= x < e.grid_x + s and e.grid_y <= y < e.grid_y + s:
+                return e
+        return None
 
     def get_enemies_of(self, entity: Entity) -> List[Entity]:
         return [e for e in self.entities if e.is_player != entity.is_player and e.hp > 0]
@@ -243,13 +377,15 @@ class BattleSystem:
     # Save / Load                                                          #
     # ------------------------------------------------------------------ #
 
-    def save_state(self, filepath: str):
-        """Serialize full combat state to JSON."""
+    def get_state_dict(self) -> dict:
+        """Serialize full combat state to a dictionary."""
         data = {
+            "combat_started": self.combat_started,
             "round": self.round,
             "turn_index": self.turn_index,
             "entities": [],
             "terrain": [t.to_dict() for t in self.terrain],
+            "weather": self.weather,
         }
         for e in self.entities:
             ent_data = {
@@ -263,11 +399,12 @@ class BattleSystem:
                 "temp_hp": e.temp_hp,
                 "initiative": e.initiative,
                 "conditions": list(e.conditions),
-                "spell_slots": e.spell_slots,
+                "condition_metadata": copy.deepcopy(e.condition_metadata),
+                "spell_slots": copy.deepcopy(e.spell_slots),
                 "legendary_resistances_left": e.legendary_resistances_left,
                 "legendary_actions_left": e.legendary_actions_left,
                 "exhaustion": e.exhaustion,
-                "feature_uses": e.feature_uses,
+                "feature_uses": copy.deepcopy(e.feature_uses),
                 "action_used": e.action_used,
                 "bonus_action_used": e.bonus_action_used,
                 "reaction_used": e.reaction_used,
@@ -276,11 +413,108 @@ class BattleSystem:
                 "death_save_successes": e.death_save_successes,
                 "death_save_failures": e.death_save_failures,
                 "is_stable": e.is_stable,
+                "is_lair": e.is_lair,
+                "lair_owner_name": e.lair_owner.name if e.lair_owner else None,
+                "active_effects": copy.deepcopy(e.active_effects),
+                "notes": e.notes,
             }
             data["entities"].append(ent_data)
+        return data
+
+    def save_state(self, filepath: str):
+        """Serialize full combat state to JSON file."""
+        data = self.get_state_dict()
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
+
+    def restore_state(self, data: dict):
+        """Restore state from dictionary."""
+        from data.library import library
+        from data.heroes import hero_list as heroes
+        from engine.terrain import TerrainObject
+        from engine.entities import Entity
+
+        self.round = data.get("round", 1)
+        self.combat_started = data.get("combat_started", True)
+        self.turn_index = data.get("turn_index", 0)
+        self.weather = data.get("weather", "Clear")
+        self.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
+        
+        self.entities = []
+        self.pending_reactions = []
+        self.legendary_queue = []
+
+        hero_map = {h.name: h for h in heroes}
+
+        for ent_data in data["entities"]:
+            base_name = ent_data.get("base_name", ent_data["name"])
+            stats = None
+
+            if ent_data["is_player"]:
+                stats = copy.deepcopy(hero_map.get(base_name))
+                if stats is None:
+                    for h in heroes:
+                        if h.name in base_name or base_name in h.name:
+                            stats = copy.deepcopy(h)
+                            break
+            else:
+                if ent_data.get("is_lair"):
+                     from data.models import CreatureStats
+                     stats = CreatureStats(name="Lair Action", hit_points=1, speed=0, challenge_rating=0)
+                else:
+                    try:
+                        stats = library.get_monster(base_name)
+                    except ValueError:
+                        stripped = base_name.rsplit(" ", 1)[0]
+                        try:
+                            stats = library.get_monster(stripped)
+                        except ValueError:
+                            pass
+
+            if stats is None:
+                from data.models import CreatureStats
+                stats = CreatureStats(name=ent_data["name"], hit_points=ent_data["max_hp"])
+
+            stats.name = ent_data["name"]
+            e = Entity(stats, ent_data["grid_x"], ent_data["grid_y"], ent_data["is_player"])
+            e.hp = ent_data["hp"]
+            e.max_hp = ent_data["max_hp"]
+            e.temp_hp = ent_data["temp_hp"]
+            e.initiative = ent_data["initiative"]
+            e.conditions = set(ent_data["conditions"])
+            e.condition_metadata = ent_data.get("condition_metadata", {})
+            e.spell_slots = ent_data["spell_slots"]
+            e.legendary_resistances_left = ent_data["legendary_resistances_left"]
+            e.legendary_actions_left = ent_data["legendary_actions_left"]
+            e.exhaustion = ent_data["exhaustion"]
+            e.feature_uses = ent_data["feature_uses"]
+            e.action_used = ent_data["action_used"]
+            e.bonus_action_used = ent_data["bonus_action_used"]
+            e.reaction_used = ent_data["reaction_used"]
+            e.movement_left = ent_data["movement_left"]
+            e.death_save_successes = ent_data["death_save_successes"]
+            e.death_save_failures = ent_data["death_save_failures"]
+            e.is_stable = ent_data["is_stable"]
+            e.is_lair = ent_data.get("is_lair", False)
+            e.active_effects = ent_data.get("active_effects", {})
+            e.notes = ent_data.get("notes", "")
+
+            conc_name = ent_data.get("concentrating_on")
+            if conc_name:
+                for sp in list(stats.spells_known) + list(stats.cantrips):
+                    if sp.name == conc_name:
+                        e.concentrating_on = sp
+                        break
+
+            self.entities.append(e)
+
+        # Link lair owners
+        for i, ent_data in enumerate(data["entities"]):
+            owner_name = ent_data.get("lair_owner_name")
+            if owner_name:
+                owner = next((x for x in self.entities if x.name == owner_name), None)
+                self.entities[i].lair_owner = owner
 
     @classmethod
     def from_save(cls, filepath: str, log_callback: Callable[[str], None]) -> "BattleSystem":
@@ -297,9 +531,11 @@ class BattleSystem:
         sys_obj.entities = []
         sys_obj.log = log_callback
         sys_obj.round = data.get("round", 1)
+        sys_obj.combat_started = data.get("combat_started", True)
         sys_obj.turn_index = data.get("turn_index", 0)
         sys_obj.ai = TacticalAI()
         sys_obj.terrain = []
+        sys_obj.weather = data.get("weather", "Clear")
         sys_obj.pending_reactions = []
         sys_obj.legendary_queue = []
 
@@ -339,6 +575,7 @@ class BattleSystem:
             e.temp_hp = ent_data["temp_hp"]
             e.initiative = ent_data["initiative"]
             e.conditions = set(ent_data["conditions"])
+            e.condition_metadata = ent_data.get("condition_metadata", {})
             e.spell_slots = ent_data["spell_slots"]
             e.legendary_resistances_left = ent_data["legendary_resistances_left"]
             e.legendary_actions_left = ent_data["legendary_actions_left"]
@@ -351,6 +588,9 @@ class BattleSystem:
             e.death_save_successes = ent_data["death_save_successes"]
             e.death_save_failures = ent_data["death_save_failures"]
             e.is_stable = ent_data["is_stable"]
+            e.is_lair = ent_data.get("is_lair", False)
+            e.active_effects = ent_data.get("active_effects", {})
+            e.notes = ent_data.get("notes", "")
 
             conc_name = ent_data.get("concentrating_on")
             if conc_name:
@@ -360,6 +600,13 @@ class BattleSystem:
                         break
 
             sys_obj.entities.append(e)
+
+        # Link lair owners
+        for i, ent_data in enumerate(data["entities"]):
+            owner_name = ent_data.get("lair_owner_name")
+            if owner_name:
+                owner = next((x for x in sys_obj.entities if x.name == owner_name), None)
+                sys_obj.entities[i].lair_owner = owner
 
         sys_obj.turn_index = min(sys_obj.turn_index, max(0, len(sys_obj.entities) - 1))
         sys_obj.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]

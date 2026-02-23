@@ -40,7 +40,8 @@ monsters = [
         damage_resistances=["necrotic"],
         damage_immunities=["poison"],
         condition_immunities=["Charmed","Exhaustion","Poisoned"],
-        features=[Feature("Stench","Creatures starting turn within 5ft DC 10 CON or Poisoned until end of turn")],
+        features=[Feature("Stench","Creatures starting turn within 5ft DC 10 CON or Poisoned until end of turn",
+                          aura_radius=5, save_dc=10, save_ability="Constitution", applies_condition="Poisoned")],
         challenge_rating=2.0, xp=450, proficiency_bonus=2),
 
     CreatureStats(name="Will-o'-Wisp", size="Tiny", creature_type="Undead",
