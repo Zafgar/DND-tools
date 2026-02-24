@@ -5,8 +5,8 @@ import json
 import copy
 import random
 import re
-from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
-from ui.components import Button, fonts, hp_bar
+from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT, CREATURE_TYPE_COLORS, CREATURE_ICONS, SIZE_RADIUS
+from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect, Tooltip
 from engine.battle import BattleSystem
 from engine.ai import TurnPlan, ActionStep
 from engine.terrain import TerrainObject, TERRAIN_TYPES
@@ -280,19 +280,37 @@ class MenuState(GameState):
     def __init__(self, manager):
         super().__init__(manager)
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        bw, bh = 340, 54
+        gap = 12
+        start_y = cy - 100
         self.buttons = [
-            Button(cx-160, cy-70,  320, 60, "New Encounter",    lambda: manager.change_state("SETUP")),
-            Button(cx-160, cy+10,  320, 60, "Load Scenario",    lambda: self._open_load_modal(),
-                   color=COLORS["panel"]),
-            Button(cx-160, cy+90,  320, 60, "Import from TaleSpire", lambda: self._import_from_talespire(),
-                   color=COLORS["accent"]),
-            Button(cx-160, cy+170, 320, 60, "Exit",             lambda: manager.quit()),
+            Button(cx-bw//2, start_y,              bw, bh, "New Encounter",
+                   lambda: manager.change_state("SETUP")),
+            Button(cx-bw//2, start_y + (bh+gap),   bw, bh, "Hero Creator",
+                   lambda: manager.change_state("HERO_CREATOR"),
+                   color=COLORS["player"]),
+            Button(cx-bw//2, start_y + (bh+gap)*2, bw, bh, "Load Scenario",
+                   lambda: self._open_load_modal(),
+                   color=COLORS["panel_light"], style="outline"),
+            Button(cx-bw//2, start_y + (bh+gap)*3, bw, bh, "Import from TaleSpire",
+                   lambda: self._import_from_talespire(),
+                   color=COLORS["accent_dim"], style="outline"),
+            Button(cx-bw//2, start_y + (bh+gap)*4, bw, bh, "Exit",
+                   lambda: manager.quit(),
+                   color=COLORS["danger_dim"]),
         ]
         self.scenario_modal = None
+        self._bg_particles = []
+        for _ in range(40):
+            self._bg_particles.append([
+                random.randint(0, SCREEN_WIDTH),
+                random.randint(0, SCREEN_HEIGHT),
+                random.uniform(0.2, 0.8),
+                random.randint(1, 3),
+            ])
 
     def _import_from_talespire(self):
         self.manager.change_state("SETUP")
-        # Activate import mode in the setup state
         if hasattr(self.manager.current_state, "enable_import"):
             self.manager.current_state.enable_import()
 
@@ -322,13 +340,47 @@ class MenuState(GameState):
 
     def draw(self, screen):
         screen.fill(COLORS["bg"])
-        title = fonts.title.render("D&D 5e AI Encounter Manager", True, COLORS["accent"])
-        screen.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, 160))
-        sub = fonts.header.render("2014 Edition  •  Endgame Ready", True, COLORS["text_dim"])
-        screen.blit(sub, (SCREEN_WIDTH//2 - sub.get_width()//2, 230))
+
+        # Animated background particles (subtle floating dots)
+        for p in self._bg_particles:
+            p[1] -= p[2]
+            if p[1] < 0:
+                p[1] = SCREEN_HEIGHT
+                p[0] = random.randint(0, SCREEN_WIDTH)
+            alpha = int(40 * p[2])
+            s = pygame.Surface((p[3]*2, p[3]*2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (*COLORS["accent"], alpha), (p[3], p[3]), p[3])
+            screen.blit(s, (int(p[0]), int(p[1])))
+
+        # Decorative line
+        cx = SCREEN_WIDTH // 2
+        pygame.draw.line(screen, COLORS["border"], (cx - 250, 260), (cx + 250, 260), 1)
+
+        # Title with glow effect
+        title_text = "D&D 5e AI Encounter Manager"
+        # Glow layer
+        glow = fonts.title.render(title_text, True, COLORS["accent_dim"])
+        glow.set_alpha(60)
+        screen.blit(glow, (cx - glow.get_width()//2 + 2, 142))
+        # Main title
+        title = fonts.title.render(title_text, True, COLORS["accent"])
+        screen.blit(title, (cx - title.get_width()//2, 140))
+
+        sub = fonts.header.render("2014 Edition  |  Endgame Ready", True, COLORS["text_dim"])
+        screen.blit(sub, (cx - sub.get_width()//2, 200))
+
+        # Version badge
+        ver = fonts.tiny.render("v2.0", True, COLORS["text_muted"])
+        screen.blit(ver, (cx - ver.get_width()//2, 240))
+
         mp = pygame.mouse.get_pos()
         for b in self.buttons:
             b.draw(screen, mp)
+
+        # Footer
+        footer = fonts.tiny.render("TaleSpire Integration  |  AI-Powered Combat  |  Full 5e 2014 Rules", True, COLORS["text_muted"])
+        screen.blit(footer, (cx - footer.get_width()//2, SCREEN_HEIGHT - 40))
+
         if self.scenario_modal:
             self.scenario_modal.draw(screen, mp)
 
@@ -1768,108 +1820,165 @@ class BattleState(GameState):
         return img
 
     def _draw_token(self, screen, entity, cx, cy, radius):
-        # Drop shadow
-        shadow_surf = pygame.Surface((radius*2+6, radius*2+6), pygame.SRCALPHA)
-        pygame.draw.circle(shadow_surf, (0,0,0,60), (radius+3, radius+3), radius+2)
-        screen.blit(shadow_surf, (cx - radius - 3, cy - radius - 3))
+        # Get creature type color tint
+        ctype = entity.stats.creature_type if hasattr(entity.stats, 'creature_type') else "Humanoid"
+        type_color = CREATURE_TYPE_COLORS.get(ctype, (160, 160, 160))
+        type_icon = CREATURE_ICONS.get(ctype, "??")
+
+        # Drop shadow (larger, softer)
+        shadow_size = radius * 2 + 10
+        shadow_surf = pygame.Surface((shadow_size, shadow_size), pygame.SRCALPHA)
+        pygame.draw.circle(shadow_surf, (0, 0, 0, 50), (shadow_size//2, shadow_size//2), radius + 3)
+        pygame.draw.circle(shadow_surf, (0, 0, 0, 30), (shadow_size//2, shadow_size//2), radius + 5)
+        screen.blit(shadow_surf, (cx - shadow_size//2, cy - shadow_size//2))
 
         img = self._get_token_image(entity.name)
         if img:
             scaled = pygame.transform.smoothscale(img, (radius*2, radius*2))
-            # Clip to circle via mask
             mask_surf = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
             pygame.draw.circle(mask_surf, (255,255,255,255), (radius, radius), radius)
             scaled.blit(mask_surf, (0,0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(scaled, (cx - radius, cy - radius))
-            border = (255, 215, 0) if entity.is_player else (192, 192, 192)
-            pygame.draw.circle(screen, border, (cx, cy), radius, 3)
+            # Polished border
+            if entity.is_player:
+                border = (255, 215, 0)
+                pygame.draw.circle(screen, border, (cx, cy), radius, 3)
+                pygame.draw.circle(screen, (255, 240, 150), (cx, cy), radius + 1, 1)
+            else:
+                border = type_color
+                pygame.draw.circle(screen, border, (cx, cy), radius, 3)
         else:
             # HP-based border color
             hp_pct = entity.hp / entity.max_hp if entity.max_hp > 0 else 0
             if entity.is_player:
-                border = (255, 215, 0)   # gold for players always
-            elif hp_pct > 0.6:
-                border = (160, 200, 160)
-            elif hp_pct > 0.3:
-                border = (220, 160, 50)
+                border_outer = (255, 215, 0)
+                # Class-based inner color
+                cls = entity.stats.character_class.lower() if entity.stats.character_class else ""
+                inner = COLORS.get(cls, COLORS["player"])
             else:
-                border = (200, 60, 60)
+                if hp_pct > 0.6:
+                    border_outer = type_color
+                elif hp_pct > 0.3:
+                    border_outer = COLORS["warning"]
+                else:
+                    border_outer = COLORS["danger"]
+                inner = tuple(max(0, c - 40) for c in type_color)
 
             if entity.has_condition("Prone"):
-                pygame.draw.ellipse(screen, border, (cx-radius, cy-radius//2, radius*2, radius))
-                pygame.draw.ellipse(screen, (30, 32, 36), (cx-radius+3, cy-radius//2+3, radius*2-6, radius-6))
-                pygame.draw.ellipse(screen, entity.color, (cx-radius+6, cy-radius//2+6, radius*2-12, radius-12), 4)
+                pygame.draw.ellipse(screen, border_outer, (cx-radius, cy-radius//2, radius*2, radius))
+                pygame.draw.ellipse(screen, COLORS["bg_dark"], (cx-radius+3, cy-radius//2+3, radius*2-6, radius-6))
+                pygame.draw.ellipse(screen, inner, (cx-radius+6, cy-radius//2+6, radius*2-12, radius-12), 4)
             else:
-                pygame.draw.circle(screen, border, (cx, cy), radius)
-                pygame.draw.circle(screen, (30, 32, 36), (cx, cy), radius - 4)
-                pygame.draw.circle(screen, entity.color, (cx, cy), radius - 7, 5)
+                # Outer ring
+                pygame.draw.circle(screen, border_outer, (cx, cy), radius)
+                # Dark fill
+                pygame.draw.circle(screen, COLORS["bg_dark"], (cx, cy), radius - 3)
+                # Inner colored ring
+                pygame.draw.circle(screen, inner, (cx, cy), radius - 5, 4)
+                # Subtle gradient highlight at top
+                highlight = pygame.Surface((radius*2, radius), pygame.SRCALPHA)
+                pygame.draw.ellipse(highlight, (*inner, 30), (4, 0, radius*2 - 8, radius - 4))
+                screen.blit(highlight, (cx - radius, cy - radius))
 
-            # Initials text with outline
-            initials = entity.name[:2].upper()
-            ts = fonts.small.render(initials, True, (0, 0, 0))
-            tf = fonts.small.render(initials, True, (240, 240, 240))
+            # Creature type icon + initials
+            if entity.is_player:
+                # Show class abbreviation for players
+                cls_name = entity.stats.character_class[:3].upper() if entity.stats.character_class else entity.name[:2].upper()
+                display_text = cls_name
+            else:
+                # Show creature type icon for monsters
+                display_text = type_icon
+
+            ts = fonts.small_bold.render(display_text, True, (0, 0, 0))
+            tf = fonts.small_bold.render(display_text, True, (240, 240, 240))
             tx = cx - tf.get_width() // 2
             ty = cy - tf.get_height() // 2
             for ox, oy in ((-1,0),(1,0),(0,-1),(0,1)):
                 screen.blit(ts, (tx+ox, ty+oy))
             screen.blit(tf, (tx, ty))
 
+            # Name label below token
+            name_label = entity.name[:12]
+            nl = fonts.tiny.render(name_label, True, COLORS["text_main"])
+            nl_bg = pygame.Surface((nl.get_width() + 6, nl.get_height() + 2), pygame.SRCALPHA)
+            nl_bg.fill((0, 0, 0, 140))
+            screen.blit(nl_bg, (cx - nl.get_width()//2 - 3, cy + radius + 12))
+            screen.blit(nl, (cx - nl.get_width()//2, cy + radius + 13))
+
             # CR badge for monsters (bottom-right of token)
             if not entity.is_player and entity.stats.challenge_rating:
                 cr = entity.stats.challenge_rating
-                cr_str = f"{cr:.3g}" if cr < 1 else str(int(cr))
-                badge = fonts.tiny.render(cr_str, True, (255, 220, 100))
-                bx = cx + radius - badge.get_width() - 1
-                by = cy + radius - badge.get_height()
-                pygame.draw.rect(screen, (0,0,0,180), (bx-2, by-1, badge.get_width()+4, badge.get_height()+2))
-                screen.blit(badge, (bx, by))
+                cr_str = f"CR{cr:.3g}" if cr < 1 else f"CR{int(cr)}"
+                badge_f = fonts.tiny.render(cr_str, True, (255, 220, 100))
+                bx = cx + radius - badge_f.get_width()
+                by = cy + radius - badge_f.get_height() + 2
+                badge_bg = pygame.Surface((badge_f.get_width() + 6, badge_f.get_height() + 2), pygame.SRCALPHA)
+                pygame.draw.rect(badge_bg, (0, 0, 0, 200), (0, 0, badge_bg.get_width(), badge_bg.get_height()), border_radius=3)
+                screen.blit(badge_bg, (bx - 3, by - 1))
+                screen.blit(badge_f, (bx, by))
 
-        # Concentration ring (teal)
+        # Concentration ring (animated teal pulse)
         if entity.concentrating_on:
-            pygame.draw.circle(screen, COLORS["concentration"], (cx, cy), radius + 5, 2)
+            pulse = int(math.sin(pygame.time.get_ticks() * 0.005) * 30 + 225)
+            conc_color = (COLORS["concentration"][0], COLORS["concentration"][1], COLORS["concentration"][2])
+            pygame.draw.circle(screen, conc_color, (cx, cy), radius + 5, 2)
+            # Spell name below concentration ring
+            sp_name = entity.concentrating_on[:10]
+            sn = fonts.tiny.render(sp_name, True, COLORS["concentration"])
+            screen.blit(sn, (cx - sn.get_width()//2, cy - radius - 14))
 
-        # Condition count badge (top-right)
+        # Condition badges (top-right, stacked)
         if entity.conditions:
             n = len(entity.conditions)
-            pygame.draw.circle(screen, COLORS["spell"], (cx + radius - 3, cy - radius + 3), 6)
+            badge_r = 8
+            badge_cx = cx + radius - 2
+            badge_cy = cy - radius + 2
+            # Background circle
+            pygame.draw.circle(screen, COLORS["spell"], (badge_cx, badge_cy), badge_r)
+            pygame.draw.circle(screen, (255, 255, 255), (badge_cx, badge_cy), badge_r, 1)
             ns = fonts.tiny.render(str(n), True, (255, 255, 255))
-            screen.blit(ns, (cx + radius - 3 - ns.get_width()//2, cy - radius + 3 - ns.get_height()//2))
+            screen.blit(ns, (badge_cx - ns.get_width()//2, badge_cy - ns.get_height()//2))
 
         # Death Save Display (below token for dying players)
         if entity.is_player and entity.hp <= 0 and entity.death_save_failures < 3 and not entity.is_stable:
             ds_y = cy + radius + 4
-            # Draw success/failure pips
             for i in range(3):
-                px = cx - 15 + i * 10
-                color = (0, 200, 0) if i < entity.death_save_successes else (60, 60, 60)
-                pygame.draw.circle(screen, color, (px, ds_y), 4)
+                px = cx - 15 + i * 12
+                color = (0, 220, 50) if i < entity.death_save_successes else (50, 50, 50)
+                pygame.draw.circle(screen, color, (px, ds_y), 5)
+                pygame.draw.circle(screen, (100, 100, 100), (px, ds_y), 5, 1)
             for i in range(3):
-                px = cx - 15 + i * 10
-                color = (220, 40, 40) if i < entity.death_save_failures else (60, 60, 60)
-                pygame.draw.circle(screen, color, (px, ds_y + 10), 4)
-            # History text
+                px = cx - 15 + i * 12
+                color = (230, 40, 40) if i < entity.death_save_failures else (50, 50, 50)
+                pygame.draw.circle(screen, color, (px, ds_y + 13), 5)
+                pygame.draw.circle(screen, (100, 100, 100), (px, ds_y + 13), 5, 1)
             if entity.death_save_history:
                 hist_str = " ".join(entity.death_save_history[-5:])
                 ht = fonts.tiny.render(hist_str, True, (200, 200, 200))
-                screen.blit(ht, (cx - ht.get_width()//2, ds_y + 16))
+                screen.blit(ht, (cx - ht.get_width()//2, ds_y + 22))
         elif entity.is_player and entity.is_stable and entity.hp <= 0:
-            st = fonts.tiny.render("STABLE", True, (0, 200, 100))
+            st = fonts.small_bold.render("STABLE", True, (0, 220, 120))
             screen.blit(st, (cx - st.get_width()//2, cy + radius + 4))
 
-        # Rage indicator (red glow ring)
+        # Rage indicator (pulsing red glow)
         if hasattr(entity, 'rage_active') and entity.rage_active:
-            for r_off in range(3):
-                pygame.draw.circle(screen, (255, 50, 20), (cx, cy), radius + 7 + r_off, 1)
+            pulse = int(math.sin(pygame.time.get_ticks() * 0.008) * 40 + 200)
+            rage_surf = pygame.Surface((radius*2+20, radius*2+20), pygame.SRCALPHA)
+            pygame.draw.circle(rage_surf, (255, 30, 0, min(pulse, 80)), (radius+10, radius+10), radius + 8)
+            pygame.draw.circle(rage_surf, (255, 50, 20, min(pulse, 50)), (radius+10, radius+10), radius + 6)
+            screen.blit(rage_surf, (cx - radius - 10, cy - radius - 10))
 
-        # Summon indicator (cyan ring)
+        # Summon indicator (cyan ring with timer)
         if hasattr(entity, 'is_summon') and entity.is_summon:
             pygame.draw.circle(screen, (0, 200, 200), (cx, cy), radius + 5, 2)
             rnds = fonts.tiny.render(f"{entity.summon_rounds_left}r", True, (0, 200, 200))
             screen.blit(rnds, (cx - rnds.get_width()//2, cy + radius + 3))
 
-        # Hunter's Mark / Hex target indicator (crosshair)
-        if hasattr(entity, 'marked_target') and entity.marked_target:
-            pass  # Marker shown on the marked entity, not the caster
+        # Marked target indicator (crosshair overlay)
+        if hasattr(entity, 'is_marked') and entity.is_marked:
+            xh_color = (255, 80, 80)
+            pygame.draw.line(screen, xh_color, (cx - radius + 3, cy), (cx + radius - 3, cy), 1)
+            pygame.draw.line(screen, xh_color, (cx, cy - radius + 3), (cx, cy + radius - 3), 1)
 
     # ------------------------------------------------------------------ #
     # Dice Rolling Helpers                                                 #
@@ -2398,85 +2507,150 @@ class BattleState(GameState):
 
     # --- Top bar ---
     def _draw_top_bar(self, screen, curr):
-        pygame.draw.rect(screen, (28,30,33), (0, 0, SCREEN_WIDTH, TOP_BAR_H))
-        pygame.draw.line(screen, COLORS["border"], (0, TOP_BAR_H), (SCREEN_WIDTH, TOP_BAR_H), 2)
-        # Round counter
-        rt = fonts.header.render(f"ROUND {self.battle.round}", True, COLORS["accent"])
-        screen.blit(rt, (15, TOP_BAR_H//2 - rt.get_height()//2))
-        
+        # Top bar background with subtle gradient
+        draw_gradient_rect(screen, (0, 0, SCREEN_WIDTH, TOP_BAR_H),
+                           COLORS["panel_header"], COLORS["panel_dark"])
+        pygame.draw.line(screen, COLORS["border_light"], (0, TOP_BAR_H), (SCREEN_WIDTH, TOP_BAR_H), 2)
+
+        # Round counter with styled badge
+        round_text = f"ROUND {self.battle.round}"
+        rt = fonts.header.render(round_text, True, COLORS["accent"])
+        # Round badge background
+        round_bg_w = rt.get_width() + 20
+        round_bg = pygame.Rect(10, TOP_BAR_H//2 - rt.get_height()//2 - 4, round_bg_w, rt.get_height() + 8)
+        pygame.draw.rect(screen, COLORS["accent_dim"], round_bg, border_radius=6)
+        pygame.draw.rect(screen, COLORS["accent"], round_bg, 1, border_radius=6)
+        screen.blit(rt, (20, TOP_BAR_H//2 - rt.get_height()//2))
+
         # TaleSpire Indicator
         if pygame.time.get_ticks() - self.ts_last_update < 3000:
             ts_lbl = fonts.tiny.render("TaleSpire Linked", True, COLORS["success"])
             screen.blit(ts_lbl, (SCREEN_WIDTH - 130, 12))
-            pygame.draw.circle(screen, COLORS["success"], (SCREEN_WIDTH - 140, 19), 4)
+            # Pulsing green dot
+            pulse = int(math.sin(pygame.time.get_ticks() * 0.004) * 2 + 5)
+            pygame.draw.circle(screen, COLORS["success"], (SCREEN_WIDTH - 140, 19), pulse)
 
         self.btn_menu.draw(screen, pygame.mouse.get_pos())
+
         # Initiative cards
-        card_x = 130
-        card_w, card_h = 130, 82
+        card_x = round_bg.right + 15
+        card_w, card_h = 120, 88
         for i, ent in enumerate(self.battle.entities):
-            if card_x > SCREEN_WIDTH - 200:
+            if card_x > SCREEN_WIDTH - 180:
                 break
             is_curr = (ent == curr) and self.battle.combat_started
+
+            # Card colors based on entity type
             if ent.is_lair:
-                bg = (60, 40, 80) if not is_curr else COLORS["accent"]
+                bg_top = (65, 40, 85)
+                bg_bot = (50, 30, 65)
+            elif is_curr:
+                bg_top = (50, 70, 120)
+                bg_bot = (35, 50, 90)
+            elif ent.is_player:
+                bg_top = (35, 45, 55)
+                bg_bot = (28, 35, 42)
             else:
-                bg = COLORS["accent"] if is_curr else (45, 47, 52)
-            bord = COLORS["success"] if is_curr else COLORS["border"]
-            r = pygame.Rect(card_x, 8, card_w, card_h)
-            pygame.draw.rect(screen, bg, r, border_radius=7)
-            pygame.draw.rect(screen, bord, r, 2, border_radius=7)
+                bg_top = (45, 38, 38)
+                bg_bot = (35, 28, 28)
+
+            bord = COLORS["accent"] if is_curr else COLORS["border"]
+            r = pygame.Rect(card_x, 6, card_w, card_h)
+            draw_gradient_rect(screen, r, bg_top, bg_bot, border_radius=8)
+            # Active glow
+            if is_curr:
+                glow = pygame.Surface((card_w + 4, card_h + 4), pygame.SRCALPHA)
+                pygame.draw.rect(glow, (*COLORS["accent"], 40), (0, 0, card_w + 4, card_h + 4), border_radius=10)
+                screen.blit(glow, (card_x - 2, 4))
+            pygame.draw.rect(screen, bord, r, 2 if is_curr else 1, border_radius=8)
+
             # Dead overlay
             if ent.hp <= 0:
                 s = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
-                s.fill((0,0,0,150))
-                screen.blit(s, (card_x, 8))
-            # HP bar
-            pct = max(0, ent.hp / ent.max_hp) if ent.max_hp > 0 else 0
-            bar_c = COLORS["success"] if pct>0.5 else COLORS["warning"] if pct>0.25 else COLORS["danger"]
-            pygame.draw.rect(screen, (20,20,20), (card_x+4, 75, card_w-8, 6))
-            pygame.draw.rect(screen, bar_c,      (card_x+4, 75, int((card_w-8)*pct), 6))
-            # Name & initiative
+                s.fill((0, 0, 0, 160))
+                screen.blit(s, (card_x, 6))
+                # Skull indicator
+                skull = fonts.body_bold.render("X", True, COLORS["danger"])
+                screen.blit(skull, (card_x + card_w//2 - skull.get_width()//2,
+                                    6 + card_h//2 - skull.get_height()//2))
+
+            # HP bar (polished)
+            hp_bar.draw(screen, card_x + card_w//2, 78, card_w - 10, ent.hp, ent.max_hp, height=6)
+
+            # Name
             name_col = COLORS["text_main"]
             if ent.is_lair:
                 name_col = COLORS["legendary"]
-            ns = fonts.tiny.render(ent.name[:14], True, name_col)
-            is_ = fonts.header.render(str(ent.initiative), True, (255,255,255))
-            hp_s = fonts.tiny.render(f"{ent.hp}/{ent.max_hp}", True, bar_c)
-            screen.blit(ns, (card_x+6, 12))
-            screen.blit(is_, (card_x+6, 30))
-            screen.blit(hp_s, (card_x+6, 58))
-            # Icons
-            icon_x = card_x + card_w - 14
+            elif ent.is_player:
+                name_col = COLORS["player"]
+            ns = fonts.tiny.render(ent.name[:13], True, name_col)
+            screen.blit(ns, (card_x + 5, 10))
+
+            # Initiative number (large)
+            is_ = fonts.header.render(str(ent.initiative), True, COLORS["text_bright"])
+            screen.blit(is_, (card_x + 5, 24))
+
+            # HP text
+            pct = max(0, ent.hp / ent.max_hp) if ent.max_hp > 0 else 0
+            hp_c = COLORS["hp_full"] if pct > 0.5 else COLORS["hp_mid"] if pct > 0.25 else COLORS["hp_low"]
+            hp_s = fonts.tiny.render(f"{ent.hp}/{ent.max_hp}", True, hp_c)
+            screen.blit(hp_s, (card_x + 5, 54))
+
+            # Status icons (right side)
+            icon_x = card_x + card_w - 12
+            icon_y = 14
             if ent.action_used:
-                pygame.draw.circle(screen, COLORS["danger"],  (icon_x, 18), 5)
-                icon_x -= 14
+                pygame.draw.circle(screen, COLORS["danger"], (icon_x, icon_y), 4)
+                at = fonts.tiny.render("A", True, (255,255,255))
+                screen.blit(at, (icon_x - at.get_width()//2, icon_y - at.get_height()//2))
+                icon_x -= 12
             if ent.reaction_used:
-                pygame.draw.circle(screen, COLORS["reaction"],(icon_x, 18), 5)
-                icon_x -= 14
+                pygame.draw.circle(screen, COLORS["reaction"], (icon_x, icon_y), 4)
+                icon_x -= 12
             if ent.concentrating_on:
-                pygame.draw.circle(screen, COLORS["concentration"], (icon_x, 18), 5)
-            card_x += card_w + 6
+                pygame.draw.circle(screen, COLORS["concentration"], (icon_x, icon_y), 4)
+                ct = fonts.tiny.render("C", True, (0,0,0))
+                screen.blit(ct, (icon_x - ct.get_width()//2, icon_y - ct.get_height()//2))
+
+            # Conditions indicator
+            if ent.conditions:
+                cond_txt = fonts.tiny.render(f"{len(ent.conditions)} cond", True, COLORS["spell"])
+                screen.blit(cond_txt, (card_x + card_w - cond_txt.get_width() - 4, 54))
+
+            card_x += card_w + 5
 
     # --- Grid ---
     def _draw_grid(self, screen):
         gsz = self.battle.grid_size
-        
-        # Vertical lines
+
+        # Grid background
+        grid_bg = pygame.Rect(0, TOP_BAR_H, GRID_W, SCREEN_HEIGHT - TOP_BAR_H)
+        screen.fill(COLORS["bg_dark"], grid_bg)
+
+        # Draw grid lines with alternating subtle tones
         start_x = int(self.camera_x // gsz) * gsz
         sx = start_x - self.camera_x
+        col_idx = int(self.camera_x // gsz)
         while sx < GRID_W:
             if sx >= 0:
-                pygame.draw.line(screen, COLORS["grid"], (sx, TOP_BAR_H), (sx, SCREEN_HEIGHT))
+                # Every 5th line is brighter (25ft = 5 squares)
+                is_major = (col_idx % 5 == 0)
+                color = COLORS["border"] if is_major else COLORS["grid_line"]
+                width = 1
+                pygame.draw.line(screen, color, (int(sx), TOP_BAR_H), (int(sx), SCREEN_HEIGHT), width)
             sx += gsz
-            
-        # Horizontal lines
+            col_idx += 1
+
         start_y = int(self.camera_y // gsz) * gsz
         sy = start_y - self.camera_y + TOP_BAR_H
+        row_idx = int(self.camera_y // gsz)
         while sy < SCREEN_HEIGHT:
             if sy >= TOP_BAR_H:
-                pygame.draw.line(screen, COLORS["grid"], (0, sy), (GRID_W, sy))
+                is_major = (row_idx % 5 == 0)
+                color = COLORS["border"] if is_major else COLORS["grid_line"]
+                pygame.draw.line(screen, color, (0, int(sy)), (GRID_W, int(sy)), 1)
             sy += gsz
+            row_idx += 1
 
     # --- Terrain tiles ---
     def _draw_terrain(self, screen):
@@ -2712,24 +2886,37 @@ class BattleState(GameState):
         self.ui_right_click_zones.clear()
 
         panel_rect = pygame.Rect(GRID_W, TOP_BAR_H, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H)
-        pygame.draw.rect(screen, COLORS["panel_dark"], panel_rect)
-        pygame.draw.line(screen, COLORS["border"], (GRID_W, TOP_BAR_H), (GRID_W, SCREEN_HEIGHT), 3)
+        draw_gradient_rect(screen, panel_rect,
+                           COLORS["panel_dark"], tuple(max(0, c - 3) for c in COLORS["panel_dark"]))
+        pygame.draw.line(screen, COLORS["border_light"], (GRID_W, TOP_BAR_H), (GRID_W, SCREEN_HEIGHT), 2)
 
         # Active creature header
         hdr_rect = pygame.Rect(GRID_W, TOP_BAR_H, PANEL_W, 38)
-        pygame.draw.rect(screen, (35,37,41), hdr_rect)
+        draw_gradient_rect(screen, hdr_rect, COLORS["panel_header"], COLORS["panel_dark"])
+        pygame.draw.line(screen, COLORS["separator"], (GRID_W, TOP_BAR_H + 38), (SCREEN_WIDTH, TOP_BAR_H + 38))
         if not self.battle.combat_started:
-            at = fonts.body.render("DEPLOYMENT PHASE", True, COLORS["accent"])
+            at = fonts.body_bold.render("DEPLOYMENT PHASE", True, COLORS["accent"])
         else:
-            at = fonts.body.render(f"Active: {curr.name}  (Init {curr.initiative})", True, COLORS["accent"])
-        screen.blit(at, (GRID_W+12, TOP_BAR_H+8))
+            side_indicator = "[PLAYER]" if curr.is_player else "[NPC]"
+            side_color = COLORS["player"] if curr.is_player else COLORS["enemy"]
+            at = fonts.body_bold.render(f"{side_indicator} {curr.name}  (Init {curr.initiative})", True, side_color)
+        screen.blit(at, (GRID_W + 12, TOP_BAR_H + 8))
 
-        # Tabs
+        # Tabs (polished)
+        tab_w = PANEL_W // len(TABS)
         for i, tab in enumerate(TABS):
-            tr = pygame.Rect(GRID_W + i*118, TOP_BAR_H+38, 116, 28)
-            bg = COLORS["accent"] if i == self.active_tab else (45,47,52)
-            pygame.draw.rect(screen, bg, tr, border_radius=4)
-            tt = fonts.small.render(tab, True, COLORS["text_main"])
+            tr = pygame.Rect(GRID_W + i * tab_w, TOP_BAR_H + 38, tab_w - 2, 30)
+            is_active = i == self.active_tab
+            is_hover = tr.collidepoint(mp)
+            if is_active:
+                draw_gradient_rect(screen, tr, COLORS["accent_dim"], COLORS["panel_dark"], border_radius=4)
+                pygame.draw.line(screen, COLORS["accent"],
+                                 (tr.x + 4, tr.bottom - 2), (tr.right - 4, tr.bottom - 2), 2)
+                tt = fonts.small_bold.render(tab, True, COLORS["text_bright"])
+            else:
+                if is_hover:
+                    pygame.draw.rect(screen, COLORS["hover"], tr, border_radius=4)
+                tt = fonts.small.render(tab, True, COLORS["text_dim"] if not is_hover else COLORS["text_main"])
             screen.blit(tt, tt.get_rect(center=tr.center))
 
         content_y = TOP_BAR_H + 70 + self.panel_scroll
