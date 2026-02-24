@@ -37,6 +37,17 @@ class SpellInfo:
     duration: str = ""                # "1 minute", "1 hour"
     description: str = ""
     half_on_save: bool = True         # AoE spells usually deal half on save
+    # Summon support
+    summon_name: str = ""             # If set, spawns a token (e.g. "Spiritual Weapon")
+    summon_hp: int = 0                # HP of summoned creature (0 = object/no HP)
+    summon_ac: int = 10
+    summon_damage_dice: str = ""      # Damage the summon deals
+    summon_damage_type: str = ""
+    summon_attack_bonus: int = 0
+    summon_duration_rounds: int = 10  # How long summon lasts
+    # Bonus damage on weapon hits (e.g. Hunter's Mark 1d6)
+    bonus_damage_dice: str = ""
+    bonus_damage_type: str = ""
 
 @dataclass
 class Action:
@@ -62,7 +73,7 @@ class Action:
 class Feature:
     name: str
     description: str = ""
-    feature_type: str = "passive"     # passive, legendary, lair, reaction, trait
+    feature_type: str = "passive"     # passive, legendary, lair, reaction, trait, class, racial
     uses_per_day: int = -1            # -1 = unlimited/passive
     legendary_cost: int = 1           # cost in legendary actions
     recharge: str = ""                # "5-6", "short rest", "long rest"
@@ -73,6 +84,57 @@ class Feature:
     applies_condition: str = ""
     damage_dice: str = ""
     damage_type: str = ""
+    # Class mechanic fields
+    mechanic: str = ""                # Key for AI behavior: "rage", "sneak_attack",
+                                      # "divine_smite", "hunters_mark", "colossus_slayer",
+                                      # "second_wind", "action_surge", "lay_on_hands",
+                                      # "cunning_action", "uncanny_dodge", "evasion",
+                                      # "wild_shape", "ki", "bardic_inspiration",
+                                      # "metamagic", "eldritch_invocation",
+                                      # "channel_divinity", "rage_damage", "reckless_attack",
+                                      # "danger_sense", "feral_instinct", "brutal_critical",
+                                      # "flurry_of_blows", "patient_defense", "step_of_wind",
+                                      # "stunning_strike", "deflect_missiles",
+                                      # "favored_enemy", "natural_explorer",
+                                      # "fighting_style", "extra_attack"
+    mechanic_value: str = ""          # Extra data: dice "5d6", HP pool "50", etc.
+    short_rest_recharge: bool = False # Recharges on short rest
+
+@dataclass
+class RacialTrait:
+    name: str
+    description: str = ""
+    mechanic: str = ""                # "darkvision", "fey_ancestry", "lucky",
+                                      # "relentless_endurance", "savage_attacks",
+                                      # "breath_weapon", "stonecunning",
+                                      # "halfling_nimbleness", "brave",
+                                      # "trance", "mask_of_wild",
+                                      # "dwarven_resilience", "hellish_rebuke",
+                                      # "infernal_legacy", "draconic_ancestry"
+    mechanic_value: str = ""          # e.g. "fire" for draconic ancestry
+    uses_per_day: int = -1            # -1 = passive
+    damage_dice: str = ""
+    damage_type: str = ""
+    save_dc: int = 0
+    save_ability: str = ""
+
+@dataclass
+class SummonTemplate:
+    """Template for summoned creatures/objects (Spiritual Weapon, Animate Dead, etc.)"""
+    name: str
+    hp: int = 0                       # 0 = untargetable object
+    ac: int = 10
+    speed: int = 20
+    fly_speed: int = 0
+    attack_bonus: int = 0
+    damage_dice: str = ""
+    damage_type: str = "force"
+    damage_bonus: int = 0
+    action_type: str = "bonus"        # bonus for spiritual weapon, action for others
+    range: int = 5
+    duration_rounds: int = 10
+    is_object: bool = True            # True = can't be targeted by most attacks
+    owner_side: str = "player"        # "player" or "enemy"
 
 @dataclass
 class Item:
@@ -129,3 +191,18 @@ class CreatureStats:
     legendary_resistance_count: int = 0
     # Items
     items: List[Item] = field(default_factory=list)
+    # Hero-specific fields
+    character_class: str = ""         # "Fighter", "Wizard", "Barbarian", etc.
+    character_level: int = 0          # 0 = NPC/monster
+    race: str = ""                    # "Human", "Elf", "Dwarf", etc.
+    subclass: str = ""                # "Champion", "Evocation", "Totem Warrior", etc.
+    racial_traits: List[RacialTrait] = field(default_factory=list)
+    # Resource pools
+    ki_points: int = 0               # Monk
+    sorcery_points: int = 0          # Sorcerer
+    lay_on_hands_pool: int = 0       # Paladin
+    rage_count: int = 0              # Barbarian
+    bardic_inspiration_dice: str = "" # Bard: "1d8", "1d10", etc.
+    bardic_inspiration_count: int = 0
+    # Base AC for unarmored defense calculations
+    base_ac_unarmored: bool = False   # True = uses unarmored defense formula

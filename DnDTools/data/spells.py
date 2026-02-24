@@ -79,9 +79,31 @@ _spells = {
     "Hellish Rebuke": SpellInfo("Hellish Rebuke", level=1, action_type="reaction", range=60, targets="single",
                                 damage_dice="2d10", damage_type="fire", save_ability="Dexterity", half_on_save=True,
                                 description="Reaction when damaged"),
+
+    "Hex": SpellInfo("Hex", level=1, action_type="bonus", range=90, targets="single", concentration=True, duration="1 hour",
+                     description="Extra 1d6 necrotic on hits vs hexed target. Disadvantage on one ability check.",
+                     bonus_damage_dice="1d6", bonus_damage_type="necrotic"),
+
+    "Faerie Fire": SpellInfo("Faerie Fire", level=1, action_type="action", range=60, aoe_radius=20, aoe_shape="cube",
+                             save_ability="Dexterity", applies_condition="Outlined", concentration=True, duration="1 minute",
+                             targets="aoe", half_on_save=False,
+                             description="Outlined creatures grant Advantage on attacks. No invisibility."),
+
+    "Heroism": SpellInfo("Heroism", level=1, action_type="action", range=0, targets="single", concentration=True,
+                         duration="1 minute", description="Target immune to Frightened, gains temp HP = CHA mod each turn"),
+
+    "Dissonant Whispers": SpellInfo("Dissonant Whispers", level=1, action_type="action", range=60, targets="single",
+                                    damage_dice="3d6", damage_type="psychic", save_ability="Wisdom", half_on_save=True,
+                                    description="Target uses reaction to move away on fail"),
+
+    "Tasha's Hideous Laughter": SpellInfo("Tasha's Hideous Laughter", level=1, action_type="action", range=30,
+                                          targets="single", save_ability="Wisdom", applies_condition="Incapacitated",
+                                          concentration=True, duration="1 minute",
+                                          description="Target falls prone and is incapacitated, laughing"),
     
     "Hunter's Mark": SpellInfo("Hunter's Mark", level=1, action_type="bonus", range=90, targets="single", concentration=True, duration="1 hour",
-                               description="Extra 1d6 dmg on weapon hits"),
+                               description="Extra 1d6 dmg on weapon hits vs marked target",
+                               bonus_damage_dice="1d6", bonus_damage_type=""),
     
     "Inflict Wounds": SpellInfo("Inflict Wounds", level=1, action_type="action", range=5, targets="single",
                                 damage_dice="3d10", damage_type="necrotic"),
@@ -125,16 +147,43 @@ _spells = {
                          damage_dice="3d8", damage_type="thunder", save_ability="Constitution", half_on_save=True, targets="aoe"),
     
     "Spiritual Weapon": SpellInfo("Spiritual Weapon", level=2, action_type="bonus", range=60, targets="single",
-                                  damage_dice="1d8+4", damage_type="force", duration="1 minute", description="Bonus action attack"),
+                                  damage_dice="1d8+4", damage_type="force", duration="1 minute",
+                                  description="Summon spectral weapon. Bonus action melee spell attack each turn.",
+                                  summon_name="Spiritual Weapon", summon_hp=0, summon_ac=99,
+                                  summon_damage_dice="1d8", summon_damage_type="force",
+                                  summon_attack_bonus=0, summon_duration_rounds=10),
     
     "Web": SpellInfo("Web", level=2, action_type="action", range=60, aoe_radius=20, aoe_shape="cube",
                      save_ability="Dexterity", applies_condition="Restrained", concentration=True, duration="1 hour", targets="aoe"),
+
+    "Heat Metal": SpellInfo("Heat Metal", level=2, action_type="action", range=60, targets="single",
+                            damage_dice="2d8", damage_type="fire", concentration=True, duration="1 minute",
+                            description="Target holding/wearing metal takes damage. Disadvantage on attacks/checks."),
+
+    "Moonbeam": SpellInfo("Moonbeam", level=2, action_type="action", range=120, aoe_radius=5, aoe_shape="cylinder",
+                          damage_dice="2d10", damage_type="radiant", save_ability="Constitution", half_on_save=True,
+                          targets="aoe", concentration=True, duration="1 minute"),
+
+    "Silence": SpellInfo("Silence", level=2, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
+                         targets="aoe", concentration=True, duration="10 minutes",
+                         description="No sound in area. Prevents verbal spellcasting."),
+
+    "Mirror Image": SpellInfo("Mirror Image", level=2, action_type="action", range=0, targets="self",
+                              duration="1 minute", description="3 illusory duplicates. AC 10+DEX. Destroyed on hit."),
+
+    "Enhance Ability": SpellInfo("Enhance Ability", level=2, action_type="action", range=0, targets="single",
+                                 concentration=True, duration="1 hour",
+                                 description="Grant advantage on one ability's checks. Bear=STR, etc."),
 
     # --- LEVEL 3 ---
     "Call Lightning": SpellInfo("Call Lightning", level=3, action_type="action", range=120, aoe_radius=5, aoe_shape="sphere",
                                 damage_dice="3d10", damage_type="lightning", save_ability="Dexterity", half_on_save=True, targets="aoe",
                                 concentration=True, duration="10 minutes"),
     
+    "Conjure Animals": SpellInfo("Conjure Animals", level=3, action_type="action", range=60, targets="aoe",
+                                 concentration=True, duration="1 hour",
+                                 description="Summon fey spirits as beasts (DM chooses). CR varies by count."),
+
     "Counterspell": SpellInfo("Counterspell", level=3, action_type="reaction", range=60, targets="single",
                               description="Interrupt a spell cast"),
     

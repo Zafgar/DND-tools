@@ -1065,14 +1065,30 @@ class BattleState(GameState):
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
-            
-            # Apply all outcomes
-            for t, outcome in self.current_step_outcomes.items():
-                self._resolve_target_outcome(step, t, outcome)
-            
+
+            # Handle summon spawning
+            if step.step_type == "summon" and step.summon_name:
+                self.battle.spawn_summon(
+                    owner=step.attacker,
+                    name=step.summon_name,
+                    x=step.summon_x,
+                    y=step.summon_y,
+                    hp=step.summon_hp,
+                    ac=step.summon_ac,
+                    damage_dice=step.spell.summon_damage_dice if step.spell else "1d8",
+                    damage_type=step.spell.summon_damage_type if step.spell else "force",
+                    duration=step.summon_duration,
+                    spell_name=step.summon_spell or "",
+                )
+                self._log(f"  [SUMMON] {step.description}")
+            else:
+                # Apply all outcomes
+                for t, outcome in self.current_step_outcomes.items():
+                    self._resolve_target_outcome(step, t, outcome)
+
             self.pending_step_idx += 1
             self._prepare_step_outcomes()
-            
+
         if self.pending_step_idx >= len(steps):
             self.pending_plan = None
             self._log("[AI] Turn complete.")
@@ -1479,6 +1495,42 @@ class BattleState(GameState):
             pygame.draw.circle(screen, COLORS["spell"], (cx + radius - 3, cy - radius + 3), 6)
             ns = fonts.tiny.render(str(n), True, (255, 255, 255))
             screen.blit(ns, (cx + radius - 3 - ns.get_width()//2, cy - radius + 3 - ns.get_height()//2))
+
+        # Death Save Display (below token for dying players)
+        if entity.is_player and entity.hp <= 0 and entity.death_save_failures < 3 and not entity.is_stable:
+            ds_y = cy + radius + 4
+            # Draw success/failure pips
+            for i in range(3):
+                px = cx - 15 + i * 10
+                color = (0, 200, 0) if i < entity.death_save_successes else (60, 60, 60)
+                pygame.draw.circle(screen, color, (px, ds_y), 4)
+            for i in range(3):
+                px = cx - 15 + i * 10
+                color = (220, 40, 40) if i < entity.death_save_failures else (60, 60, 60)
+                pygame.draw.circle(screen, color, (px, ds_y + 10), 4)
+            # History text
+            if entity.death_save_history:
+                hist_str = " ".join(entity.death_save_history[-5:])
+                ht = fonts.tiny.render(hist_str, True, (200, 200, 200))
+                screen.blit(ht, (cx - ht.get_width()//2, ds_y + 16))
+        elif entity.is_player and entity.is_stable and entity.hp <= 0:
+            st = fonts.tiny.render("STABLE", True, (0, 200, 100))
+            screen.blit(st, (cx - st.get_width()//2, cy + radius + 4))
+
+        # Rage indicator (red glow ring)
+        if hasattr(entity, 'rage_active') and entity.rage_active:
+            for r_off in range(3):
+                pygame.draw.circle(screen, (255, 50, 20), (cx, cy), radius + 7 + r_off, 1)
+
+        # Summon indicator (cyan ring)
+        if hasattr(entity, 'is_summon') and entity.is_summon:
+            pygame.draw.circle(screen, (0, 200, 200), (cx, cy), radius + 5, 2)
+            rnds = fonts.tiny.render(f"{entity.summon_rounds_left}r", True, (0, 200, 200))
+            screen.blit(rnds, (cx - rnds.get_width()//2, cy + radius + 3))
+
+        # Hunter's Mark / Hex target indicator (crosshair)
+        if hasattr(entity, 'marked_target') and entity.marked_target:
+            pass  # Marker shown on the marked entity, not the caster
 
     # ------------------------------------------------------------------ #
     # Dice Rolling Helpers                                                 #
@@ -2425,6 +2477,27 @@ class BattleState(GameState):
             ln(f"Legendary Actions: {sel.legendary_actions_left}/{sel.stats.legendary_action_count}", COLORS["legendary"])
         if sel.stats.legendary_resistance_count:
             ln(f"Legendary Resist: {sel.legendary_resistances_left}/{sel.stats.legendary_resistance_count}", COLORS["legendary"])
+
+        # Class Resources
+        if sel.stats.character_class:
+            ln("")
+            ln(f"CLASS: {sel.stats.character_class} {sel.stats.character_level} ({sel.stats.subclass})", COLORS["accent"])
+            if sel.stats.race:
+                ln(f"Race: {sel.stats.race}", COLORS["text_dim"])
+        if hasattr(sel, 'rage_active') and sel.stats.rage_count > 0:
+            rage_str = "ACTIVE" if sel.rage_active else "Inactive"
+            rage_c = COLORS["danger"] if sel.rage_active else COLORS["text_dim"]
+            ln(f"Rage: {rage_str} ({sel.rages_left}/{sel.stats.rage_count} uses)", rage_c)
+        if sel.stats.ki_points > 0:
+            ln(f"Ki: {sel.ki_points_left}/{sel.stats.ki_points}", COLORS["spell"])
+        if sel.stats.sorcery_points > 0:
+            ln(f"Sorcery Points: {sel.sorcery_points_left}/{sel.stats.sorcery_points}", COLORS["spell"])
+        if sel.stats.lay_on_hands_pool > 0:
+            ln(f"Lay on Hands: {sel.lay_on_hands_left}/{sel.stats.lay_on_hands_pool} HP", COLORS["success"])
+        if sel.stats.bardic_inspiration_count > 0:
+            ln(f"Bardic Inspiration: {sel.bardic_inspiration_left}/{sel.stats.bardic_inspiration_count} ({sel.stats.bardic_inspiration_dice})", COLORS["spell"])
+        if hasattr(sel, 'marked_target') and sel.marked_target:
+            ln(f"Marked: {sel.marked_target.name}", COLORS["warning"])
 
         # Conditions
         ln("")
