@@ -89,6 +89,61 @@ class BattleSystem:
             self.turn_index = 0
         return self.entities[self.turn_index]
 
+    def spawn_summon(self, owner: Entity, name: str, x: float, y: float,
+                     hp: int = 0, ac: int = 10, atk_bonus: int = 0,
+                     damage_dice: str = "", damage_type: str = "force",
+                     duration: int = 10, spell_name: str = "") -> Entity:
+        """Spawn a summoned token (e.g. Spiritual Weapon) on the battlefield."""
+        from data.models import CreatureStats, Action, AbilityScores
+
+        spell_mod = owner.get_modifier(owner.stats.spellcasting_ability) if owner.stats.spellcasting_ability else 0
+        actual_atk = atk_bonus or owner.stats.spell_attack_bonus or (
+            owner.stats.proficiency_bonus + spell_mod)
+        actual_dmg_bonus = spell_mod
+
+        summon_stats = CreatureStats(
+            name=f"{name} ({owner.name})",
+            hit_points=max(hp, 1),
+            armor_class=ac,
+            speed=20,
+            actions=[
+                Action(name, description=f"Summon attack",
+                       attack_bonus=actual_atk, damage_dice=damage_dice or "1d8",
+                       damage_bonus=actual_dmg_bonus, damage_type=damage_type,
+                       range=5)
+            ],
+        )
+        ent = Entity(summon_stats, x, y, is_player=owner.is_player)
+        ent.is_summon = True
+        ent.summon_owner = owner
+        ent.summon_rounds_left = duration
+        ent.summon_spell_name = spell_name
+        ent.hp = max(hp, 1)
+        ent.max_hp = max(hp, 1)
+        # Summon acts right after the owner in initiative
+        ent.initiative = owner.initiative - 0.5
+
+        self.entities.append(ent)
+        # Re-sort to maintain initiative order
+        current = self.get_current_entity()
+        self.entities.sort(key=lambda e: e.initiative, reverse=True)
+        self.turn_index = self.entities.index(current)
+
+        self.log(f"[SUMMON] {name} appears at ({int(x)},{int(y)})!")
+        return ent
+
+    def remove_expired_summons(self):
+        """Remove summons that have expired."""
+        current = self.get_current_entity() if self.entities else None
+        expired = [e for e in self.entities if e.is_summon and e.summon_rounds_left <= 0]
+        for e in expired:
+            self.log(f"[SUMMON] {e.name} disappears.")
+        self.entities = [e for e in self.entities if e not in expired]
+        if current and current in self.entities:
+            self.turn_index = self.entities.index(current)
+        elif self.entities:
+            self.turn_index = min(self.turn_index, len(self.entities) - 1)
+
     def next_turn(self) -> Optional[Entity]:
         if not self.entities:
             return None
@@ -97,6 +152,14 @@ class BattleSystem:
         prev_ent = self.entities[self.turn_index]
         if prev_ent.hp > 0:
             self._handle_end_of_turn_saves(prev_ent)
+
+        # Check Barbarian Rage end-of-turn
+        if prev_ent.rage_active:
+            if prev_ent.check_rage_end():
+                self.log(f"[RAGE] {prev_ent.name}'s rage ends! (No attack/damage this turn)")
+
+        # Clean up expired summons
+        self.remove_expired_summons()
 
         # Advance turn
         self.turn_index += 1
@@ -417,6 +480,19 @@ class BattleSystem:
                 "lair_owner_name": e.lair_owner.name if e.lair_owner else None,
                 "active_effects": copy.deepcopy(e.active_effects),
                 "notes": e.notes,
+                "rage_active": e.rage_active,
+                "rage_rounds": e.rage_rounds,
+                "rages_left": e.rages_left,
+                "ki_points_left": e.ki_points_left,
+                "sorcery_points_left": e.sorcery_points_left,
+                "lay_on_hands_left": e.lay_on_hands_left,
+                "bardic_inspiration_left": e.bardic_inspiration_left,
+                "is_summon": e.is_summon,
+                "summon_rounds_left": e.summon_rounds_left,
+                "summon_spell_name": e.summon_spell_name,
+                "summon_owner_name": e.summon_owner.name if e.summon_owner else None,
+                "marked_target_name": e.marked_target.name if e.marked_target else None,
+                "death_save_history": e.death_save_history,
             }
             data["entities"].append(ent_data)
         return data
@@ -499,6 +575,17 @@ class BattleSystem:
             e.is_lair = ent_data.get("is_lair", False)
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
+            e.rage_active = ent_data.get("rage_active", False)
+            e.rage_rounds = ent_data.get("rage_rounds", 0)
+            e.rages_left = ent_data.get("rages_left", e.stats.rage_count)
+            e.ki_points_left = ent_data.get("ki_points_left", e.stats.ki_points)
+            e.sorcery_points_left = ent_data.get("sorcery_points_left", e.stats.sorcery_points)
+            e.lay_on_hands_left = ent_data.get("lay_on_hands_left", e.stats.lay_on_hands_pool)
+            e.bardic_inspiration_left = ent_data.get("bardic_inspiration_left", e.stats.bardic_inspiration_count)
+            e.is_summon = ent_data.get("is_summon", False)
+            e.summon_rounds_left = ent_data.get("summon_rounds_left", 0)
+            e.summon_spell_name = ent_data.get("summon_spell_name", "")
+            e.death_save_history = ent_data.get("death_save_history", [])
 
             conc_name = ent_data.get("concentrating_on")
             if conc_name:
@@ -515,6 +602,17 @@ class BattleSystem:
             if owner_name:
                 owner = next((x for x in self.entities if x.name == owner_name), None)
                 self.entities[i].lair_owner = owner
+
+        # Link summon owners and marked targets
+        for i, ent_data in enumerate(data["entities"]):
+            summon_owner_name = ent_data.get("summon_owner_name")
+            if summon_owner_name:
+                owner = next((x for x in self.entities if x.name == summon_owner_name), None)
+                self.entities[i].summon_owner = owner
+            marked_name = ent_data.get("marked_target_name")
+            if marked_name:
+                marked = next((x for x in self.entities if x.name == marked_name), None)
+                self.entities[i].marked_target = marked
 
     @classmethod
     def from_save(cls, filepath: str, log_callback: Callable[[str], None]) -> "BattleSystem":
@@ -591,6 +689,17 @@ class BattleSystem:
             e.is_lair = ent_data.get("is_lair", False)
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
+            e.rage_active = ent_data.get("rage_active", False)
+            e.rage_rounds = ent_data.get("rage_rounds", 0)
+            e.rages_left = ent_data.get("rages_left", e.stats.rage_count)
+            e.ki_points_left = ent_data.get("ki_points_left", e.stats.ki_points)
+            e.sorcery_points_left = ent_data.get("sorcery_points_left", e.stats.sorcery_points)
+            e.lay_on_hands_left = ent_data.get("lay_on_hands_left", e.stats.lay_on_hands_pool)
+            e.bardic_inspiration_left = ent_data.get("bardic_inspiration_left", e.stats.bardic_inspiration_count)
+            e.is_summon = ent_data.get("is_summon", False)
+            e.summon_rounds_left = ent_data.get("summon_rounds_left", 0)
+            e.summon_spell_name = ent_data.get("summon_spell_name", "")
+            e.death_save_history = ent_data.get("death_save_history", [])
 
             conc_name = ent_data.get("concentrating_on")
             if conc_name:
@@ -607,6 +716,17 @@ class BattleSystem:
             if owner_name:
                 owner = next((x for x in sys_obj.entities if x.name == owner_name), None)
                 sys_obj.entities[i].lair_owner = owner
+
+        # Link summon owners and marked targets
+        for i, ent_data in enumerate(data["entities"]):
+            summon_owner_name = ent_data.get("summon_owner_name")
+            if summon_owner_name:
+                owner = next((x for x in sys_obj.entities if x.name == summon_owner_name), None)
+                sys_obj.entities[i].summon_owner = owner
+            marked_name = ent_data.get("marked_target_name")
+            if marked_name:
+                marked = next((x for x in sys_obj.entities if x.name == marked_name), None)
+                sys_obj.entities[i].marked_target = marked
 
         sys_obj.turn_index = min(sys_obj.turn_index, max(0, len(sys_obj.entities) - 1))
         sys_obj.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
