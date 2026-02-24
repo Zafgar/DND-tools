@@ -11,7 +11,7 @@ from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect
 from data.models import CreatureStats, AbilityScores, Action, SpellInfo, Feature, RacialTrait
 from data.class_features import get_class_features, BARBARIAN_RAGE_COUNT
-from data.racial_traits import get_racial_traits, RACE_TRAITS_MAP
+from data.racial_traits import get_racial_traits, RACE_TRAITS_MAP, get_racial_asi, RACE_ASI
 from data.heroes import hero_list
 from data.hero_import import export_hero_to_file
 
@@ -39,18 +39,18 @@ CLASS_LIST = [
 ]
 
 SUBCLASS_MAP = {
-    "Barbarian": ["Totem Warrior"],
-    "Fighter": ["Champion"],
-    "Paladin": ["Devotion"],
-    "Rogue": ["Assassin"],
-    "Ranger": ["Hunter"],
-    "Cleric": ["War", "Life"],
-    "Wizard": ["Evocation"],
-    "Warlock": ["Fiend"],
-    "Sorcerer": ["Draconic Bloodline"],
+    "Barbarian": ["Totem Warrior", "Berserker"],
+    "Fighter": ["Champion", "Battle Master"],
+    "Paladin": ["Devotion", "Vengeance"],
+    "Rogue": ["Assassin", "Thief"],
+    "Ranger": ["Hunter", "Beast Master"],
+    "Cleric": ["Life", "War", "Light"],
+    "Wizard": ["Evocation", "Abjuration", "Divination"],
+    "Warlock": ["Fiend", "Great Old One"],
+    "Sorcerer": ["Draconic Bloodline", "Wild Magic"],
     "Bard": ["College of Lore", "College of Valor"],
     "Druid": ["Circle of the Moon", "Circle of the Land"],
-    "Monk": ["Way of the Open Hand"],
+    "Monk": ["Way of the Open Hand", "Way of Shadow"],
 }
 
 HIT_DICE = {
@@ -587,6 +587,9 @@ class HeroCreatorState(GameState):
         self.char_class = "Fighter"
         self.char_subclass = ""
         self.char_level = 1
+        # Variant Human: 2 chosen ASI abilities; Half-Elf: 2 chosen +1 abilities
+        self.variant_asi_choices = []  # list of ability names
+        self.halfelf_asi_choices = []  # list of ability names (not charisma)
 
     def _init_ui(self):
         # --- Left Column Widgets (x=30, w=370) ---
@@ -652,8 +655,28 @@ class HeroCreatorState(GameState):
 
     # ---- Event Handlers ----
 
+    def _get_racial_bonuses(self):
+        """Get the racial ability score bonuses for the current race, including choices."""
+        bonuses = get_racial_asi(self.char_race)
+        if self.char_race == "Variant Human":
+            for ab in self.variant_asi_choices[:2]:
+                bonuses[ab] = bonuses.get(ab, 0) + 1
+        elif self.char_race == "Half-Elf":
+            for ab in self.halfelf_asi_choices[:2]:
+                if ab != "charisma":
+                    bonuses[ab] = bonuses.get(ab, 0) + 1
+        return bonuses
+
+    def _get_effective_score(self, ability):
+        """Get ability score after racial bonuses (base + racial ASI)."""
+        base = self.ability_scores[ability]
+        bonuses = self._get_racial_bonuses()
+        return base + bonuses.get(ability, 0)
+
     def _on_race_change(self, value):
         self.char_race = value
+        self.variant_asi_choices = []
+        self.halfelf_asi_choices = []
 
     def _on_class_change(self, value):
         self.char_class = value
@@ -729,13 +752,14 @@ class HeroCreatorState(GameState):
         subclass = self.char_subclass
         level = self.char_level
 
+        # Apply racial ASI to base scores
         abilities = AbilityScores(
-            strength=self.ability_scores["strength"],
-            dexterity=self.ability_scores["dexterity"],
-            constitution=self.ability_scores["constitution"],
-            intelligence=self.ability_scores["intelligence"],
-            wisdom=self.ability_scores["wisdom"],
-            charisma=self.ability_scores["charisma"],
+            strength=self._get_effective_score("strength"),
+            dexterity=self._get_effective_score("dexterity"),
+            constitution=self._get_effective_score("constitution"),
+            intelligence=self._get_effective_score("intelligence"),
+            wisdom=self._get_effective_score("wisdom"),
+            charisma=self._get_effective_score("charisma"),
         )
 
         prof = calc_proficiency(level)
@@ -770,11 +794,12 @@ class HeroCreatorState(GameState):
         hd_size = HIT_DICE.get(char_class, 8)
         hit_dice_str = f"{level}d{hd_size}+{con_mod * level}"
 
-        # Saving throws
+        # Saving throws (use effective scores with racial ASI applied)
         saving_throws = {}
         prof_saves = SAVING_THROW_PROF.get(char_class, ())
         for ab in ABILITY_NAMES:
-            mod = calc_modifier(self.ability_scores[ab])
+            eff_score = self._get_effective_score(ab)
+            mod = calc_modifier(eff_score)
             if ab in prof_saves:
                 mod += prof
             display_name = ab.capitalize()
@@ -787,7 +812,7 @@ class HeroCreatorState(GameState):
         spell_atk = 0
         if spell_ability:
             ability_key = spell_ability.lower()
-            casting_mod = calc_modifier(self.ability_scores[ability_key])
+            casting_mod = calc_modifier(self._get_effective_score(ability_key))
             spell_save_dc = 8 + prof + casting_mod
             spell_atk = prof + casting_mod
 
@@ -919,18 +944,31 @@ class HeroCreatorState(GameState):
                         self.trait_scroll += 20
 
     def _handle_ability_clicks(self, mouse_pos):
-        """Check if an ability +/- button was clicked."""
+        """Check if an ability +/- button or ASI choice was clicked."""
         center_x = 440
-        start_y = 128
+        start_y = 150
         row_h = 62
         for i, ab in enumerate(ABILITY_NAMES):
             y = start_y + i * row_h
-            minus_rect = pygame.Rect(center_x + 230, y + 2, 30, 30)
-            plus_rect = pygame.Rect(center_x + 310, y + 2, 30, 30)
+            minus_rect = pygame.Rect(center_x + 188, y + 2, 28, 28)
+            plus_rect = pygame.Rect(center_x + 245, y + 2, 28, 28)
             if minus_rect.collidepoint(mouse_pos):
                 self._change_ability(ab, -1)
             elif plus_rect.collidepoint(mouse_pos):
                 self._change_ability(ab, 1)
+
+        # ASI choice clicks for Variant Human / Half-Elf
+        if self.char_race in ("Variant Human", "Half-Elf"):
+            choice_y = start_y + 6 * row_h + 15
+            for i, ab in enumerate(ABILITY_NAMES):
+                # Skip charisma for Half-Elf (already gets +2)
+                if self.char_race == "Half-Elf" and ab == "charisma":
+                    continue
+                btn_x = center_x + 15 + (i % 3) * 180
+                btn_y = choice_y + 22 + (i // 3) * 30
+                btn_rect = pygame.Rect(btn_x, btn_y, 170, 26)
+                if btn_rect.collidepoint(mouse_pos):
+                    self._toggle_asi_choice(ab)
 
     def update(self):
         if self.status_timer > 0:
@@ -1021,7 +1059,8 @@ class HeroCreatorState(GameState):
         summary_panel.draw(screen)
 
         sy = 535
-        con_mod = calc_modifier(self.ability_scores["constitution"])
+        effective = {ab: self._get_effective_score(ab) for ab in ABILITY_NAMES}
+        con_mod = calc_modifier(effective["constitution"])
         hp = calc_hp(self.char_class, self.char_level, con_mod)
         if self.char_race == "Hill Dwarf":
             hp += self.char_level
@@ -1029,7 +1068,7 @@ class HeroCreatorState(GameState):
             hp += self.char_level
 
         ac = calc_ac(self.char_class,
-                     AbilityScores(**self.ability_scores),
+                     AbilityScores(**effective),
                      self.char_subclass)
 
         speed = RACE_SPEED.get(self.char_race, 30)
@@ -1078,7 +1117,7 @@ class HeroCreatorState(GameState):
             Divider.draw(screen, col_x + 10, row_y + 24, col_w - 20)
 
     def _draw_center_column(self, screen, mouse_pos):
-        """Draw center column: ability scores with point buy."""
+        """Draw center column: ability scores with point buy + racial ASI."""
         center_x = 440
         center_w = 560
 
@@ -1106,11 +1145,15 @@ class HeroCreatorState(GameState):
             pygame.draw.rect(screen, points_color,
                              (bar_x, bar_y, int(bar_w * pct), bar_h), border_radius=3)
 
+        # Racial ASI bonuses
+        racial_bonuses = self._get_racial_bonuses()
+
         # Headers
         start_y = 140
         header_y = start_y - 6
-        headers = [("Ability", center_x + 20), ("Score", center_x + 230), ("Mod", center_x + 370),
-                   ("Save", center_x + 440), ("Cost", center_x + 510)]
+        headers = [("Ability", center_x + 20), ("Base", center_x + 218), ("Race", center_x + 270),
+                   ("Total", center_x + 325), ("Mod", center_x + 390),
+                   ("Save", center_x + 455), ("Cost", center_x + 518)]
         for hdr_text, hdr_x in headers:
             hs = fonts.small_bold.render(hdr_text, True, COLORS["text_muted"])
             screen.blit(hs, (hdr_x, header_y))
@@ -1122,9 +1165,11 @@ class HeroCreatorState(GameState):
         row_h = 62
         for i, ab in enumerate(ABILITY_NAMES):
             y = start_y + i * row_h + 10
-            score = self.ability_scores[ab]
-            mod = calc_modifier(score)
-            cost = POINT_BUY_COST.get(score, 0)
+            base_score = self.ability_scores[ab]
+            racial_bonus = racial_bonuses.get(ab, 0)
+            total_score = base_score + racial_bonus
+            mod = calc_modifier(total_score)
+            cost = POINT_BUY_COST.get(base_score, 0)
 
             # Row background (alternating)
             row_rect = pygame.Rect(center_x + 5, y - 4, center_w - 10, row_h - 4)
@@ -1145,13 +1190,13 @@ class HeroCreatorState(GameState):
             screen.blit(ab_name_surf, (center_x + 65, y + 8))
 
             # Score with +/- buttons
-            minus_rect = pygame.Rect(center_x + 200, y + 2, 30, 30)
-            plus_rect = pygame.Rect(center_x + 290, y + 2, 30, 30)
+            minus_rect = pygame.Rect(center_x + 188, y + 2, 28, 28)
+            plus_rect = pygame.Rect(center_x + 245, y + 2, 28, 28)
 
             # Minus button
             minus_hover = minus_rect.collidepoint(mouse_pos)
             minus_col = COLORS["danger_hover"] if minus_hover else COLORS["danger_dim"]
-            can_decrease = score > POINT_BUY_MIN
+            can_decrease = base_score > POINT_BUY_MIN
             if not can_decrease:
                 minus_col = COLORS["disabled"]
             pygame.draw.rect(screen, minus_col, minus_rect, border_radius=4)
@@ -1161,15 +1206,15 @@ class HeroCreatorState(GameState):
             screen.blit(ms, (minus_rect.centerx - ms.get_width() // 2,
                              minus_rect.centery - ms.get_height() // 2))
 
-            # Score value
-            score_surf = fonts.header_font.render(str(score), True, COLORS["text_bright"])
-            score_x = center_x + 245
-            screen.blit(score_surf, (score_x - score_surf.get_width() // 2, y))
+            # Base score value
+            score_surf = fonts.body_bold.render(str(base_score), True, COLORS["text_main"])
+            score_x = center_x + 224
+            screen.blit(score_surf, (score_x - score_surf.get_width() // 2, y + 4))
 
             # Plus button
             plus_hover = plus_rect.collidepoint(mouse_pos)
-            can_increase = score < POINT_BUY_MAX and (
-                points_used + POINT_BUY_COST.get(score + 1, 99) - cost <= POINT_BUY_TOTAL
+            can_increase = base_score < POINT_BUY_MAX and (
+                points_used + POINT_BUY_COST.get(base_score + 1, 99) - cost <= POINT_BUY_TOTAL
             )
             plus_col = COLORS["success_hover"] if (plus_hover and can_increase) else (
                 COLORS["success_dim"] if can_increase else COLORS["disabled"]
@@ -1181,27 +1226,43 @@ class HeroCreatorState(GameState):
             screen.blit(ps, (plus_rect.centerx - ps.get_width() // 2,
                              plus_rect.centery - ps.get_height() // 2))
 
-            # Modifier
+            # Racial bonus
+            if racial_bonus > 0:
+                rb_surf = fonts.body_bold.render(f"+{racial_bonus}", True, COLORS["success"])
+                screen.blit(rb_surf, (center_x + 278, y + 4))
+            else:
+                rb_surf = fonts.body_font.render("--", True, COLORS["text_muted"])
+                screen.blit(rb_surf, (center_x + 278, y + 4))
+
+            # Total score (highlighted)
+            total_col = COLORS["text_bright"] if racial_bonus > 0 else COLORS["text_main"]
+            total_surf = fonts.header_font.render(str(total_score), True, total_col)
+            screen.blit(total_surf, (center_x + 330, y))
+
+            # Modifier (based on total)
             mod_str = f"+{mod}" if mod >= 0 else str(mod)
             mod_col = COLORS["success"] if mod > 0 else (COLORS["danger"] if mod < 0 else COLORS["text_dim"])
-            mod_surf = fonts.header_font.render(mod_str, True, mod_col)
-            screen.blit(mod_surf, (center_x + 370, y))
+            mod_surf = fonts.body_bold.render(mod_str, True, mod_col)
+            screen.blit(mod_surf, (center_x + 398, y + 4))
 
-            # Saving throw
+            # Saving throw (based on total)
             save_mod = mod + (prof_bonus if ab in prof_saves else 0)
             save_str = f"+{save_mod}" if save_mod >= 0 else str(save_mod)
             is_prof = ab in prof_saves
             save_col = COLORS["accent"] if is_prof else COLORS["text_dim"]
             save_surf = fonts.body_bold.render(save_str, True, save_col)
-            screen.blit(save_surf, (center_x + 445, y + 4))
+            screen.blit(save_surf, (center_x + 460, y + 4))
             if is_prof:
-                # Small proficiency indicator dot
                 pygame.draw.circle(screen, COLORS["accent"],
-                                   (center_x + 437, y + 14), 4)
+                                   (center_x + 452, y + 14), 4)
 
             # Point cost
             cost_surf = fonts.body_font.render(str(cost), True, COLORS["text_muted"])
-            screen.blit(cost_surf, (center_x + 518, y + 4))
+            screen.blit(cost_surf, (center_x + 525, y + 4))
+
+        # Variant Human / Half-Elf ASI choice buttons
+        if self.char_race in ("Variant Human", "Half-Elf"):
+            self._draw_asi_choices(screen, mouse_pos, center_x, start_y + 6 * row_h + 15, center_w)
 
     def _draw_right_column(self, screen, mouse_pos):
         """Draw right column: features and racial traits."""
@@ -1311,6 +1372,62 @@ class HeroCreatorState(GameState):
 
         screen.set_clip(None)
 
+    def _toggle_asi_choice(self, ability):
+        """Toggle an ability for Variant Human / Half-Elf free ASI choices."""
+        if self.char_race == "Variant Human":
+            if ability in self.variant_asi_choices:
+                self.variant_asi_choices.remove(ability)
+            elif len(self.variant_asi_choices) < 2:
+                self.variant_asi_choices.append(ability)
+        elif self.char_race == "Half-Elf":
+            if ability == "charisma":
+                return  # Already gets +2 CHA
+            if ability in self.halfelf_asi_choices:
+                self.halfelf_asi_choices.remove(ability)
+            elif len(self.halfelf_asi_choices) < 2:
+                self.halfelf_asi_choices.append(ability)
+
+    def _draw_asi_choices(self, screen, mouse_pos, cx, cy, cw):
+        """Draw clickable ASI choice buttons for Variant Human / Half-Elf."""
+        if self.char_race == "Variant Human":
+            label = f"Choose 2 abilities for +1 ({len(self.variant_asi_choices)}/2):"
+            choices = self.variant_asi_choices
+        else:  # Half-Elf
+            label = f"Choose 2 abilities for +1 ({len(self.halfelf_asi_choices)}/2, not CHA):"
+            choices = self.halfelf_asi_choices
+
+        lbl_surf = fonts.small_bold.render(label, True, COLORS["warning"])
+        screen.blit(lbl_surf, (cx + 15, cy))
+
+        for i, ab in enumerate(ABILITY_NAMES):
+            if self.char_race == "Half-Elf" and ab == "charisma":
+                continue
+            btn_x = cx + 15 + (i % 3) * 180
+            btn_y = cy + 22 + (i // 3) * 30
+            btn_rect = pygame.Rect(btn_x, btn_y, 170, 26)
+
+            is_selected = ab in choices
+            is_hover = btn_rect.collidepoint(mouse_pos)
+
+            if is_selected:
+                pygame.draw.rect(screen, COLORS["success_dim"], btn_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["success"], btn_rect, 2, border_radius=4)
+                txt_col = COLORS["text_bright"]
+            elif is_hover:
+                pygame.draw.rect(screen, COLORS["hover"], btn_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["border_light"], btn_rect, 1, border_radius=4)
+                txt_col = COLORS["text_main"]
+            else:
+                pygame.draw.rect(screen, COLORS["panel_dark"], btn_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["border"], btn_rect, 1, border_radius=4)
+                txt_col = COLORS["text_dim"]
+
+            ab_txt = f"{ABILITY_ABBREVS[ABILITY_NAMES.index(ab)]} {ab.capitalize()}"
+            if is_selected:
+                ab_txt += " +1"
+            ts = fonts.small_font.render(ab_txt, True, txt_col)
+            screen.blit(ts, (btn_x + 8, btn_y + 5))
+
     def _draw_computed_stats(self, screen, mouse_pos):
         """Draw spell slots and spellcasting info in the center-bottom area."""
         cx = 440
@@ -1326,7 +1443,7 @@ class HeroCreatorState(GameState):
 
             prof = calc_proficiency(self.char_level)
             ability_key = spell_ability.lower()
-            casting_mod = calc_modifier(self.ability_scores[ability_key])
+            casting_mod = calc_modifier(self._get_effective_score(ability_key))
             save_dc = 8 + prof + casting_mod
             atk_bonus = prof + casting_mod
 
@@ -1405,7 +1522,7 @@ class HeroCreatorState(GameState):
             info_y += 22
 
             for ab in ABILITY_NAMES:
-                mod = calc_modifier(self.ability_scores[ab])
+                mod = calc_modifier(self._get_effective_score(ab))
                 is_prof = ab in prof_saves
                 save_val = mod + (prof if is_prof else 0)
                 save_str = f"+{save_val}" if save_val >= 0 else str(save_val)
@@ -1426,7 +1543,8 @@ class HeroCreatorState(GameState):
             screen.blit(atk_label, (cx + 15, info_y))
             info_y += 22
 
-            abilities_obj = AbilityScores(**self.ability_scores)
+            eff_scores = {ab: self._get_effective_score(ab) for ab in ABILITY_NAMES}
+            abilities_obj = AbilityScores(**eff_scores)
             actions = build_default_actions(self.char_class, abilities_obj, prof, self.char_level)
             for action in actions:
                 if action.is_multiattack:

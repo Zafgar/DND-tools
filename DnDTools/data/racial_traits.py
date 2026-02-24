@@ -1,8 +1,37 @@
 """
 D&D 5e 2014 Racial Traits Database
-All racial traits organized by race.
+All racial traits organized by race, including ability score increases.
 """
 from data.models import RacialTrait
+
+# ============================================================
+# RACIAL ABILITY SCORE INCREASES (PHB 2014)
+# ============================================================
+# Each entry maps race name -> dict of ability -> bonus
+RACE_ASI = {
+    "Human":               {"strength": 1, "dexterity": 1, "constitution": 1,
+                            "intelligence": 1, "wisdom": 1, "charisma": 1},
+    "Variant Human":       {},  # +1 to two scores of choice (handled in hero creator)
+    "High Elf":            {"dexterity": 2, "intelligence": 1},
+    "Wood Elf":            {"dexterity": 2, "wisdom": 1},
+    "Drow":                {"dexterity": 2, "charisma": 1},
+    "Hill Dwarf":          {"constitution": 2, "wisdom": 1},
+    "Mountain Dwarf":      {"strength": 2, "constitution": 2},
+    "Lightfoot Halfling":  {"dexterity": 2, "charisma": 1},
+    "Stout Halfling":      {"dexterity": 2, "constitution": 1},
+    "Half-Orc":            {"strength": 2, "constitution": 1},
+    "Half-Elf":            {"charisma": 2},  # +1 to two others of choice (hero creator)
+    "Rock Gnome":          {"intelligence": 2, "constitution": 1},
+    "Forest Gnome":        {"intelligence": 2, "dexterity": 1},
+    "Dragonborn":          {"strength": 2, "charisma": 1},
+    "Tiefling":            {"charisma": 2, "intelligence": 1},
+}
+
+
+def get_racial_asi(race: str) -> dict:
+    """Get the fixed ability score increases for a race.
+    Does NOT include choice-based bonuses (Variant Human, Half-Elf)."""
+    return dict(RACE_ASI.get(race, {}))
 
 # ============================================================
 # HUMAN
