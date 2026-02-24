@@ -1,0 +1,924 @@
+{
+  "timestamp": "2026-02-24T14:03:09.322003",
+  "summary": {
+    "winner": "players",
+    "total_rounds": 3,
+    "player_count": 13,
+    "enemy_count": 1,
+    "total_player_damage_dealt": 576,
+    "total_enemy_damage_dealt": 0,
+    "total_player_healing": 0,
+    "total_enemy_healing": 0,
+    "player_casualties": 1,
+    "enemy_casualties": 1,
+    "avg_damage_per_round_players": 192.0,
+    "avg_damage_per_round_enemies": 0.0
+  },
+  "combatants": [
+    {
+      "name": "Spiritual Weapon (War Cleric)",
+      "side": "Player",
+      "hp_start": 0,
+      "hp_end": 0,
+      "hp_max": 0,
+      "total_damage_dealt": 147,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 18,
+      "attacks_hit": 12,
+      "hit_rate_pct": 66.7,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 73.5,
+      "damage_by_type": {
+        "force": 147
+      },
+      "damage_by_ability": {
+        "Spiritual Weapon": 147
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Shadow Rogue",
+      "side": "Player",
+      "hp_start": 66,
+      "hp_end": 66,
+      "hp_max": 66,
+      "total_damage_dealt": 129,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 1,
+      "times_downed": 0,
+      "attacks_made": 4,
+      "attacks_hit": 4,
+      "hit_rate_pct": 100.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 43.0,
+      "damage_by_type": {
+        "piercing": 129
+      },
+      "damage_by_ability": {
+        "Rapier": 129
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 3
+    },
+    {
+      "name": "Holy Paladin",
+      "side": "Player",
+      "hp_start": 85,
+      "hp_end": 85,
+      "hp_max": 85,
+      "total_damage_dealt": 123,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 3,
+      "attacks_hit": 2,
+      "hit_rate_pct": 66.7,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 1,
+      "spell_slots_used": {
+        "1": 1
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 61.5,
+      "damage_by_type": {
+        "slashing": 123
+      },
+      "damage_by_ability": {
+        "Longsword": 123
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Veteran Fighter",
+      "side": "Player",
+      "hp_start": 94,
+      "hp_end": 94,
+      "hp_max": 94,
+      "total_damage_dealt": 88,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 6,
+      "attacks_hit": 6,
+      "hit_rate_pct": 100.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 29.3,
+      "damage_by_type": {
+        "slashing": 88
+      },
+      "damage_by_ability": {
+        "Longsword": 88
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 3
+    },
+    {
+      "name": "Grukk Barbarian",
+      "side": "Player",
+      "hp_start": 115,
+      "hp_end": 115,
+      "hp_max": 115,
+      "total_damage_dealt": 52,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 2,
+      "attacks_hit": 2,
+      "hit_rate_pct": 100.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 26.0,
+      "damage_by_type": {
+        "slashing": 52
+      },
+      "damage_by_ability": {
+        "Greataxe": 52
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Elven Ranger",
+      "side": "Player",
+      "hp_start": 74,
+      "hp_end": 74,
+      "hp_max": 74,
+      "total_damage_dealt": 32,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 7,
+      "attacks_hit": 2,
+      "hit_rate_pct": 28.6,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 1,
+      "spell_slots_used": {
+        "1": 1
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 16.0,
+      "damage_by_type": {
+        "piercing": 32
+      },
+      "damage_by_ability": {
+        "Longbow": 32
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Moon Druid",
+      "side": "Player",
+      "hp_start": 63,
+      "hp_end": 63,
+      "hp_max": 63,
+      "total_damage_dealt": 5,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 2.5,
+      "damage_by_type": {
+        "poison": 5
+      },
+      "damage_by_ability": {
+        "Poison Spray": 5
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Arcane Wizard",
+      "side": "Player",
+      "hp_start": 52,
+      "hp_end": 52,
+      "hp_max": 52,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 2,
+      "spell_slots_used": {
+        "4": 2
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "War Cleric",
+      "side": "Player",
+      "hp_start": 86,
+      "hp_end": 86,
+      "hp_max": 86,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 2,
+      "spell_slots_used": {
+        "4": 2
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Fiend Warlock",
+      "side": "Player",
+      "hp_start": 63,
+      "hp_end": 63,
+      "hp_max": 63,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 2,
+      "spell_slots_used": {
+        "4": 2
+      },
+      "conditions_applied": 1,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Draconic Sorcerer",
+      "side": "Player",
+      "hp_start": 72,
+      "hp_end": 72,
+      "hp_max": 72,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 3,
+      "spell_slots_used": {
+        "2": 3
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {
+        "fire": 0
+      },
+      "damage_by_ability": {
+        "Scorching Ray": 0
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Lore Bard",
+      "side": "Player",
+      "hp_start": 63,
+      "hp_end": 63,
+      "hp_max": 63,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 2,
+      "spell_slots_used": {
+        "2": 2
+      },
+      "conditions_applied": 2,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Open Hand Monk",
+      "side": "Player",
+      "hp_start": 63,
+      "hp_end": 63,
+      "hp_max": 63,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 0
+    },
+    {
+      "name": "Ancient Red Dragon",
+      "side": "Enemy",
+      "hp_start": 546,
+      "hp_end": 0,
+      "hp_max": 546,
+      "total_damage_dealt": 0,
+      "total_damage_taken": 576,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 1,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 3,
+      "saving_throws": "6/6",
+      "death_saves": "0/0",
+      "damage_per_round": 0.0,
+      "damage_by_type": {},
+      "damage_by_ability": {},
+      "damage_taken_by_type": {
+        "fire": 0,
+        "force": 147,
+        "slashing": 263,
+        "piercing": 161,
+        "poison": 5
+      },
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    }
+  ],
+  "damage_breakdown": {
+    "by_damage_type": {
+      "fire": 0,
+      "force": 147,
+      "slashing": 263,
+      "piercing": 161,
+      "poison": 5
+    },
+    "top_10_hits": [
+      {
+        "round": 2,
+        "source": "Holy Paladin",
+        "target": "Ancient Red Dragon",
+        "amount": 67,
+        "type": "slashing",
+        "ability": "Longsword",
+        "critical": false
+      },
+      {
+        "round": 3,
+        "source": "Shadow Rogue",
+        "target": "Ancient Red Dragon",
+        "amount": 62,
+        "type": "piercing",
+        "ability": "Rapier",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Holy Paladin",
+        "target": "Ancient Red Dragon",
+        "amount": 56,
+        "type": "slashing",
+        "ability": "Longsword",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Shadow Rogue",
+        "target": "Ancient Red Dragon",
+        "amount": 39,
+        "type": "piercing",
+        "ability": "Rapier",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Grukk Barbarian",
+        "target": "Ancient Red Dragon",
+        "amount": 26,
+        "type": "slashing",
+        "ability": "Greataxe",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Grukk Barbarian",
+        "target": "Ancient Red Dragon",
+        "amount": 26,
+        "type": "slashing",
+        "ability": "Greataxe",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Spiritual Weapon (War Cleric)",
+        "target": "Ancient Red Dragon",
+        "amount": 19,
+        "type": "force",
+        "ability": "Spiritual Weapon",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Spiritual Weapon (War Cleric)",
+        "target": "Ancient Red Dragon",
+        "amount": 17,
+        "type": "force",
+        "ability": "Spiritual Weapon",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Spiritual Weapon (War Cleric)",
+        "target": "Ancient Red Dragon",
+        "amount": 16,
+        "type": "force",
+        "ability": "Spiritual Weapon",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Elven Ranger",
+        "target": "Ancient Red Dragon",
+        "amount": 16,
+        "type": "piercing",
+        "ability": "Longbow",
+        "critical": false
+      }
+    ]
+  },
+  "spell_usage": {
+    "spells": [
+      {
+        "name": "Scorching Ray",
+        "times_cast": 3,
+        "total_damage": 58,
+        "total_healing": 0,
+        "highest_slot": 2,
+        "casters": [
+          "Draconic Sorcerer"
+        ]
+      },
+      {
+        "name": "Banishment",
+        "times_cast": 6,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 4,
+        "casters": [
+          "Arcane Wizard",
+          "War Cleric",
+          "Fiend Warlock"
+        ]
+      },
+      {
+        "name": "Divine Favor",
+        "times_cast": 1,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 1,
+        "casters": [
+          "Holy Paladin"
+        ]
+      },
+      {
+        "name": "Hunter's Mark",
+        "times_cast": 1,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 1,
+        "casters": [
+          "Elven Ranger"
+        ]
+      },
+      {
+        "name": "Hold Person",
+        "times_cast": 2,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 2,
+        "casters": [
+          "Lore Bard"
+        ]
+      }
+    ],
+    "total_slots_used": {
+      "2": 5,
+      "4": 6,
+      "1": 2
+    },
+    "total_spells_cast": 13,
+    "total_cantrips": 0
+  },
+  "healing_breakdown": {
+    "by_healer": {},
+    "by_ability": {},
+    "total_healing": 0
+  },
+  "conditions_timeline": [
+    {
+      "round": 1,
+      "target": "Ancient Red Dragon",
+      "condition": "Incapacitated",
+      "applied_by": "Fiend Warlock",
+      "event": "applied"
+    },
+    {
+      "round": 1,
+      "target": "Ancient Red Dragon",
+      "condition": "Paralyzed",
+      "applied_by": "Lore Bard",
+      "event": "applied"
+    },
+    {
+      "round": 2,
+      "target": "Ancient Red Dragon",
+      "condition": "Paralyzed",
+      "applied_by": "Lore Bard",
+      "event": "applied"
+    }
+  ],
+  "death_events": [
+    {
+      "round": 3,
+      "entity": "Ancient Red Dragon",
+      "type": "death",
+      "killed_by": "Shadow Rogue"
+    }
+  ],
+  "resource_usage": {
+    "Grukk Barbarian": {
+      "Rages": {
+        "initial": 4
+      }
+    },
+    "Holy Paladin": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 2
+        },
+        "used": {
+          "1": 1
+        }
+      },
+      "Lay on Hands": {
+        "initial": 50
+      }
+    },
+    "Arcane Wizard": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {
+          "4": 2
+        }
+      }
+    },
+    "War Cleric": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {
+          "4": 2
+        }
+      }
+    },
+    "Elven Ranger": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 2
+        },
+        "used": {
+          "1": 1
+        }
+      }
+    },
+    "Fiend Warlock": {
+      "spell_slots": {
+        "initial": {
+          "5th": 2
+        },
+        "used": {
+          "4": 2
+        }
+      }
+    },
+    "Draconic Sorcerer": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {
+          "2": 3
+        }
+      },
+      "Sorcery Points": {
+        "initial": 10
+      }
+    },
+    "Lore Bard": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {
+          "2": 2
+        }
+      },
+      "Bardic Inspiration": {
+        "initial": 5
+      }
+    },
+    "Moon Druid": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {}
+      }
+    },
+    "Open Hand Monk": {
+      "Ki Points": {
+        "initial": 10
+      }
+    }
+  },
+  "round_by_round": [
+    {
+      "round": 1,
+      "player_damage": 25,
+      "enemy_damage": 0,
+      "events": 4
+    },
+    {
+      "round": 2,
+      "player_damage": 427,
+      "enemy_damage": 0,
+      "events": 22
+    },
+    {
+      "round": 3,
+      "player_damage": 124,
+      "enemy_damage": 0,
+      "events": 6
+    }
+  ],
+  "mvp": {
+    "name": "Shadow Rogue",
+    "damage_dealt": 129,
+    "healing_done": 0,
+    "kills": 1,
+    "conditions_applied": 0,
+    "score": 149.0
+  },
+  "combat_log": [
+    "[AI PLAN] Spiritual Weapon (War Cleric): 1 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 19 force",
+    "[AI] Turn complete.",
+    "[AI] Spiritual Weapon (War Cleric): Spiritual Weapon (War Cleric) expires",
+    "[SUMMON] Spiritual Weapon (War Cleric) disappears.",
+    "--- Holy Paladin's turn (Round 2, Initiative 12) ---",
+    "  [CONCENTRATION] Divine Favor",
+    "[PLAYER TURN] Holy Paladin \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Holy Paladin: 3 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 67 slashing",
+    "  -> Ancient Red Dragon takes 56 slashing",
+    "[AI] Turn complete.",
+    "--- Arcane Wizard's turn (Round 2, Initiative 10) ---",
+    "  [CONCENTRATION] Banishment",
+    "[PLAYER TURN] Arcane Wizard \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Arcane Wizard: 2 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon saves: no damage",
+    "[AI] Turn complete.",
+    "--- Moon Druid's turn (Round 2, Initiative 10) ---",
+    "[PLAYER TURN] Moon Druid \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Moon Druid: 2 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon saves: takes 5 poison",
+    "[AI] Turn complete.",
+    "--- Elven Ranger's turn (Round 2, Initiative 8) ---",
+    "  [CONCENTRATION] Hunter's Mark",
+    "[PLAYER TURN] Elven Ranger \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Elven Ranger: 4 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 16 piercing",
+    "  -> Ancient Red Dragon takes 16 piercing",
+    "[AI] Turn complete.",
+    "--- Fiend Warlock's turn (Round 2, Initiative 8) ---",
+    "  [CONCENTRATION] Banishment",
+    "[PLAYER TURN] Fiend Warlock \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Fiend Warlock: 2 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon saves: no damage",
+    "[AI] Turn complete.",
+    "--- Grukk Barbarian's turn (Round 2, Initiative 7) ---",
+    "[PLAYER TURN] Grukk Barbarian \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Grukk Barbarian: 4 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 26 slashing",
+    "  -> Ancient Red Dragon takes 26 slashing",
+    "[AI] Turn complete.",
+    "[RAGE] Grukk Barbarian's rage ends! (No attack/damage this turn)",
+    "--- Ancient Red Dragon's turn (Round 2, Initiative 5) ---",
+    "  [STATUS] Paralyzed",
+    "[SAVE] Ancient Red Dragon succeeded save vs Aura of Protection.",
+    "[SAVE] Ancient Red Dragon succeeded save vs Aura of Courage.",
+    "[SAVE] Ancient Red Dragon rolled 26 (DC 17 Wisdom) and is no longer Paralyzed!",
+    "--- Lore Bard's turn (Round 2, Initiative 5) ---",
+    "  [CONCENTRATION] Hold Person",
+    "[PLAYER TURN] Lore Bard \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Lore Bard: 1 step(s) queued \u2013 review below.",
+    "  -> Lore Bard stops concentrating on Hold Person.",
+    "  -> Ancient Red Dragon is Paralyzed",
+    "[AI] Turn complete.",
+    "=== ROUND 3 ===",
+    "--- Draconic Sorcerer's turn (Round 3, Initiative 21) ---",
+    "[PLAYER TURN] Draconic Sorcerer \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Draconic Sorcerer: 1 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 0 fire",
+    "[AI] Turn complete.",
+    "--- Veteran Fighter's turn (Round 3, Initiative 20) ---",
+    "[PLAYER TURN] Veteran Fighter \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[SAVE] Veteran Fighter succeeded save vs Aura of Protection.",
+    "[SAVE] Veteran Fighter succeeded save vs Aura of Courage.",
+    "[AI PLAN] Veteran Fighter: 3 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 16 slashing",
+    "  -> Ancient Red Dragon takes 16 slashing",
+    "  -> Ancient Red Dragon takes 14 slashing",
+    "[AI] Turn complete.",
+    "--- Shadow Rogue's turn (Round 3, Initiative 17) ---",
+    "[PLAYER TURN] Shadow Rogue \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[SAVE] Shadow Rogue succeeded save vs Aura of Protection.",
+    "[SAVE] Shadow Rogue succeeded save vs Aura of Courage.",
+    "[AI PLAN] Shadow Rogue: 2 step(s) queued \u2013 review below.",
+    "  -> Ancient Red Dragon takes 62 piercing",
+    "=== COMBAT OVER: PLAYERS WIN! ===",
+    "  -> Ancient Red Dragon takes 16 piercing",
+    "=== COMBAT OVER: PLAYERS WIN! ===",
+    "[AI] Turn complete."
+  ]
+}
