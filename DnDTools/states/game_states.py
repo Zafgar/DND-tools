@@ -1873,12 +1873,24 @@ class BattleState(GameState):
                 pygame.draw.circle(screen, border_outer, (cx, cy), radius)
                 # Dark fill
                 pygame.draw.circle(screen, COLORS["bg_dark"], (cx, cy), radius - 3)
-                # Inner colored ring
-                pygame.draw.circle(screen, inner, (cx, cy), radius - 5, 4)
-                # Subtle gradient highlight at top
-                highlight = pygame.Surface((radius*2, radius), pygame.SRCALPHA)
-                pygame.draw.ellipse(highlight, (*inner, 30), (4, 0, radius*2 - 8, radius - 4))
-                screen.blit(highlight, (cx - radius, cy - radius))
+
+                if entity.is_player:
+                    # Class-colored inner fill (subtle radial gradient effect)
+                    dim_inner = tuple(max(0, c // 4) for c in inner)
+                    pygame.draw.circle(screen, dim_inner, (cx, cy), radius - 4)
+                    # Inner colored ring (thicker for players)
+                    pygame.draw.circle(screen, inner, (cx, cy), radius - 5, 5)
+                    # Subtle gradient highlight at top (class-tinted)
+                    highlight = pygame.Surface((radius*2, radius), pygame.SRCALPHA)
+                    pygame.draw.ellipse(highlight, (*inner, 45), (4, 0, radius*2 - 8, radius - 4))
+                    screen.blit(highlight, (cx - radius, cy - radius))
+                else:
+                    # Inner colored ring for monsters
+                    pygame.draw.circle(screen, inner, (cx, cy), radius - 5, 4)
+                    # Subtle gradient highlight at top
+                    highlight = pygame.Surface((radius*2, radius), pygame.SRCALPHA)
+                    pygame.draw.ellipse(highlight, (*inner, 30), (4, 0, radius*2 - 8, radius - 4))
+                    screen.blit(highlight, (cx - radius, cy - radius))
 
             # Creature type icon + initials
             if entity.is_player:
@@ -1890,7 +1902,12 @@ class BattleState(GameState):
                 display_text = type_icon
 
             ts = fonts.small_bold.render(display_text, True, (0, 0, 0))
-            tf = fonts.small_bold.render(display_text, True, (240, 240, 240))
+            # Use bright class color for player text, white for monsters
+            if entity.is_player:
+                text_col = tuple(min(255, c + 80) for c in inner)
+            else:
+                text_col = (240, 240, 240)
+            tf = fonts.small_bold.render(display_text, True, text_col)
             tx = cx - tf.get_width() // 2
             ty = cy - tf.get_height() // 2
             for ox, oy in ((-1,0),(1,0),(0,-1),(0,1)):
