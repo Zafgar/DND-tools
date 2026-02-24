@@ -16,6 +16,9 @@ from engine.entities import Entity
 from data.models import CreatureStats, AbilityScores, Action
 from data.heroes import hero_list
 from data.conditions import CONDITIONS
+from engine.battle_report import generate_battle_report, format_report_text, save_report, save_report_text
+from engine.win_probability import assess_encounter_danger
+from data.hero_import import import_heroes_from_file, export_heroes_to_file
 
 SAVES_DIR = os.path.join(os.path.dirname(__file__), "..", "saves")
 
@@ -377,7 +380,15 @@ class EncounterSetupState(GameState):
                    lambda: manager.change_state("MENU"), color=COLORS["panel"]),
             Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-220, 230, 45, "Clear Roster",
                    lambda: self.roster.clear(), color=COLORS["danger"]),
+            Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-275, 230, 45, "Import Heroes (JSON)",
+                   self._import_heroes_file, color=COLORS["spell"]),
+            Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-330, 230, 45, "Export Heroes (JSON)",
+                   self._export_heroes_file, color=COLORS["neutral"]),
         ]
+
+        # Hero import/export directories
+        self.heroes_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
+        os.makedirs(self.heroes_dir, exist_ok=True)
 
     def enable_import(self):
         self.importing = True
@@ -438,32 +449,11 @@ class EncounterSetupState(GameState):
         heroes = [e for e in self.roster if e.is_player]
         monsters = [e for e in self.roster if not e.is_player]
         if not heroes or not monsters:
-            return "N/A", 0, 0
+            return "N/A", 0, 0, None
 
-        # Calculate Party Thresholds (simplified: assuming lvl 5 for demo heroes if not specified)
-        # In a real app, we'd track levels. Using CR/Level approximation.
-        # Easy/Med/Hard/Deadly thresholds for Lvl 5: 250, 500, 750, 1100
-        # Let's use a rough average level of 5 for calculations
-        party_len = len(heroes)
-        thresholds = [250 * party_len, 500 * party_len, 750 * party_len, 1100 * party_len]
-
-        total_xp = sum(m.stats.xp for m in monsters)
-        
-        # Multiplier based on monster count
-        count = len(monsters)
-        mult = 1.0
-        if count == 2: mult = 1.5
-        elif count >= 3 and count <= 6: mult = 2.0
-        elif count >= 7 and count <= 10: mult = 2.5
-        elif count >= 11: mult = 3.0
-        
-        adj_xp = total_xp * mult
-        
-        diff = "Easy"
-        if adj_xp >= thresholds[3]: diff = "Deadly"
-        elif adj_xp >= thresholds[2]: diff = "Hard"
-        elif adj_xp >= thresholds[1]: diff = "Medium"
-        return diff, total_xp, int(adj_xp)
+        # Use the enhanced encounter danger assessment
+        danger = assess_encounter_danger(heroes, monsters)
+        return danger["difficulty"], danger["xp_total"], danger["adjusted_xp"], danger
 
     def _update_monster_list(self):
         self.active_monster_btns = []
@@ -508,6 +498,30 @@ class EncounterSetupState(GameState):
     def _long_rest(self):
         for e in self.roster:
             e.long_rest()
+
+    def _import_heroes_file(self):
+        """Import heroes from JSON files in the heroes/ directory."""
+        if not os.path.exists(self.heroes_dir):
+            return
+        json_files = [f for f in os.listdir(self.heroes_dir) if f.endswith(".json")]
+        if not json_files:
+            return
+        for f in json_files:
+            try:
+                heroes = import_heroes_from_file(os.path.join(self.heroes_dir, f))
+                for h in heroes:
+                    y_pos = 2 + len([e for e in self.roster if e.is_player]) * 2
+                    self.roster.append(Entity(h, 3, y_pos, is_player=True))
+            except Exception as ex:
+                print(f"Import error ({f}): {ex}")
+
+    def _export_heroes_file(self):
+        """Export all player heroes in roster to heroes/ directory."""
+        player_heroes = [e.stats for e in self.roster if e.is_player]
+        if not player_heroes:
+            return
+        filepath = os.path.join(self.heroes_dir, "exported_heroes.json")
+        export_heroes_to_file(player_heroes, filepath)
 
     def _start_battle(self):
         if not self.roster:
@@ -600,11 +614,44 @@ class EncounterSetupState(GameState):
             screen.blit(txt, (700, y))
             y += 22
             
-        # Difficulty Display
-        diff, raw_xp, adj_xp = self._calculate_difficulty()
-        diff_c = COLORS["danger"] if diff in ("Hard", "Deadly") else COLORS["success"]
+        # Difficulty Display (enhanced with danger assessment)
+        diff, raw_xp, adj_xp, danger = self._calculate_difficulty()
+        diff_colors = {
+            "Trivial": COLORS["text_dim"], "Easy": COLORS["success"],
+            "Medium": COLORS["warning"], "Hard": COLORS["danger"],
+            "Deadly": (255, 40, 40), "TPK Risk": (255, 0, 0),
+        }
+        diff_c = diff_colors.get(diff, COLORS["success"])
         stats_s = fonts.header.render(f"Difficulty: {diff}  (XP: {raw_xp} / Adj: {adj_xp})", True, diff_c)
-        screen.blit(stats_s, (700, SCREEN_HEIGHT - 100))
+        screen.blit(stats_s, (700, SCREEN_HEIGHT - 130))
+
+        if danger:
+            # Show danger score and combat estimates
+            ds = danger.get("danger_score", 0)
+            bar_w = 200
+            bar_h = 12
+            bar_x = 700
+            bar_y = SCREEN_HEIGHT - 100
+            pygame.draw.rect(screen, (40, 40, 40), (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+            fill = int(bar_w * min(1.0, ds / 100))
+            bc = (200, 60, 60) if ds > 60 else (200, 180, 40) if ds > 30 else (40, 180, 80)
+            if fill > 0:
+                pygame.draw.rect(screen, bc, (bar_x, bar_y, fill, bar_h), border_radius=4)
+            ds_txt = fonts.tiny.render(f"Danger: {ds}/100", True, COLORS["text_main"])
+            screen.blit(ds_txt, (bar_x + bar_w + 10, bar_y - 1))
+
+            est = danger.get("combat_estimate", {})
+            if est:
+                e_txt = fonts.tiny.render(
+                    f"Est. {est.get('expected_rounds', '?')} rounds | "
+                    f"P-DPR:{est.get('player_dpr', 0):.0f} vs E-DPR:{est.get('enemy_dpr', 0):.0f}",
+                    True, COLORS["text_dim"])
+                screen.blit(e_txt, (700, SCREEN_HEIGHT - 82))
+
+            surv = danger.get("survival_estimate", "")
+            if surv:
+                surv_txt = fonts.tiny.render(surv, True, diff_c)
+                screen.blit(surv_txt, (700, SCREEN_HEIGHT - 68))
 
         # Action buttons
         for b in self.action_btns:
@@ -734,6 +781,16 @@ class BattleState(GameState):
         self.notes_modal = None
         self.effect_modal = None
 
+        # Battle Report / Win Probability / DM Advisor state
+        self.battle_report = None              # Generated report dict when combat ends
+        self.battle_report_text = ""           # Formatted text of report
+        self.report_modal_open = False
+        self.report_scroll = 0
+        self.win_prob_cache = None             # Cached win probability result
+        self.dm_suggestion_cache = None        # Cached DM advisor suggestion
+        self.dm_rating_cache = None            # Cached player action rating
+        self.show_advisor_panel = False        # Toggle for DM advisor panel
+
         self._build_buttons()
 
         if not self.battle.combat_started:
@@ -783,6 +840,7 @@ class BattleState(GameState):
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
+        self.btn_advisor = Button(532, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
 
         # HP quick buttons
         vals = [-10, -5, -1, 1, 5, 10]
@@ -996,11 +1054,24 @@ class BattleState(GameState):
             self._log(f"[PLAYER TURN] {curr.name} – log their action with 'LOG PLAYER ACTION'")
             if curr.conditions or curr.concentrating_on:
                 self.condition_reminder = curr
-        
+            # DM Advisor: generate suggestion for this player's turn
+            if self.show_advisor_panel:
+                self.dm_suggestion_cache = self.battle.get_dm_suggestion(curr)
+                self.dm_rating_cache = None  # Clear previous rating
+        else:
+            self.dm_suggestion_cache = None
+            self.dm_rating_cache = None
+
+        # Track that entity is active this round
+        self.battle.stats_tracker.record_round_active(curr.name, curr.is_player)
+
+        # Update win probability
+        self._update_win_probability()
+
         # Turn Banner
         self.turn_banner_text = f"{curr.name}'s Turn"
         self.turn_banner_timer = 120 # 2 seconds
-        
+
         # Check auras
         auras = self.battle.check_turn_start_auras(curr)
         if auras:
@@ -1127,38 +1198,82 @@ class BattleState(GameState):
     def _resolve_target_outcome(self, step, target, outcome):
         """Apply effects based on user choice."""
         if not target: return
-        
+
         dmg = step.damage
         cond = step.applies_condition
-        
+        attacker_name = step.attacker.name if step.attacker else "Unknown"
+        ability_name = step.action_name or (step.spell.name if step.spell else "")
+        is_aoe = bool(step.aoe_center) if hasattr(step, 'aoe_center') else False
+        rnd = self.battle.round
+
+        # Track attack results
+        if step.step_type in ("attack", "multiattack", "bonus_attack", "legendary"):
+            is_hit = outcome in ("hit", "crit", "fail")
+            self.battle.stats_tracker.record_attack(
+                rnd, attacker_name, is_hit,
+                is_critical=(outcome == "crit"),
+                is_fumble=False,
+                attacker_is_player=step.attacker.is_player if step.attacker else False)
+
         if outcome == "hit" or outcome == "fail":
             # Full effect
             if dmg > 0:
+                old_hp = target.hp
                 dealt, broke = target.take_damage(dmg, step.damage_type)
                 self._log(f"  -> {target.name} takes {dealt} {step.damage_type}")
                 self._spawn_damage_text(target, dealt)
+                # Track damage
+                self.battle.stats_tracker.record_damage(
+                    rnd, attacker_name, target.name, dealt, step.damage_type,
+                    ability_name=ability_name, is_aoe=is_aoe,
+                    was_saved=False,
+                    source_is_player=step.attacker.is_player if step.attacker else False,
+                    target_is_player=target.is_player)
+                self.battle._last_damage_source = attacker_name
+                # Check for down/kill
+                if target.hp <= 0 and old_hp > 0:
+                    self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
+                    if not target.is_player:
+                        self.battle.stats_tracker.record_kill(
+                            rnd, attacker_name, target.name,
+                            killer_is_player=step.attacker.is_player if step.attacker else False,
+                            target_is_player=target.is_player)
             if cond:
                 # Determine DC and Save Ability for the condition
                 dc = step.condition_dc if step.condition_dc else step.save_dc
                 save_ab = step.save_ability
                 target.add_condition(cond, save_ability=save_ab, save_dc=dc)
-                
+                self.battle.stats_tracker.record_condition(
+                    rnd, target.name, cond, applied_by=attacker_name,
+                    target_is_player=target.is_player,
+                    applier_is_player=step.attacker.is_player if step.attacker else False)
+
                 if step.spell and step.spell.concentration and step.attacker:
                     dropped_spell = step.attacker.start_concentration(step.spell)
                     if dropped_spell:
                         self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
                 self._log(f"  -> {target.name} is {cond}")
-        
+
         elif outcome == "save":
             # Half damage (usually), no condition
             half_dmg = dmg // 2
+            self.battle.stats_tracker.record_saving_throw(rnd, target.name, True,
+                                                          entity_is_player=target.is_player)
             if half_dmg > 0:
+                old_hp = target.hp
                 dealt, broke = target.take_damage(half_dmg, step.damage_type)
                 self._log(f"  -> {target.name} saves: takes {dealt} {step.damage_type}")
                 self._spawn_damage_text(target, dealt)
+                self.battle.stats_tracker.record_damage(
+                    rnd, attacker_name, target.name, dealt, step.damage_type,
+                    ability_name=ability_name, was_saved=True, is_aoe=is_aoe,
+                    source_is_player=step.attacker.is_player if step.attacker else False,
+                    target_is_player=target.is_player)
+                if target.hp <= 0 and old_hp > 0:
+                    self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
             else:
                 self._log(f"  -> {target.name} saves: no damage")
-        
+
         elif outcome == "crit":
             # Double dice damage (simplified here as 1.5x or just raw since we pre-rolled)
             final_dmg = dmg
@@ -1167,21 +1282,49 @@ class BattleState(GameState):
                 dice_str = ""
                 if step.action: dice_str = step.action.damage_dice
                 elif step.spell: dice_str = step.spell.damage_dice
-                
+
                 if dice_str:
                     extra = roll_dice(dice_str)
                     final_dmg += extra
                     self._log(f"[DM] Crit override! Added {extra} extra damage.")
-            
+
             if final_dmg > 0:
+                old_hp = target.hp
                 dealt, broke = target.take_damage(final_dmg, step.damage_type)
                 self._log(f"  -> {target.name} takes {dealt} {step.damage_type} (CRIT)")
                 self._spawn_damage_text(target, dealt)
+                self.battle.stats_tracker.record_damage(
+                    rnd, attacker_name, target.name, dealt, step.damage_type,
+                    ability_name=ability_name, is_critical=True,
+                    source_is_player=step.attacker.is_player if step.attacker else False,
+                    target_is_player=target.is_player)
+                if target.hp <= 0 and old_hp > 0:
+                    self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
+                    if not target.is_player:
+                        self.battle.stats_tracker.record_kill(
+                            rnd, attacker_name, target.name,
+                            killer_is_player=step.attacker.is_player if step.attacker else False,
+                            target_is_player=target.is_player)
             # Apply conditions as normal
             if cond:
                 dc = step.condition_dc if step.condition_dc else step.save_dc
                 save_ab = step.save_ability
                 target.add_condition(cond, save_ability=save_ab, save_dc=dc)
+
+        # Track spell usage
+        if step.spell and step.spell.level > 0:
+            self.battle.stats_tracker.record_spell(
+                rnd, attacker_name, step.spell.name, step.spell.level,
+                targets=[target.name],
+                total_damage=dmg if outcome in ("hit", "fail", "crit") else dmg // 2,
+                applied_condition=cond,
+                caster_is_player=step.attacker.is_player if step.attacker else False)
+
+        # Update win probability after each resolution
+        self._update_win_probability()
+
+        # Check for battle end
+        self._check_battle_end()
 
     def _toggle_outcome(self, target):
         if target not in self.current_step_outcomes: return
@@ -1229,6 +1372,9 @@ class BattleState(GameState):
             curr.action_used = True
             self._log(f"[PLAYER] {curr.name} uses an item. (Apply effect manually)")
 
+        # Rate the player's action using DM advisor
+        self._rate_player_action(action_type)
+
     def _close_player_panel(self):
         self.player_action_mode = False
         self.player_action_type = None
@@ -1242,17 +1388,34 @@ class BattleState(GameState):
         if not sel:
             return
         self._save_undo_snapshot()
+        old_hp = sel.hp
         if amount < 0:
             dealt, broke = sel.take_damage(-amount)
             action_str = f"takes {dealt} damage"
             if broke:
                 action_str += " [CONCENTRATION BROKEN]"
             self._spawn_damage_text(sel, dealt)
+            # Track damage in stats
+            source = self.battle._last_damage_source or "DM"
+            self.battle.stats_tracker.record_damage(
+                self.battle.round, source, sel.name, dealt, "untyped",
+                ability_name="Manual", source_is_player=False,
+                target_is_player=sel.is_player)
+            if sel.hp <= 0 and old_hp > 0:
+                self.battle.stats_tracker.record_downed(
+                    self.battle.round, sel.name, sel.is_player)
         else:
             sel.heal(amount)
-            action_str = f"healed {amount} HP"
-            self._spawn_damage_text(sel, amount, is_heal=True)
+            actual_heal = sel.hp - old_hp
+            action_str = f"healed {actual_heal} HP"
+            self._spawn_damage_text(sel, actual_heal, is_heal=True)
+            if actual_heal > 0:
+                self.battle.stats_tracker.record_heal(
+                    self.battle.round, "DM", sel.name, actual_heal,
+                    ability_name="Manual", target_is_player=sel.is_player)
         self._log(f"[DM] {sel.name} {action_str}. HP: {sel.hp}/{sel.max_hp}")
+        self._update_win_probability()
+        self._check_battle_end()
 
     def _modify_init(self, delta):
         if self.selected_entity:
@@ -1680,6 +1843,23 @@ class BattleState(GameState):
                     self.effect_modal.handle_event(event)
                     continue
 
+                # Battle Report Modal handling
+                if self.report_modal_open:
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        self.report_modal_open = False
+                        continue
+                    if event.type == pygame.MOUSEWHEEL:
+                        self.report_scroll = min(0, self.report_scroll + event.y * 20)
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        # Check close/save button clicks via ui_click_zones
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
+                        continue
+                    continue
+
                 # Shortcut: ESC to exit terrain mode / close menus
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.terrain_mode: self._toggle_terrain_mode()
@@ -1931,6 +2111,7 @@ class BattleState(GameState):
                 self.btn_weather.handle_event(event)
                 self.btn_undo.handle_event(event)
                 self.btn_auto.handle_event(event)
+                self.btn_advisor.handle_event(event)
 
                 for b in self.hp_btns:
                     b.handle_event(event)
@@ -2014,10 +2195,14 @@ class BattleState(GameState):
             self.effect_modal.draw(screen, mp)
         
         self._draw_hover_info(screen, mp)
-        
+
         # Draw tooltip last so it's on top of everything
         if self.active_tooltip:
             self._draw_tooltip(screen)
+
+        # Battle Report Modal (on top of everything)
+        if self.report_modal_open:
+            self._draw_battle_report_modal(screen)
 
     # --- Top bar ---
     def _draw_top_bar(self, screen, curr):
@@ -2239,7 +2424,7 @@ class BattleState(GameState):
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor):
             b.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
@@ -2247,6 +2432,15 @@ class BattleState(GameState):
             pygame.draw.rect(screen, tc, self.btn_terrain.rect, 2, border_radius=5)
             sel = fonts.tiny.render(f"[{self.terrain_selected_type}]", True, tc)
             screen.blit(sel, (self.btn_terrain.rect.right + 4, self.btn_terrain.rect.y + 8))
+
+        # Win probability bar (above grid buttons, left side)
+        if self.battle.combat_started and self.win_prob_cache:
+            self._draw_win_probability_bar(screen, 10, SCREEN_HEIGHT - 105, 350, 22)
+
+        # DM Advisor panel (above win prob, left side)
+        if self.show_advisor_panel and self.battle.combat_started:
+            advisor_h = 180
+            self._draw_advisor_panel(screen, 10, SCREEN_HEIGHT - 105 - advisor_h - 5, 350, advisor_h)
 
     # --- Entities on grid ---
     def _draw_entities(self, screen, curr, sel):
@@ -3350,6 +3544,254 @@ class BattleState(GameState):
             y += item_h
             if y > SCREEN_HEIGHT - 100: # Simple overflow check
                 break
+
+    # ------------------------------------------------------------------ #
+    # Win Probability & DM Advisor                                         #
+    # ------------------------------------------------------------------ #
+
+    def _update_win_probability(self):
+        """Refresh the win probability cache."""
+        if self.battle.combat_started:
+            self.win_prob_cache = self.battle.get_win_probability()
+
+    def _toggle_advisor_panel(self):
+        """Toggle the DM advisor panel visibility."""
+        self.show_advisor_panel = not self.show_advisor_panel
+        if self.show_advisor_panel:
+            self.btn_advisor.color = COLORS["success"]
+            self.btn_advisor.text = "ADVSR ON"
+            curr = self.battle.get_current_entity()
+            if curr.is_player:
+                self.dm_suggestion_cache = self.battle.get_dm_suggestion(curr)
+            self._log("[ADVISOR] DM Advisor enabled. Shows AI suggestions for player turns.")
+        else:
+            self.btn_advisor.color = COLORS["spell"]
+            self.btn_advisor.text = "ADVISOR"
+            self.dm_suggestion_cache = None
+            self.dm_rating_cache = None
+
+    def _rate_player_action(self, action_type, target=None, damage_dealt=0,
+                            spell_name="", moved_distance=0):
+        """Rate a player's action using the DM advisor."""
+        if not self.show_advisor_panel:
+            return
+        curr = self.battle.get_current_entity()
+        if not curr.is_player:
+            return
+        self.dm_rating_cache = self.battle.rate_player_action(
+            curr, action_type, target, damage_dealt, spell_name, moved_distance)
+
+    def _check_battle_end(self):
+        """Check if combat is over and generate report."""
+        result = self.battle.check_battle_over()
+        if result:
+            self.battle.finalize_battle(result)
+            self.battle_report = generate_battle_report(
+                self.battle.stats_tracker, self.logs)
+            self.battle_report_text = format_report_text(self.battle_report)
+            self.report_modal_open = True
+            self.auto_battle = False
+            winner_str = "PLAYERS WIN!" if result == "players" else "ENEMIES WIN!"
+            self._log(f"=== COMBAT OVER: {winner_str} ===")
+
+    def _save_battle_report(self):
+        """Save the battle report to file."""
+        if not self.battle_report:
+            return
+        saves_dir = os.path.join(os.path.dirname(__file__), "..", "saves")
+        os.makedirs(saves_dir, exist_ok=True)
+
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Save both JSON and text
+        json_path = os.path.join(saves_dir, f"report_{ts}.json")
+        text_path = os.path.join(saves_dir, f"report_{ts}.txt")
+        save_report(self.battle_report, json_path)
+        save_report_text(self.battle_report, text_path)
+        self._log(f"[REPORT] Saved to report_{ts}.json/txt")
+
+    def _draw_win_probability_bar(self, screen, x, y, w, h):
+        """Draw the win probability bar on the UI."""
+        if not self.win_prob_cache:
+            return
+
+        prob = self.win_prob_cache["probability"]
+        pct = self.win_prob_cache["percentage"]
+        label = self.win_prob_cache["label"]
+
+        # Background
+        pygame.draw.rect(screen, (30, 32, 36), (x, y, w, h), border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], (x, y, w, h), 1, border_radius=4)
+
+        # Fill bar
+        fill_w = int((w - 4) * prob)
+        if prob >= 0.6:
+            bar_color = (40, 180, 80)
+        elif prob >= 0.4:
+            bar_color = (200, 180, 40)
+        else:
+            bar_color = (200, 60, 60)
+
+        if fill_w > 0:
+            pygame.draw.rect(screen, bar_color, (x + 2, y + 2, fill_w, h - 4), border_radius=3)
+
+        # Text
+        txt = fonts.tiny.render(f"Win: {pct:.0f}% - {label}", True, (255, 255, 255))
+        screen.blit(txt, (x + 4, y + (h - txt.get_height()) // 2))
+
+        # Trend arrow
+        trend = self.battle.win_calculator.get_trend()
+        if trend == "improving":
+            arrow = fonts.tiny.render("^", True, (0, 200, 0))
+            screen.blit(arrow, (x + w - 15, y + 2))
+        elif trend == "declining":
+            arrow = fonts.tiny.render("v", True, (200, 0, 0))
+            screen.blit(arrow, (x + w - 15, y + 2))
+
+    def _draw_advisor_panel(self, screen, x, y, w, h):
+        """Draw the DM advisor panel showing AI suggestions and ratings."""
+        if not self.show_advisor_panel:
+            return
+
+        # Background
+        pygame.draw.rect(screen, (25, 28, 35), (x, y, w, h), border_radius=6)
+        pygame.draw.rect(screen, COLORS["spell"], (x, y, w, h), 1, border_radius=6)
+
+        # Header
+        header = fonts.small.render("DM ADVISOR", True, COLORS["spell"])
+        screen.blit(header, (x + 4, y + 2))
+
+        cy = y + 20
+
+        # AI Suggestion
+        if self.dm_suggestion_cache:
+            sug = self.dm_suggestion_cache
+
+            # Suggestion text
+            if sug.ai_suggestion:
+                lbl = fonts.tiny.render("AI Recommends:", True, COLORS["accent"])
+                screen.blit(lbl, (x + 4, cy))
+                cy += 14
+
+                # Wrap suggestion text
+                words = sug.ai_suggestion.split()
+                line = ""
+                for word in words:
+                    test = line + " " + word if line else word
+                    if fonts.tiny.size(test)[0] > w - 10:
+                        t = fonts.tiny.render(line, True, COLORS["text_main"])
+                        screen.blit(t, (x + 6, cy))
+                        cy += 12
+                        line = word
+                    else:
+                        line = test
+                if line:
+                    t = fonts.tiny.render(line, True, COLORS["text_main"])
+                    screen.blit(t, (x + 6, cy))
+                    cy += 14
+
+            # Tactical notes
+            for note in sug.tactical_notes[:4]:
+                color = COLORS["danger"] if "URGENT" in note else COLORS["warning"] if "WARNING" in note else COLORS["text_dim"]
+                # Truncate long notes
+                display = note[:60] + "..." if len(note) > 60 else note
+                t = fonts.tiny.render(display, True, color)
+                screen.blit(t, (x + 6, cy))
+                cy += 12
+
+        # Rating of last action
+        if self.dm_rating_cache:
+            r = self.dm_rating_cache
+            cy += 4
+            pygame.draw.line(screen, COLORS["border"], (x + 4, cy), (x + w - 4, cy))
+            cy += 4
+
+            rating_colors = {
+                "Optimal": (0, 200, 80),
+                "Good": (100, 200, 60),
+                "Decent": (200, 180, 40),
+                "Suboptimal": (200, 120, 40),
+                "Poor": (200, 60, 60),
+            }
+            r_color = rating_colors.get(r.rating_label, COLORS["text_main"])
+
+            t = fonts.tiny.render(f"Last: {r.player_action}", True, COLORS["text_main"])
+            screen.blit(t, (x + 4, cy))
+            cy += 12
+
+            t = fonts.tiny.render(f"Rating: {r.rating_label} ({r.rating:.0%})", True, r_color)
+            screen.blit(t, (x + 4, cy))
+            cy += 14
+
+    def _draw_battle_report_modal(self, screen):
+        """Draw the post-battle report modal."""
+        if not self.report_modal_open or not self.battle_report_text:
+            return
+
+        # Full-screen overlay
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 200))
+        screen.blit(ov, (0, 0))
+
+        # Modal dimensions
+        mw, mh = min(900, SCREEN_WIDTH - 40), SCREEN_HEIGHT - 80
+        mx = (SCREEN_WIDTH - mw) // 2
+        my = 40
+
+        # Background
+        pygame.draw.rect(screen, COLORS["panel"], (mx, my, mw, mh), border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent"], (mx, my, mw, mh), 2, border_radius=10)
+
+        # Title
+        title = fonts.header.render("BATTLE REPORT", True, COLORS["accent"])
+        screen.blit(title, (mx + 20, my + 10))
+
+        # Close / Save buttons
+        btn_close_rect = pygame.Rect(mx + mw - 120, my + 10, 100, 30)
+        pygame.draw.rect(screen, COLORS["danger"], btn_close_rect, border_radius=4)
+        ct = fonts.small.render("CLOSE", True, (255, 255, 255))
+        screen.blit(ct, (btn_close_rect.x + 30, btn_close_rect.y + 5))
+
+        btn_save_rect = pygame.Rect(mx + mw - 240, my + 10, 100, 30)
+        pygame.draw.rect(screen, COLORS["success"], btn_save_rect, border_radius=4)
+        st = fonts.small.render("SAVE", True, (255, 255, 255))
+        screen.blit(st, (btn_save_rect.x + 30, btn_save_rect.y + 5))
+
+        # Register button click zones
+        self.ui_click_zones.append((btn_close_rect, lambda: setattr(self, 'report_modal_open', False)))
+        self.ui_click_zones.append((btn_save_rect, self._save_battle_report))
+
+        # Content area (scrollable text)
+        content_rect = pygame.Rect(mx + 10, my + 50, mw - 20, mh - 60)
+        pygame.draw.rect(screen, (15, 17, 20), content_rect)
+
+        screen.set_clip(content_rect)
+        lines = self.battle_report_text.split("\n")
+        ly = content_rect.y + 5 + self.report_scroll
+        for line in lines:
+            if ly > content_rect.bottom:
+                break
+            if ly + 14 >= content_rect.y:
+                color = COLORS["accent"] if line.startswith("=") or line.startswith("-") else COLORS["text_main"]
+                if "MVP:" in line:
+                    color = (255, 215, 0)
+                elif "[Player]" in line or "ALIVE" in line:
+                    color = COLORS["success"]
+                elif "DEAD" in line:
+                    color = COLORS["danger"]
+                elif "CRIT" in line:
+                    color = (255, 100, 100)
+                t = fonts.tiny.render(line, True, color)
+                screen.blit(t, (content_rect.x + 5, ly))
+            ly += 14
+        screen.set_clip(None)
+
+        # MVP highlight bar
+        mvp = self.battle_report.get("mvp", {})
+        if mvp.get("name") and mvp["name"] != "N/A":
+            mvp_text = f"MVP: {mvp['name']} - DMG:{mvp.get('damage_dealt', 0)} HEAL:{mvp.get('healing_done', 0)} KILLS:{mvp.get('kills', 0)}"
+            mvp_bar = pygame.Rect(mx + 10, my + mh - 8, mw - 20, 6)
+            pygame.draw.rect(screen, (255, 215, 0), mvp_bar, border_radius=3)
 
     # --- Terrain mode toggle ---
     def _toggle_terrain_mode(self):

@@ -1,6 +1,7 @@
 """
 BattleSystem – manages combat state, turn order, grid positions, terrain.
 The TacticalAI (engine/ai.py) computes what NPCs should do.
+Includes BattleStatisticsTracker, DMAdvisor, and WinProbabilityCalculator.
 """
 import json
 import math
@@ -12,6 +13,9 @@ from engine.entities import Entity
 from engine.ai import TacticalAI, TurnPlan, ActionStep
 from engine.terrain import TerrainObject
 from engine.dice import roll_dice
+from engine.battle_stats import BattleStatisticsTracker
+from engine.dm_advisor import DMAdvisor
+from engine.win_probability import WinProbabilityCalculator
 from data.models import CreatureStats
 
 
@@ -33,6 +37,14 @@ class BattleSystem:
         # Legendary action queue: entities that may still act this round
         self.legendary_queue: List[Entity] = []
 
+        # Battle analytics
+        self.stats_tracker = BattleStatisticsTracker()
+        self.dm_advisor = DMAdvisor()
+        self.win_calculator = WinProbabilityCalculator()
+
+        # Track last damage source for kill attribution
+        self._last_damage_source: str = ""
+
         if not self.entities:
             self._init_demo_entities()
 
@@ -42,7 +54,12 @@ class BattleSystem:
 
     def start_combat(self):
         self.combat_started = True
-        
+
+        # Register entities with stats tracker
+        for entity in self.entities:
+            if not entity.is_lair:
+                self.stats_tracker.register_entity(entity)
+
         # Check for Lair Actions
         lair_owners = [e for e in self.entities if any(a.action_type == "lair" for a in e.stats.actions)]
         for owner in lair_owners:
@@ -64,6 +81,9 @@ class BattleSystem:
         curr.reset_turn()
         self.log(f"--- Round {self.round}: {curr.name}'s turn ---")
         self._build_legendary_queue()
+
+        # Initial win probability
+        self.win_calculator.calculate(self)
 
     def _init_demo_entities(self):
         from data.models import AbilityScores, Action
@@ -435,6 +455,33 @@ class BattleSystem:
         if not enemies_alive:
             return "players"
         return None
+
+    def finalize_battle(self, winner: str):
+        """Finalize battle statistics and generate report."""
+        self.stats_tracker.finalize(self.entities, self.round, winner)
+
+    def get_win_probability(self) -> dict:
+        """Get current win probability for players."""
+        return self.win_calculator.calculate(self)
+
+    def get_encounter_danger(self) -> dict:
+        """Get pre-combat encounter danger assessment."""
+        from engine.win_probability import assess_encounter_danger
+        players = [e for e in self.entities if e.is_player]
+        enemies = [e for e in self.entities if not e.is_player and not e.is_lair]
+        return assess_encounter_danger(players, enemies)
+
+    def get_dm_suggestion(self, entity: Entity):
+        """Get AI suggestion for a player's turn."""
+        return self.dm_advisor.get_optimal_move(entity, self)
+
+    def rate_player_action(self, entity: Entity, action_type: str,
+                           target: Entity = None, damage_dealt: int = 0,
+                           spell_name: str = "", moved_distance: float = 0):
+        """Rate a player's action compared to AI optimal."""
+        return self.dm_advisor.rate_player_action(
+            entity, self, action_type, target, damage_dealt,
+            spell_name, moved_distance)
 
     # ------------------------------------------------------------------ #
     # Save / Load                                                          #
