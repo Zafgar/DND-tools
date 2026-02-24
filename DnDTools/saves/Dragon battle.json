@@ -1,0 +1,1487 @@
+{
+  "combat_started": false,
+  "round": 1,
+  "turn_index": 0,
+  "entities": [
+    {
+      "name": "Ancient Red Dragon",
+      "base_name": "Ancient Red Dragon",
+      "is_player": false,
+      "grid_x": 12.55,
+      "grid_y": 6.45,
+      "hp": 546,
+      "max_hp": 546,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {},
+      "legendary_resistances_left": 3,
+      "legendary_actions_left": 3,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Legendary Resistance": 3,
+        "Fire Breath": 1
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 40.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Lore Bard",
+      "base_name": "Lore Bard",
+      "is_player": true,
+      "grid_x": 0.15,
+      "grid_y": -4.825,
+      "hp": 63,
+      "max_hp": 63,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 3,
+        "4th": 3,
+        "5th": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {},
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 5,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Elven Ranger",
+      "base_name": "Elven Ranger",
+      "is_player": true,
+      "grid_x": -2.875,
+      "grid_y": 6.25,
+      "hp": 74,
+      "max_hp": 74,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {},
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 35.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Arcane Wizard",
+      "base_name": "Arcane Wizard",
+      "is_player": true,
+      "grid_x": 8.8,
+      "grid_y": -5.875,
+      "hp": 52,
+      "max_hp": 52,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 3,
+        "4th": 3,
+        "5th": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Arcane Recovery": 1
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Veteran Fighter",
+      "base_name": "Veteran Fighter",
+      "is_player": true,
+      "grid_x": 18.5,
+      "grid_y": -7.4,
+      "hp": 94,
+      "max_hp": 94,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {},
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Action Surge": 1,
+        "Second Wind": 1,
+        "Indomitable": 2
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Open Hand Monk",
+      "base_name": "Open Hand Monk",
+      "is_player": true,
+      "grid_x": 20.55,
+      "grid_y": 17.25,
+      "hp": 63,
+      "max_hp": 63,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {},
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {},
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 55.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 10,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Moon Druid",
+      "base_name": "Moon Druid",
+      "is_player": true,
+      "grid_x": -1.275,
+      "grid_y": 16.3,
+      "hp": 63,
+      "max_hp": 63,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {
+        "1st": 4,
+        "2nd": 3,
+        "3rd": 3,
+        "4th": 3,
+        "5th": 2
+      },
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Wild Shape": 2
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 35.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    },
+    {
+      "name": "Veteran Fighter",
+      "base_name": "Veteran Fighter",
+      "is_player": true,
+      "grid_x": 11.2,
+      "grid_y": 24.375,
+      "hp": 94,
+      "max_hp": 94,
+      "temp_hp": 0,
+      "initiative": 0,
+      "conditions": [],
+      "condition_metadata": {},
+      "spell_slots": {},
+      "legendary_resistances_left": 0,
+      "legendary_actions_left": 0,
+      "exhaustion": 0,
+      "feature_uses": {
+        "Action Surge": 1,
+        "Second Wind": 1,
+        "Indomitable": 2
+      },
+      "action_used": false,
+      "bonus_action_used": false,
+      "reaction_used": false,
+      "movement_left": 30.0,
+      "concentrating_on": null,
+      "death_save_successes": 0,
+      "death_save_failures": 0,
+      "is_stable": false,
+      "is_lair": false,
+      "lair_owner_name": null,
+      "active_effects": {},
+      "notes": "",
+      "rage_active": false,
+      "rage_rounds": 0,
+      "rages_left": 0,
+      "ki_points_left": 0,
+      "sorcery_points_left": 0,
+      "lay_on_hands_left": 0,
+      "bardic_inspiration_left": 0,
+      "is_summon": false,
+      "summon_rounds_left": 0,
+      "summon_spell_name": "",
+      "summon_owner_name": null,
+      "marked_target_name": null,
+      "death_save_history": []
+    }
+  ],
+  "terrain": [
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 5,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 5,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 5,
+      "grid_y": 16,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 4,
+      "grid_y": 16,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 3,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 4,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 3,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 4,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 4,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 3,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 0,
+      "grid_y": 1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 3,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 3,
+      "grid_y": 1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": 1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 1,
+      "grid_y": 1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 0,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 0,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 2,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 1,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 1,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 13,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 11,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 13,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 15,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 16,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 17,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 17,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 16,
+      "grid_y": -5,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 15,
+      "grid_y": -5,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 15,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 14,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 14,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 11,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 11,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 12,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 13,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 12,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 13,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 12,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 12,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 12,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 13,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 14,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 14,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 14,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 15,
+      "grid_y": -2,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 15,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 16,
+      "grid_y": -3,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 30,
+      "grid_y": 21,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 21,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 21,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 27,
+      "grid_y": 22,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 26,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 26,
+      "grid_y": 25,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 27,
+      "grid_y": 26,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 26,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 26,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 25,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 30,
+      "grid_y": 25,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 30,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 30,
+      "grid_y": 22,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 22,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 25,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 23,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 22,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 27,
+      "grid_y": 23,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 27,
+      "grid_y": 25,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 27,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 28,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 23,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 30,
+      "grid_y": 23,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "water",
+      "grid_x": 29,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Water"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 10,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 11,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 12,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -4,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -5,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -6,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -7,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -8,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -9,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 10,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 11,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 12,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -9,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -10,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -3,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -5,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -7,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": -8,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 29,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 30,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 31,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 32,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 33,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 10,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 11,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 12,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 13,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 33,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 32,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 31,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 30,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 29,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 28,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 28,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 9,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 10,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 11,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 27,
+      "grid_y": 12,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 14,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "house",
+      "grid_x": 34,
+      "grid_y": 15,
+      "width": 1,
+      "height": 1,
+      "name": "House"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": -11,
+      "grid_y": 3,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": -3,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": -14,
+      "grid_y": 22,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 3,
+      "grid_y": 24,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 19,
+      "grid_y": 8,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 7,
+      "grid_y": 6,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 29,
+      "grid_y": -1,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 24,
+      "grid_y": -4,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 31,
+      "grid_y": -7,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": 35,
+      "grid_y": 0,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    },
+    {
+      "terrain_type": "tree",
+      "grid_x": -12,
+      "grid_y": 23,
+      "width": 1,
+      "height": 1,
+      "name": "Tree"
+    }
+  ],
+  "weather": "Clear"
+}

@@ -142,6 +142,8 @@ class BattleSystem:
         ent.max_hp = max(hp, 1)
         # Summon acts right after the owner in initiative
         ent.initiative = owner.initiative - 0.5
+        if "Spiritual Weapon" in name:
+            ent.acts_on_initiative = False
 
         self.entities.append(ent)
         # Re-sort to maintain initiative order
@@ -196,7 +198,8 @@ class BattleSystem:
             # Players roll death saves, so they get a turn even if 0 HP (unless dead-dead or stable)
             is_dying_player = ent.is_player and ent.hp <= 0 and ent.death_save_failures < 3 and not ent.is_stable
             
-            if is_alive or is_dying_player or ent.is_lair:
+            should_act = ent.acts_on_initiative
+            if (is_alive or is_dying_player or ent.is_lair) and should_act:
                 break
             
             self.turn_index = (self.turn_index + 1) % len(self.entities)
@@ -226,6 +229,12 @@ class BattleSystem:
         # Check hazard terrain at start of turn
         if current.hp > 0:
             self._check_hazard_damage(current)
+
+        # Decrement Summon Duration
+        if current.is_summon:
+            current.summon_rounds_left -= 1
+            if current.summon_rounds_left <= 0:
+                self.log(f"  [SUMMON] {current.name} duration expired.")
 
         # Recharge Rolls (only if alive)
         if current.hp > 0:
@@ -314,6 +323,8 @@ class BattleSystem:
 
     def check_opportunity_attacks(self, mover: Entity, old_x: float, old_y: float):
         """Check if any hostile can make an OA against mover."""
+        if mover.is_disengaging:
+            return []
         oas = []
         for e in self.entities:
             if e == mover or e.hp <= 0 or e.reaction_used:
@@ -356,6 +367,11 @@ class BattleSystem:
             # Check features
             for feat in other.stats.features:
                 if feat.aura_radius > 0:
+                    # Filter out passive auras (like Paladin Aura of Protection)
+                    # Only trigger if it requires a save, deals damage, or applies a condition
+                    if not (feat.save_ability or feat.damage_dice or feat.applies_condition):
+                        continue
+
                     dist_ft = self.get_distance(entity, other) * 5
                     if dist_ft <= feat.aura_radius:
                         triggers.append({
@@ -370,10 +386,20 @@ class BattleSystem:
     # ------------------------------------------------------------------ #
 
     def get_distance(self, e1: Entity, e2: Entity) -> float:
-        return math.hypot(e1.grid_x - e2.grid_x, e1.grid_y - e2.grid_y)
+        # Calculate distance between the edges of the entities (0 if touching/overlapping)
+        s1 = e1.size_in_squares
+        s2 = e2.size_in_squares
+        
+        # Distance in X (0 if ranges overlap)
+        dx = max(0, e2.grid_x - (e1.grid_x + s1), e1.grid_x - (e2.grid_x + s2))
+        
+        # Distance in Y (0 if ranges overlap)
+        dy = max(0, e2.grid_y - (e1.grid_y + s1), e1.grid_y - (e2.grid_y + s2))
+        
+        return math.hypot(dx, dy)
 
     def is_adjacent(self, e1: Entity, e2: Entity) -> bool:
-        return self.get_distance(e1, e2) < 1.5
+        return self.get_distance(e1, e2) < 0.5
 
     def is_occupied(self, x: float, y: float, exclude: Entity = None) -> bool:
         for e in self.entities:
@@ -384,6 +410,34 @@ class BattleSystem:
             if e.grid_x <= x < e.grid_x + s and e.grid_y <= y < e.grid_y + s:
                 return True
         return False
+
+    def get_cover_bonus(self, attacker: Entity, target: Entity) -> int:
+        """
+        Calculate AC bonus from cover (0, 2, or 5).
+        Simplified 5e rule: If target is adjacent to a cover object that is
+        roughly between them and the attacker, grant +2 (Half Cover).
+        """
+        bonus = 0
+        # Check for adjacent terrain that provides cover
+        for t in self.terrain:
+            if not t.provides_cover:
+                continue
+            
+            # Is terrain adjacent to target?
+            dist = math.hypot(t.grid_x - target.grid_x, t.grid_y - target.grid_y)
+            if dist < 1.5:
+                # Is terrain between attacker and target?
+                # Vector Target->Attacker
+                v_ta_x = attacker.grid_x - target.grid_x
+                v_ta_y = attacker.grid_y - target.grid_y
+                # Vector Target->Terrain
+                v_tt_x = t.grid_x - target.grid_x
+                v_tt_y = t.grid_y - target.grid_y
+                
+                # Dot product > 0 means roughly same direction
+                if (v_ta_x * v_tt_x + v_ta_y * v_tt_y) > 0:
+                    return 2 # Half cover
+        return 0
 
     def is_passable(self, x: float, y: float, exclude: Entity = None) -> bool:
         """Returns True if cell is both unoccupied by entities and traversable terrain."""

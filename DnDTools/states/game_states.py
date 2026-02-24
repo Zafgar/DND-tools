@@ -13,7 +13,7 @@ from engine.terrain import TerrainObject, TERRAIN_TYPES
 from engine.dice import roll_d20, roll_dice, roll_attack, roll_dice_critical
 from data.library import library
 from engine.entities import Entity
-from data.models import CreatureStats, AbilityScores, Action
+from data.models import CreatureStats, AbilityScores, Action, SpellInfo
 from data.heroes import hero_list
 from data.conditions import CONDITIONS
 from engine.battle_report import generate_battle_report, format_report_text, save_report, save_report_text
@@ -354,6 +354,8 @@ class EncounterSetupState(GameState):
         self.active_monster_btns = []
         self.search_text = ""
         self.search_active = False
+        self.difficulty_cache = None
+        self.last_roster_hash = 0
 
         self.cr_btns = []
         y = 130
@@ -446,19 +448,39 @@ class EncounterSetupState(GameState):
         self.roster = new_roster
 
     def _calculate_difficulty(self):
+        # Check cache to avoid heavy recalculation every frame
+        current_sig = tuple((e.name, e.hp, e.max_hp, e.is_player) for e in self.roster)
+        current_hash = hash(current_sig)
+        
+        if self.difficulty_cache and self.last_roster_hash == current_hash:
+            return self.difficulty_cache
+
         heroes = [e for e in self.roster if e.is_player]
         monsters = [e for e in self.roster if not e.is_player]
         if not heroes or not monsters:
-            return "N/A", 0, 0, None
+            return "N/A", 0, 0, None, None
 
         # Use the enhanced encounter danger assessment
         danger = assess_encounter_danger(heroes, monsters)
-        return danger["difficulty"], danger["xp_total"], danger["adjusted_xp"], danger
+
+        # NEW: Calculate win probability
+        from engine.battle import BattleSystem
+        win_prob = None
+        try:
+            # Create a temporary battle system to use its calculator
+            # This is a bit heavy but ensures we use the same logic as in-battle
+            temp_battle = BattleSystem(log_callback=lambda msg: None, initial_entities=list(self.roster))
+            win_prob = temp_battle.get_win_probability()
+        except Exception as e:
+            print(f"Win prob calc error: {e}")
+
+        self.difficulty_cache = (danger["difficulty"], danger["xp_total"], danger["adjusted_xp"], danger, win_prob)
+        self.last_roster_hash = current_hash
+        return self.difficulty_cache
 
     def _update_monster_list(self):
         self.active_monster_btns = []
         self.scroll_monster = 0
-        
         if self.search_text:
             # Search mode
             all_mons = library.get_all_monsters()
@@ -615,7 +637,7 @@ class EncounterSetupState(GameState):
             y += 22
             
         # Difficulty Display (enhanced with danger assessment)
-        diff, raw_xp, adj_xp, danger = self._calculate_difficulty()
+        diff, raw_xp, adj_xp, danger, win_prob = self._calculate_difficulty()
         diff_colors = {
             "Trivial": COLORS["text_dim"], "Easy": COLORS["success"],
             "Medium": COLORS["warning"], "Hard": COLORS["danger"],
@@ -653,9 +675,49 @@ class EncounterSetupState(GameState):
                 surv_txt = fonts.tiny.render(surv, True, diff_c)
                 screen.blit(surv_txt, (700, SCREEN_HEIGHT - 68))
 
+        # Win Probability Bar
+        if win_prob:
+            self._draw_win_probability_bar(screen, win_prob, 700, SCREEN_HEIGHT - 45, 460, 22)
+
         # Action buttons
         for b in self.action_btns:
             b.draw(screen, mp)
+
+    def _draw_win_probability_bar(self, screen, win_prob_cache, x, y, w, h):
+        """Draw the win probability bar on the UI (setup screen version)."""
+        if not win_prob_cache:
+            return
+
+        prob = win_prob_cache["probability"]
+        pct = win_prob_cache["percentage"]
+        
+        cx = x + w // 2
+        pygame.draw.rect(screen, (20, 22, 25), (x, y, w, h), border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], (x, y, w, h), 1, border_radius=4)
+        pygame.draw.line(screen, (80, 80, 80), (cx, y), (cx, y+h), 1)
+
+        if prob > 0.5:
+            bar_w = int((prob - 0.5) * w)
+            bar_w = min(bar_w, w//2 - 2)
+            if bar_w > 0:
+                r = pygame.Rect(cx, y+2, bar_w, h-4)
+                g_val = min(255, 100 + int((prob-0.5)*300))
+                pygame.draw.rect(screen, (40, g_val, 60), r, border_top_right_radius=3, border_bottom_right_radius=3)
+            txt_str = f"Win Chance: {pct:.0f}%"
+            txt_col = (150, 255, 150)
+        else:
+            loss_prob = 1.0 - prob
+            bar_w = int((0.5 - prob) * w)
+            bar_w = min(bar_w, w//2 - 2)
+            if bar_w > 0:
+                r = pygame.Rect(cx - bar_w, y+2, bar_w, h-4)
+                r_val = min(255, 100 + int((loss_prob-0.5)*300))
+                pygame.draw.rect(screen, (r_val, 60, 60), r, border_top_left_radius=3, border_bottom_left_radius=3)
+            txt_str = f"Loss Risk: {loss_prob*100:.0f}%"
+            txt_col = (255, 150, 150)
+
+        txt = fonts.tiny.render(txt_str, True, txt_col)
+        screen.blit(txt, (x + w//2 - txt.get_width()//2, y + (h - txt.get_height()) // 2))
 
 
 # ============================================================
@@ -720,6 +782,7 @@ class BattleState(GameState):
         self.ts_last_update = 0     # Timestamp of last TaleSpire update
         self.auto_battle = False    # Auto-play toggle
         self.auto_timer = 0         # Timer for auto-play ticks
+        self.log_filter_mode = "all" # "all" or "selected"
 
         # Visual FX
         self.floating_texts = []
@@ -730,6 +793,7 @@ class BattleState(GameState):
         self.pending_plan: TurnPlan | None = None
         self.pending_step_idx: int = 0
         self.current_step_outcomes = {} # target -> "hit"/"miss"/"save"/"fail"
+        self.current_step_rolls = {}    # target -> "15+5=20" (for saves)
 
         # Player action panel state
         self.player_action_mode = False
@@ -790,6 +854,10 @@ class BattleState(GameState):
         self.dm_suggestion_cache = None        # Cached DM advisor suggestion
         self.dm_rating_cache = None            # Cached player action rating
         self.show_advisor_panel = False        # Toggle for DM advisor panel
+
+        # Manual Spell Targeting
+        self.spell_targeting: SpellInfo | None = None
+        self.spell_caster: Entity | None = None
 
         self._build_buttons()
 
@@ -871,6 +939,7 @@ class BattleState(GameState):
             Button(0, 0, 120, 35, "Use Item",  lambda: self._pl_set_type("item"),   color=COLORS["warning"]),
             Button(0, 0, 120, 35, "Dash",      lambda: self._pl_set_type("dash"),   color=COLORS["accent"]),
             Button(0, 0, 120, 35, "Dodge",     lambda: self._pl_set_type("dodge"),  color=COLORS["accent"]),
+            Button(0, 0, 120, 35, "Disengage", lambda: self._pl_set_type("disengage"), color=COLORS["accent"]),
             Button(0, 0, 120, 35, "Help",      lambda: self._pl_set_type("help"),   color=COLORS["accent"]),
             Button(0, 0, 120, 35, "Done",      lambda: self._close_player_panel(),  color=COLORS["text_dim"]),
         ]
@@ -985,7 +1054,7 @@ class BattleState(GameState):
 
     def _log(self, msg):
         self.logs.append(msg)
-        if len(self.logs) > 80:
+        if len(self.logs) > 200:
             self.logs.pop(0)
 
     def _spawn_damage_text(self, entity, amount, is_heal=False):
@@ -1099,6 +1168,7 @@ class BattleState(GameState):
     def _prepare_step_outcomes(self):
         """Pre-calculate hits/saves for the current step so the DM just reviews them."""
         self.current_step_outcomes = {}
+        self.current_step_rolls = {}
         if not self.pending_plan or self.pending_step_idx >= len(self.pending_plan.steps):
             return
 
@@ -1113,13 +1183,28 @@ class BattleState(GameState):
                     self.current_step_outcomes[t] = "fail"
                 else:
                     # Auto mode or NPC target: Engine rolls automatically
-                    bonus = t.get_save_bonus(step.save_ability)
-                    roll = random.randint(1, 20) + bonus
-                    if roll >= step.save_dc:
-                        self.current_step_outcomes[t] = "save"
+                    if step.save_ability:
+                        bonus = t.get_save_bonus(step.save_ability)
+                        
+                        # Paladin Aura of Protection check
+                        if self.battle:
+                            for ally in self.battle.get_allies_of(t):
+                                if ally.hp > 0 and not ally.is_incapacitated():
+                                    aura = ally.get_feature("aura_of_protection")
+                                    if aura and self.battle.get_distance(t, ally) * 5 <= (aura.aura_radius or 10):
+                                        bonus += max(1, ally.get_modifier("Charisma"))
+                                        break
+                        
+                        raw = random.randint(1, 20)
+                        total = raw + bonus
+                        self.current_step_rolls[t] = f"{raw}+{bonus}={total}"
+                        if total >= step.save_dc:
+                            self.current_step_outcomes[t] = "save"
+                        else:
+                            self.current_step_outcomes[t] = "fail"
                     else:
                         self.current_step_outcomes[t] = "fail"
-            elif step.step_type in ("attack", "multiattack", "reaction", "bonus_attack", "legendary"):
+            elif step.step_type in ("attack", "multiattack", "reaction", "bonus_attack", "legendary") or (step.step_type == "spell" and step.attack_roll > 0):
                 # Attack roll already done by AI
                 if step.is_hit:
                     self.current_step_outcomes[t] = "hit"
@@ -1139,7 +1224,7 @@ class BattleState(GameState):
 
             # Handle summon spawning
             if step.step_type == "summon" and step.summon_name:
-                self.battle.spawn_summon(
+                new_ent = self.battle.spawn_summon(
                     owner=step.attacker,
                     name=step.summon_name,
                     x=step.summon_x,
@@ -1152,7 +1237,17 @@ class BattleState(GameState):
                     spell_name=step.summon_spell or "",
                 )
                 self._log(f"  [SUMMON] {step.description}")
+                
+                # Handle immediate attack (e.g. Spiritual Weapon on cast)
+                if step.summon_immediate_attack and step.target and new_ent.stats.actions:
+                    action = new_ent.stats.actions[0]
+                    atk_step = self.battle.ai._execute_attack(new_ent, action, step.target, self.battle)
+                    atk_step.step_type = "bonus_attack"
+                    atk_step.description = f"{new_ent.name} attacks immediately!"
+                    # Insert into plan so it executes next
+                    self.pending_plan.steps.insert(self.pending_step_idx + 1, atk_step)
             else:
+                self._log(f"[ACTION] {step.description}")
                 # Apply all outcomes
                 for t, outcome in self.current_step_outcomes.items():
                     self._resolve_target_outcome(step, t, outcome)
@@ -1216,11 +1311,72 @@ class BattleState(GameState):
                 attacker_is_player=step.attacker.is_player if step.attacker else False)
 
         if outcome == "hit" or outcome == "fail":
+            # --- AI REACTION CHECK (Shield) ---
+            # If target is NPC, has Shield, reaction available, and Shield would make it miss
+            if not target.is_player and not target.reaction_used and outcome in ("hit", "crit"):
+                shield = next((s for s in target.stats.spells_known if s.name == "Shield"), None)
+                if shield and target.has_spell_slot(shield.level):
+                    should_cast = False
+                    # If we know the roll, check if AC+5 saves us
+                    if step.attack_roll > 0:
+                        if target.armor_class + 5 >= step.attack_roll:
+                            should_cast = True
+                    # If manual/unknown roll, cast if low HP
+                    elif target.hp < target.max_hp * 0.5:
+                        should_cast = True
+                    
+                    if should_cast:
+                        target.use_spell_slot(shield.level)
+                        target.reaction_used = True
+                        target.active_effects["Shield"] = 1
+                        self._log(f"[REACTION] {target.name} casts Shield! AC +5.")
+                        self._spawn_damage_text(target, "Shield!", is_heal=True)
+                        
+                        # Re-evaluate hit
+                        if step.attack_roll > 0 and step.attack_roll < target.armor_class:
+                            outcome = "miss"
+                            self._log(f"  -> Attack now MISSES!")
+                            # Correct stats (remove the hit we just added)
+                            if step.step_type in ("attack", "multiattack", "bonus_attack", "legendary"):
+                                self.battle.stats_tracker.entity_stats[attacker_name].attacks_hit -= 1
+                            
+                            # Skip damage application
+                            return
+
             # Full effect
             if dmg > 0:
                 old_hp = target.hp
                 dealt, broke = target.take_damage(dmg, step.damage_type)
-                self._log(f"  -> {target.name} takes {dealt} {step.damage_type}")
+                
+                # --- AI REACTION CHECK (Hellish Rebuke) ---
+                if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
+                    rebuke = next((s for s in target.stats.spells_known if s.name == "Hellish Rebuke"), None)
+                    if rebuke and target.has_spell_slot(rebuke.level) and self.battle.get_distance(target, step.attacker) * 5 <= 60:
+                        target.use_spell_slot(rebuke.level)
+                        target.reaction_used = True
+                        
+                        # Resolve Rebuke damage immediately
+                        rebuke_dmg = roll_dice(rebuke.damage_dice)
+                        # DEX save for half
+                        save_bonus = step.attacker.get_save_bonus("Dexterity")
+                        dc = target.stats.spell_save_dc
+                        save_roll = random.randint(1, 20) + save_bonus
+                        if save_roll >= dc:
+                            rebuke_dmg //= 2
+                            self._log(f"[REACTION] {target.name} casts Hellish Rebuke! {step.attacker.name} saves.")
+                        else:
+                            self._log(f"[REACTION] {target.name} casts Hellish Rebuke! {step.attacker.name} fails save.")
+                        
+                        r_dealt, _ = step.attacker.take_damage(rebuke_dmg, "fire")
+                        self._spawn_damage_text(step.attacker, r_dealt)
+                        self._log(f"  -> {step.attacker.name} takes {r_dealt} fire damage.")
+
+                if outcome == "fail":
+                    roll_str = self.current_step_rolls.get(target, "")
+                    roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
+                    self._log(f"  -> {target.name} FAILED save{roll_msg}: takes {dealt} {step.damage_type}")
+                else:
+                    self._log(f"  -> {target.name} takes {dealt} {step.damage_type}")
                 self._spawn_damage_text(target, dealt)
                 # Track damage
                 self.battle.stats_tracker.record_damage(
@@ -1253,6 +1409,17 @@ class BattleState(GameState):
                     if dropped_spell:
                         self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
                 self._log(f"  -> {target.name} is {cond}")
+            
+            # Apply duration effects (Buffs/Debuffs that aren't conditions, e.g. Bless, Haste)
+            if step.spell and step.spell.duration and not step.applies_condition:
+                 # Parse duration roughly
+                 rounds = 10 # default 1 min
+                 if "minute" in step.spell.duration: rounds = 10
+                 elif "hour" in step.spell.duration: rounds = 600
+                 elif "round" in step.spell.duration: rounds = int(step.spell.duration.split()[0])
+                 
+                 target.active_effects[step.spell.name] = rounds
+                 self._log(f"  -> {step.spell.name} applied ({rounds} rnds)")
 
         elif outcome == "save":
             # Half damage (usually), no condition
@@ -1262,7 +1429,9 @@ class BattleState(GameState):
             if half_dmg > 0:
                 old_hp = target.hp
                 dealt, broke = target.take_damage(half_dmg, step.damage_type)
-                self._log(f"  -> {target.name} saves: takes {dealt} {step.damage_type}")
+                roll_str = self.current_step_rolls.get(target, "")
+                roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
+                self._log(f"  -> {target.name} SAVED{roll_msg}: takes {dealt} {step.damage_type}")
                 self._spawn_damage_text(target, dealt)
                 self.battle.stats_tracker.record_damage(
                     rnd, attacker_name, target.name, dealt, step.damage_type,
@@ -1272,7 +1441,9 @@ class BattleState(GameState):
                 if target.hp <= 0 and old_hp > 0:
                     self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
             else:
-                self._log(f"  -> {target.name} saves: no damage")
+                roll_str = self.current_step_rolls.get(target, "")
+                roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
+                self._log(f"  -> {target.name} SAVED{roll_msg}: no damage")
 
         elif outcome == "crit":
             # Double dice damage (simplified here as 1.5x or just raw since we pre-rolled)
@@ -1362,8 +1533,13 @@ class BattleState(GameState):
             curr.action_used = True
             curr.movement_left += curr.stats.speed
             self._log(f"[PLAYER] {curr.name} Dashes. Movement doubled.")
+        elif action_type == "disengage":
+            curr.action_used = True
+            curr.is_disengaging = True
+            self._log(f"[PLAYER] {curr.name} Disengages. Movement won't provoke Opportunity Attacks.")
         elif action_type == "dodge":
             curr.action_used = True
+            curr.is_dodging = True
             self._log(f"[PLAYER] {curr.name} Dodges. Attacks against have Disadvantage.")
         elif action_type == "help":
             curr.action_used = True
@@ -1831,6 +2007,19 @@ class BattleState(GameState):
     def handle_events(self, events):
         curr = self.battle.get_current_entity()
         for event in events:
+            # Spell Targeting Interception
+            if self.spell_targeting:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1: # Left click to cast
+                        self._execute_manual_spell(pygame.mouse.get_pos())
+                    elif event.button == 3: # Right click to cancel
+                        self._cancel_spell_targeting()
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._cancel_spell_targeting()
+                # Don't block other events entirely (like window close), but block grid interaction
+                if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                    continue
+
             try:
                 # Scenario Modal
                 if self.scenario_modal:
@@ -2187,6 +2376,9 @@ class BattleState(GameState):
             self._draw_aura_modal(screen, mp)
         if self.ctx_open:
             self._draw_ctx_menu(screen, mp)
+        if self.spell_targeting:
+            self._draw_spell_targeting_overlay(screen, mp)
+
         if self.scenario_modal:
             self.scenario_modal.draw(screen, mp)
         if self.notes_modal:
@@ -2552,7 +2744,7 @@ class BattleState(GameState):
         elif self.active_tab == 1:
             content_y = self._draw_spells_tab(screen, sel, x0, content_y, mp)
         elif self.active_tab == 2:
-            content_y = self._draw_log_tab(screen, x0, content_y)
+            content_y = self._draw_log_tab(screen, sel, x0, content_y, mp)
 
         screen.set_clip(None)
 
@@ -2651,6 +2843,24 @@ class BattleState(GameState):
                 self.ui_click_zones.append((r, lambda s=sk, b=bonus: self._roll_skill(s, b)))
                 sx += w + 5
             y += 24
+        
+        # Ability Checks (Raw checks for contests etc)
+        ln("ABILITY CHECKS:", COLORS["text_dim"])
+        sx = x0
+        for ab in abilities:
+            bonus = sel.get_modifier(ab)
+            txt = f"{ab[:3]} {bonus:+d}"
+            s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
+            w = s_surf.get_width() + 10
+            if sx + w > SCREEN_WIDTH - 20:
+                sx = x0
+                y += 24
+            r = pygame.Rect(sx, y, w, 20)
+            pygame.draw.rect(screen, (60, 63, 65) if not r.collidepoint(mp) else (80, 83, 85), r, border_radius=4)
+            screen.blit(s_surf, (sx+5, y+2))
+            self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_skill(f"{a} Check", b)))
+            sx += w + 5
+        y += 24
 
         # Action economy indicators
         ln("")
@@ -2741,6 +2951,9 @@ class BattleState(GameState):
                 if feat.uses_per_day > 0:
                     remaining = sel.feature_uses.get(feat.name, feat.uses_per_day)
                     uses_str = f" [{remaining}/{feat.uses_per_day}]"
+                elif feat.recharge:
+                    remaining = sel.feature_uses.get(feat.name, 0)
+                    uses_str = f" [{remaining}/1]"
                 
                 # Render manually to check hover
                 txt_str = f"• {feat.name}{uses_str}"
@@ -2891,7 +3104,8 @@ class BattleState(GameState):
                 
                 # Main text
                 txt = f"  [{key2}]{conc} {sp.name}"
-                s = fonts.small.render(txt, True, COLORS["spell"])
+                color = COLORS["spell"] if sel.has_spell_slot(sp.level) else COLORS["text_dim"]
+                s = fonts.small.render(txt, True, color)
                 line_rect = pygame.Rect(x0+4, y, s.get_width(), 20)
 
                 # Hover logic
@@ -2904,6 +3118,9 @@ class BattleState(GameState):
                     if sp.concentration: desc += "Requires Concentration\n"
                     desc += f"\n{sp.description}"
                     self.active_tooltip = desc
+                
+                # Click to target
+                self.ui_click_zones.append((line_rect, lambda s=sp: self._start_spell_targeting(sel, s)))
 
                 screen.blit(s, (x0+4, y))
 
@@ -2917,8 +3134,191 @@ class BattleState(GameState):
 
         return y
 
-    def _draw_log_tab(self, screen, x0, y):
-        for msg in reversed(self.logs):
+    # ------------------------------------------------------------------ #
+    # Manual Spell Targeting                                               #
+    # ------------------------------------------------------------------ #
+
+    def _start_spell_targeting(self, entity, spell):
+        self.spell_caster = entity
+        self.spell_targeting = spell
+        self._log(f"[TARGETING] Select target/area for {spell.name} (Range: {spell.range}ft)")
+
+    def _cancel_spell_targeting(self):
+        self.spell_caster = None
+        self.spell_targeting = None
+        self._log("[TARGETING] Cancelled.")
+
+    def _draw_spell_targeting_overlay(self, screen, mp):
+        if not self.spell_targeting or not self.spell_caster:
+            return
+
+        mx, my = mp
+        if mx > GRID_W or my < TOP_BAR_H:
+            return # Mouse outside grid
+
+        caster = self.spell_caster
+        spell = self.spell_targeting
+        gsz = self.battle.grid_size
+
+        # Caster screen pos
+        cx, cy = self._grid_to_screen(caster.grid_x, caster.grid_y)
+        caster_px = (cx + gsz//2, cy + gsz//2)
+
+        # Mouse grid pos
+        gx, gy = self._screen_to_grid(mx, my)
+        
+        # Distance check
+        dist_ft = math.hypot(gx - caster.grid_x, gy - caster.grid_y) * 5
+        in_range = dist_ft <= spell.range
+        
+        # Draw Range Circle
+        range_px = int(spell.range / 5 * gsz)
+        pygame.draw.circle(screen, (255, 255, 255), caster_px, range_px, 1)
+
+        # Draw Template at Mouse
+        color = (0, 255, 0, 100) if in_range else (255, 0, 0, 100)
+        border = (0, 255, 0) if in_range else (255, 0, 0)
+        
+        # Snap to grid center for cleaner targeting
+        snap_gx, snap_gy = int(gx) + 0.5, int(gy) + 0.5
+        sx, sy = self._grid_to_screen(snap_gx, snap_gy)
+        
+        # AoE Visualization
+        if spell.aoe_radius > 0:
+            radius_px = int(spell.aoe_radius / 5 * gsz)
+            aoe_surf = pygame.Surface((radius_px*2, radius_px*2), pygame.SRCALPHA)
+            
+            if spell.aoe_shape == "cone":
+                # Cone from caster to mouse
+                dx = mx - caster_px[0]
+                dy = my - caster_px[1]
+                angle = math.atan2(dy, dx)
+                pts = [(radius_px, radius_px)] # Center of surface
+                for deg in range(-30, 31, 10):
+                    rad = angle + math.radians(deg)
+                    px = radius_px + math.cos(rad) * radius_px
+                    py = radius_px + math.sin(rad) * radius_px
+                    pts.append((px, py))
+                pygame.draw.polygon(aoe_surf, color, pts)
+                pygame.draw.lines(aoe_surf, border, True, pts, 2)
+                # Draw at caster position for cone origin? 
+                # Usually cones start at caster. Let's draw it at caster.
+                screen.blit(aoe_surf, (caster_px[0]-radius_px, caster_px[1]-radius_px))
+            else:
+                # Sphere/Cube/Cylinder at mouse
+                pygame.draw.circle(aoe_surf, color, (radius_px, radius_px), radius_px)
+                pygame.draw.circle(aoe_surf, border, (radius_px, radius_px), radius_px, 2)
+                screen.blit(aoe_surf, (sx - radius_px, sy - radius_px))
+        else:
+            # Single Target Line
+            pygame.draw.line(screen, border, caster_px, (mx, my), 2)
+            pygame.draw.circle(screen, border, (mx, my), 5)
+
+        # Tooltip
+        txt = f"{spell.name}: {dist_ft:.1f}ft / {spell.range}ft"
+        t_surf = fonts.small.render(txt, True, border)
+        screen.blit(t_surf, (mx + 15, my + 15))
+
+    def _execute_manual_spell(self, mp):
+        mx, my = mp
+        if mx > GRID_W or my < TOP_BAR_H:
+            return
+
+        caster = self.spell_caster
+        spell = self.spell_targeting
+        gx, gy = self._screen_to_grid(mx, my)
+        
+        # Validate Range
+        dist_ft = math.hypot(gx - caster.grid_x, gy - caster.grid_y) * 5
+        if dist_ft > spell.range + 5: # Small buffer
+            self._log("[TARGETING] Out of range!")
+            return
+
+        # Identify Targets
+        targets = []
+        aoe_center = None
+        
+        if spell.aoe_radius > 0:
+            # AoE Logic
+            aoe_center = (gx, gy)
+            # Simple sphere check for now
+            for ent in self.battle.entities:
+                if ent.hp <= 0: continue
+                d = math.hypot(ent.grid_x - gx, ent.grid_y - gy) * 5
+                if d <= spell.aoe_radius:
+                    targets.append(ent)
+        else:
+            # Single Target
+            t = self.battle.get_entity_at(gx, gy)
+            if t and t.hp > 0:
+                targets.append(t)
+
+        if not targets and spell.aoe_radius == 0:
+            self._log("[TARGETING] No target selected.")
+            return
+
+        # Roll Damage/Healing
+        dmg = roll_dice(spell.damage_dice)
+        heal = roll_dice(spell.heals)
+        
+        # Create ActionStep
+        step = ActionStep(
+            step_type="spell",
+            description=f"{caster.name} casts {spell.name}.",
+            attacker=caster,
+            targets=targets,
+            spell=spell,
+            damage=dmg if dmg > 0 else heal, # Reuse damage field for heal if needed, logic handles it
+            damage_type=spell.damage_type,
+            save_dc=caster.stats.spell_save_dc,
+            save_ability=spell.save_ability,
+            aoe_center=aoe_center if aoe_center else tuple()
+        )
+
+        # Create Plan and Queue
+        plan = TurnPlan(entity=caster, steps=[step])
+        self.pending_plan = plan
+        self.pending_step_idx = 0
+        self._prepare_step_outcomes()
+        self._cancel_spell_targeting()
+        self._log(f"[ACTION] Casting {spell.name} on {len(targets)} targets...")
+
+    def _draw_log_tab(self, screen, sel, x0, y, mp):
+        # Filter Buttons
+        btn_w = 110
+        btn_h = 24
+        
+        # Global Button
+        r_global = pygame.Rect(x0, y, btn_w, btn_h)
+        is_global = (self.log_filter_mode == "all")
+        c_global = COLORS["accent"] if is_global else (60, 60, 60)
+        pygame.draw.rect(screen, c_global, r_global, border_radius=4)
+        t_global = fonts.tiny.render("GLOBAL LOG", True, (255,255,255))
+        screen.blit(t_global, (r_global.centerx - t_global.get_width()//2, r_global.centery - t_global.get_height()//2))
+        self.ui_click_zones.append((r_global, lambda: setattr(self, 'log_filter_mode', 'all')))
+        
+        # Entity Button
+        r_ent = pygame.Rect(x0 + btn_w + 10, y, btn_w + 40, btn_h)
+        is_ent = (self.log_filter_mode == "selected")
+        c_ent = COLORS["accent"] if is_ent else (60, 60, 60)
+        pygame.draw.rect(screen, c_ent, r_ent, border_radius=4)
+        
+        ent_name = sel.name if sel else "Entity"
+        if len(ent_name) > 15: ent_name = ent_name[:13] + ".."
+        t_ent = fonts.tiny.render(f"LOG: {ent_name}", True, (255,255,255))
+        screen.blit(t_ent, (r_ent.centerx - t_ent.get_width()//2, r_ent.centery - t_ent.get_height()//2))
+        self.ui_click_zones.append((r_ent, lambda: setattr(self, 'log_filter_mode', 'selected')))
+        
+        y += 32
+
+        # Filter logic
+        display_logs = self.logs
+        if self.log_filter_mode == "selected" and sel:
+            # Show logs containing the selected entity's name
+            name = sel.name
+            display_logs = [msg for msg in self.logs if name in msg]
+
+        for msg in reversed(display_logs):
             c = COLORS["accent"] if msg.startswith("[AI") else \
                 COLORS["player"] if msg.startswith("[PLAYER") else \
                 COLORS["danger"] if "damage" in msg.lower() or "hit" in msg.lower() else \
@@ -3144,39 +3544,47 @@ class BattleState(GameState):
         if not self.reaction_pending: return
         
         reactor = self.reaction_pending[0]
-        mover, dest_x, dest_y = self.pending_move
         
-        if allowed:
-            # Execute attack
-            melee_action = next((a for a in reactor.stats.actions if a.range <= 5 and not a.is_multiattack), None)
-            if not melee_action:
-                melee_action = Action("Opportunity Attack", "Melee", 0, "1d4", 0, "bludgeoning")
+        if self.reaction_type == "oa" and self.pending_move:
+            mover, dest_x, dest_y = self.pending_move
             
-            self._log(f"[REACTION] {reactor.name} attacks {mover.name}!")
+            if allowed:
+                # Execute attack
+                melee_action = next((a for a in reactor.stats.actions if a.range <= 5 and not a.is_multiattack), None)
+                if not melee_action:
+                    melee_action = Action("Opportunity Attack", "Melee", 0, "1d4", 0, "bludgeoning")
+                
+                self._log(f"[REACTION] {reactor.name} attacks {mover.name}!")
+                
+                # Roll attack
+                from engine.dice import roll_attack, roll_dice_critical, roll_dice
+                adv = reactor.has_attack_advantage(mover)
+                dis = reactor.has_attack_disadvantage(mover)
+                total, nat, is_crit, is_fumble, roll_str = roll_attack(melee_action.attack_bonus, adv, dis)
+                
+                hit = total >= mover.stats.armor_class and not is_fumble
+                if hit:
+                    d_str = f"{melee_action.damage_dice}+{melee_action.damage_bonus}" if melee_action.damage_bonus else melee_action.damage_dice
+                    dmg = roll_dice_critical(d_str) if is_crit else roll_dice(d_str)
+                    dealt, broke = mover.take_damage(dmg, melee_action.damage_type)
+                    self._spawn_damage_text(mover, dealt)
+                    self._log(f"  -> {'CRIT!' if is_crit else 'HIT'} ({total})! Dealt {dealt} {melee_action.damage_type}.")
+                else:
+                    self._log(f"  -> MISS ({total}).")
+                
+                reactor.reaction_used = True
             
-            # Roll attack
-            from engine.dice import roll_attack, roll_dice_critical, roll_dice
-            adv = reactor.has_attack_advantage(mover)
-            dis = reactor.has_attack_disadvantage(mover)
-            total, nat, is_crit, is_fumble, roll_str = roll_attack(melee_action.attack_bonus, adv, dis)
-            
-            hit = total >= mover.stats.armor_class and not is_fumble
-            if hit:
-                d_str = f"{melee_action.damage_dice}+{melee_action.damage_bonus}" if melee_action.damage_bonus else melee_action.damage_dice
-                dmg = roll_dice_critical(d_str) if is_crit else roll_dice(d_str)
-                dealt, broke = mover.take_damage(dmg, melee_action.damage_type)
-                self._spawn_damage_text(mover, dealt)
-                self._log(f"  -> {'CRIT!' if is_crit else 'HIT'} ({total})! Dealt {dealt} {melee_action.damage_type}.")
-            else:
-                self._log(f"  -> MISS ({total}).")
-            
-            reactor.reaction_used = True
+            self.reaction_pending.pop(0)
+            if not self.reaction_pending:
+                mover.grid_x = dest_x
+                mover.grid_y = dest_y
+                self.pending_move = None
         
-        self.reaction_pending.pop(0)
-        if not self.reaction_pending:
-            mover.grid_x = dest_x
-            mover.grid_y = dest_y
-            self.pending_move = None
+        elif self.reaction_type == "counterspell":
+            if allowed:
+                self._log(f"[REACTION] {reactor.name} uses Counterspell (Slot expended).")
+                reactor.reaction_used = True
+            self.reaction_pending.pop(0)
 
     # --- Aura Trigger Modal ---
     def _open_next_aura_modal(self):
@@ -3618,26 +4026,50 @@ class BattleState(GameState):
         prob = self.win_prob_cache["probability"]
         pct = self.win_prob_cache["percentage"]
         label = self.win_prob_cache["label"]
+        
+        # Center point
+        cx = x + w // 2
 
         # Background
-        pygame.draw.rect(screen, (30, 32, 36), (x, y, w, h), border_radius=4)
+        pygame.draw.rect(screen, (20, 22, 25), (x, y, w, h), border_radius=4)
         pygame.draw.rect(screen, COLORS["border"], (x, y, w, h), 1, border_radius=4)
+        
+        # Center line
+        pygame.draw.line(screen, (80, 80, 80), (cx, y), (cx, y+h), 1)
 
-        # Fill bar
-        fill_w = int((w - 4) * prob)
-        if prob >= 0.6:
-            bar_color = (40, 180, 80)
-        elif prob >= 0.4:
-            bar_color = (200, 180, 40)
+        # Tug of War Logic
+        # 0.0 = Full Red (Left), 0.5 = Empty (Center), 1.0 = Full Green (Right)
+        
+        if prob > 0.5:
+            # Winning (Green to right)
+            bar_w = int((prob - 0.5) * w) # Scale 0.5->1.0 to 0->w/2
+            # Cap at w/2 - 2
+            bar_w = min(bar_w, w//2 - 2)
+            if bar_w > 0:
+                r = pygame.Rect(cx, y+2, bar_w, h-4)
+                # Gradient-ish color based on intensity
+                g_val = min(255, 100 + int((prob-0.5)*300))
+                pygame.draw.rect(screen, (40, g_val, 60), r, border_top_right_radius=3, border_bottom_right_radius=3)
+            
+            txt_str = f"Win Chance: {pct:.0f}%"
+            txt_col = (150, 255, 150)
         else:
-            bar_color = (200, 60, 60)
-
-        if fill_w > 0:
-            pygame.draw.rect(screen, bar_color, (x + 2, y + 2, fill_w, h - 4), border_radius=3)
+            # Losing (Red to left)
+            loss_prob = 1.0 - prob
+            bar_w = int((0.5 - prob) * w)
+            bar_w = min(bar_w, w//2 - 2)
+            if bar_w > 0:
+                r = pygame.Rect(cx - bar_w, y+2, bar_w, h-4)
+                r_val = min(255, 100 + int((loss_prob-0.5)*300))
+                pygame.draw.rect(screen, (r_val, 60, 60), r, border_top_left_radius=3, border_bottom_left_radius=3)
+            
+            txt_str = f"Loss Risk: {loss_prob*100:.0f}%"
+            txt_col = (255, 150, 150)
 
         # Text
-        txt = fonts.tiny.render(f"Win: {pct:.0f}% - {label}", True, (255, 255, 255))
-        screen.blit(txt, (x + 4, y + (h - txt.get_height()) // 2))
+        txt = fonts.tiny.render(txt_str, True, txt_col)
+        # Center text
+        screen.blit(txt, (x + w//2 - txt.get_width()//2, y + (h - txt.get_height()) // 2))
 
         # Trend arrow
         trend = self.battle.win_calculator.get_trend()

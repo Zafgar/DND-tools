@@ -29,6 +29,7 @@ class Entity:
 
         # Initiative
         self.initiative = 0
+        self.acts_on_initiative: bool = True  # If False, skipped in turn order (e.g. Spiritual Weapon)
 
         # Conditions: set of strings
         self.conditions: set = set()
@@ -55,6 +56,10 @@ class Entity:
         self.bonus_action_used: bool = False
         self.reaction_used: bool = False
         self.movement_left: float = float(stats.speed)
+        
+        # Combat States
+        self.is_dodging: bool = False
+        self.is_disengaging: bool = False
 
         # Concentration
         self.concentrating_on: SpellInfo | None = None
@@ -101,6 +106,18 @@ class Entity:
         if "huge" in s: return 3
         if "gargantuan" in s: return 4
         return 1
+
+    @property
+    def armor_class(self) -> int:
+        """Calculate dynamic AC including active effects."""
+        ac = self.stats.armor_class
+        if "Haste" in self.active_effects:
+            ac += 2
+        if "Shield" in self.active_effects:
+            ac += 5
+        if "Shield of Faith" in self.active_effects:
+            ac += 2
+        return ac
 
     # ------------------------------------------------------------------ #
     # HP / Damage                                                          #
@@ -291,10 +308,26 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def get_modifier(self, ability: str) -> int:
+        if not ability: return 0
         return self.stats.abilities.get_mod(ability)
 
     def get_save_bonus(self, ability: str) -> int:
-        return self.stats.saving_throws.get(ability, self.get_modifier(ability))
+        base = self.stats.saving_throws.get(ability, self.get_modifier(ability))
+        # Bless: +1d4 to saves
+        if "Bless" in self.active_effects:
+            base += random.randint(1, 4)
+        if "Bane" in self.active_effects:
+            base -= random.randint(1, 4)
+        return base
+
+    def get_attack_bonus_effects(self) -> int:
+        """Get dynamic bonus to attack rolls from spells/effects."""
+        bonus = 0
+        if "Bless" in self.active_effects:
+            bonus += random.randint(1, 4)
+        if "Bane" in self.active_effects:
+            bonus -= random.randint(1, 4)
+        return bonus
 
     def get_skill_bonus(self, skill: str) -> int:
         return self.stats.skills.get(skill, 0)
@@ -326,7 +359,7 @@ class Entity:
         feat = self.get_feature_by_name(name)
         if not feat:
             return False
-        if feat.uses_per_day == -1:
+        if feat.uses_per_day == -1 and not feat.recharge:
             return True  # Unlimited
         return self.feature_uses.get(name, 0) > 0
 
@@ -367,7 +400,7 @@ class Entity:
     # Attack advantage/disadvantage                                        #
     # ------------------------------------------------------------------ #
 
-    def has_attack_advantage(self, target: "Entity" = None, is_ranged: bool = False) -> bool:
+    def has_attack_advantage(self, target: "Entity" = None, is_ranged: bool = False, dist: float = 0) -> bool:
         if self.has_condition("Invisible"):
             return True
         # Reckless Attack (Barbarian) - melee STR attacks
@@ -394,10 +427,15 @@ class Entity:
         if self.has_condition("Restrained"):
             return True
         if is_ranged and target:
+            # Ranged attacks against Prone targets have Disadvantage
+            if target.has_condition("Prone"):
+                return True
             dist = math.hypot(self.grid_x - target.grid_x, self.grid_y - target.grid_y) * 5
             if dist <= 5:
                 return True  # Ranged attack while in melee
         if target and target.has_condition("Invisible"):
+            return True
+        if target and target.is_dodging and not target.is_incapacitated():
             return True
         if self.has_condition("Prone") and is_ranged:
             return True
@@ -468,6 +506,8 @@ class Entity:
         self.reaction_used = False
         self.movement_left = self.get_speed()
         self.sneak_attack_used = False
+        self.is_dodging = False
+        self.is_disengaging = False
 
     def reset_legendary_actions(self):
         self.legendary_actions_left = self.stats.legendary_action_count

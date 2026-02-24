@@ -59,6 +59,7 @@ class ActionStep:
     summon_owner: Optional["Entity"] = None
     summon_duration: int = 10
     summon_spell: str = ""
+    summon_immediate_attack: bool = False  # If True, attacks immediately after spawn
 
 
 @dataclass
@@ -125,11 +126,23 @@ class TacticalAI:
         if action_steps:
             plan.steps.extend(action_steps)
 
+            # ----- 2.5. ACTION SURGE (Fighter) -----
+            if entity.has_feature("action_surge") and entity.can_use_feature("Action Surge"):
+                # Use if we took an offensive action and enemies are still present
+                took_offense = any(s.step_type in ("attack", "spell", "multiattack") for s in action_steps)
+                if took_offense:
+                    entity.use_feature("Action Surge")
+                    entity.action_used = False  # Reset action flag for the surge
+                    surge_steps = self._decide_action(entity, enemies, allies, battle)
+                    if surge_steps:
+                        plan.steps.append(ActionStep(step_type="wait", description=f"{entity.name} uses Action Surge!", attacker=entity))
+                        plan.steps.extend(surge_steps)
+
         # ----- 3. BONUS ACTION -----
         if not entity.bonus_action_used:
-            bonus_step = self._decide_bonus_action(entity, enemies, allies, battle)
-            if bonus_step:
-                plan.steps.append(bonus_step)
+            bonus_steps = self._decide_bonus_action(entity, enemies, allies, battle, plan)
+            if bonus_steps:
+                plan.steps.extend(bonus_steps)
 
         if not plan.steps:
             plan.skipped = True
@@ -159,7 +172,7 @@ class TacticalAI:
 
         if action.aoe_radius > 0:
             clusters = self._best_aoe_cluster(owner, enemies, allies=[], battle=battle,
-                                               radius_ft=action.aoe_radius)
+                                               radius_ft=action.aoe_radius, shape=action.aoe_shape)
             if clusters:
                 cx, cy = self._cluster_center(clusters)
                 raw_dmg = roll_dice(action.damage_dice)
@@ -197,8 +210,7 @@ class TacticalAI:
             plan.skip_reason = "Owner defeated"
             return plan
 
-        # Decrement duration
-        entity.summon_rounds_left -= 1
+        # Check duration (decremented in battle.next_turn)
         if entity.summon_rounds_left <= 0:
             plan.skipped = True
             plan.skip_reason = f"{entity.name} expires"
@@ -295,6 +307,26 @@ class TacticalAI:
     # Movement                                                             #
     # ------------------------------------------------------------------ #
 
+    def _get_combat_preference(self, entity):
+        """Determine if entity prefers Melee or Ranged combat."""
+        stats = entity.stats
+        
+        # 1. Check stats (Mental vs Physical)
+        phys = max(stats.abilities.strength, stats.abilities.dexterity)
+        ment = max(stats.abilities.intelligence, stats.abilities.wisdom, stats.abilities.charisma)
+        
+        # 2. Check capabilities
+        has_melee_action = any(a.range <= 5 for a in stats.actions)
+        has_ranged_action = any(a.range > 10 for a in stats.actions)
+        has_ranged_spells = any(s.range > 10 and s.damage_dice for s in stats.spells_known)
+        
+        if not has_melee_action: return "ranged"
+        if not (has_ranged_action or has_ranged_spells): return "melee"
+        
+        # Hybrids: lean towards higher stat (e.g. Lich INT 20 > STR 11 -> Ranged)
+        if ment > phys + 2: return "ranged"
+        return "melee"
+
     def _decide_movement(self, entity, enemies, allies, battle):
         if not entity.can_move() or entity.movement_left <= 0:
             return None
@@ -311,24 +343,49 @@ class TacticalAI:
         target = self._pick_target(entity, enemies)
         dist = battle.get_distance(entity, target)
         actions = entity.stats.actions or []
-        has_ranged = any(a.range > 10 for a in actions)
-        has_melee = any(a.range <= 5 for a in actions)
         spells = entity.stats.spells_known or []
         has_aoe = any(s.aoe_radius > 0 for s in spells)
+        
+        preference = self._get_combat_preference(entity)
 
-        # If we want melee and not adjacent, move closer
-        if has_melee and dist > 1.5:
-            return self._move_toward(entity, target, allies, battle)
+        # --- ESCAPE LOGIC (Teleport) ---
+        # If stuck in melee and prefers ranged, try to Misty Step out
+        if preference == "ranged" and dist <= 1.5 and not entity.bonus_action_used:
+            misty = next((s for s in spells if s.name == "Misty Step"), None)
+            if misty and entity.has_spell_slot(misty.level):
+                # Teleport away
+                tele_step = self._try_teleport_escape(entity, target, battle, misty)
+                if tele_step:
+                    entity.bonus_action_used = True
+                    # We used movement logic to cast a spell, so we return it
+                    return tele_step
 
-        # If we want ranged/spells and enemy is too close, step away
-        if has_ranged and not has_melee and dist <= 1.5:
-            return self._move_away(entity, target, battle)
+        # If we want melee
+        if preference == "melee":
+            # Check for smart positioning (AoE avoidance)
+            spread_dest = self._find_spread_out_destination(entity, target, allies, battle)
+            
+            if dist > 0.5:
+                return self._move_toward(entity, target, allies, battle, spread_dest)
+            elif spread_dest:
+                # Already adjacent, but maybe in a bad spot (clumped)
+                if int(entity.grid_x) != spread_dest[0] or int(entity.grid_y) != spread_dest[1]:
+                    return self._move_toward(entity, target, allies, battle, spread_dest)
+
+        # If we want ranged
+        if preference == "ranged":
+            # Too close? (within 15ft)
+            if dist < 3.0:
+                return self._move_away(entity, target, battle)
+            # Too far? (over 60ft)
+            elif dist > 12.0:
+                return self._move_toward(entity, target, allies, battle)
 
         # AoE caster: position for best cluster
-        if has_aoe and not has_melee:
-            cluster = self._best_aoe_cluster(entity, enemies, allies, battle, 20)
-            if cluster and len(cluster) >= 2:
-                cx, cy = self._cluster_center(cluster)
+        if has_aoe and preference == "ranged":
+            result = self._best_aoe_cluster(entity, enemies, allies, battle, 20)
+            if result and len(result[0]) >= 2:
+                cluster, (cx, cy) = result
                 return self._move_toward_point(entity, cx, cy, battle)
 
         return None
@@ -391,10 +448,13 @@ class TacticalAI:
                         heapq.heappush(open_set, (f, neighbor))
         return None
 
-    def _move_toward(self, entity, target, allies, battle):
-        flank = self._flanking_position(entity, target, allies, battle)
-        dest_x = flank[0] if flank else target.grid_x
-        dest_y = flank[1] if flank else target.grid_y
+    def _move_toward(self, entity, target, allies, battle, forced_dest=None):
+        if forced_dest:
+            dest_x, dest_y = forced_dest
+        else:
+            flank = self._flanking_position(entity, target, allies, battle)
+            dest_x = flank[0] if flank else target.grid_x
+            dest_y = flank[1] if flank else target.grid_y
 
         if not battle.is_passable(dest_x, dest_y, exclude=entity):
             valid_adj = []
@@ -440,6 +500,29 @@ class TacticalAI:
             new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y,
         )
+
+    def _try_teleport_escape(self, entity, threat, battle, spell):
+        """Use Misty Step or similar to teleport away from threat."""
+        # Find a spot 30ft away that is safe
+        best_spot = None
+        best_dist = 0
+        
+        # Check points in a circle around entity
+        for angle in range(0, 360, 45):
+            rad = math.radians(angle)
+            tx = entity.grid_x + math.cos(rad) * 6  # 30ft = 6 squares
+            ty = entity.grid_y + math.sin(rad) * 6
+            if battle.is_passable(int(tx), int(ty)):
+                d = math.hypot(tx - threat.grid_x, ty - threat.grid_y)
+                if d > best_dist:
+                    best_dist = d
+                    best_spot = (int(tx), int(ty))
+        
+        if best_spot:
+            entity.use_spell_slot(spell.level)
+            entity.grid_x, entity.grid_y = best_spot
+            return ActionStep(step_type="spell", description=f"{entity.name} casts {spell.name} to escape!", attacker=entity, spell=spell, slot_used=spell.level, action_name=spell.name)
+        return None
 
     def _move_toward_point(self, entity, tx, ty, battle):
         start_x, start_y = entity.grid_x, entity.grid_y
@@ -538,12 +621,33 @@ class TacticalAI:
         if entity.action_used:
             return []
 
+        # Paladin: Lay on Hands (Revive dying ally)
+        if entity.lay_on_hands_left >= 1:
+            loh_steps = self._try_lay_on_hands(entity, allies, battle)
+            if loh_steps:
+                entity.action_used = True
+                return loh_steps
+
+        # Cleric: Turn Undead
+        if entity.has_feature("channel_divinity") and entity.channel_divinity_left > 0:
+            tu_step = self._try_turn_undead(entity, enemies, battle)
+            if tu_step:
+                entity.action_used = True
+                entity.channel_divinity_left -= 1
+                return [tu_step]
+
         # Self-heal if critical and has healing ability
         if entity.max_hp > 0 and (entity.hp / entity.max_hp < 0.25):
             heal_step = self._try_heal_action(entity)
             if heal_step:
                 entity.action_used = True
                 return [heal_step]
+
+        # Self-buff for defense (Mirror Image, etc.) if threatened
+        buff_step = self._try_self_buff(entity, enemies, battle)
+        if buff_step:
+            entity.action_used = True
+            return [buff_step]
 
         # Second Wind (Fighter) if hurt
         if entity.max_hp > 0 and (entity.hp / entity.max_hp < 0.5):
@@ -553,9 +657,12 @@ class TacticalAI:
                 pass
 
         # Disengage if critical and threatened (only for non-melee or squishy characters)
-        is_squishy = entity.stats.character_class in ("Wizard", "Sorcerer", "Bard", "Warlock")
-        if entity.max_hp > 0 and (entity.hp / entity.max_hp < 0.3) and is_squishy:
-            disengage_step = self._try_disengage_action(entity, enemies, battle)
+        # Smart enemies (INT > 12) disengage earlier (50% HP) if they are ranged
+        pref = self._get_combat_preference(entity)
+        hp_threshold = 0.5 if (entity.stats.abilities.intelligence > 12 and pref == "ranged") else 0.25
+        
+        if entity.max_hp > 0 and (entity.hp / entity.max_hp < hp_threshold):
+            disengage_step = self._try_disengage_action(entity, enemies, battle, pref)
             if disengage_step:
                 entity.action_used = True
                 return [disengage_step]
@@ -614,6 +721,10 @@ class TacticalAI:
 
             best_action = self._best_melee_or_ranged(entity, target, battle)
             if best_action:
+                # Consume usage if applicable
+                if entity.get_feature_by_name(best_action.name):
+                    entity.use_feature(best_action.name)
+
                 step = self._execute_attack(entity, best_action, target, battle)
                 # Apply class bonuses to single attacks too
                 self._apply_class_attack_bonuses(entity, step, target, allies, battle)
@@ -621,6 +732,30 @@ class TacticalAI:
                 return [step]
 
         return self._try_dash_action(entity, enemies, allies, battle)
+
+    def _try_self_buff(self, entity, enemies, battle):
+        """Cast a defensive self-buff if enemies are nearby."""
+        # Only buff if enemies are somewhat close (within 60ft)
+        closest_dist = min((battle.get_distance(entity, e) * 5 for e in enemies if e.hp > 0), default=999)
+        if closest_dist > 60:
+            return None
+
+        buffs = ["Mirror Image", "Blur", "Fire Shield", "Armor of Agathys", "Mage Armor", "Blink"]
+        
+        for spell in entity.stats.spells_known:
+            if spell.name in buffs and spell.targets == "self":
+                # Don't cast if already active
+                if spell.name in entity.active_effects:
+                    continue
+                if spell.concentration and entity.concentrating_on:
+                    continue
+                
+                if entity.use_spell_slot(spell.level):
+                    if spell.concentration:
+                        entity.start_concentration(spell)
+                    return ActionStep(step_type="spell", description=f"{entity.name} casts {spell.name} on self.",
+                                      attacker=entity, target=entity, spell=spell, slot_used=spell.level, action_name=spell.name)
+        return None
 
     def _try_aoe_action(self, entity, enemies, allies, battle):
         """Try to use a non-spell AoE action (like Breath Weapon)."""
@@ -634,11 +769,28 @@ class TacticalAI:
         aoe_actions.sort(key=lambda a: average_damage(a.damage_dice), reverse=True)
 
         for action in aoe_actions:
-            clusters = self._best_aoe_cluster(entity, enemies, allies, battle, action.aoe_radius)
-            if not clusters or len(clusters) < 2:
+            # Check if this action is limited by a feature (e.g. Dragon Breath)
+            if entity.get_feature_by_name(action.name):
+                if not entity.can_use_feature(action.name):
+                    continue
+
+            result = self._best_aoe_cluster(entity, enemies, allies, battle, action.aoe_radius, shape=action.aoe_shape)
+            if not result:
+                continue
+            clusters, (cx, cy) = result
+            
+            # Allow single target for powerful AoEs (Breath Weapons)
+            min_targets = 2
+            if average_damage(action.damage_dice) > 25:
+                min_targets = 1
+
+            if not clusters or len(clusters) < min_targets:
                 continue
 
-            cx, cy = self._cluster_center(clusters)
+            # Consume usage if applicable
+            if entity.get_feature_by_name(action.name):
+                entity.use_feature(action.name)
+
             raw_dmg = roll_dice(action.damage_dice)
 
             return ActionStep(
@@ -696,8 +848,11 @@ class TacticalAI:
             damage=healed,  # Repurpose damage field for heal amount
         )
 
-    def _try_disengage_action(self, entity, enemies, battle):
+    def _try_disengage_action(self, entity, enemies, battle, preference="melee"):
         threats = [e for e in enemies if battle.is_adjacent(entity, e)]
+        # Melee fighters rarely disengage unless very critical, Ranged do it more often
+        if preference == "melee" and entity.hp > entity.max_hp * 0.2:
+            return None
         if not threats:
             return None
 
@@ -758,14 +913,17 @@ class TacticalAI:
             if spell.level == 0:
                 continue
             threshold = 3 if average_damage(spell.damage_dice) < 20 else 2
-            clusters = self._best_aoe_cluster(entity, enemies, allies, battle,
+            result = self._best_aoe_cluster(entity, enemies, allies, battle,
                                                spell.aoe_radius,
+                                               shape=spell.aoe_shape,
                                                avoid_allies=not can_sculpt)
+            if not result:
+                continue
+            clusters, (cx, cy) = result
             if not clusters or len(clusters) < threshold:
                 continue
             if entity.use_spell_slot(spell.level):
                 slot = spell.level
-                cx, cy = self._cluster_center(clusters)
                 dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                      (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                       + entity.get_modifier(entity.stats.spellcasting_ability))
@@ -806,9 +964,15 @@ class TacticalAI:
                 continue
             candidates = [e for e in enemies
                           if not e.has_condition(spell.applies_condition) and e.hp > 0]
+            # Filter out immune targets
+            if spell.applies_condition:
+                candidates = [e for e in candidates if spell.applies_condition not in e.stats.condition_immunities]
             if not candidates:
                 continue
-            target = max(candidates, key=lambda e: e.hp)
+            # Pick target with lowest save bonus (highest chance to fail)
+            # Tie-break with HP (prefer disabling high HP targets)
+            target = min(candidates, key=lambda e: (e.get_save_bonus(spell.save_ability), -e.hp))
+            
             dist = battle.get_distance(entity, target) * 5
             if dist > spell.range:
                 continue
@@ -835,26 +999,14 @@ class TacticalAI:
         if not damage_spells:
             return None
 
-        def spell_value(s):
-            if s.level == 0:
-                return average_damage(s.damage_dice)
-            slot = entity.get_slot_for_level(s.level)
-            if slot == 0:
-                return -1
-            return average_damage(s.damage_dice) * slot
-
-        damage_spells.sort(key=spell_value, reverse=True)
-        target = self._pick_target(entity, enemies)
+        best_step = None
+        best_ev = -1.0
 
         for spell in damage_spells:
-            dist = battle.get_distance(entity, target) * 5
-            if dist > spell.range:
+            if spell.level > 0 and not entity.has_spell_slot(spell.level):
                 continue
-            if spell.level > 0 and not entity.use_spell_slot(spell.level):
-                continue
-            slot = spell.level
-            if spell.concentration:
-                entity.start_concentration(spell)
+            
+            # Calculate spell DC and Attack Bonus once
             dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                  (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                   + entity.get_modifier(entity.stats.spellcasting_ability))
@@ -862,17 +1014,69 @@ class TacticalAI:
                          (entity.stats.spell_attack_bonus or
                           entity.stats.proficiency_bonus + entity.get_modifier(entity.stats.spellcasting_ability)))
 
-            # Agonizing Blast: add CHA to Eldritch Blast
-            extra_spell_dmg = 0
+            # Base damage
+            avg_dmg = average_damage(spell.damage_dice)
+            
+            # Bonuses
+            extra = 0
             if spell.name == "Eldritch Blast" and entity.has_feature("agonizing_blast"):
-                extra_spell_dmg = entity.get_modifier("charisma")
-
-            # Empowered Evocation: add INT to evocation damage
+                extra = entity.get_modifier("charisma")
             if entity.has_feature("empowered_evocation"):
-                extra_spell_dmg += entity.get_modifier("intelligence")
+                extra += entity.get_modifier("intelligence")
+            avg_dmg += extra
+
+            # Find best target for this spell based on Expected Value (EV)
+            for target in enemies:
+                if target.hp <= 0: continue
+                
+                # Check immunity
+                if spell.damage_type.lower() in [x.lower() for x in target.stats.damage_immunities]:
+                    continue
+
+                dist = battle.get_distance(entity, target) * 5
+                if dist > spell.range: continue
+
+                ev = 0.0
+                if spell.save_ability:
+                    # Check target weakness (Save Bonus)
+                    save_bonus = target.get_save_bonus(spell.save_ability)
+                    # Chance to fail = 1 - (21 + bonus - DC)/20
+                    fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
+                    fail_chance = max(0.05, min(0.95, fail_chance))
+                    
+                    if spell.half_on_save:
+                        ev = avg_dmg * fail_chance + (avg_dmg / 2.0) * (1.0 - fail_chance)
+                    else:
+                        ev = avg_dmg * fail_chance
+                else:
+                    # Attack Roll
+                    hit_chance = (21 + atk_bonus - target.stats.armor_class) / 20.0
+                    adv = entity.has_attack_advantage(target, is_ranged=True)
+                    dis = entity.has_attack_disadvantage(target, is_ranged=True)
+                    if adv and not dis: hit_chance = 1 - (1-hit_chance)**2
+                    if dis and not adv: hit_chance = hit_chance**2
+                    hit_chance = max(0.05, min(0.95, hit_chance))
+                    ev = avg_dmg * hit_chance
+
+                # Bonus for killing blow
+                if avg_dmg >= target.hp:
+                    ev *= 1.2
+
+                if ev > best_ev:
+                    best_ev = ev
+                    best_step = (spell, target, dc, atk_bonus, extra)
+
+        if best_step:
+            spell, target, dc, atk_bonus, extra = best_step
+            slot = spell.level
+            if spell.level > 0:
+                entity.use_spell_slot(slot)
+            
+            if spell.concentration:
+                entity.start_concentration(spell)
 
             if spell.save_ability:
-                dmg = roll_dice(spell.damage_dice) + extra_spell_dmg
+                dmg = roll_dice(spell.damage_dice) + extra
                 desc = f"{entity.name} casts {spell.name} on {target.name} (DC {dc} {spell.save_ability})"
                 return ActionStep(
                     step_type="spell", description=desc,
@@ -887,7 +1091,7 @@ class TacticalAI:
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
                 is_hit = total >= target.stats.armor_class and not is_fumble
                 dmg = roll_dice_critical(spell.damage_dice) if is_crit else roll_dice(spell.damage_dice)
-                dmg += extra_spell_dmg
+                dmg += extra
 
                 hit_str = "CRIT! " if is_crit else "Hit? "
                 desc = (f"{entity.name} casts {spell.name} ({roll_str}+{atk_bonus}={total} "
@@ -926,8 +1130,14 @@ class TacticalAI:
             if not t:
                 break
             dist = battle.get_distance(entity, t)
-            if sub.range // 5 < dist - 0.5:
+            if sub.range / 5.0 < dist:
                 continue
+
+            # Check usage limits for sub-action
+            if entity.get_feature_by_name(sub.name):
+                if not entity.can_use_feature(sub.name):
+                    continue
+                entity.use_feature(sub.name)
 
             step = self._execute_attack(entity, sub, t, battle)
 
@@ -1054,11 +1264,14 @@ class TacticalAI:
     def _execute_attack(self, entity, action: Action, target: "Entity", battle) -> ActionStep:
         dist = battle.get_distance(entity, target)
         is_ranged = action.range > 10
-        adv = entity.has_attack_advantage(target, is_ranged)
+        adv = entity.has_attack_advantage(target, is_ranged, dist)
         dis = entity.has_attack_disadvantage(target, is_ranged)
         allies_adj = [a for a in battle.get_allies_of(entity) if battle.is_adjacent(a, target)]
-        if allies_adj and not is_ranged:
-            adv = True
+        if allies_adj:
+            if entity.has_feature("pack_tactics"):
+                adv = True
+            elif not is_ranged:
+                adv = True  # Flanking (optional rule, enabled for AI aggression)
 
         # Improved/Superior Critical (Fighter Champion)
         crit_range = 20
@@ -1067,14 +1280,25 @@ class TacticalAI:
         elif entity.has_feature("improved_critical"):
             crit_range = 19
 
+        # Calculate target effective AC (including Cover)
+        cover_bonus = battle.get_cover_bonus(entity, target)
+        effective_ac = target.armor_class + cover_bonus
+
         total, nat, is_crit, is_fumble, roll_str = roll_attack(action.attack_bonus, adv, dis)
+        
+        # Add dynamic bonuses (Bless, etc.)
+        effect_bonus = entity.get_attack_bonus_effects()
+        total += effect_bonus
+        if effect_bonus != 0:
+            roll_str += f"{'+' if effect_bonus>0 else ''}{effect_bonus}(Eff)"
+
         # Override crit check with expanded range
         is_crit = nat >= crit_range
-        crit_auto = (target.has_condition("Paralyzed") or target.has_condition("Unconscious")) and dist <= 1.5
+        crit_auto = (target.has_condition("Paralyzed") or target.has_condition("Unconscious")) and dist <= 0.5
         if crit_auto:
             is_crit, is_hit = True, True
         else:
-            is_hit = total >= target.stats.armor_class and not is_fumble
+            is_hit = total >= effective_ac and not is_fumble
 
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
@@ -1093,7 +1317,10 @@ class TacticalAI:
 
         hit_str = "CRIT! " if is_crit else "Hit? "
         desc = (f"{entity.name} {action.name} ({roll_str}+{action.attack_bonus}={total} "
-                f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}")
+                f"vs AC {effective_ac}) {hit_str}→ {target.name}")
+        if cover_bonus > 0:
+            desc += f" (Cover +{cover_bonus})"
+            
         return ActionStep(
             step_type="attack", description=desc,
             attacker=entity, target=target, action_name=action.name,
@@ -1107,9 +1334,65 @@ class TacticalAI:
     # Bonus Action                                                         #
     # ------------------------------------------------------------------ #
 
-    def _decide_bonus_action(self, entity, enemies, allies, battle):
+    def _decide_bonus_action(self, entity, enemies, allies, battle, plan=None) -> List[ActionStep]:
         if entity.bonus_action_used:
-            return None
+            return []
+
+        # Check if a leveled spell was cast with Action (prevents Bonus Action spells)
+        leveled_spell_cast = False
+        if plan:
+            for s in plan.steps:
+                if s.step_type == "spell" and s.slot_used > 0:
+                    leveled_spell_cast = True
+                    break
+
+        # Monster: Aggressive (Orc) - Move towards enemy
+        if entity.has_feature("aggressive"):
+            target = self._pick_target(entity, enemies)
+            if target:
+                entity.movement_left += entity.stats.speed
+                move_step = self._move_toward(entity, target, allies, battle)
+                if move_step:
+                    entity.bonus_action_used = True
+                    move_step.description = f"{entity.name} uses Aggressive to move closer."
+                    return [move_step]
+
+        # Monster: Nimble Escape (Goblin) - Disengage or Hide
+        if entity.has_feature("nimble_escape"):
+            threats = [e for e in enemies if battle.is_adjacent(entity, e)]
+            if threats:
+                entity.movement_left += entity.stats.speed # Ensure movement logic works
+                move_step = self._move_away(entity, threats[0], battle)
+                if move_step:
+                    entity.bonus_action_used = True
+                    move_step.description = f"{entity.name} uses Nimble Escape to Disengage & Retreat."
+                    return [move_step]
+
+        # 1. Command Spiritual Weapon (if any)
+        # Find my spiritual weapons that are summons
+        my_weapons = [e for e in battle.entities 
+                      if e.is_summon and e.summon_owner == entity and "Spiritual Weapon" in e.name]
+        
+        for weapon in my_weapons:
+            # Pick target for weapon
+            target = self._pick_target(weapon, enemies)
+            if target:
+                steps = []
+                # Move if needed
+                if not battle.is_adjacent(weapon, target):
+                    move_step = self._move_summon_to_target(weapon, target, battle)
+                    if move_step:
+                        move_step.step_type = "bonus_attack"
+                        move_step.description = f"{entity.name} moves Spiritual Weapon."
+                        steps.append(move_step)
+                
+                if weapon.stats.actions:
+                    atk_step = self._execute_attack(weapon, weapon.stats.actions[0], target, battle)
+                    atk_step.step_type = "bonus_attack"
+                    atk_step.description = f"{entity.name} attacks with Spiritual Weapon."
+                    steps.append(atk_step)
+                    entity.bonus_action_used = True
+                    return steps
 
         # --- Monk: Flurry of Blows / Bonus Unarmed Strike ---
         if entity.has_feature("flurry_of_blows") and entity.ki_points_left > 0:
@@ -1127,26 +1410,121 @@ class TacticalAI:
             if not target:
                 continue
             dist = battle.get_distance(entity, target)
-            if ba.range // 5 >= dist - 0.5:
+            if ba.range / 5.0 >= dist:
                 step = self._execute_attack(entity, ba, target, battle)
                 step.step_type = "bonus_attack"
                 entity.bonus_action_used = True
-                return step
+                return [step]
 
         # --- Hunter's Mark (Ranger) ---
-        hm_step = self._try_hunters_mark(entity, enemies, battle)
-        if hm_step:
-            return hm_step
+        if not leveled_spell_cast:
+            hm_step = self._try_hunters_mark(entity, enemies, battle)
+            if hm_step:
+                return [hm_step]
 
         # --- Hex (Warlock) ---
-        hex_step = self._try_hex(entity, enemies, battle)
-        if hex_step:
-            return hex_step
+        if not leveled_spell_cast:
+            hex_step = self._try_hex(entity, enemies, battle)
+            if hex_step:
+                return [hex_step]
 
         # --- Spiritual Weapon summon ---
-        sw_step = self._try_summon_spiritual_weapon(entity, enemies, battle)
-        if sw_step:
-            return sw_step
+        if not leveled_spell_cast:
+            sw_step = self._try_summon_spiritual_weapon(entity, enemies, battle)
+            if sw_step:
+                return [sw_step]
+
+    def _try_lay_on_hands(self, entity, allies, battle) -> List[ActionStep]:
+        """Paladin: Heal dying or low HP ally."""
+        # Prioritize dying allies
+        dying = [a for a in allies if a.hp <= 0 and not a.is_stable and not a.is_summon]
+        target = None
+        amount = 0
+        
+        if dying:
+            target = min(dying, key=lambda a: battle.get_distance(entity, a))
+            amount = 1 # Just stabilize/revive
+        else:
+            # Heal very low allies if we have plenty of pool
+            low = [a for a in allies if a.hp > 0 and a.hp < a.max_hp * 0.3 and not a.is_summon]
+            if low and entity.lay_on_hands_left >= 10:
+                target = min(low, key=lambda a: a.hp)
+                amount = min(entity.lay_on_hands_left, target.max_hp - target.hp, 20)
+        
+        if not target:
+            return []
+
+        steps = []
+        # Move to target (Touch)
+        if not battle.is_adjacent(entity, target):
+            move_step = self._move_toward(entity, target, allies, battle)
+            if move_step:
+                steps.append(move_step)
+            
+            # Check if we reached
+            if not battle.is_adjacent(entity, target):
+                return [] # Cannot reach
+
+        entity.lay_on_hands_left -= amount
+        steps.append(ActionStep(
+            step_type="spell", # Treated as spell/action
+            description=f"{entity.name} uses Lay on Hands on {target.name} for {amount} HP.",
+            attacker=entity, target=target, action_name="Lay on Hands",
+            damage=amount, damage_type="healing" # Heal
+        ))
+        return steps
+
+    def _try_turn_undead(self, entity, enemies, battle) -> Optional[ActionStep]:
+        """Cleric: Turn Undead if multiple undead nearby."""
+        undead = [e for e in enemies if e.hp > 0 and e.stats.creature_type.lower() == "undead" 
+                  and battle.get_distance(entity, e) * 5 <= 30]
+        
+        if len(undead) >= 2 or (len(undead) == 1 and undead[0].hp > 30):
+            return ActionStep(
+                step_type="spell",
+                description=f"{entity.name} uses Turn Undead! (Undead within 30ft WIS Save)",
+                attacker=entity, targets=undead, action_name="Turn Undead",
+                save_dc=entity.stats.spell_save_dc, save_ability="Wisdom",
+                applies_condition="Turned" # Custom condition logic handled by DM or engine
+            )
+        return None
+
+        # --- Rogue: Cunning Action ---
+        if entity.has_feature("cunning_action"):
+            # Disengage if threatened
+            threats = [e for e in enemies if battle.is_adjacent(entity, e)]
+            if threats:
+                # Bonus Disengage + Move away
+                entity.movement_left += entity.stats.speed # Ensure we have movement logic available
+                move_step = self._move_away(entity, threats[0], battle)
+                if move_step:
+                    entity.bonus_action_used = True
+                    move_step.description = f"{entity.name} uses Cunning Action: Disengage & Retreat."
+                    return [move_step]
+            
+            # Dash if target far
+            target = self._pick_target(entity, enemies)
+            if target:
+                dist = battle.get_distance(entity, target) * 5
+                if dist > entity.movement_left and dist > 30:
+                     entity.movement_left += entity.stats.speed
+                     # Generate movement step towards target
+                     move_step = self._move_toward(entity, target, allies, battle)
+                     if move_step:
+                        entity.bonus_action_used = True
+                        move_step.description = f"{entity.name} uses Cunning Action: Dash. " + move_step.description
+                        return [move_step]
+
+        # --- Bard: Bardic Inspiration ---
+        if entity.has_feature("bardic_inspiration") and entity.bardic_inspiration_left > 0:
+             # Find ally without inspiration, prioritize low HP
+             candidates = [a for a in allies if a != entity and a.hp > 0]
+             if candidates:
+                 # Simple heuristic: inspire the one with lowest HP %
+                 target = min(candidates, key=lambda a: a.hp / a.max_hp)
+                 entity.bardic_inspiration_left -= 1
+                 entity.bonus_action_used = True
+                 return [ActionStep(step_type="bonus_attack", description=f"{entity.name} gives Bardic Inspiration to {target.name}.", attacker=entity, target=target, action_name="Bardic Inspiration")]
 
         # Bonus Action Spells (Heals, Buffs, Utility)
         for spell in entity.stats.spells_known:
@@ -1154,19 +1532,21 @@ class TacticalAI:
                 continue
             if spell.level > 0 and not entity.has_spell_slot(spell.level):
                 continue
+            if leveled_spell_cast and spell.level > 0:
+                continue
 
             # Healing (if hurt)
             if spell.heals and entity.hp < entity.max_hp * 0.7:
                 if spell.level == 0 or entity.use_spell_slot(spell.level):
                     healed = roll_dice(spell.heals)
                     entity.bonus_action_used = True
-                    return ActionStep(
+                    return [ActionStep(
                         step_type="bonus_attack",
                         description=f"{entity.name} uses bonus {spell.name}, heals {healed} HP.",
                         attacker=entity, target=entity, spell=spell,
                         slot_used=spell.level, damage=healed,
                         action_name=spell.name,
-                    )
+                    )]
 
             # Buffs / Damage Boosts (Concentration)
             if spell.concentration and not entity.concentrating_on:
@@ -1174,13 +1554,13 @@ class TacticalAI:
                 if target and (spell.level == 0 or entity.use_spell_slot(spell.level)):
                     entity.start_concentration(spell)
                     entity.bonus_action_used = True
-                    return ActionStep(
+                    return [ActionStep(
                         step_type="bonus_attack",
                         description=f"{entity.name} casts bonus {spell.name} (Concentration).",
                         attacker=entity, target=entity, spell=spell,
                         slot_used=spell.level, action_name=spell.name,
-                    )
-        return None
+                    )]
+        return []
 
     def _try_hunters_mark(self, entity, enemies, battle):
         """Cast Hunter's Mark on best target."""
@@ -1246,6 +1626,11 @@ class TacticalAI:
         if not sw or not entity.has_spell_slot(2):
             return None
 
+        # Don't summon if we already have one active
+        existing = [e for e in battle.entities if e.is_summon and e.summon_owner == entity and "Spiritual Weapon" in e.name]
+        if existing:
+            return None
+
         target = self._pick_target(entity, enemies)
         if not target:
             return None
@@ -1281,6 +1666,7 @@ class TacticalAI:
             summon_owner=entity,
             summon_duration=10,
             summon_spell="Spiritual Weapon",
+            summon_immediate_attack=True,
         )
 
     def _monk_flurry_of_blows(self, entity, target, allies, battle):
@@ -1322,7 +1708,7 @@ class TacticalAI:
 
         desc = (f"{entity.name} Flurry of Blows (1 ki): " + ", ".join(desc_parts))
 
-        return ActionStep(
+        return [ActionStep(
             step_type="bonus_attack",
             description=desc, attacker=entity, target=target,
             action_name="Flurry of Blows", damage=total_dmg,
@@ -1332,7 +1718,7 @@ class TacticalAI:
             applies_condition="Stunned" if any("Stunning Strike" in p for p in desc_parts) else "",
             condition_dc=8 + entity.stats.proficiency_bonus + entity.get_modifier("wisdom"),
             save_ability="Constitution",
-        )
+        )]
 
     # ------------------------------------------------------------------ #
     # Legendary Actions                                                    #
@@ -1354,7 +1740,7 @@ class TacticalAI:
                 if leg_action:
                     target = self._pick_target(entity, enemies)
                     dist = battle.get_distance(entity, target)
-                    if leg_action.range // 5 >= dist - 0.5:
+                    if leg_action.range / 5.0 >= dist:
                         step = self._execute_attack(entity, leg_action, target, battle)
                         step.step_type = "legendary"
                         step.description = f"[LEGENDARY] " + step.description
@@ -1407,11 +1793,24 @@ class TacticalAI:
             return None
         dist = battle.get_distance(entity, target)
         actions = [a for a in entity.stats.actions if not a.is_multiattack]
-        in_range = [a for a in actions if a.range // 5 >= dist - 0.5]
-        if not in_range:
+        
+        valid_actions = []
+        for a in actions:
+            # Check range
+            if a.range / 5.0 < dist:
+                continue
+            # Check usage limits
+            if entity.get_feature_by_name(a.name):
+                if not entity.can_use_feature(a.name):
+                    continue
+            valid_actions.append(a)
+
+        if not valid_actions:
             return None
-        return max(in_range, key=lambda a: average_damage(
-            f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice))
+            
+        # Score: Damage + Bonus for Conditions (prioritize control effects)
+        return max(valid_actions, key=lambda a: average_damage(
+            f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice) + (10 if a.applies_condition else 0))
 
     def _flanking_position(self, entity, target, allies, battle):
         for ally in allies:
@@ -1426,39 +1825,191 @@ class TacticalAI:
                     return (fx, fy)
         return None
 
+    def _find_spread_out_destination(self, entity, target, allies, battle):
+        """Find a melee spot adjacent to target that minimizes clumping with allies (vs AoE)."""
+        # 1. Check if spreading is needed (AoE threat)
+        enemies = battle.get_enemies_of(entity)
+        has_aoe_threat = False
+        for e in enemies:
+            if e.hp <= 0: continue
+            # Check actions
+            for a in e.stats.actions:
+                if a.aoe_radius > 0:
+                    has_aoe_threat = True
+                    break
+            if has_aoe_threat: break
+            # Check spells
+            for s in e.stats.spells_known:
+                if s.aoe_radius > 0:
+                    has_aoe_threat = True
+                    break
+            if has_aoe_threat: break
+        
+        if not has_aoe_threat:
+            return None
+
+        # 2. Find all valid melee spots around target
+        candidates = []
+        t_size = target.size_in_squares
+        
+        for x in range(int(target.grid_x) - 1, int(target.grid_x) + t_size + 1):
+            for y in range(int(target.grid_y) - 1, int(target.grid_y) + t_size + 1):
+                if not battle.is_passable(x, y, exclude=entity): continue
+                # Skip inside target
+                if x >= target.grid_x and x < target.grid_x + t_size and \
+                   y >= target.grid_y and y < target.grid_y + t_size:
+                    continue
+                candidates.append((x, y))
+
+        if not candidates: return None
+
+        # 3. Score candidates: -TravelDist - ClumpingPenalty
+        best_score = -9999
+        best_spot = None
+        
+        for (cx, cy) in candidates:
+            travel = math.hypot(cx - entity.grid_x, cy - entity.grid_y)
+            if travel * 5 > entity.movement_left: continue
+            
+            clumping = 0
+            for ally in allies:
+                if ally == entity or ally.hp <= 0: continue
+                d = math.hypot(cx - ally.grid_x, cy - ally.grid_y)
+                if d < 3.0: # Within 15ft
+                    clumping += (3.0 - d) * 10
+            
+            score = -travel - clumping
+            if score > best_score:
+                best_score = score
+                best_spot = (cx, cy)
+        
+        return best_spot
+
     def _best_aoe_cluster(self, entity, enemies, allies, battle, radius_ft,
-                          avoid_allies=True):
+                          shape="sphere", avoid_allies=True):
         """Returns the list of enemies within aoe_radius of the best center point.
-        If avoid_allies is True, penalizes clusters that would hit allies."""
+        If avoid_allies is True, penalizes clusters that would hit allies.
+        Returns (best_cluster, (aim_x, aim_y)) or None."""
         alive = [e for e in enemies if e.hp > 0]
         if not alive:
-            return []
+            return None
 
         best_cluster = []
         best_score = -999
+        best_aim_point = (0, 0)
 
-        for candidate in alive:
-            cluster = [e for e in alive
-                       if math.hypot(candidate.grid_x - e.grid_x,
-                                     candidate.grid_y - e.grid_y) <= radius_ft / 5]
-            score = len(cluster)
+        def get_center(e):
+            s = e.size_in_squares
+            return e.grid_x + s/2.0, e.grid_y + s/2.0
 
-            # Penalize hitting allies
-            if avoid_allies and allies:
-                allies_hit = [a for a in allies if a.hp > 0 and
-                              math.hypot(candidate.grid_x - a.grid_x,
-                                         candidate.grid_y - a.grid_y) <= radius_ft / 5]
-                score -= len(allies_hit) * 3  # Heavy penalty for hitting allies
+        ecx, ecy = get_center(entity)
 
-            if score > best_score:
-                best_score = score
-                best_cluster = cluster
+        # CONE / LINE LOGIC (Origin = Entity)
+        if shape in ("cone", "line"):
+            # Cone angle ~60 degrees (half 30). Line is narrow.
+            half_angle = math.radians(30) if shape == "cone" else math.radians(5)
+            
+            # Generate candidate angles: aim at every enemy, and midpoints between enemies
+            candidate_angles = []
+            
+            # 1. Aim at every enemy center
+            for e in alive:
+                tcx, tcy = get_center(e)
+                dx = tcx - ecx
+                dy = tcy - ecy
+                candidate_angles.append(math.atan2(dy, dx))
+
+            # 2. Aim at midpoints between enemies (to catch multiple in cone)
+            for i in range(len(alive)):
+                for j in range(i + 1, len(alive)):
+                    t1x, t1y = get_center(alive[i])
+                    t2x, t2y = get_center(alive[j])
+                    a1 = math.atan2(t1y - ecy, t1x - ecx)
+                    a2 = math.atan2(t2y - ecy, t2x - ecx)
+                    # Vector average for midpoint angle
+                    vx = (math.cos(a1) + math.cos(a2)) / 2
+                    vy = (math.sin(a1) + math.sin(a2)) / 2
+                    candidate_angles.append(math.atan2(vy, vx))
+
+            for aim_angle in candidate_angles:
+                cluster = []
+                for e in alive:
+                    tcx, tcy = get_center(e)
+                    # Check distance from attacker center
+                    dist = math.hypot(tcx - ecx, tcy - ecy)
+                    if dist * 5 > radius_ft: continue
+                        
+                    # Check angle
+                    edx = tcx - ecx
+                    edy = tcy - ecy
+                    e_angle = math.atan2(edy, edx)
+                    
+                    diff = abs(e_angle - aim_angle)
+                    while diff > math.pi: diff -= 2*math.pi
+                    while diff < -math.pi: diff += 2*math.pi
+                    
+                    if abs(diff) <= half_angle:
+                        cluster.append(e)
+                
+                score = len(cluster)
+                if avoid_allies and allies:
+                    for a in allies:
+                        if a.hp <= 0: continue
+                        acx, acy = get_center(a)
+                        dist = math.hypot(acx - ecx, acy - ecy)
+                        if dist * 5 > radius_ft: continue
+                        adx = acx - ecx
+                        ady = acy - ecy
+                        a_angle = math.atan2(ady, adx)
+                        diff = abs(a_angle - aim_angle)
+                        while diff > math.pi: diff -= 2*math.pi
+                        while diff < -math.pi: diff += 2*math.pi
+                        if abs(diff) <= half_angle:
+                            score -= 3
+                
+                if score > best_score:
+                    best_score = score
+                    best_cluster = cluster
+                    # Aim point is just a point in the direction of the angle
+                    best_aim_point = (ecx + math.cos(aim_angle)*5, ecy + math.sin(aim_angle)*5)
+        else:
+            # SPHERE / CUBE (Origin = Point in space)
+            # Candidates: centers of enemies, and midpoints between enemies
+            candidates = []
+            for candidate in alive:
+                candidates.append(get_center(candidate))
+            
+            for i in range(len(alive)):
+                for j in range(i + 1, len(alive)):
+                    t1x, t1y = get_center(alive[i])
+                    t2x, t2y = get_center(alive[j])
+                    candidates.append(((t1x + t2x)/2, (t1y + t2y)/2))
+
+            for (ccx, ccy) in candidates:
+                cluster = []
+                for e in alive:
+                    tcx, tcy = get_center(e)
+                    if math.hypot(ccx - tcx, ccy - tcy) * 5 <= radius_ft:
+                        cluster.append(e)
+
+                score = len(cluster)
+                if avoid_allies and allies:
+                    for a in allies:
+                        if a.hp <= 0: continue
+                        acx, acy = get_center(a)
+                        if math.hypot(ccx - acx, ccy - acy) * 5 <= radius_ft:
+                            score -= 3
+
+                if score > best_score:
+                    best_score = score
+                    best_cluster = cluster
+                    best_aim_point = (ccx, ccy)
 
         # Don't use AoE if we'd hit more allies than enemies
         if best_score <= 0:
-            return []
+            return None
 
-        return best_cluster
+        return best_cluster, best_aim_point
 
     def _cluster_center(self, cluster):
         if not cluster:

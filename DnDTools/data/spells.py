@@ -117,7 +117,7 @@ _spells = {
     "Magic Missile": SpellInfo("Magic Missile", level=1, action_type="action", range=120, targets="single",
                                damage_dice="3d4+3", damage_type="force", description="Auto-hit 3 missiles (1d4+1 each)"),
     
-    "Shield": SpellInfo("Shield", level=1, action_type="reaction", range=0, targets="self",
+    "Shield": SpellInfo("Shield", level=1, action_type="reaction", range=0, targets="self", duration="1 round",
                         description="+5 AC until start of next turn"),
     
     "Shield of Faith": SpellInfo("Shield of Faith", level=1, action_type="bonus", range=60, targets="single", concentration=True, duration="10 minutes",
