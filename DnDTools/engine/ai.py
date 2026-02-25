@@ -110,10 +110,23 @@ class TacticalAI:
                 plan.steps.append(rage_step)
                 entity.bonus_action_used = True
 
+        # ----- 0.5. PRE-TURN: Rogue Cunning Action (Hide) -----
+        if not entity.bonus_action_used and entity.has_feature("cunning_action"):
+            hide_step = self._try_cunning_hide(entity, enemies, battle)
+            if hide_step:
+                plan.steps.append(hide_step)
+                entity.bonus_action_used = True
+
         # ----- 1. MOVEMENT -----
         move_step = self._decide_movement(entity, enemies, allies, battle)
         if move_step:
             plan.steps.append(move_step)
+
+        # ----- 1.5. REVIVE ALLY (Action) -----
+        revive_step = self._try_revive_ally_spell(entity, allies, battle, action_type="action")
+        if revive_step:
+            plan.steps.append(revive_step)
+            entity.action_used = True
 
         # ----- 1.5. AOE ACTION (Breath Weapon etc) -----
         aoe_action_step = self._try_aoe_action(entity, enemies, allies, battle)
@@ -303,6 +316,37 @@ class TacticalAI:
             attacker=entity, action_name="Rage",
         )
 
+    def _try_cunning_hide(self, entity, enemies, battle):
+        """Rogue Cunning Action: Hide to gain advantage."""
+        # 1. Can't hide if threatened (adjacent to enemy)
+        if any(battle.is_adjacent(entity, e) for e in enemies if e.hp > 0):
+            return None
+
+        # 2. Pick intended target to see if we already have advantage
+        target = self._pick_target(entity, enemies)
+        if not target:
+            return None
+
+        # If we already have advantage, no need to hide
+        if entity.has_attack_advantage(target, is_ranged=True):
+            return None
+
+        # 3. Attempt Hide (Stealth Check vs Passive Perception)
+        stealth_roll = roll_dice("1d20") + entity.get_skill_bonus("Stealth") + entity.get_modifier("Dexterity")
+        # Estimate Passive Perception (10 + bonus)
+        pp = 10 + target.get_skill_bonus("Perception")
+
+        if stealth_roll >= pp:
+            # Success: Gain Invisible condition (simulates Hidden)
+            entity.add_condition("Invisible")
+            return ActionStep(
+                step_type="bonus_attack",
+                description=f"{entity.name} uses Cunning Action to Hide (Stealth {stealth_roll} vs PP {pp}).",
+                attacker=entity,
+                action_name="Hide"
+            )
+        return None
+
     # ------------------------------------------------------------------ #
     # Movement                                                             #
     # ------------------------------------------------------------------ #
@@ -330,6 +374,15 @@ class TacticalAI:
     def _decide_movement(self, entity, enemies, allies, battle):
         if not entity.can_move() or entity.movement_left <= 0:
             return None
+
+        # 0. Emergency: Move to dying ally if we have touch healing
+        dying_allies = [a for a in allies if a.hp <= 0 and not a.is_stable and not a.is_summon]
+        if dying_allies:
+            # Check if we have touch healing (Lay on Hands or Cure Wounds)
+            if self._has_touch_healing(entity):
+                closest_dying = min(dying_allies, key=lambda a: battle.get_distance(entity, a))
+                if not battle.is_adjacent(entity, closest_dying):
+                    return self._move_toward(entity, closest_dying, allies, battle)
 
         # Stand up from prone first
         if entity.has_condition("Prone"):
@@ -389,6 +442,16 @@ class TacticalAI:
                 return self._move_toward_point(entity, cx, cy, battle)
 
         return None
+
+    def _has_touch_healing(self, entity):
+        """Check if entity has a way to heal adjacent allies."""
+        if entity.lay_on_hands_left > 0:
+            return True
+        for spell in entity.stats.spells_known:
+            if spell.heals and spell.range <= 5 and entity.has_spell_slot(spell.level):
+                return True
+        # Potions?
+        return False
 
     def _is_safe_passable(self, battle, x, y, entity):
         if not battle.is_passable(x, y, exclude=entity):
@@ -766,7 +829,8 @@ class TacticalAI:
         if not aoe_actions:
             return None
 
-        aoe_actions.sort(key=lambda a: average_damage(a.damage_dice), reverse=True)
+        best_step = None
+        best_total_dmg = 0.0
 
         for action in aoe_actions:
             # Check if this action is limited by a feature (e.g. Dragon Breath)
@@ -774,7 +838,7 @@ class TacticalAI:
                 if not entity.can_use_feature(action.name):
                     continue
 
-            result = self._best_aoe_cluster(entity, enemies, allies, battle, action.aoe_radius, shape=action.aoe_shape)
+            result = self._best_aoe_cluster(entity, enemies, allies, battle, action.aoe_radius, shape=action.aoe_shape, damage_type=action.damage_type)
             if not result:
                 continue
             clusters, (cx, cy) = result
@@ -787,24 +851,87 @@ class TacticalAI:
             if not clusters or len(clusters) < min_targets:
                 continue
 
+            # Calculate total expected damage considering vulnerabilities/saves
+            total_dmg = 0.0
+            for t in clusters:
+                base = self._estimate_damage(action.damage_dice, action.damage_type, t)
+                # Estimate save (simplified)
+                if action.condition_save:
+                    # Assume 50% chance to fail save for estimation
+                    total_dmg += base * 0.75 # (1.0 + 0.5) / 2 roughly
+                else:
+                    total_dmg += base
+            
+            if total_dmg > best_total_dmg:
+                best_total_dmg = total_dmg
+                # Consume usage if applicable
+                if entity.get_feature_by_name(action.name):
+                    # We don't use it here, just mark we would
+                    pass
+
+                raw_dmg = roll_dice(action.damage_dice)
+                best_step = ActionStep(
+                    step_type="attack",
+                    description=f"{entity.name} uses {action.name} (DC {action.condition_dc or '??'} {action.condition_save})",
+                    attacker=entity, targets=clusters, action=action, damage=raw_dmg,
+                    damage_type=action.damage_type, action_name=action.name, aoe_center=(cx, cy),
+                    save_dc=action.condition_dc, save_ability=action.condition_save
+                )
+
+        if best_step:
             # Consume usage if applicable
-            if entity.get_feature_by_name(action.name):
-                entity.use_feature(action.name)
+            if entity.get_feature_by_name(best_step.action.name):
+                entity.use_feature(best_step.action.name)
+            return best_step
+            
+        return None
 
-            raw_dmg = roll_dice(action.damage_dice)
+    def _try_revive_ally_spell(self, entity, allies, battle, action_type="action") -> Optional[ActionStep]:
+        """Try to revive a dying ally with a healing spell."""
+        # 1. Find dying allies
+        dying_allies = [a for a in allies if a.hp <= 0 and not a.is_stable and not a.is_summon]
+        if not dying_allies:
+            return None
 
-            return ActionStep(
-                step_type="attack",
-                description=f"{entity.name} uses {action.name} (DC {action.condition_dc or '??'} {action.condition_save})",
-                attacker=entity, targets=clusters, action=action, damage=raw_dmg,
-                damage_type=action.damage_type, action_name=action.name, aoe_center=(cx, cy),
-                save_dc=action.condition_dc, save_ability=action.condition_save
-            )
+        # 2. Find healing spells of correct action type
+        healing_spells = [s for s in entity.stats.spells_known 
+                          if s.heals and s.action_type == action_type]
+        
+        if not healing_spells:
+            return None
+
+        # Sort by level (lowest first)
+        healing_spells.sort(key=lambda s: s.level)
+
+        for spell in healing_spells:
+            # Check slots
+            if spell.level > 0 and not entity.has_spell_slot(spell.level):
+                continue
+            
+            # Find reachable target
+            for target in dying_allies:
+                dist_ft = battle.get_distance(entity, target) * 5
+                if dist_ft > spell.range:
+                    continue
+
+                slot = spell.level
+                if slot > 0:
+                    entity.use_spell_slot(slot)
+                
+                healed = roll_dice(spell.heals)
+                step_type = "spell" if action_type == "action" else "bonus_attack"
+                
+                return ActionStep(
+                    step_type=step_type,
+                    description=f"{entity.name} casts {spell.name} on dying {target.name}, healing {healed} HP!",
+                    attacker=entity, target=target, spell=spell, slot_used=slot,
+                    action_name=spell.name, damage=healed, damage_type="healing"
+                )
         return None
 
     def _try_heal_action(self, entity):
         for spell in entity.stats.spells_known:
-            if spell.heals and spell.targets == "self":
+            if spell.heals and (spell.targets == "self" or spell.range == 0):
                 slot = entity.get_slot_for_level(spell.level) if spell.level > 0 else 0
                 if spell.level == 0 or entity.use_spell_slot(spell.level):
                     healed = roll_dice(spell.heals)
@@ -813,6 +940,7 @@ class TacticalAI:
                         description=f"{entity.name} casts {spell.name} on self, healing {healed} HP.",
                         attacker=entity, target=entity, spell=spell,
                         slot_used=slot, action_name=spell.name,
+                        damage=healed, damage_type="healing"
                     )
         for item in entity.items:
             if item.heals and item.uses > 0:
@@ -822,6 +950,7 @@ class TacticalAI:
                     step_type="bonus_attack",
                     description=f"{entity.name} uses {item.name}, healing {healed} HP.",
                     attacker=entity, target=entity, action_name=item.name,
+                    damage=healed, damage_type="healing"
                 )
         return None
 
@@ -845,7 +974,7 @@ class TacticalAI:
             step_type="bonus_attack",
             description=f"{entity.name} uses Second Wind, healing {healed} HP.",
             attacker=entity, target=entity, action_name="Second Wind",
-            damage=healed,  # Repurpose damage field for heal amount
+            damage=healed, damage_type="healing"
         )
 
     def _try_disengage_action(self, entity, enemies, battle, preference="melee"):
@@ -904,10 +1033,11 @@ class TacticalAI:
         if not aoe_spells:
             return None
 
-        aoe_spells.sort(key=lambda s: average_damage(s.damage_dice), reverse=True)
-
         # Can this caster sculpt spells? (Evocation Wizard)
         can_sculpt = entity.has_feature("sculpt_spells")
+
+        best_step = None
+        best_total_dmg = 0.0
 
         for spell in aoe_spells:
             if spell.level == 0:
@@ -916,12 +1046,37 @@ class TacticalAI:
             result = self._best_aoe_cluster(entity, enemies, allies, battle,
                                                spell.aoe_radius,
                                                shape=spell.aoe_shape,
-                                               avoid_allies=not can_sculpt)
+                                               avoid_allies=not can_sculpt,
+                                               damage_type=spell.damage_type)
             if not result:
                 continue
             clusters, (cx, cy) = result
             if not clusters or len(clusters) < threshold:
                 continue
+            
+            # Calculate total expected damage
+            total_dmg = 0.0
+            for t in clusters:
+                base = self._estimate_damage(spell.damage_dice, spell.damage_type, t)
+                # Adjust for save
+                if spell.save_ability:
+                    # Check target save bonus
+                    save_bonus = t.get_save_bonus(spell.save_ability)
+                    dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 13)
+                    fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
+                    fail_chance = max(0.05, min(0.95, fail_chance))
+                    
+                    if spell.half_on_save:
+                        total_dmg += base * fail_chance + (base / 2.0) * (1.0 - fail_chance)
+                    else:
+                        total_dmg += base * fail_chance
+            
+            if total_dmg > best_total_dmg:
+                best_total_dmg = total_dmg
+                best_step = (spell, clusters, cx, cy)
+
+        if best_step:
+            spell, clusters, cx, cy = best_step
             if entity.use_spell_slot(spell.level):
                 slot = spell.level
                 dc = spell.save_dc_fixed if spell.save_dc_fixed else \
@@ -1014,27 +1169,30 @@ class TacticalAI:
                          (entity.stats.spell_attack_bonus or
                           entity.stats.proficiency_bonus + entity.get_modifier(entity.stats.spellcasting_ability)))
 
-            # Base damage
-            avg_dmg = average_damage(spell.damage_dice)
-            
             # Bonuses
             extra = 0
             if spell.name == "Eldritch Blast" and entity.has_feature("agonizing_blast"):
                 extra = entity.get_modifier("charisma")
             if entity.has_feature("empowered_evocation"):
                 extra += entity.get_modifier("intelligence")
-            avg_dmg += extra
 
             # Find best target for this spell based on Expected Value (EV)
             for target in enemies:
                 if target.hp <= 0: continue
                 
-                # Check immunity
-                if spell.damage_type.lower() in [x.lower() for x in target.stats.damage_immunities]:
-                    continue
+                # Calculate damage against THIS target (vulnerability/resistance)
+                base_dmg = self._estimate_damage(spell.damage_dice, spell.damage_type, target)
+                if base_dmg <= 0: continue
+                base_dmg += extra
 
                 dist = battle.get_distance(entity, target) * 5
                 if dist > spell.range: continue
+
+                # Check if caster is threatened (enemy within 5ft) for ranged spells
+                is_threatened = False
+                if spell.action_type != "save": # Attack roll spells
+                    enemies_adj = [e for e in enemies if battle.is_adjacent(e, entity)]
+                    if enemies_adj: is_threatened = True
 
                 ev = 0.0
                 if spell.save_ability:
@@ -1045,21 +1203,21 @@ class TacticalAI:
                     fail_chance = max(0.05, min(0.95, fail_chance))
                     
                     if spell.half_on_save:
-                        ev = avg_dmg * fail_chance + (avg_dmg / 2.0) * (1.0 - fail_chance)
+                        ev = base_dmg * fail_chance + (base_dmg / 2.0) * (1.0 - fail_chance)
                     else:
-                        ev = avg_dmg * fail_chance
+                        ev = base_dmg * fail_chance
                 else:
                     # Attack Roll
                     hit_chance = (21 + atk_bonus - target.stats.armor_class) / 20.0
                     adv = entity.has_attack_advantage(target, is_ranged=True)
-                    dis = entity.has_attack_disadvantage(target, is_ranged=True)
+                    dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened)
                     if adv and not dis: hit_chance = 1 - (1-hit_chance)**2
                     if dis and not adv: hit_chance = hit_chance**2
                     hit_chance = max(0.05, min(0.95, hit_chance))
-                    ev = avg_dmg * hit_chance
+                    ev = base_dmg * hit_chance
 
                 # Bonus for killing blow
-                if avg_dmg >= target.hp:
+                if base_dmg >= target.hp:
                     ev *= 1.2
 
                 if ev > best_ev:
@@ -1076,7 +1234,7 @@ class TacticalAI:
                 entity.start_concentration(spell)
 
             if spell.save_ability:
-                dmg = roll_dice(spell.damage_dice) + extra
+                dmg = roll_dice(spell.damage_dice) + int(extra)
                 desc = f"{entity.name} casts {spell.name} on {target.name} (DC {dc} {spell.save_ability})"
                 return ActionStep(
                     step_type="spell", description=desc,
@@ -1086,12 +1244,17 @@ class TacticalAI:
                     save_ability=spell.save_ability,
                 )
             else:
+                # Check threatened for actual cast
+                is_threatened = False
+                enemies_adj = [e for e in enemies if battle.is_adjacent(e, entity)]
+                if enemies_adj: is_threatened = True
+
                 adv = entity.has_attack_advantage(target, is_ranged=True)
-                dis = entity.has_attack_disadvantage(target, is_ranged=True)
+                dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
                 is_hit = total >= target.stats.armor_class and not is_fumble
                 dmg = roll_dice_critical(spell.damage_dice) if is_crit else roll_dice(spell.damage_dice)
-                dmg += extra
+                dmg += int(extra)
 
                 hit_str = "CRIT! " if is_crit else "Hit? "
                 desc = (f"{entity.name} casts {spell.name} ({roll_str}+{atk_bonus}={total} "
@@ -1126,11 +1289,14 @@ class TacticalAI:
         first_attack = True
         for sub in sub_actions:
             alive_enemies = [e for e in enemies if e.hp > 0]
-            t = self._pick_target(entity, alive_enemies)
+            
+            # Filter targets by range of this specific attack
+            # This prevents AI from picking a high-value target it can't reach (e.g. far away Wizard)
+            # and then skipping the attack, when it could hit the adjacent Fighter.
+            reachable_enemies = [e for e in alive_enemies if battle.get_distance(entity, e) * 5 <= sub.range]
+            
+            t = self._pick_target(entity, reachable_enemies)
             if not t:
-                break
-            dist = battle.get_distance(entity, t)
-            if sub.range / 5.0 < dist:
                 continue
 
             # Check usage limits for sub-action
@@ -1264,14 +1430,20 @@ class TacticalAI:
     def _execute_attack(self, entity, action: Action, target: "Entity", battle) -> ActionStep:
         dist = battle.get_distance(entity, target)
         is_ranged = action.range > 10
+        
+        # Check if attacker is threatened (for ranged disadvantage)
+        is_threatened = False
+        if is_ranged:
+            enemies_adj = [e for e in battle.get_enemies_of(entity) if battle.is_adjacent(e, entity)]
+            if enemies_adj:
+                is_threatened = True
+
         adv = entity.has_attack_advantage(target, is_ranged, dist)
-        dis = entity.has_attack_disadvantage(target, is_ranged)
+        dis = entity.has_attack_disadvantage(target, is_ranged, is_threatened=is_threatened)
         allies_adj = [a for a in battle.get_allies_of(entity) if battle.is_adjacent(a, target)]
         if allies_adj:
             if entity.has_feature("pack_tactics"):
                 adv = True
-            elif not is_ranged:
-                adv = True  # Flanking (optional rule, enabled for AI aggression)
 
         # Improved/Superior Critical (Fighter Champion)
         crit_range = 20
@@ -1284,7 +1456,32 @@ class TacticalAI:
         cover_bonus = battle.get_cover_bonus(entity, target)
         effective_ac = target.armor_class + cover_bonus
 
-        total, nat, is_crit, is_fumble, roll_str = roll_attack(action.attack_bonus, adv, dis)
+        # --- Great Weapon Master / Sharpshooter Logic ---
+        atk_mod = 0
+        dmg_mod = 0
+        use_power_attack = False
+
+        # Heuristic: Use if hit chance > 40% even with penalty, or if we have Advantage
+        # GWM (Heavy weapons: d10, d12, 2d6)
+        is_heavy = any(d in action.damage_dice for d in ["d10", "d12", "2d6"])
+        if entity.has_feature("great_weapon_master") and is_heavy and action.range <= 5:
+            est_hit = (21 + action.attack_bonus - 5 - effective_ac) / 20.0
+            if adv: est_hit = 1 - (1-est_hit)**2
+            if est_hit > 0.40:
+                use_power_attack = True
+
+        # Sharpshooter (Ranged)
+        elif entity.has_feature("sharpshooter") and is_ranged:
+            est_hit = (21 + action.attack_bonus - 5 - effective_ac) / 20.0
+            if adv: est_hit = 1 - (1-est_hit)**2
+            if est_hit > 0.40:
+                use_power_attack = True
+
+        if use_power_attack:
+            atk_mod = -5
+            dmg_mod = 10
+
+        total, nat, is_crit, is_fumble, roll_str = roll_attack(action.attack_bonus + atk_mod, adv, dis)
         
         # Add dynamic bonuses (Bless, etc.)
         effect_bonus = entity.get_attack_bonus_effects()
@@ -1302,6 +1499,7 @@ class TacticalAI:
 
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
+        dmg += dmg_mod
 
         # Brutal Critical (Barbarian): extra weapon dice on crit
         if is_crit and entity.has_feature("brutal_critical"):
@@ -1315,12 +1513,29 @@ class TacticalAI:
                 for _ in range(extra_dice):
                     dmg += random.randint(1, sides)
 
+        # Savage Attacks (Half-Orc): one extra weapon die on crit
+        if is_crit and entity.has_feature("savage_attacks") and action.range <= 5:
+            import re
+            match = re.match(r"(\d+)d(\d+)", action.damage_dice)
+            if match:
+                sides = int(match.group(2))
+                extra = random.randint(1, sides)
+                dmg += extra
+                roll_str += f" + {extra} (Savage)"
+
         hit_str = "CRIT! " if is_crit else "Hit? "
         desc = (f"{entity.name} {action.name} ({roll_str}+{action.attack_bonus}={total} "
                 f"vs AC {effective_ac}) {hit_str}→ {target.name}")
         if cover_bonus > 0:
             desc += f" (Cover +{cover_bonus})"
+        if use_power_attack:
+            desc += " [Power Attack -5/+10]"
             
+        # Break Invisibility / Hiding on attack (unless Greater Invisibility)
+        if entity.has_condition("Invisible") and "Greater Invisibility" not in entity.active_effects:
+            entity.remove_condition("Invisible")
+            desc += " [Revealed]"
+
         return ActionStep(
             step_type="attack", description=desc,
             attacker=entity, target=target, action_name=action.name,
@@ -1525,6 +1740,12 @@ class TacticalAI:
                  entity.bardic_inspiration_left -= 1
                  entity.bonus_action_used = True
                  return [ActionStep(step_type="bonus_attack", description=f"{entity.name} gives Bardic Inspiration to {target.name}.", attacker=entity, target=target, action_name="Bardic Inspiration")]
+
+        # --- Revive Ally with Bonus Action (Healing Word) ---
+        revive_step = self._try_revive_ally_spell(entity, allies, battle, action_type="bonus")
+        if revive_step:
+            entity.bonus_action_used = True
+            return [revive_step]
 
         # Bonus Action Spells (Heals, Buffs, Utility)
         for spell in entity.stats.spells_known:
@@ -1788,6 +2009,19 @@ class TacticalAI:
             s += 30
         return s
 
+    def _estimate_damage(self, dice_str, damage_type, target):
+        """Calculate average damage against a target, accounting for weakness/resistance."""
+        base = average_damage(dice_str)
+        if not damage_type: return base
+        dtype = damage_type.lower()
+        if dtype in [x.lower() for x in target.stats.damage_immunities]:
+            return 0.0
+        if dtype in [x.lower() for x in target.stats.damage_vulnerabilities]:
+            return base * 2.0
+        if dtype in [x.lower() for x in target.stats.damage_resistances]:
+            return base * 0.5
+        return base
+
     def _best_melee_or_ranged(self, entity, target, battle):
         if not target:
             return None
@@ -1809,8 +2043,16 @@ class TacticalAI:
             return None
             
         # Score: Damage + Bonus for Conditions (prioritize control effects)
-        return max(valid_actions, key=lambda a: average_damage(
-            f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice) + (10 if a.applies_condition else 0))
+        # Use _estimate_damage to account for vulnerabilities
+        def score_action(a):
+            d_str = f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice
+            dmg = self._estimate_damage(d_str, a.damage_type, target)
+            if dmg <= 0: return -1.0 # Avoid immune
+            return dmg + (10 if a.applies_condition else 0)
+
+        best = max(valid_actions, key=score_action)
+        if score_action(best) < 0: return None # All actions ineffective
+        return best
 
     def _flanking_position(self, entity, target, allies, battle):
         for ally in allies:
@@ -1886,7 +2128,7 @@ class TacticalAI:
         return best_spot
 
     def _best_aoe_cluster(self, entity, enemies, allies, battle, radius_ft,
-                          shape="sphere", avoid_allies=True):
+                          shape="sphere", avoid_allies=True, damage_type=None):
         """Returns the list of enemies within aoe_radius of the best center point.
         If avoid_allies is True, penalizes clusters that would hit allies.
         Returns (best_cluster, (aim_x, aim_y)) or None."""
@@ -1934,6 +2176,10 @@ class TacticalAI:
             for aim_angle in candidate_angles:
                 cluster = []
                 for e in alive:
+                    # Check immunity
+                    if damage_type and damage_type.lower() in [x.lower() for x in e.stats.damage_immunities]:
+                        continue
+
                     tcx, tcy = get_center(e)
                     # Check distance from attacker center
                     dist = math.hypot(tcx - ecx, tcy - ecy)
@@ -1988,6 +2234,10 @@ class TacticalAI:
             for (ccx, ccy) in candidates:
                 cluster = []
                 for e in alive:
+                    # Check immunity
+                    if damage_type and damage_type.lower() in [x.lower() for x in e.stats.damage_immunities]:
+                        continue
+
                     tcx, tcy = get_center(e)
                     if math.hypot(ccx - tcx, ccy - tcy) * 5 <= radius_ft:
                         cluster.append(e)

@@ -37,18 +37,12 @@ class WinProbabilityCalculator:
             all_players = players + player_summons
             all_enemies = enemies + enemy_summons
             
-            avg_player_ac = self._get_average_ac(all_players)
-            avg_enemy_ac = self._get_average_ac(all_enemies)
             avg_player_atk = self._get_average_attack_bonus(all_players)
             avg_enemy_atk = self._get_average_attack_bonus(all_enemies)
 
             # Analyze damage types for resistance/immunity checking
             player_dmg_types = self._get_team_damage_profile(all_players)
             enemy_dmg_types = self._get_team_damage_profile(all_enemies)
-
-            # Calculate average saves for spell DPR estimation
-            avg_player_saves = self._get_average_saves(all_players)
-            avg_enemy_saves = self._get_average_saves(all_enemies)
 
             # Calculate Healing Potential (HP reserve)
             player_healing = sum(self._estimate_healing_potential(e) for e in players)
@@ -71,16 +65,19 @@ class WinProbabilityCalculator:
             hp_ratio = player_ehp / max(1, player_ehp + enemy_ehp)
 
             # Factor 2: Damage per round ratio
-            player_dpr = sum(self._estimate_dpr(e, avg_enemy_ac, avg_enemy_saves, enemies) for e in players)
-            enemy_dpr = sum(self._estimate_dpr(e, avg_player_ac, avg_player_saves, players) for e in enemies)
-            player_dpr += sum(self._estimate_dpr(e, avg_enemy_ac, avg_enemy_saves, enemies) for e in player_summons) * 0.5
-            enemy_dpr += sum(self._estimate_dpr(e, avg_player_ac, avg_player_saves, players) for e in enemy_summons) * 0.5
+            player_dpr = sum(self._estimate_dpr(e, enemies, battle) for e in players)
+            enemy_dpr = sum(self._estimate_dpr(e, players, battle) for e in enemies)
+            player_dpr += sum(self._estimate_dpr(e, enemies, battle) for e in player_summons) * 0.5
+            enemy_dpr += sum(self._estimate_dpr(e, players, battle) for e in enemy_summons) * 0.5
 
             dpr_ratio = player_dpr / max(1, player_dpr + enemy_dpr)
 
             # Factor 3: Action economy (number of entities)
-            player_actions = len(players) + len(player_summons) * 0.5
-            enemy_actions = len(enemies) + len(enemy_summons) * 0.5
+            # Include legendary actions as equivalent to full turns for action economy balance
+            player_leg = sum(e.stats.legendary_action_count for e in players)
+            enemy_leg = sum(e.stats.legendary_action_count for e in enemies)
+            player_actions = len(players) + len(player_summons) * 0.5 + player_leg
+            enemy_actions = len(enemies) + len(enemy_summons) * 0.5 + enemy_leg
             action_ratio = player_actions / max(1, player_actions + enemy_actions)
 
             # Factor 4: Resource advantage (spell slots, features, ki, etc.)
@@ -102,25 +99,31 @@ class WinProbabilityCalculator:
             # Are players losing HP slower than enemies relative to previous rounds?
             momentum_factor = self._calculate_momentum(player_hp_pct, enemy_hp_pct)
 
-            # Factor 9: Death Spiral (Critical HP)
-            # If many members are near death (<15% HP), risk of losing actions skyrockets
-            player_crit = sum(1 for e in players if e.hp / e.max_hp < 0.15)
-            enemy_crit = sum(1 for e in enemies if e.hp / e.max_hp < 0.15)
-            p_crit_ratio = player_crit / max(1, len(players))
-            e_crit_ratio = enemy_crit / max(1, len(enemies))
-            death_spiral_factor = 0.5 + (e_crit_ratio - p_crit_ratio) * 0.5
+            # Factor 9: Casualties (Percentage of team down)
+            # Tracks permanent loss of action economy potential
+            all_player_entities = [e for e in battle.entities if e.is_player and not e.is_summon]
+            all_enemy_entities = [e for e in battle.entities if not e.is_player and not e.is_lair and not e.is_summon]
+            
+            p_active_count = len([p for p in players if not p.is_summon])
+            e_active_count = len([e for e in enemies if not e.is_summon])
+            
+            p_casualty_pct = 1.0 - (p_active_count / max(1, len(all_player_entities)))
+            e_casualty_pct = 1.0 - (e_active_count / max(1, len(all_enemy_entities)))
+            
+            # 0.5 base. If p_casualty high, score drops. If e_casualty high, score rises.
+            casualty_factor = 0.5 + (e_casualty_pct - p_casualty_pct) * 0.5
 
             # Weighted combination
             weights = {
-                "hp": 0.15,
-                "dpr": 0.20,
-                "action_economy": 0.20,
-                "resources": 0.10,
-                "conditions": 0.10,
-                "rtk": 0.10,
-                "momentum": 0.05,
-                "position": 0.10,
-                "death_spiral": 0.10, # New factor
+                "hp": 0.20,
+                "dpr": 0.15,
+                "action_economy": 0.20, # Increased: Losing turns is critical
+                "resources": 0.05,
+                "conditions": 0.05,
+                "rtk": 0.15,
+                "momentum": 0.10,       # Increased: Trends matter
+                "position": 0.0,        # Reduced to simplify
+                "casualties": 0.10,     # New factor: Downed entities
             }
 
             raw_prob = (
@@ -132,7 +135,7 @@ class WinProbabilityCalculator:
                 weights["rtk"] * rtk_factor +
                 weights["momentum"] * momentum_factor +
                 weights["position"] * position_factor +
-                weights["death_spiral"] * death_spiral_factor
+                weights["casualties"] * casualty_factor
             )
 
             # Apply sigmoid-like curve to avoid extremes (5%-95% range)
@@ -153,6 +156,7 @@ class WinProbabilityCalculator:
                 "condition_advantage": round(condition_advantage, 3),
                 "rtk_factor": round(rtk_factor, 3),
                 "position_factor": round(position_factor, 3),
+                "casualty_factor": round(casualty_factor, 3),
             }
             result["team_stats"] = {
                 "player_ehp": round(player_ehp, 0),
@@ -170,6 +174,8 @@ class WinProbabilityCalculator:
             self.history.append(result)
             return result
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"[ERROR] Win probability calculation failed: {e}")
             return None
 
@@ -200,7 +206,7 @@ class WinProbabilityCalculator:
     def _apply_confidence_curve(self, raw: float) -> float:
         """Apply a sigmoid curve to keep probabilities in 5%-95% range."""
         # Softer curve to allow more "middle ground" (50/50)
-        x = (raw - 0.5) * 4  # Reduced scale factor from 6 to 4
+        x = (raw - 0.5) * 6  # Steeper curve (was 4) to highlight disparity
         sigmoid = 1.0 / (1.0 + math.exp(-x))
         # Map to 0.05-0.95 range but keep center linear-ish
         return 0.05 + sigmoid * 0.90
@@ -219,9 +225,17 @@ class WinProbabilityCalculator:
         for e in entities:
             best = 0
             for a in e.stats.actions:
-                best = max(best, a.attack_bonus)
+                try:
+                    val = int(a.attack_bonus)
+                except (ValueError, TypeError):
+                    val = 0
+                best = max(best, val)
             if e.stats.spell_attack_bonus:
-                best = max(best, e.stats.spell_attack_bonus)
+                try:
+                    val = int(e.stats.spell_attack_bonus)
+                except (ValueError, TypeError):
+                    val = 0
+                best = max(best, val)
             total += best
         return total / len(entities)
 
@@ -311,20 +325,26 @@ class WinProbabilityCalculator:
             total += effective
         return total
 
-    def _estimate_dpr(self, entity: "Entity", target_ac: float, target_saves: dict, targets: List["Entity"]) -> float:
-        """Estimate damage per round for an entity."""
+    def _estimate_dpr(self, entity: "Entity", targets: List["Entity"], battle: "BattleSystem") -> float:
+        """Estimate best possible damage per round for an entity against specific targets."""
         from engine.dice import average_damage
 
         if entity.is_incapacitated() or entity.hp <= 0:
             return 0.0
 
-        # --- Range Check ---
-        # If entity cannot reach any enemy, DPR is effectively 0 for this turn
-        enemies = targets # Use passed targets list
-        if not enemies: return 0.0
+        if not targets: return 0.0
         
-        # Calculate approximate distance to closest enemy
-        closest_dist_ft = min(math.hypot(entity.grid_x - e.grid_x, entity.grid_y - e.grid_y) * 5 for e in enemies)
+        # Pre-calculate distances and valid targets
+        # (target, distance_ft)
+        target_data = []
+        for t in targets:
+            if t.hp <= 0: continue
+            dist = battle.get_distance(entity, t) * 5
+            target_data.append((t, dist))
+        
+        if not target_data: return 0.0
+
+        closest_dist_ft = min(d for t, d in target_data)
         
         # Simplified range check (assuming average distance if battle ref not avail, or 0)
         # For win prob, we assume they can engage eventually.
@@ -343,11 +363,46 @@ class WinProbabilityCalculator:
         current_speed = entity.get_speed()
         threat_range = current_speed + max_action_range
         
+        distance_factor = 1.0
         if closest_dist_ft > threat_range:
-            # Cannot reach anyone this turn to deal damage
-            return 0.0
+            # If immobile and out of range, DPR is 0
+            if current_speed <= 0:
+                return 0.0
+            # Apply penalty for distance (turns to close), but don't zero out
+            turns_to_close = (closest_dist_ft - max_action_range) / max(5, current_speed)
+            distance_factor = 1.0 / (1.0 + turns_to_close * 0.3)
 
         best_dpr = 0.0
+
+        # Helper to calculate hit chance and damage against a specific target
+        def calc_action_dmg(action, target, dist):
+            # Range check
+            if action.range < dist and action.range + current_speed < dist:
+                return 0.0 # Can't reach even with move
+            
+            # Damage dice
+            dmg_str = action.damage_dice
+            if action.damage_bonus:
+                try:
+                    bonus = int(action.damage_bonus)
+                    dmg_str = f"{action.damage_dice}+{bonus}"
+                except (ValueError, TypeError):
+                    pass
+            
+            base_dmg = average_damage(dmg_str)
+            
+            # Vulnerability/Immunity
+            if action.damage_type.lower() in target.stats.damage_immunities:
+                return 0.0
+            if action.damage_type.lower() in target.stats.damage_vulnerabilities:
+                base_dmg *= 2.0
+            
+            # Hit Chance
+            hit_chance = (21 + action.attack_bonus - target.stats.armor_class) / 20.0
+            hit_chance = max(0.05, min(0.95, hit_chance))
+            
+            return base_dmg * hit_chance
+
 
         # Multiattack
         multi = next((a for a in entity.stats.actions if a.is_multiattack), None)
@@ -364,36 +419,48 @@ class WinProbabilityCalculator:
                 if non_multi:
                     sub_actions = [non_multi[0]] * count
 
-            total = 0.0
-            for a in sub_actions:
-                dmg_str = f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice
-                hit_chance = (21 + a.attack_bonus - target_ac) / 20.0
-                hit_chance = max(0.05, min(0.95, hit_chance))
-                
-                # Check immunity
-                if self._is_team_immune(targets, a.damage_type):
-                    hit_chance = 0.0
+            # Evaluate multiattack against best target
+            # Assume all attacks go to the same best target for simplicity
+            for t, dist in target_data:
+                total = sum(calc_action_dmg(a, t, dist) for a in sub_actions)
+                best_dpr = max(best_dpr, total)
 
-                total += average_damage(dmg_str) * hit_chance
-            best_dpr = max(best_dpr, total)
         else:
             # Single attacks
             for a in entity.stats.actions:
                 if a.is_multiattack:
                     continue
-                dmg_str = f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice
-                hit_chance = (21 + a.attack_bonus - target_ac) / 20.0
-                hit_chance = max(0.05, min(0.95, hit_chance))
                 
-                # Check immunity
-                if self._is_team_immune(targets, a.damage_type):
-                    hit_chance = 0.0
-
-                est = average_damage(dmg_str) * hit_chance
-                best_dpr = max(best_dpr, est)
+                # Handle Save-based Actions (e.g. Breath Weapon)
+                if a.condition_save and a.condition_dc:
+                    # AoE scaling
+                    hit_count = 1.0
+                    if a.aoe_radius > 0:
+                        # Use AI clustering logic if available
+                        result = battle.ai._best_aoe_cluster(entity, targets, [], battle, a.aoe_radius, shape=a.aoe_shape, avoid_allies=False, damage_type=a.damage_type)
+                        if result:
+                            hit_count = len(result[0])
+                    
+                    # Calculate average save fail chance across targets (simplified)
+                    avg_save_bonus = sum(t.get_save_bonus(a.condition_save) for t in targets) / max(1, len(targets))
+                    fail_chance = 1.0 - ((21 + avg_save_bonus - a.condition_dc) / 20.0)
+                    fail_chance = max(0.05, min(0.95, fail_chance))
+                    
+                    dmg_str = f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice
+                    base_dmg = average_damage(dmg_str)
+                    # Assume half damage on save
+                    est = (base_dmg * fail_chance + (base_dmg/2) * (1-fail_chance)) * hit_count
+                    best_dpr = max(best_dpr, est)
+                else:
+                    # Attack Roll - check all targets
+                    for t, dist in target_data:
+                        est = calc_action_dmg(a, t, dist)
+                        best_dpr = max(best_dpr, est)
 
         # Base hit chance for features (approximate)
-        base_hit_chance = max(0.05, min(0.95, (21 + entity.stats.proficiency_bonus + 3 - target_ac) / 20.0))
+        # Use average AC of targets for feature estimation
+        avg_ac = sum(t.stats.armor_class for t in targets) / len(targets) if targets else 15
+        base_hit_chance = max(0.05, min(0.95, (21 + entity.stats.proficiency_bonus + 3 - avg_ac) / 20.0))
 
         # Add class mechanic bonuses
         if entity.has_feature("sneak_attack") and not entity.sneak_attack_used:
@@ -412,7 +479,7 @@ class WinProbabilityCalculator:
             best_dpr += average_damage("1d6") * base_hit_chance
 
         # Spell DPR (if higher than attacks)
-        spell_dpr = self._estimate_spell_dpr(entity, target_ac, target_saves, targets)
+        spell_dpr = self._estimate_spell_dpr(entity, targets, battle)
         best_dpr = max(best_dpr, spell_dpr)
 
         # --- Legendary Actions ---
@@ -425,28 +492,33 @@ class WinProbabilityCalculator:
             
             if leg_actions:
                 # Pick best option
-                best_leg = max(leg_actions, key=lambda a: average_damage(f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice))
-                dmg_str = f"{best_leg.damage_dice}+{best_leg.damage_bonus}" if best_leg.damage_bonus else best_leg.damage_dice
-                
-                hit_chance = (21 + best_leg.attack_bonus - target_ac) / 20.0
-                hit_chance = max(0.05, min(0.95, hit_chance))
+                # Estimate average damage of best legendary action against average target
+                # (Simplification to avoid O(N^2) inside O(N))
+                best_leg_dmg = 0
+                for a in leg_actions:
+                    # Avg damage against avg AC
+                    dmg = average_damage(f"{a.damage_dice}+{a.damage_bonus}" if a.damage_bonus else a.damage_dice)
+                    hit = (21 + a.attack_bonus - avg_ac) / 20.0
+                    hit = max(0.05, min(0.95, hit))
+                    best_leg_dmg = max(best_leg_dmg, dmg * hit)
 
-                # Check immunity
-                if self._is_team_immune(targets, best_leg.damage_type):
-                    hit_chance = 0.0
-                
-                # Assume 1 action cost per attack for estimation
-                leg_dpr = average_damage(dmg_str) * hit_chance * entity.stats.legendary_action_count
+                leg_dpr = best_leg_dmg * entity.stats.legendary_action_count
                 best_dpr += leg_dpr
 
         # Bonus action attacks
         for ba in entity.stats.bonus_actions:
             if ba.damage_dice:
-                dmg_str = f"{ba.damage_dice}+{ba.damage_bonus}" if ba.damage_bonus else ba.damage_dice
-                hit_chance = (21 + ba.attack_bonus - target_ac) / 20.0
+                dmg_str = ba.damage_dice
+                if ba.damage_bonus:
+                    try:
+                        bonus = int(ba.damage_bonus)
+                        dmg_str = f"{ba.damage_dice}+{bonus}"
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Estimate against average target
+                hit_chance = (21 + ba.attack_bonus - avg_ac) / 20.0
                 hit_chance = max(0.05, min(0.95, hit_chance))
-                if self._is_team_immune(targets, ba.damage_type):
-                    hit_chance = 0.0
                 best_dpr += average_damage(dmg_str) * hit_chance
 
         # Apply offensive penalties (Disadvantage on attacks)
@@ -455,9 +527,9 @@ class WinProbabilityCalculator:
            entity.has_condition("Prone") or entity.exhaustion >= 3:
             best_dpr *= 0.65 # Disadvantage penalty estimate
 
-        return best_dpr
+        return best_dpr * distance_factor
 
-    def _estimate_spell_dpr(self, entity: "Entity", target_ac: float, target_saves: dict, targets: List["Entity"]) -> float:
+    def _estimate_spell_dpr(self, entity: "Entity", targets: List["Entity"], battle: "BattleSystem") -> float:
         """Estimate spell damage per round."""
         from engine.dice import average_damage
 
@@ -468,43 +540,68 @@ class WinProbabilityCalculator:
             if spell.level > 0 and not entity.has_spell_slot(spell.level):
                 continue
             
-            # Check immunity
-            if self._is_team_immune(targets, spell.damage_type):
-                continue
-
             avg = average_damage(spell.damage_dice)
+            
+            # AoE Scaling
             if spell.aoe_radius > 0:
-                avg *= 2.5  # Assume hitting ~2.5 targets on average
+                hit_count = 1.0
+                # Use AI clustering logic
+                result = battle.ai._best_aoe_cluster(entity, targets, [], battle, spell.aoe_radius, shape=spell.aoe_shape, avoid_allies=False, damage_type=spell.damage_type)
+                if result:
+                    hit_count = len(result[0])
+                avg *= hit_count
+
             if spell.save_ability:
-                # Find best target (lowest save bonus) to simulate smart AI
+                # Find best single target (lowest save bonus) if not AoE
                 dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 10)
-                best_fail_chance = 0.0
                 
-                if targets:
+                if spell.aoe_radius > 0:
+                    # For AoE, use average save of targets
+                    avg_bonus = sum(t.get_save_bonus(spell.save_ability) for t in targets) / max(1, len(targets))
+                    success_chance = (21 + avg_bonus - dc) / 20.0
+                    success_chance = max(0.05, min(0.95, success_chance))
+                    fail_chance = 1.0 - success_chance
+                else:
+                    # Single target: pick weakest save
+                    best_fail_chance = 0.0
                     for t in targets:
+                        # Check immunity/vulnerability per target
+                        if spell.damage_type.lower() in t.stats.damage_immunities: continue
+                        mult = 2.0 if spell.damage_type.lower() in t.stats.damage_vulnerabilities else 1.0
+                        
                         bonus = t.get_save_bonus(spell.save_ability)
                         success_chance = (21 + bonus - dc) / 20.0
                         success_chance = max(0.05, min(0.95, success_chance))
                         fail_chance = 1.0 - success_chance
-                        if fail_chance > best_fail_chance:
-                            best_fail_chance = fail_chance
-                else:
-                    # Fallback to average if no targets list
-                    bonus = target_saves.get(spell.save_ability, 0)
-                    success_chance = (21 + bonus - dc) / 20.0
-                    success_chance = max(0.05, min(0.95, success_chance))
-                    best_fail_chance = 1.0 - success_chance
+                        
+                        # Weight by vulnerability
+                        if fail_chance * mult > best_fail_chance:
+                            best_fail_chance = fail_chance * mult
+                    fail_chance = best_fail_chance
                 
                 if spell.half_on_save:
-                    avg = avg * best_fail_chance + (avg / 2.0) * (1.0 - best_fail_chance)
+                    avg = avg * fail_chance + (avg / 2.0) * (1.0 - fail_chance)
                 else:
-                    avg = avg * best_fail_chance
+                    avg = avg * fail_chance
             else:
+                # Attack Roll Spell
                 atk = spell.attack_bonus_fixed or (
                     entity.stats.spell_attack_bonus or 
                     entity.stats.proficiency_bonus + entity.get_modifier(entity.stats.spellcasting_ability))
-                hit_chance = (21 + atk - target_ac) / 20.0
-                avg *= max(0.05, min(0.95, hit_chance))
+                
+                # Find best target (lowest AC)
+                best_hit_chance = 0.0
+                for t in targets:
+                    if spell.damage_type.lower() in t.stats.damage_immunities: continue
+                    mult = 2.0 if spell.damage_type.lower() in t.stats.damage_vulnerabilities else 1.0
+                    
+                    hit_chance = (21 + atk - t.stats.armor_class) / 20.0
+                    hit_chance = max(0.05, min(0.95, hit_chance))
+                    if hit_chance * mult > best_hit_chance:
+                        best_hit_chance = hit_chance * mult
+                
+                avg *= best_hit_chance
+
             best = max(best, avg)
 
         return best
@@ -536,7 +633,11 @@ class WinProbabilityCalculator:
 
         # Feature uses
         for name, uses in entity.feature_uses.items():
-            score += uses * 2
+            try:
+                val = int(uses)
+            except (ValueError, TypeError):
+                val = 0
+            score += val * 2
 
         # Legendary resources
         score += entity.legendary_resistances_left * 10
@@ -656,16 +757,16 @@ class WinProbabilityCalculator:
             has_aoe = any(s.aoe_radius > 0 for s in p.stats.spells_known)
             if has_aoe:
                 # Check for clusters of enemies
-                cluster = battle.ai._best_aoe_cluster(p, enemies, players, battle, 20)
-                if len(cluster) >= 2:
+                result = battle.ai._best_aoe_cluster(p, enemies, players, battle, 20)
+                if result and len(result[0]) >= 2:
                     player_aoe_potential += 1
         score += min(0.15, player_aoe_potential * 0.05)
 
         # 3. AoE Vulnerability (Enemies hitting Players)
         enemy_aoe_threat = 0
         for e in enemies:
-            cluster = battle.ai._best_aoe_cluster(e, players, enemies, battle, 20)
-            if len(cluster) >= 2:
+            result = battle.ai._best_aoe_cluster(e, players, enemies, battle, 20)
+            if result and len(result[0]) >= 2:
                 enemy_aoe_threat += 1
         score -= min(0.15, enemy_aoe_threat * 0.05)
 

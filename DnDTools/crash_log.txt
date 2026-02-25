@@ -1,0 +1,735 @@
+2026-02-25 10:36:33,922 [INFO] Game starting...
+2026-02-25 10:36:39,927 [INFO] [BATTLE] === DEPLOYMENT PHASE ===
+2026-02-25 10:36:39,927 [INFO] [BATTLE] Drag characters to position them. Click START COMBAT when ready.
+2026-02-25 10:36:41,710 [INFO] [BATTLE] === COMBAT STARTED ===
+2026-02-25 10:36:41,710 [INFO] [BATTLE] Initiative order: Arcane Wizard > Arcane Wizard > Arcane Wizard > Arcane Wizard > Pit Fiend 2 > Arcane Wizard > Arcane Wizard > Arcane Wizard > Arcane Wizard > Arcane Wizard > Pit Fiend 3 > Arcane Wizard > Arcane Wizard > Arcane Wizard > Arcane Wizard > Arcane Wizard > Pit Fiend
+2026-02-25 10:36:41,710 [INFO] [BATTLE] --- Round 1: Arcane Wizard's turn ---
+2026-02-25 10:36:41,713 [INFO] [BATTLE] Combat started! Initiative rolled.
+2026-02-25 10:36:41,713 [INFO] [BATTLE] --- Round 1: Arcane Wizard's turn ---
+2026-02-25 10:36:42,447 [INFO] [BATTLE] [SYSTEM] Auto-Battle STARTED.
+2026-02-25 10:36:42,613 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:42,791 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:42,971 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:42,971 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:42,974 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:43,149 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 21) ---
+2026-02-25 10:36:43,149 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:43,331 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:43,511 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:43,690 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:43,690 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:43,693 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:43,868 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 19) ---
+2026-02-25 10:36:43,868 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:44,052 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:44,235 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:44,418 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:36:44,418 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 11+8=19 vs DC 17): takes 15 lightning
+2026-02-25 10:36:44,421 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 12+8=20 vs DC 17): takes 15 lightning
+2026-02-25 10:36:44,424 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 12+8=20 vs DC 17): takes 15 lightning
+2026-02-25 10:36:44,427 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:44,598 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 17) ---
+2026-02-25 10:36:44,598 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:44,782 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:44,962 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:45,146 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (15+9=24 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:36:45,146 [INFO] [BATTLE]   -> Pit Fiend 2 takes 15 force
+2026-02-25 10:36:45,149 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:45,328 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 1, Initiative 16) ---
+2026-02-25 10:36:45,509 [INFO] [BATTLE] [AI PLAN] Pit Fiend 2: 5 step(s) queued – review below.
+2026-02-25 10:36:45,690 [INFO] [BATTLE] [ACTION] Pit Fiend 2 moves 30 ft.
+2026-02-25 10:36:45,871 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Bite (12+14=26 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:36:45,871 [INFO] [BATTLE]   -> Arcane Wizard takes 21 piercing
+2026-02-25 10:36:45,871 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:36:46,055 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Claw (5+14=19 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:36:46,055 [INFO] [BATTLE]   -> Arcane Wizard takes 24 slashing
+2026-02-25 10:36:46,240 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Mace (20+14=34 vs AC 13) CRIT! \u2192 Arcane Wizard
+2026-02-25 10:36:46,241 [INFO] [BATTLE]   -> Arcane Wizard takes 30 bludgeoning
+2026-02-25 10:36:46,418 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Tail (1+14=15 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:36:46,421 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:46,600 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 16) ---
+2026-02-25 10:36:46,600 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:46,785 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:46,968 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:47,149 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:47,149 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:47,152 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:47,332 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 16) ---
+2026-02-25 10:36:47,332 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:47,514 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:47,692 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:47,872 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (16+9=25 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:36:47,872 [INFO] [BATTLE]   -> Pit Fiend 2 takes 16 force
+2026-02-25 10:36:47,875 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:48,056 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 15) ---
+2026-02-25 10:36:48,056 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:48,237 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:48,418 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:48,598 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:48,598 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:48,601 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:48,779 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 13) ---
+2026-02-25 10:36:48,779 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:48,963 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:49,140 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:49,317 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:49,317 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:49,320 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:49,495 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 13) ---
+2026-02-25 10:36:49,495 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:49,681 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:49,861 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:50,043 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:50,043 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:50,046 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:50,225 [INFO] [BATTLE] --- Pit Fiend 3's turn (Round 1, Initiative 11) ---
+2026-02-25 10:36:50,407 [INFO] [BATTLE] [AI PLAN] Pit Fiend 3: 1 step(s) queued – review below.
+2026-02-25 10:36:50,588 [INFO] [BATTLE] [ACTION] Pit Fiend 3 moves 30 ft.
+2026-02-25 10:36:50,588 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:50,773 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 11) ---
+2026-02-25 10:36:50,773 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:50,954 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:51,136 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:51,316 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:51,316 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:51,319 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:51,493 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 6) ---
+2026-02-25 10:36:51,493 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:51,679 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:51,859 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:36:52,040 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:36:52,041 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:36:52,044 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:36:52,223 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 6) ---
+2026-02-25 10:36:52,224 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:36:52,391 [INFO] [BATTLE] [SYSTEM] Auto-Battle STOPPED.
+2026-02-25 10:36:55,069 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:36:56,408 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:36:58,618 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:36:58,618 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 14+8=22 vs DC 17): takes 13 lightning
+2026-02-25 10:36:58,621 [INFO] [BATTLE]   -> Pit Fiend 3 FAILED save (Rolled 3+8=11 vs DC 17): takes 26 lightning
+2026-02-25 10:36:58,624 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:01,403 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 6) ---
+2026-02-25 10:37:01,403 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:01,885 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:02,975 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:05,412 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (5+9=14 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:05,415 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:09,295 [INFO] [BATTLE] [SYSTEM] Auto-Battle STARTED.
+2026-02-25 10:37:09,312 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 1, Initiative 5) ---
+2026-02-25 10:37:09,312 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:09,496 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:09,674 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:09,853 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:09,853 [INFO] [BATTLE]   -> Pit Fiend 2 FAILED save (Rolled 6+8=14 vs DC 17): takes 32 lightning
+2026-02-25 10:37:09,856 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 18+8=26 vs DC 17): takes 16 lightning
+2026-02-25 10:37:09,858 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:10,034 [INFO] [BATTLE] --- Pit Fiend's turn (Round 1, Initiative 4) ---
+2026-02-25 10:37:10,216 [INFO] [BATTLE] [AI PLAN] Pit Fiend: 5 step(s) queued – review below.
+2026-02-25 10:37:10,395 [INFO] [BATTLE] [ACTION] Pit Fiend moves 20 ft.
+2026-02-25 10:37:10,578 [INFO] [BATTLE] [ACTION] Pit Fiend Bite (4+14=18 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:10,578 [INFO] [BATTLE]   -> Arcane Wizard takes 25 piercing
+2026-02-25 10:37:10,578 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:10,758 [INFO] [BATTLE] [ACTION] Pit Fiend Claw (17+14=31 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:10,759 [INFO] [BATTLE]   -> Arcane Wizard takes 18 slashing
+2026-02-25 10:37:10,940 [INFO] [BATTLE] [ACTION] Pit Fiend Mace (6+14=20 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:10,940 [INFO] [BATTLE]   -> Arcane Wizard takes 15 bludgeoning
+2026-02-25 10:37:11,125 [INFO] [BATTLE] [ACTION] Pit Fiend Tail (14+14=28 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:11,125 [INFO] [BATTLE]   -> Arcane Wizard takes 17 bludgeoning
+2026-02-25 10:37:11,125 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:11,128 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:11,307 [INFO] [BATTLE] === ROUND 2 ===
+2026-02-25 10:37:11,307 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 22) ---
+2026-02-25 10:37:11,307 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:11,492 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:11,669 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:11,670 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 12+8=20 vs DC 17): takes 12 lightning
+2026-02-25 10:37:11,672 [INFO] [BATTLE]   -> Pit Fiend FAILED save (Rolled 1+8=9 vs DC 17): takes 24 lightning
+2026-02-25 10:37:11,675 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:11,851 [INFO] [BATTLE]   [DEATH] Death Save: d20=3 (Failure) [0/3 S, 1/3 F]
+2026-02-25 10:37:11,851 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 21) ---
+2026-02-25 10:37:11,851 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:11,851 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:11,851 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:12,032 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:12,032 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:12,216 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:12,216 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:12,396 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:12,397 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:12,577 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 19) ---
+2026-02-25 10:37:12,577 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:12,757 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:12,938 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:12,938 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:12,941 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:13,119 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 17) ---
+2026-02-25 10:37:13,119 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:13,302 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:13,482 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:13,660 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:13,660 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 13+8=21 vs DC 17): takes 14 lightning
+2026-02-25 10:37:13,662 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 16+8=24 vs DC 17): takes 14 lightning
+2026-02-25 10:37:13,665 [INFO] [BATTLE]   -> Pit Fiend FAILED save (Rolled 6+8=14 vs DC 17): takes 29 lightning
+2026-02-25 10:37:13,667 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:13,841 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 2, Initiative 16) ---
+2026-02-25 10:37:14,022 [INFO] [BATTLE] [AI PLAN] Pit Fiend 2: 5 step(s) queued – review below.
+2026-02-25 10:37:14,202 [INFO] [BATTLE] [ACTION] Pit Fiend 2 moves 5 ft.
+2026-02-25 10:37:14,385 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Bite (4+14=18 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:14,385 [INFO] [BATTLE]   -> Arcane Wizard takes 21 piercing
+2026-02-25 10:37:14,385 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:14,564 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Claw (10+14=24 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:14,564 [INFO] [BATTLE]   -> Arcane Wizard takes 17 slashing
+2026-02-25 10:37:14,746 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Mace (2+14=16 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:14,746 [INFO] [BATTLE]   -> Arcane Wizard takes 15 bludgeoning
+2026-02-25 10:37:14,926 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Tail (12+14=26 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:14,926 [INFO] [BATTLE]   -> Arcane Wizard takes 12 bludgeoning
+2026-02-25 10:37:14,926 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:14,928 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:15,107 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 16) ---
+2026-02-25 10:37:15,107 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:15,288 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:15,470 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:15,647 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:15,647 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 14+8=22 vs DC 17): takes 15 lightning
+2026-02-25 10:37:15,649 [INFO] [BATTLE]   -> Pit Fiend 3 FAILED save (Rolled 7+8=15 vs DC 17): takes 30 lightning
+2026-02-25 10:37:15,651 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:15,827 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 16) ---
+2026-02-25 10:37:15,827 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:16,009 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:16,187 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:16,367 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:16,367 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:16,370 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:16,548 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 15) ---
+2026-02-25 10:37:16,548 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:16,732 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:16,914 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:17,098 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:17,098 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 15+13=28 vs DC 17): takes 10 cold
+2026-02-25 10:37:17,101 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 17+13=30 vs DC 17): takes 10 cold
+2026-02-25 10:37:17,103 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 4+13=17 vs DC 17): takes 10 cold
+2026-02-25 10:37:17,105 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:17,279 [INFO] [BATTLE]   [DEATH] Death Save: d20=9 (Failure) [0/3 S, 2/3 F]
+2026-02-25 10:37:17,279 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 13) ---
+2026-02-25 10:37:17,279 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:17,279 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:17,279 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:17,463 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:17,641 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:17,641 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:17,823 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:18,003 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 13) ---
+2026-02-25 10:37:18,003 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:18,188 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:18,188 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:18,369 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:18,552 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:18,552 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:18,731 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:18,910 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Misty Step to escape!
+2026-02-25 10:37:19,087 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:19,087 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 12+8=20 vs DC 17): takes 18 lightning
+2026-02-25 10:37:19,089 [INFO] [BATTLE]   -> Pit Fiend FAILED save (Rolled 5+8=13 vs DC 17): takes 36 lightning
+2026-02-25 10:37:19,092 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:19,268 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 22 (DC 21 Wisdom) and is no longer Frightened!
+2026-02-25 10:37:19,268 [INFO] [BATTLE] --- Pit Fiend 3's turn (Round 2, Initiative 11) ---
+2026-02-25 10:37:19,452 [INFO] [BATTLE] [AI PLAN] Pit Fiend 3: 5 step(s) queued – review below.
+2026-02-25 10:37:19,630 [INFO] [BATTLE] [ACTION] Pit Fiend 3 moves 20 ft.
+2026-02-25 10:37:19,813 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Bite (15+14=29 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:19,813 [INFO] [BATTLE]   -> Arcane Wizard takes 25 piercing
+2026-02-25 10:37:19,813 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:19,993 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Claw (6+14=20 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:19,993 [INFO] [BATTLE]   -> Arcane Wizard takes 15 slashing
+2026-02-25 10:37:20,174 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Mace (4+14=18 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:20,174 [INFO] [BATTLE]   -> Arcane Wizard takes 14 bludgeoning
+2026-02-25 10:37:20,353 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Tail (5+14=19 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:20,353 [INFO] [BATTLE]   -> Arcane Wizard takes 14 bludgeoning
+2026-02-25 10:37:20,353 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:20,355 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:20,533 [INFO] [BATTLE]   [DEATH] Death Save: d20=7 (Failure) [0/3 S, 2/3 F]
+2026-02-25 10:37:20,534 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 11) ---
+2026-02-25 10:37:20,534 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:20,534 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:20,534 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:20,715 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:20,898 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:20,898 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:21,078 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:21,262 [INFO] [BATTLE]   [DEATH] Death Save: d20=1 (CRITICAL FAIL! +2 failures) -> DIED!
+2026-02-25 10:37:21,262 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 6) ---
+2026-02-25 10:37:21,262 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:21,262 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:21,262 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:21,442 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:21,621 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:21,803 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:21,803 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:21,986 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 6) ---
+2026-02-25 10:37:21,986 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:22,167 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:22,347 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:22,530 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:22,530 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:22,532 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:22,709 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 6) ---
+2026-02-25 10:37:22,709 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:22,891 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:23,072 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:23,254 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:23,254 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:23,256 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:23,436 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 2, Initiative 5) ---
+2026-02-25 10:37:23,436 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:23,616 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:23,801 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:23,982 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:23,982 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:23,984 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:24,161 [INFO] [BATTLE] --- Pit Fiend's turn (Round 2, Initiative 4) ---
+2026-02-25 10:37:24,340 [INFO] [BATTLE] [AI] Pit Fiend: Nothing to do
+2026-02-25 10:37:24,340 [INFO] [BATTLE] === ROUND 3 ===
+2026-02-25 10:37:24,340 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 22) ---
+2026-02-25 10:37:24,340 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:24,522 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:24,704 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:24,886 [INFO] [BATTLE] [ACTION] Arcane Wizard disengages and moves 30 ft.
+2026-02-25 10:37:25,064 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:25,065 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 20+8=28 vs DC 17): takes 14 lightning
+2026-02-25 10:37:25,066 [INFO] [BATTLE]   -> Pit Fiend 3 FAILED save (Rolled 8+8=16 vs DC 17): takes 28 lightning
+2026-02-25 10:37:25,068 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 13+8=21 vs DC 17): takes 14 lightning
+2026-02-25 10:37:25,070 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:25,246 [INFO] [BATTLE]   [DEATH] Death Save: d20=4 (Failure) [0/3 S, 2/3 F]
+2026-02-25 10:37:25,246 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 21) ---
+2026-02-25 10:37:25,246 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:25,246 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:25,246 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:25,246 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:25,426 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:25,426 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:25,607 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:25,607 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:25,790 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 19) ---
+2026-02-25 10:37:25,790 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:25,973 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:26,154 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:26,334 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:26,334 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 8+13=21 vs DC 17): takes 10 cold
+2026-02-25 10:37:26,336 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 11+13=24 vs DC 17): takes 10 cold
+2026-02-25 10:37:26,338 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 18+13=31 vs DC 17): takes 10 cold
+2026-02-25 10:37:26,340 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:26,514 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 17) ---
+2026-02-25 10:37:26,514 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:26,698 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:26,882 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:27,062 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Mage Armor on self.
+2026-02-25 10:37:27,062 [INFO] [BATTLE]   -> Mage Armor applied (600 rnds)
+2026-02-25 10:37:27,064 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:27,245 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 3, Initiative 16) ---
+2026-02-25 10:37:27,425 [INFO] [BATTLE] [AI PLAN] Pit Fiend 2: 5 step(s) queued – review below.
+2026-02-25 10:37:27,606 [INFO] [BATTLE] [ACTION] Pit Fiend 2 moves 15 ft.
+2026-02-25 10:37:27,784 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Bite (10+14=24 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:27,784 [INFO] [BATTLE]   -> Arcane Wizard takes 18 piercing
+2026-02-25 10:37:27,784 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:27,968 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Claw (1+14=15 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:28,154 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Mace (4+14=18 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:28,154 [INFO] [BATTLE]   -> Arcane Wizard takes 17 bludgeoning
+2026-02-25 10:37:28,337 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Tail (4+14=18 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:28,337 [INFO] [BATTLE]   -> Arcane Wizard takes 15 bludgeoning
+2026-02-25 10:37:28,339 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:28,518 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 16) ---
+2026-02-25 10:37:28,519 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:28,519 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:28,698 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:28,698 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:28,879 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:29,060 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Misty Step to escape!
+2026-02-25 10:37:29,262 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:29,262 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 14+8=22 vs DC 17): takes 13 lightning
+2026-02-25 10:37:29,264 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 17+8=25 vs DC 17): takes 13 lightning
+2026-02-25 10:37:29,266 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:29,447 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 21 (DC 21 Constitution) and is no longer Poisoned!
+2026-02-25 10:37:29,447 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 19 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:29,447 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 16) ---
+2026-02-25 10:37:29,447 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:29,628 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:29,810 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:29,990 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:29,990 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 13+13=26 vs DC 17): takes 8 cold
+2026-02-25 10:37:29,992 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 15+13=28 vs DC 17): takes 8 cold
+2026-02-25 10:37:29,994 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 7+13=20 vs DC 17): takes 8 cold
+2026-02-25 10:37:29,995 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:30,171 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 15) ---
+2026-02-25 10:37:30,171 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:30,349 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:30,349 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:30,529 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:30,529 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:30,710 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:30,893 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Misty Step to escape!
+2026-02-25 10:37:31,074 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:31,074 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 12+13=25 vs DC 17): takes 8 cold
+2026-02-25 10:37:31,076 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 6+13=19 vs DC 17): takes 8 cold
+2026-02-25 10:37:31,078 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:31,254 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 12 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:31,254 [INFO] [BATTLE]   [DEATH] Death Save: d20=5 (Failure) [0/3 S, 3/3 F] -> DIED!
+2026-02-25 10:37:31,254 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 13) ---
+2026-02-25 10:37:31,254 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:31,254 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:31,254 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:31,254 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:31,438 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:31,438 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:31,617 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:31,617 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:31,800 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:31,982 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 13) ---
+2026-02-25 10:37:31,982 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:32,162 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:32,343 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:32,524 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:32,524 [INFO] [BATTLE]   -> Pit Fiend 3 FAILED save (Rolled 1+13=14 vs DC 17): takes 21 cold
+2026-02-25 10:37:32,526 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 15+13=28 vs DC 17): takes 10 cold
+2026-02-25 10:37:32,528 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:32,705 [INFO] [BATTLE] --- Pit Fiend 3's turn (Round 3, Initiative 11) ---
+2026-02-25 10:37:32,885 [INFO] [BATTLE] [AI PLAN] Pit Fiend 3: 5 step(s) queued – review below.
+2026-02-25 10:37:33,070 [INFO] [BATTLE] [ACTION] Pit Fiend 3 moves 5 ft.
+2026-02-25 10:37:33,255 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Bite (17+14=31 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:33,256 [INFO] [BATTLE]   -> Arcane Wizard takes 22 piercing
+2026-02-25 10:37:33,256 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:33,436 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Claw (19+14=33 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:33,437 [INFO] [BATTLE]   -> Arcane Wizard takes 21 slashing
+2026-02-25 10:37:33,617 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Mace (12+14=26 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:33,617 [INFO] [BATTLE]   -> Arcane Wizard takes 16 bludgeoning
+2026-02-25 10:37:33,800 [INFO] [BATTLE] [ACTION] Pit Fiend 3 Tail (13+14=27 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:33,800 [INFO] [BATTLE]   -> Arcane Wizard takes 18 bludgeoning
+2026-02-25 10:37:33,800 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:33,802 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:33,980 [INFO] [BATTLE]   [DEATH] Death Save: d20=6 (Failure) [0/3 S, 3/3 F] -> DIED!
+2026-02-25 10:37:33,980 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 11) ---
+2026-02-25 10:37:33,980 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:33,981 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:33,981 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:33,981 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:34,160 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:34,341 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:34,341 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:34,524 [INFO] [BATTLE]   [DEATH] Death Save: d20=14 (Success) [1/3 S, 1/3 F]
+2026-02-25 10:37:34,524 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 6) ---
+2026-02-25 10:37:34,524 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:34,524 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:34,524 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:34,706 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:34,706 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:34,884 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:34,884 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:35,068 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 6) ---
+2026-02-25 10:37:35,068 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:35,251 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:35,431 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:35,608 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:35,608 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 14+8=22 vs DC 17): takes 16 lightning
+2026-02-25 10:37:35,609 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 15+8=23 vs DC 17): takes 16 lightning
+2026-02-25 10:37:35,611 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:35,791 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 3, Initiative 5) ---
+2026-02-25 10:37:35,791 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:35,971 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:35,971 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:36,151 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:36,333 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 20 ft.
+2026-02-25 10:37:36,517 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:36,517 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 14+8=22 vs DC 17): takes 15 lightning
+2026-02-25 10:37:36,519 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 18+8=26 vs DC 17): takes 15 lightning
+2026-02-25 10:37:36,520 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:36,699 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 7 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:36,699 [INFO] [BATTLE] --- Pit Fiend's turn (Round 3, Initiative 4) ---
+2026-02-25 10:37:36,882 [INFO] [BATTLE] [AI PLAN] Pit Fiend: 4 step(s) queued – review below.
+2026-02-25 10:37:37,063 [INFO] [BATTLE] [ACTION] Pit Fiend Bite (10+14=24 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:37,063 [INFO] [BATTLE]   -> Arcane Wizard takes 22 piercing
+2026-02-25 10:37:37,063 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:37,248 [INFO] [BATTLE] [ACTION] Pit Fiend Claw (7+14=21 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:37,248 [INFO] [BATTLE]   -> Arcane Wizard takes 18 slashing
+2026-02-25 10:37:37,428 [INFO] [BATTLE] [ACTION] Pit Fiend Mace (20+14=34 vs AC 13) CRIT! \u2192 Arcane Wizard
+2026-02-25 10:37:37,428 [INFO] [BATTLE]   -> Arcane Wizard takes 20 bludgeoning
+2026-02-25 10:37:37,612 [INFO] [BATTLE] [ACTION] Pit Fiend Tail (5+14=19 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:37,612 [INFO] [BATTLE]   -> Arcane Wizard takes 21 bludgeoning
+2026-02-25 10:37:37,612 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:37,614 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:37,792 [INFO] [BATTLE] === ROUND 4 ===
+2026-02-25 10:37:37,792 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 22) ---
+2026-02-25 10:37:37,792 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:37,972 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:38,151 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:38,332 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:38,332 [INFO] [BATTLE]   -> Pit Fiend 3 FAILED save (Rolled 8+8=16 vs DC 17): takes 32 lightning
+2026-02-25 10:37:38,333 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 14+8=22 vs DC 17): takes 16 lightning
+2026-02-25 10:37:38,335 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:38,512 [INFO] [BATTLE]   [DEATH] Death Save: d20=2 (Failure) [0/3 S, 3/3 F] -> DIED!
+2026-02-25 10:37:38,512 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 21) ---
+2026-02-25 10:37:38,512 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:38,512 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:38,512 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:38,512 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:38,691 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:38,876 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:38,876 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:39,057 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 19) ---
+2026-02-25 10:37:39,057 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:39,239 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:39,239 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:39,419 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:39,603 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 25 ft.
+2026-02-25 10:37:39,784 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:39,784 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 16+13=29 vs DC 17): takes 10 cold
+2026-02-25 10:37:39,786 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 15+13=28 vs DC 17): takes 10 cold
+2026-02-25 10:37:39,787 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:39,964 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 9 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:39,964 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 17) ---
+2026-02-25 10:37:39,964 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:40,144 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:40,326 [INFO] [BATTLE] [ACTION] Arcane Wizard repositions 30 ft.
+2026-02-25 10:37:40,506 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:40,506 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 12+13=25 vs DC 17): takes 9 cold
+2026-02-25 10:37:40,508 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 11+13=24 vs DC 17): takes 9 cold
+2026-02-25 10:37:40,509 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:40,686 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 4, Initiative 16) ---
+2026-02-25 10:37:40,869 [INFO] [BATTLE] [AI PLAN] Pit Fiend 2: 5 step(s) queued – review below.
+2026-02-25 10:37:41,051 [INFO] [BATTLE] [ACTION] Pit Fiend 2 moves 25 ft.
+2026-02-25 10:37:41,233 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Bite (20+14=34 vs AC 13) CRIT! \u2192 Arcane Wizard
+2026-02-25 10:37:41,233 [INFO] [BATTLE]   -> Arcane Wizard takes 31 piercing
+2026-02-25 10:37:41,233 [INFO] [BATTLE]   -> Arcane Wizard is Poisoned
+2026-02-25 10:37:41,415 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Claw (6+14=20 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:41,415 [INFO] [BATTLE]   -> Arcane Wizard takes 12 slashing
+2026-02-25 10:37:41,415 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:41,593 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Mace (3+14=17 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:41,593 [INFO] [BATTLE]   -> Arcane Wizard takes 14 bludgeoning
+2026-02-25 10:37:41,593 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:41,775 [INFO] [BATTLE] [ACTION] Pit Fiend 2 Tail (19+14=33 vs AC 13) Hit? \u2192 Arcane Wizard
+2026-02-25 10:37:41,775 [INFO] [BATTLE]   -> Arcane Wizard takes 16 bludgeoning
+2026-02-25 10:37:41,775 [INFO] [BATTLE]   -> Arcane Wizard suffers 1 death save failure(s)!
+2026-02-25 10:37:41,775 [INFO] [BATTLE]   -> Arcane Wizard has DIED!
+2026-02-25 10:37:41,776 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:41,954 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 16) ---
+2026-02-25 10:37:41,954 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:42,135 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:42,316 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:42,497 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)
+2026-02-25 10:37:42,497 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 13+13=26 vs DC 17): takes 9 cold
+2026-02-25 10:37:42,498 [INFO] [BATTLE]   -> Pit Fiend SAVED (Rolled 4+13=17 vs DC 17): takes 9 cold
+2026-02-25 10:37:42,499 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:42,678 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 15) ---
+2026-02-25 10:37:42,678 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:42,678 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:42,858 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:43,060 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Lightning Bolt (DC 17 Dexterity)
+2026-02-25 10:37:43,060 [INFO] [BATTLE]   -> Pit Fiend 3 SAVED (Rolled 20+8=28 vs DC 17): takes 18 lightning
+2026-02-25 10:37:43,061 [INFO] [BATTLE]   -> Pit Fiend FAILED save (Rolled 2+8=10 vs DC 17): takes 37 lightning
+2026-02-25 10:37:43,062 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:43,243 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 13 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:43,243 [INFO] [BATTLE]   [DEATH] Death Save: d20=20 (CRITICAL SUCCESS! Regain 1 HP, conscious!)
+2026-02-25 10:37:43,243 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 13) ---
+2026-02-25 10:37:43,243 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:43,243 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:43,422 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:43,422 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:43,604 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:43,788 [INFO] [BATTLE] [ACTION] Arcane Wizard Disengages (Action) and retreats.
+2026-02-25 10:37:43,788 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:43,971 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 4 (DC 21 Constitution) and remains Poisoned.
+2026-02-25 10:37:43,971 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 24 (DC 21 Wisdom) and is no longer Frightened!
+2026-02-25 10:37:43,971 [INFO] [BATTLE]   [DEATH] Death Save: d20=13 (Success) [2/3 S, 1/3 F]
+2026-02-25 10:37:43,971 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 6) ---
+2026-02-25 10:37:43,971 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:43,971 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:43,971 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:43,971 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:44,150 [INFO] [BATTLE] [SAVE] Arcane Wizard FAILED save vs Aura of Fear.
+2026-02-25 10:37:44,150 [INFO] [BATTLE]   -> Condition applied: Frightened
+2026-02-25 10:37:44,332 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 6) ---
+2026-02-25 10:37:44,332 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:44,512 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:44,693 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (9+9=18 vs AC 19) Hit? \u2192 Pit Fiend
+2026-02-25 10:37:44,694 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:44,873 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 4, Initiative 5) ---
+2026-02-25 10:37:44,873 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:44,873 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:45,054 [INFO] [BATTLE] [SAVE] Arcane Wizard succeeded save vs Aura of Fear.
+2026-02-25 10:37:45,238 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:45,420 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((20,1) Dis+9=10 vs AC 19) Hit? \u2192 Pit Fiend
+2026-02-25 10:37:45,421 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:45,601 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 20 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:45,601 [INFO] [BATTLE] --- Pit Fiend's turn (Round 4, Initiative 4) ---
+2026-02-25 10:37:45,782 [INFO] [BATTLE] [AI PLAN] Pit Fiend: 2 step(s) queued – review below.
+2026-02-25 10:37:45,965 [INFO] [BATTLE] [ACTION] Pit Fiend moves 30 ft.
+2026-02-25 10:37:46,147 [INFO] [BATTLE] [ACTION] Pit Fiend Disengages (Action) and retreats.
+2026-02-25 10:37:46,147 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:46,326 [INFO] [BATTLE] === ROUND 5 ===
+2026-02-25 10:37:46,326 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 22) ---
+2026-02-25 10:37:46,326 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:46,505 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:46,689 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (19+9=28 vs AC 19) Hit? \u2192 Pit Fiend
+2026-02-25 10:37:46,689 [INFO] [BATTLE]   -> Pit Fiend takes 15 force
+2026-02-25 10:37:46,689 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:46,867 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 19) ---
+2026-02-25 10:37:46,867 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:46,868 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:47,052 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:47,234 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Banishment on Pit Fiend 2 (DC 17 Charisma)
+2026-02-25 10:37:47,234 [INFO] [BATTLE]   -> Arcane Wizard stops concentrating on Banishment.
+2026-02-25 10:37:47,234 [INFO] [BATTLE]   -> Pit Fiend 2 is Incapacitated
+2026-02-25 10:37:47,235 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:47,412 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 20 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:47,412 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 17) ---
+2026-02-25 10:37:47,412 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:47,592 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:47,775 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:47,775 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 13+10=23 vs DC 17): no damage
+2026-02-25 10:37:47,776 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:47,955 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 5, Initiative 16) ---
+2026-02-25 10:37:47,955 [INFO] [BATTLE]   [STATUS] Incapacitated
+2026-02-25 10:37:48,137 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 16) ---
+2026-02-25 10:37:48,137 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:48,321 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:48,502 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:48,502 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 19+10=29 vs DC 17): no damage
+2026-02-25 10:37:48,503 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:48,682 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 15) ---
+2026-02-25 10:37:48,682 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:48,682 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:48,866 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:49,049 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:49,231 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((3,4) Dis+9=12 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:49,232 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:49,413 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 18 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:49,413 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 13) ---
+2026-02-25 10:37:49,413 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:49,413 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:49,594 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:49,774 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:49,774 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 11+10=21 vs DC 17): no damage
+2026-02-25 10:37:49,775 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:49,956 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 16 (DC 21 Constitution) and remains Poisoned.
+2026-02-25 10:37:49,956 [INFO] [BATTLE]   [DEATH] Death Save: d20=4 (Failure) [2/3 S, 2/3 F]
+2026-02-25 10:37:49,956 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 6) ---
+2026-02-25 10:37:49,956 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:49,956 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:49,956 [INFO] [BATTLE]   [STATUS] Unconscious
+2026-02-25 10:37:49,956 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:50,139 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 6) ---
+2026-02-25 10:37:50,139 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:50,324 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:50,501 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:50,683 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:50,683 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 16+10=26 vs DC 17): no damage
+2026-02-25 10:37:50,684 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:50,863 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 5, Initiative 5) ---
+2026-02-25 10:37:50,863 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:50,863 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:51,049 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:51,232 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:51,414 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:51,414 [INFO] [BATTLE]   -> Pit Fiend 2 SAVED (Rolled 8+10=18 vs DC 17): no damage
+2026-02-25 10:37:51,415 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:51,596 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 15 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:51,597 [INFO] [BATTLE] === ROUND 6 ===
+2026-02-25 10:37:51,597 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 22) ---
+2026-02-25 10:37:51,597 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:51,780 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:51,962 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:52,144 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:52,145 [INFO] [BATTLE]   -> Arcane Wizard stops concentrating on Hold Person.
+2026-02-25 10:37:52,145 [INFO] [BATTLE]   -> Pit Fiend 2 is Paralyzed
+2026-02-25 10:37:52,145 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:52,329 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 19) ---
+2026-02-25 10:37:52,329 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:52,329 [INFO] [BATTLE]   [CONCENTRATION] Banishment
+2026-02-25 10:37:52,329 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:52,512 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:52,692 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (17+9=26 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:52,692 [INFO] [BATTLE]   -> Pit Fiend 2 takes 15 force
+2026-02-25 10:37:52,693 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:52,872 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 21 (DC 21 Wisdom) and is no longer Frightened!
+2026-02-25 10:37:52,872 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 17) ---
+2026-02-25 10:37:52,872 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:52,872 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:53,054 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:53,235 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((16,1) Adv+9=25 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:53,235 [INFO] [BATTLE]   -> Pit Fiend 2 takes 14 force
+2026-02-25 10:37:53,236 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:53,419 [INFO] [BATTLE] --- Pit Fiend 2's turn (Round 6, Initiative 16) ---
+2026-02-25 10:37:53,419 [INFO] [BATTLE]   [STATUS] Incapacitated
+2026-02-25 10:37:53,419 [INFO] [BATTLE]   [STATUS] Paralyzed
+2026-02-25 10:37:53,600 [INFO] [BATTLE] [SAVE] Pit Fiend 2 rolled 25 (DC 17 Wisdom) and is no longer Paralyzed!
+2026-02-25 10:37:53,600 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 16) ---
+2026-02-25 10:37:53,601 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:53,601 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:53,782 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:53,964 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Hold Person on Pit Fiend 2 (DC 17 Wisdom)
+2026-02-25 10:37:53,964 [INFO] [BATTLE]   -> Arcane Wizard stops concentrating on Hold Person.
+2026-02-25 10:37:53,964 [INFO] [BATTLE]   -> Pit Fiend 2 is Paralyzed
+2026-02-25 10:37:53,965 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:54,147 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 15) ---
+2026-02-25 10:37:54,147 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:54,147 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:54,331 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 2 step(s) queued – review below.
+2026-02-25 10:37:54,512 [INFO] [BATTLE] [ACTION] Arcane Wizard moves 30 ft.
+2026-02-25 10:37:54,694 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (14+9=23 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:54,694 [INFO] [BATTLE]   -> Pit Fiend 2 takes 15 force
+2026-02-25 10:37:54,695 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:54,879 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 18 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:54,879 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 13) ---
+2026-02-25 10:37:54,879 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:54,879 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:54,879 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:55,061 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:55,239 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (12+9=21 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:55,239 [INFO] [BATTLE]   -> Pit Fiend 2 takes 14 force
+2026-02-25 10:37:55,239 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:55,418 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 10 (DC 21 Constitution) and remains Poisoned.
+2026-02-25 10:37:55,418 [INFO] [BATTLE]   [DEATH] Death Save: d20=20 (CRITICAL SUCCESS! Regain 1 HP, conscious!)
+2026-02-25 10:37:55,418 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 6) ---
+2026-02-25 10:37:55,419 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:55,419 [INFO] [BATTLE]   [STATUS] Poisoned
+2026-02-25 10:37:55,419 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:55,603 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:55,784 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (8+9=17 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:55,785 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:55,965 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 10 (DC 21 Constitution) and remains Poisoned.
+2026-02-25 10:37:55,965 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 24 (DC 21 Wisdom) and is no longer Frightened!
+2026-02-25 10:37:55,965 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 6) ---
+2026-02-25 10:37:55,965 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:55,965 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:56,151 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:56,335 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((14,20) Adv+9=29 vs AC 19) CRIT! \u2192 Pit Fiend 2
+2026-02-25 10:37:56,336 [INFO] [BATTLE]   -> Pit Fiend 2 takes 28 force
+2026-02-25 10:37:56,336 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:56,517 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 6, Initiative 5) ---
+2026-02-25 10:37:56,518 [INFO] [BATTLE]   [STATUS] Frightened
+2026-02-25 10:37:56,518 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:56,518 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:56,699 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:56,879 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile (1+9=10 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:56,880 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:57,062 [INFO] [BATTLE] [SAVE] Arcane Wizard rolled 13 (DC 21 Wisdom) and remains Frightened.
+2026-02-25 10:37:57,062 [INFO] [BATTLE] === ROUND 7 ===
+2026-02-25 10:37:57,062 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 7, Initiative 22) ---
+2026-02-25 10:37:57,062 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:57,062 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:57,246 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:57,426 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((3,6) Adv+9=15 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:57,426 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:57,609 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 7, Initiative 19) ---
+2026-02-25 10:37:57,609 [INFO] [BATTLE]   [CONCENTRATION] Banishment
+2026-02-25 10:37:57,609 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:57,791 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:57,972 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((19,11) Adv+9=28 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:57,972 [INFO] [BATTLE]   -> Pit Fiend 2 takes 15 force
+2026-02-25 10:37:57,973 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-25 10:37:58,159 [INFO] [BATTLE] --- Arcane Wizard's turn (Round 7, Initiative 17) ---
+2026-02-25 10:37:58,159 [INFO] [BATTLE]   [CONCENTRATION] Hold Person
+2026-02-25 10:37:58,159 [INFO] [BATTLE] [PLAYER TURN] Arcane Wizard – log their action with 'LOG PLAYER ACTION'
+2026-02-25 10:37:58,341 [INFO] [BATTLE] [AI PLAN] Arcane Wizard: 1 step(s) queued – review below.
+2026-02-25 10:37:58,520 [INFO] [BATTLE] [ACTION] Arcane Wizard casts Magic Missile ((10,7) Adv+9=19 vs AC 19) Hit? \u2192 Pit Fiend 2
+2026-02-25 10:37:58,520 [INFO] [BATTLE]   -> Pit Fiend 2 takes 17 force
+2026-02-25 10:37:58,520 [INFO] [BATTLE] === COMBAT OVER: PLAYERS WIN! ===
+2026-02-25 10:37:58,521 [INFO] [BATTLE] [AI] Turn complete.

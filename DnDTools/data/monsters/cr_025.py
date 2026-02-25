@@ -40,7 +40,7 @@ monsters = [
         challenge_rating=0.25, xp=50, proficiency_bonus=2),
 
     CreatureStats(name="Mud Mephit", size="Small", creature_type="Elemental",
-        armor_class=11, hit_points=27, hit_dice="6d6+6", speed=20, fly_speed=20, swim_speed=20,
+        armor_class=11, hit_points=27, hit_dice="6d6+6", speed=20, fly_speed=20, swim_speed=20, native_plane="Elemental Plane",
         abilities=AbilityScores(strength=8,dexterity=12,constitution=12,intelligence=9,wisdom=11,charisma=7),
         actions=[Action("Fists","Melee",3,"1d6+1","bludgeoning")],
         damage_immunities=["poison","acid"],

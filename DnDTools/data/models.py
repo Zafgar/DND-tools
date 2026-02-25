@@ -31,6 +31,7 @@ class SpellInfo:
     attack_bonus_fixed: int = 0       # 0 = compute from caster
     applies_condition: str = ""       # condition on hit/fail
     condition_on_save: bool = False   # if True, condition applies even on save
+    repeat_save: bool = True          # if True, target repeats save at end of turn
     heals: str = ""                   # healing dice e.g. "2d4+2"
     targets: str = "single"          # single, aoe, self, all_allies
     concentration: bool = False
@@ -152,6 +153,7 @@ class CreatureStats:
     name: str
     size: str = "Medium"
     creature_type: str = "Humanoid"
+    native_plane: str = "Material Plane"
     alignment: str = "Neutral"
     armor_class: int = 10
     armor_type: str = ""

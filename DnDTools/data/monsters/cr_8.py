@@ -29,7 +29,7 @@ monsters = [
         challenge_rating=8.0, xp=3900, proficiency_bonus=3),
 
     CreatureStats(name="Mind Flayer", size="Medium", creature_type="Aberration",
-        armor_class=15, hit_points=71, hit_dice="13d8+13", speed=30,
+        armor_class=15, hit_points=71, hit_dice="13d8+13", speed=30, native_plane="Far Realm",
         abilities=AbilityScores(strength=11,dexterity=12,constitution=12,intelligence=19,wisdom=17,charisma=17),
         actions=[
             Action("Tentacles","Melee",7,"2d10+4","psychic",
@@ -52,7 +52,7 @@ monsters = [
         challenge_rating=7.0, xp=2900, proficiency_bonus=3),
 
     CreatureStats(name="Chain Devil", size="Medium", creature_type="Fiend",
-        armor_class=16, hit_points=85, hit_dice="10d8+40", speed=30,
+        armor_class=16, hit_points=85, hit_dice="10d8+40", speed=30, native_plane="Nine Hells",
         abilities=AbilityScores(strength=18,dexterity=15,constitution=18,intelligence=11,wisdom=12,charisma=14),
         actions=[Action("Multiattack","x2 Chains",0,"",0,"",reach=10,is_multiattack=True,
                         multiattack_count=2,multiattack_targets=["Chain","Chain"]),

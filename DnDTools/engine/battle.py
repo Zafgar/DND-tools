@@ -24,6 +24,7 @@ class BattleSystem:
         self.grid_size = 60             # pixels per square
         self.entities: List[Entity] = initial_entities or []
         self.turn_index = 0
+        self.current_plane = "Material Plane"
         self.log = log_callback
         self.round = 1
         self.combat_started = False
@@ -154,26 +155,37 @@ class BattleSystem:
         self.log(f"[SUMMON] {name} appears at ({int(x)},{int(y)})!")
         return ent
 
-    def remove_expired_summons(self):
-        """Remove summons that have expired."""
+    def remove_expired_summons(self) -> bool:
+        """Remove summons that have expired. Returns True if current entity was removed."""
         current = self.get_current_entity() if self.entities else None
         expired = [e for e in self.entities if e.is_summon and e.summon_rounds_left <= 0]
+        current_removed = False
         for e in expired:
             self.log(f"[SUMMON] {e.name} disappears.")
+            if e == current:
+                current_removed = True
+
         self.entities = [e for e in self.entities if e not in expired]
+        
         if current and current in self.entities:
             self.turn_index = self.entities.index(current)
         elif self.entities:
             self.turn_index = min(self.turn_index, len(self.entities) - 1)
+            
+        return current_removed
 
-    def next_turn(self) -> Optional[Entity]:
+    def next_turn(self, skip_saves: bool = False) -> Optional[Entity]:
         if not self.entities:
             return None
 
+        # Safety check for turn_index
+        if self.turn_index >= len(self.entities):
+            self.turn_index = 0
+
         # --- END OF TURN LOGIC (Previous Entity) ---
         prev_ent = self.entities[self.turn_index]
-        if prev_ent.hp > 0:
-            self._handle_end_of_turn_saves(prev_ent)
+        if prev_ent.hp > 0 and not skip_saves:
+            self.handle_end_of_turn_saves(prev_ent)
 
         # Check Barbarian Rage end-of-turn
         if prev_ent.rage_active:
@@ -181,7 +193,16 @@ class BattleSystem:
                 self.log(f"[RAGE] {prev_ent.name}'s rage ends! (No attack/damage this turn)")
 
         # Clean up expired summons
-        self.remove_expired_summons()
+        current_removed = self.remove_expired_summons()
+
+        # Check if entities still exist
+        if not self.entities:
+            return None
+
+        # If current entity was removed, the next entity shifted into its index.
+        # So we decrement index so that the increment below lands on the correct next entity.
+        if current_removed:
+            self.turn_index -= 1
 
         # Advance turn
         self.turn_index += 1
@@ -259,14 +280,26 @@ class BattleSystem:
             self.log(f"  [CONCENTRATION] {current.concentrating_on.name}")
         return current
 
-    def _handle_end_of_turn_saves(self, entity: Entity):
+    def get_total_save_bonus(self, entity: Entity, ability: str) -> int:
+        """Get save bonus including auras (e.g. Paladin)."""
+        bonus = entity.get_save_bonus(ability)
+        # Paladin Aura of Protection check
+        for ally in self.get_allies_of(entity):
+            if ally.hp > 0 and not ally.is_incapacitated():
+                aura = ally.get_feature("aura_of_protection")
+                if aura and self.get_distance(entity, ally) * 5 <= (aura.aura_radius or 10):
+                    bonus += max(1, ally.get_modifier("Charisma"))
+                    break # Bonuses don't stack
+        return bonus
+
+    def handle_end_of_turn_saves(self, entity: Entity):
         """Check if entity can shake off any conditions at end of turn."""
         # Iterate a copy since we might modify the dict
         for cond, meta in list(entity.condition_metadata.items()):
             ability = meta.get("save")
             dc = meta.get("dc")
             if ability and dc:
-                bonus = entity.get_save_bonus(ability)
+                bonus = self.get_total_save_bonus(entity, ability)
                 roll = random.randint(1, 20)
                 total = roll + bonus
                 if total >= dc:
@@ -370,6 +403,10 @@ class BattleSystem:
                     # Filter out passive auras (like Paladin Aura of Protection)
                     # Only trigger if it requires a save, deals damage, or applies a condition
                     if not (feat.save_ability or feat.damage_dice or feat.applies_condition):
+                        continue
+
+                    # Team safety check: Harmful auras don't affect allies
+                    if other.is_player == entity.is_player:
                         continue
 
                     dist_ft = self.get_distance(entity, other) * 5
@@ -546,6 +583,7 @@ class BattleSystem:
         data = {
             "combat_started": self.combat_started,
             "round": self.round,
+            "current_plane": self.current_plane,
             "turn_index": self.turn_index,
             "entities": [],
             "terrain": [t.to_dict() for t in self.terrain],
@@ -614,6 +652,7 @@ class BattleSystem:
 
         self.round = data.get("round", 1)
         self.combat_started = data.get("combat_started", True)
+        self.current_plane = data.get("current_plane", "Material Plane")
         self.turn_index = data.get("turn_index", 0)
         self.weather = data.get("weather", "Clear")
         self.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
@@ -731,6 +770,7 @@ class BattleSystem:
         sys_obj.log = log_callback
         sys_obj.round = data.get("round", 1)
         sys_obj.combat_started = data.get("combat_started", True)
+        sys_obj.current_plane = data.get("current_plane", "Material Plane")
         sys_obj.turn_index = data.get("turn_index", 0)
         sys_obj.ai = TacticalAI()
         sys_obj.terrain = []

@@ -2,13 +2,41 @@ import sys
 import os
 import threading
 import logging
+
+# --- LOGGING SETUP (Moved to top to catch startup errors) ---
+# Force log file to be in the same directory as the script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(BASE_DIR, 'crash_log.txt')
+
+try:
+    logging.basicConfig(
+        filename=LOG_PATH,
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        filemode='w'  # 'w' overwrites log each run, use 'a' to append
+    )
+    print(f"Logging to: {LOG_PATH}")
+except PermissionError:
+    print("WARNING: Could not open crash_log.txt. Logging to console instead.")
+    logging.basicConfig(level=logging.INFO)
+
+# Catch uncaught exceptions (like syntax errors in imports)
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical("Uncaught exception at startup:", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+sys.excepthook = handle_exception
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pygame
 from flask import Flask, request, jsonify
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from states.game_states import MenuState, BattleState, EncounterSetupState
-
+from states.hero_creator import HeroCreatorState
 
 # --- FLASK SERVER SETUP ---
 app = Flask(__name__)
@@ -51,6 +79,7 @@ class GameManager:
         self.states = {
             "MENU":  MenuState(self),
             "SETUP": EncounterSetupState(self),
+            "HERO_CREATOR": HeroCreatorState(self),
             "BATTLE": None,
         }
         self.current_state = self.states["MENU"]
@@ -76,17 +105,23 @@ class GameManager:
         self.running = False
 
     def run(self):
-        while self.running:
-            events = pygame.event.get()
-            for event in events:
-                if event.type == pygame.QUIT:
-                    self.running = False
-            self.current_state.handle_events(events)
-            self.current_state.update()
-            self.current_state.draw(self.screen)
-            pygame.display.flip()
-            self.clock.tick(FPS)
-        pygame.quit()
+        try:
+            logging.info("Game starting...")
+            while self.running:
+                events = pygame.event.get()
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                self.current_state.handle_events(events)
+                self.current_state.update()
+                self.current_state.draw(self.screen)
+                pygame.display.flip()
+                self.clock.tick(FPS)
+        except Exception as e:
+            logging.critical("CRITICAL ERROR - GAME CRASHED:", exc_info=True)
+            raise e
+        finally:
+            pygame.quit()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ monsters = [
         challenge_rating=2.0, xp=450, proficiency_bonus=2),
 
     CreatureStats(name="Gargoyle", size="Medium", creature_type="Elemental",
-        armor_class=15, hit_points=52, hit_dice="7d8+21", speed=30, fly_speed=60,
+        armor_class=15, hit_points=52, hit_dice="7d8+21", speed=30, fly_speed=60, native_plane="Elemental Plane of Earth",
         abilities=AbilityScores(strength=15,dexterity=11,constitution=16,intelligence=6,wisdom=11,charisma=7),
         actions=[Action("Multiattack","Bite + Claws",0,"",0,"",range=5,is_multiattack=True,
                         multiattack_count=2,multiattack_targets=["Bite","Claws"]),

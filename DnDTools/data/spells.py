@@ -14,7 +14,7 @@ _spells = {
                              damage_dice="1d8", damage_type="necrotic", description="Prevents healing until next turn"),
     
     "Command": SpellInfo("Command", level=1, action_type="action", range=60, targets="single",
-                         save_ability="Wisdom", applies_condition="Prone", description="Command target to grovel (Prone)"),
+                         save_ability="Wisdom", applies_condition="Prone", description="Command target to grovel (Prone)", repeat_save=False),
 
     "Eldritch Blast": SpellInfo("Eldritch Blast", level=0, action_type="action", range=120, targets="single",
                                 damage_dice="1d10", damage_type="force", description="Beam of crackling energy"),
@@ -217,8 +217,9 @@ _spells = {
                                 description="Heal half damage dealt"),
 
     # --- LEVEL 4 ---
-    "Banishment": SpellInfo("Banishment", level=4, action_type="action", range=60, targets="single",
-                            save_ability="Charisma", applies_condition="Incapacitated", concentration=True, duration="1 minute"),
+    "Banishment": SpellInfo("Banishment", level=4, school="Abjuration", action_type="action", range=60, targets="single",
+                            save_ability="Charisma", applies_condition="Incapacitated", concentration=True, duration="1 minute", repeat_save=False,
+                            description="Banishes creature to another plane. Target is Incapacitated."),
 
     "Blight": SpellInfo("Blight", level=4, action_type="action", range=30, targets="single",
                         damage_dice="8d8", damage_type="necrotic", save_ability="Constitution", half_on_save=True),

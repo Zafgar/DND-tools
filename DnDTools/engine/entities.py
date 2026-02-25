@@ -141,6 +141,10 @@ class Entity:
         if dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]:
             amount = amount * 2
 
+        # Reset stability if taking damage
+        if amount > 0:
+            self.is_stable = False
+
         # Temp HP absorbs first
         if self.temp_hp > 0:
             absorbed = min(self.temp_hp, amount)
@@ -148,6 +152,13 @@ class Entity:
             amount -= absorbed
 
         self.hp -= amount
+
+        # Relentless Endurance (Half-Orc): Drop to 1 HP instead of 0
+        if self.hp <= 0 and self.hp > -self.max_hp:
+            if self.has_feature("relentless_endurance") and self.can_use_feature("Relentless Endurance"):
+                self.hp = 1
+                self.use_feature("Relentless Endurance")
+
         self.hp = max(self.hp, 0 if not self.is_player else -self.max_hp)
 
         # Track rage damage taken
@@ -417,7 +428,7 @@ class Entity:
                 return True
         return False
 
-    def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False) -> bool:
+    def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False, is_threatened: bool = False) -> bool:
         if self.has_condition("Blinded"):
             return True
         if self.has_condition("Poisoned"):
@@ -430,9 +441,9 @@ class Entity:
             # Ranged attacks against Prone targets have Disadvantage
             if target.has_condition("Prone"):
                 return True
-            dist = math.hypot(self.grid_x - target.grid_x, self.grid_y - target.grid_y) * 5
-            if dist <= 5:
-                return True  # Ranged attack while in melee
+            # Disadvantage if threatened (enemy within 5ft), unless Crossbow Expert
+            if is_threatened and not self.has_feature("crossbow_expert"):
+                return True
         if target and target.has_condition("Invisible"):
             return True
         if target and target.is_dodging and not target.is_incapacitated():

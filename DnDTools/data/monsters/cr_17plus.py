@@ -68,14 +68,14 @@ monsters = [
     # CR 20 – Pit Fiend                                                   #
     # ------------------------------------------------------------------ #
     CreatureStats(name="Pit Fiend", size="Large", creature_type="Fiend",
-        armor_class=19, hit_points=300, hit_dice="24d10+168", speed=30, fly_speed=60,
+        armor_class=19, hit_points=300, hit_dice="24d10+168", speed=30, fly_speed=60, native_plane="Nine Hells",
         abilities=AbilityScores(strength=26,dexterity=14,constitution=24,intelligence=22,wisdom=18,charisma=24),
         actions=[
             Action("Multiattack","Bite + Claw + Mace + Tail",0,"",0,"",reach=10,is_multiattack=True,
                    multiattack_count=4,multiattack_targets=["Bite","Claw","Mace","Tail"]),
             Action("Bite","Melee",14,"4d6",8,"piercing",applies_condition="Poisoned",condition_dc=21,condition_save="Constitution"),
-            Action("Claw","Melee",14,"2d8",8,"slashing"),
-            Action("Mace","Melee",14,"2d6+8","bludgeoning"),
+            Action("Claw","Melee",14,"2d8",8,"slashing",reach=10),
+            Action("Mace","Melee",14,"2d6+8","bludgeoning",reach=10),
             Action("Tail","Melee",14,"2d8+8","bludgeoning",reach=10),
         ],
         saving_throws={"Dexterity":8,"Constitution":13,"Wisdom":10},
@@ -146,7 +146,7 @@ monsters = [
             Action("Multiattack","Frightful Presence then Bite + 2 Claws",0,"",0,"",reach=15,is_multiattack=True,
                    multiattack_count=3,multiattack_targets=["Bite","Claw","Claw"]),
             Action("Bite","Melee",17,"4d6+10","piercing",reach=15),
-            Action("Claw","Melee",17,"4d6+10","slashing"),
+            Action("Claw","Melee",17,"4d6+10","slashing",reach=10),
             Action("Tail","Melee",17,"2d8+10","bludgeoning",reach=20),
             Action("Fire Breath","Cone 90ft DC 24 DEX half",0,"26d6",0,"fire",range=90,aoe_radius=90,aoe_shape="cone",condition_dc=24,condition_save="Dexterity"),
         ],

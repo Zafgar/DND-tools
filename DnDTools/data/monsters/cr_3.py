@@ -37,7 +37,7 @@ monsters = [
         challenge_rating=3.0, xp=700, proficiency_bonus=2),
 
     CreatureStats(name="Green Hag", size="Medium", creature_type="Fey",
-        armor_class=17, hit_points=82, hit_dice="11d8+33", speed=30, swim_speed=30,
+        armor_class=17, hit_points=82, hit_dice="11d8+33", speed=30, swim_speed=30, native_plane="Feywild",
         abilities=AbilityScores(strength=18,dexterity=12,constitution=16,intelligence=13,wisdom=14,charisma=14),
         actions=[Action("Claws","Melee",6,"2d8",4,"slashing")],
         skills={"Arcana":3,"Deception":4,"Perception":4,"Stealth":3},
