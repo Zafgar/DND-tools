@@ -6,8 +6,11 @@ from data.monsters.cr_05  import monsters as cr05_list
 from data.monsters.cr_1   import monsters as cr1_list
 from data.monsters.cr_2   import monsters as cr2_list
 from data.monsters.cr_3   import monsters as cr3_list
+from data.monsters.cr_4   import monsters as cr4_list
 from data.monsters.cr_5   import monsters as cr5_list
+from data.monsters.cr_67  import monsters as cr67_list
 from data.monsters.cr_8   import monsters as cr8_list
+from data.monsters.cr_1112 import monsters as cr1112_list
 from data.monsters.cr_13  import monsters as cr13_list
 from data.monsters.cr_17plus import monsters as cr17_list
 
@@ -16,7 +19,8 @@ class MonsterLibrary:
     def __init__(self):
         self._monsters: dict[str, CreatureStats] = {}
         for lst in [cr018_list, cr025_list, cr05_list, cr1_list,
-                    cr2_list, cr3_list, cr5_list, cr8_list, cr13_list, cr17_list]:
+                    cr2_list, cr3_list, cr4_list, cr5_list, cr67_list,
+                    cr8_list, cr1112_list, cr13_list, cr17_list]:
             self._load_list(lst)
 
     def _load_list(self, monster_list):
