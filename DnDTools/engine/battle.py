@@ -38,6 +38,11 @@ class BattleSystem:
         # Legendary action queue: entities that may still act this round
         self.legendary_queue: List[Entity] = []
 
+        # Lair activation: set True from encounter setup if combat takes place in a lair
+        # Lair actions only happen when this is True (PHB/MM: lair actions are NOT available
+        # outside the creature's lair)
+        self.lair_enabled: bool = False
+
         # Battle analytics
         self.stats_tracker = BattleStatisticsTracker()
         self.dm_advisor = DMAdvisor()
@@ -61,8 +66,11 @@ class BattleSystem:
             if not entity.is_lair:
                 self.stats_tracker.register_entity(entity)
 
-        # Check for Lair Actions
-        lair_owners = [e for e in self.entities if any(a.action_type == "lair" for a in e.stats.actions)]
+        # Check for Lair Actions (only if lair is enabled from encounter setup)
+        # PHB/MM: Lair actions only occur when fighting in the creature's lair
+        lair_owners = []
+        if self.lair_enabled:
+            lair_owners = [e for e in self.entities if any(a.action_type == "lair" for a in e.stats.actions)]
         for owner in lair_owners:
             from data.models import CreatureStats
             lair_stats = CreatureStats(name="Lair Action", hit_points=1, speed=0, challenge_rating=0)
@@ -294,19 +302,35 @@ class BattleSystem:
 
     def handle_end_of_turn_saves(self, entity: Entity):
         """Check if entity can shake off any conditions at end of turn."""
+        from engine.rules import make_saving_throw
+
+        # Check if Frightened source is dead -> remove Frightened
+        if entity.has_condition("Frightened"):
+            fear_source = entity.get_condition_source("Frightened")
+            if fear_source and fear_source.hp <= 0:
+                entity.remove_condition("Frightened")
+                self.log(f"[STATUS] {entity.name} is no longer Frightened (source defeated)")
+
+        # Check if grappler is incapacitated or dead -> remove Grappled
+        if entity.has_condition("Grappled") and entity.grappled_by:
+            grappler = entity.grappled_by
+            if grappler.hp <= 0 or grappler.is_incapacitated():
+                grappler.release_grapple(entity)
+                self.log(f"[STATUS] {entity.name} escapes grapple ({grappler.name} incapacitated)")
+
         # Iterate a copy since we might modify the dict
         for cond, meta in list(entity.condition_metadata.items()):
+            if cond not in entity.conditions:
+                continue  # Already removed above
             ability = meta.get("save")
             dc = meta.get("dc")
             if ability and dc:
-                bonus = self.get_total_save_bonus(entity, ability)
-                roll = random.randint(1, 20)
-                total = roll + bonus
-                if total >= dc:
+                success, total, msg = make_saving_throw(entity, ability, dc, self)
+                if success:
                     entity.remove_condition(cond)
-                    self.log(f"[SAVE] {entity.name} rolled {total} (DC {dc} {ability}) and is no longer {cond}!")
+                    self.log(f"[SAVE] {msg} -> no longer {cond}!")
                 else:
-                    self.log(f"[SAVE] {entity.name} rolled {total} (DC {dc} {ability}) and remains {cond}.")
+                    self.log(f"[SAVE] {msg} -> remains {cond}.")
 
     def _check_hazard_damage(self, entity: Entity):
         """Apply hazard terrain damage at the start of an entity's turn."""
@@ -632,6 +656,11 @@ class BattleSystem:
                 "summon_owner_name": e.summon_owner.name if e.summon_owner else None,
                 "marked_target_name": e.marked_target.name if e.marked_target else None,
                 "death_save_history": e.death_save_history,
+                # Grapple state
+                "grappling_names": [g.name for g in e.grappling] if e.grappling else [],
+                "grappled_by_name": e.grappled_by.name if e.grappled_by else None,
+                # Condition sources (Frightened, Charmed sources)
+                "condition_sources": {k: v.name for k, v in e.condition_sources.items()} if e.condition_sources else {},
             }
             data["entities"].append(ent_data)
         return data
@@ -754,6 +783,23 @@ class BattleSystem:
                 marked = next((x for x in self.entities if x.name == marked_name), None)
                 self.entities[i].marked_target = marked
 
+        # Link grapple relationships
+        for i, ent_data in enumerate(data["entities"]):
+            grappled_by_name = ent_data.get("grappled_by_name")
+            if grappled_by_name:
+                grappler = next((x for x in self.entities if x.name == grappled_by_name), None)
+                if grappler:
+                    self.entities[i].grappled_by = grappler
+            for gname in ent_data.get("grappling_names", []):
+                target = next((x for x in self.entities if x.name == gname), None)
+                if target:
+                    self.entities[i].grappling.append(target)
+            # Link condition sources (Frightened/Charmed)
+            for cond, source_name in ent_data.get("condition_sources", {}).items():
+                source = next((x for x in self.entities if x.name == source_name), None)
+                if source:
+                    self.entities[i].condition_sources[cond] = source
+
     @classmethod
     def from_save(cls, filepath: str, log_callback: Callable[[str], None]) -> "BattleSystem":
         """Reconstruct a BattleSystem from a saved JSON file."""
@@ -869,8 +915,31 @@ class BattleSystem:
                 marked = next((x for x in sys_obj.entities if x.name == marked_name), None)
                 sys_obj.entities[i].marked_target = marked
 
+        # Link grapple relationships
+        for i, ent_data in enumerate(data["entities"]):
+            grappled_by_name = ent_data.get("grappled_by_name")
+            if grappled_by_name:
+                grappler = next((x for x in sys_obj.entities if x.name == grappled_by_name), None)
+                if grappler:
+                    sys_obj.entities[i].grappled_by = grappler
+            for gname in ent_data.get("grappling_names", []):
+                target = next((x for x in sys_obj.entities if x.name == gname), None)
+                if target:
+                    sys_obj.entities[i].grappling.append(target)
+            # Link condition sources (Frightened/Charmed)
+            for cond, source_name in ent_data.get("condition_sources", {}).items():
+                source = next((x for x in sys_obj.entities if x.name == source_name), None)
+                if source:
+                    sys_obj.entities[i].condition_sources[cond] = source
+
         sys_obj.turn_index = min(sys_obj.turn_index, max(0, len(sys_obj.entities) - 1))
         sys_obj.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
+
+        # Initialize analytics
+        sys_obj.stats_tracker = BattleStatisticsTracker()
+        sys_obj.dm_advisor = DMAdvisor()
+        sys_obj.win_calculator = WinProbabilityCalculator()
+        sys_obj._last_damage_source = ""
 
         log_callback(f"=== ENCOUNTER LOADED (Round {sys_obj.round}) ===")
         return sys_obj

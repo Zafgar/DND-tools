@@ -432,6 +432,11 @@ class EncounterSetupState(GameState):
                                          color=COLORS["player"]))
             y += 40
 
+        # Lair toggle: when enabled, creatures with lair actions will use them at initiative 20
+        self.lair_active = False
+        self.btn_lair = Button(SCREEN_WIDTH-270, 60, 230, 35, "Lair: OFF",
+                               self._toggle_lair, color=COLORS["panel"])
+
         self.action_btns = [
             Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-100, 230, 55, "START BATTLE",
                    self._start_battle, color=COLORS["success"]),
@@ -454,6 +459,16 @@ class EncounterSetupState(GameState):
     def _cycle_plane(self):
         self.current_plane_idx = (self.current_plane_idx + 1) % len(self.planes)
         self.btn_plane.text = f"Plane: {self.planes[self.current_plane_idx]}"
+
+    def _toggle_lair(self):
+        """Toggle lair mode on/off. When on, creatures with lair actions use them at init 20."""
+        self.lair_active = not self.lair_active
+        if self.lair_active:
+            self.btn_lair.text = "Lair: ON"
+            self.btn_lair.color = COLORS["danger"]
+        else:
+            self.btn_lair.text = "Lair: OFF"
+            self.btn_lair.color = COLORS["panel"]
 
     def enable_import(self):
         self.importing = True
@@ -613,6 +628,8 @@ class EncounterSetupState(GameState):
             return
         self.manager.states["BATTLE"] = BattleState(self.manager, list(self.roster))
         self.manager.states["BATTLE"].battle.current_plane = self.planes[self.current_plane_idx]
+        # Pass lair enabled setting to battle system
+        self.manager.states["BATTLE"].battle.lair_enabled = self.lair_active
         self.importing = False  # Stop syncing setup
         self.manager.change_state("BATTLE")
 
@@ -636,7 +653,7 @@ class EncounterSetupState(GameState):
                     self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
                 else:
                     self.scroll_monster = min(0, self.scroll_monster + event.y * 25)
-            for b in self.action_btns + self.cr_btns + [self.btn_plane]:
+            for b in self.action_btns + self.cr_btns + [self.btn_plane, self.btn_lair]:
                 b.handle_event(event)
             for i, b in enumerate(self.hero_btns):
                 b.rect.y = 130 + i * 40 + self.scroll_hero
@@ -747,6 +764,7 @@ class EncounterSetupState(GameState):
         for b in self.action_btns:
             b.draw(screen, mp)
         self.btn_plane.draw(screen, mp)
+        self.btn_lair.draw(screen, mp)
 
     def _draw_win_probability_bar(self, screen, win_prob_cache, x, y, w, h):
         """Draw the win probability bar on the UI (setup screen version)."""
@@ -1529,7 +1547,9 @@ class BattleState(GameState):
                 if step.spell and not step.spell.repeat_save:
                     save_ab = None
 
-                target.add_condition(cond, save_ability=save_ab, save_dc=dc)
+                # Pass source entity for source-dependent conditions (Frightened, Charmed)
+                condition_source = step.attacker if cond in ("Frightened", "Charmed") else None
+                target.add_condition(cond, save_ability=save_ab, save_dc=dc, source=condition_source)
                 self.battle.stats_tracker.record_condition(
                     rnd, target.name, cond, applied_by=attacker_name,
                     target_is_player=target.is_player,
@@ -1636,7 +1656,8 @@ class BattleState(GameState):
             if cond:
                 dc = step.condition_dc if step.condition_dc else step.save_dc
                 save_ab = step.save_ability
-                target.add_condition(cond, save_ability=save_ab, save_dc=dc)
+                condition_source = step.attacker if cond in ("Frightened", "Charmed") else None
+                target.add_condition(cond, save_ability=save_ab, save_dc=dc, source=condition_source)
 
         # Track spell usage
         if step.spell and step.spell.level > 0:
@@ -4062,7 +4083,10 @@ class BattleState(GameState):
                 self._log(f"  -> Takes {dealt} {feat.damage_type} damage.")
                 self._spawn_damage_text(target, dealt)
             if feat.applies_condition:
-                target.add_condition(feat.applies_condition, save_ability=feat.save_ability, save_dc=feat.save_dc)
+                # Pass source entity for Frightened/Charmed auras (e.g. Pit Fiend Aura of Fear)
+                aura_source = trig.get("source", None)
+                target.add_condition(feat.applies_condition, save_ability=feat.save_ability,
+                                     save_dc=feat.save_dc, source=aura_source)
                 self._log(f"  -> Condition applied: {feat.applies_condition}")
 
         self._open_next_aura_modal()

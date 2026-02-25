@@ -384,21 +384,57 @@ class TacticalAI:
                 if not battle.is_adjacent(entity, closest_dying):
                     return self._move_toward(entity, closest_dying, allies, battle)
 
-        # Stand up from prone first
+        # Stand up from prone first (PHB p.190-191)
+        # KEY RULE: Cannot stand if speed is 0 (e.g. Grappled, Restrained)
         if entity.has_condition("Prone"):
-            entity.remove_condition("Prone")
-            return ActionStep(
-                step_type="wait",
-                description=f"{entity.name} stands up (uses half speed).",
-                attacker=entity,
-            )
+            can_stand, reason = entity.can_stand_from_prone()
+            if can_stand:
+                from engine.rules import stand_from_prone_cost
+                cost = stand_from_prone_cost(entity)
+                entity.movement_left -= cost
+                entity.remove_condition("Prone")
+                return ActionStep(
+                    step_type="wait",
+                    description=f"{entity.name} stands up (costs {cost:.0f} ft movement).",
+                    attacker=entity,
+                )
+            else:
+                # Can't stand - try to escape grapple instead if grappled
+                if entity.has_condition("Grappled") and entity.grappled_by:
+                    from engine.rules import resolve_grapple_escape
+                    success, msg = resolve_grapple_escape(entity, entity.grappled_by)
+                    if success:
+                        entity.grappled_by.release_grapple(entity)
+                        return ActionStep(
+                            step_type="wait",
+                            description=msg,
+                            attacker=entity, action_name="Escape Grapple"
+                        )
+                    else:
+                        return ActionStep(
+                            step_type="wait",
+                            description=f"{msg} {entity.name} remains prone and grappled!",
+                            attacker=entity, action_name="Escape Grapple (Failed)"
+                        )
+
+        # Drag grappled creatures with us (they move when we do)
+        # This is handled in _move_toward / battle system - entities track who they grapple
+
+        # FRIGHTENED: Try to move AWAY from fear source (PHB p.290)
+        # "The creature can't willingly move closer to the source of its fear."
+        if entity.has_condition("Frightened"):
+            fear_source = entity.get_condition_source("Frightened")
+            if fear_source and fear_source.hp > 0:
+                fear_dist = battle.get_distance(entity, fear_source)
+                if fear_dist < 6.0:  # Within 30ft, run away
+                    return self._move_away(entity, fear_source, battle)
 
         target = self._pick_target(entity, enemies)
         dist = battle.get_distance(entity, target)
         actions = entity.stats.actions or []
         spells = entity.stats.spells_known or []
         has_aoe = any(s.aoe_radius > 0 for s in spells)
-        
+
         preference = self._get_combat_preference(entity)
 
         # --- ESCAPE LOGIC (Teleport) ---
@@ -541,12 +577,30 @@ class TacticalAI:
         path = self._find_path(start_node, end_node, battle, entity)
 
         if path:
+            from engine.rules import can_move_toward_fear_source
+            fear_source = entity.get_condition_source("Frightened") if entity.has_condition("Frightened") else None
+
             for (nx, ny) in path:
                 cost = 5.0 * battle.get_terrain_movement_cost(nx, ny)
                 if entity.movement_left < cost:
                     break
+
+                # PHB p.290: Frightened creatures can't move closer to fear source
+                if fear_source:
+                    allowed, _ = can_move_toward_fear_source(entity, nx, ny, fear_source)
+                    if not allowed:
+                        break
+
+                old_x, old_y = entity.grid_x, entity.grid_y
                 entity.grid_x, entity.grid_y = nx, ny
                 entity.movement_left -= cost
+
+                # PHB p.195: Drag grappled creatures along when moving
+                for grappled_target in entity.grappling:
+                    if grappled_target.hp > 0:
+                        grappled_target.grid_x = old_x
+                        grappled_target.grid_y = old_y
+
                 if battle.is_adjacent(entity, target):
                     break
 
@@ -556,9 +610,15 @@ class TacticalAI:
         if dist_moved < 0.1:
             return None
 
+        drag_note = ""
+        if entity.grappling:
+            dragged_names = [g.name for g in entity.grappling if g.hp > 0]
+            if dragged_names:
+                drag_note = f" (dragging {', '.join(dragged_names)})"
+
         return ActionStep(
             step_type="move",
-            description=f"{entity.name} moves {moved_cost:.0f} ft.",
+            description=f"{entity.name} moves {moved_cost:.0f} ft.{drag_note}",
             attacker=entity,
             new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y,
@@ -767,20 +827,35 @@ class TacticalAI:
                 engaging_allies = [a for a in allies if battle.is_adjacent(a, target)]
                 str_score = entity.stats.abilities.strength
 
+                # SMART COMBO: If target is grappled (by us), shove them prone!
+                # This is the devastating grapple+prone combo - target can't stand up
+                # because grappled speed is 0, and melee attacks have advantage vs prone
+                if (target.has_condition("Grappled") and target.grappled_by == entity
+                        and not target.has_condition("Prone")):
+                    shove_step = self._try_shove_action(entity, target)
+                    if shove_step:
+                        entity.action_used = True
+                        return [shove_step]
+
+                # Shove prone (general) - requires size check (max 1 size larger)
+                from engine.rules import can_shove, can_grapple as can_grapple_check
                 if not target.has_condition("Prone") and (len(engaging_allies) >= 1 or str_score >= 14):
-                    if random.random() < 0.3:
+                    shove_ok, _ = can_shove(entity, target)
+                    if shove_ok and random.random() < 0.3:
                         shove_step = self._try_shove_action(entity, target)
                         if shove_step:
                             entity.action_used = True
                             return [shove_step]
 
+                # Grapple attempt - requires size check (max 1 size larger)
                 if not target.has_condition("Grappled"):
-                    can_grapple = str_score >= 12 or (str_score >= 10 and len(engaging_allies) >= 1)
-                    if can_grapple and random.random() < 0.2:
-                        grapple_step = self._try_grapple_action(entity, target)
-                        if grapple_step:
-                            entity.action_used = True
-                            return [grapple_step]
+                    grapple_ok, _ = can_grapple_check(entity, target)
+                    if grapple_ok and (str_score >= 12 or (str_score >= 10 and len(engaging_allies) >= 1)):
+                        if random.random() < 0.25:
+                            grapple_step = self._try_grapple_action(entity, target)
+                            if grapple_step:
+                                entity.action_used = True
+                                return [grapple_step]
 
             best_action = self._best_melee_or_ranged(entity, target, battle)
             if best_action:
@@ -1008,24 +1083,64 @@ class TacticalAI:
         return []
 
     def _try_grapple_action(self, entity, target):
-        prof = entity.stats.proficiency_bonus
-        dc = 8 + entity.get_modifier("Strength") + prof
-        desc = f"{entity.name} attempts to Grapple {target.name} (DC {dc} STR/DEX check)"
-        return ActionStep(
-            step_type="attack", description=desc,
-            attacker=entity, target=target, action_name="Grapple",
-            applies_condition="Grappled", condition_dc=dc, save_ability="Strength"
-        )
+        """
+        PHB p.195 Grapple:
+        - Contested Athletics vs Athletics/Acrobatics
+        - Target must be no more than one size larger
+        - Grappler must not be incapacitated
+        """
+        from engine.rules import can_grapple, resolve_grapple
 
-    def _try_shove_action(self, entity, target):
-        prof = entity.stats.proficiency_bonus
-        dc = 8 + entity.get_modifier("Strength") + prof
-        desc = f"{entity.name} attempts to Shove {target.name} Prone (DC {dc} STR/DEX check)"
-        return ActionStep(
-            step_type="attack", description=desc,
-            attacker=entity, target=target, action_name="Shove",
-            applies_condition="Prone", condition_dc=dc, save_ability="Strength"
-        )
+        allowed, reason = can_grapple(entity, target)
+        if not allowed:
+            return None
+
+        success, msg = resolve_grapple(entity, target)
+        if success:
+            entity.start_grapple(target)
+            return ActionStep(
+                step_type="attack", description=msg,
+                attacker=entity, target=target, action_name="Grapple",
+                applies_condition="Grappled"
+            )
+        else:
+            return ActionStep(
+                step_type="attack", description=msg,
+                attacker=entity, target=target, action_name="Grapple"
+            )
+
+    def _try_shove_action(self, entity, target, prone=True):
+        """
+        PHB p.195-196 Shove:
+        - Contested Athletics vs Athletics/Acrobatics
+        - Target must be no more than one size larger
+        - On success: knock prone OR push 5ft
+        """
+        from engine.rules import can_shove, resolve_shove
+
+        allowed, reason = can_shove(entity, target)
+        if not allowed:
+            return None
+
+        success, msg = resolve_shove(entity, target, prone=prone)
+        if success and prone:
+            target.add_condition("Prone")
+            return ActionStep(
+                step_type="attack", description=msg,
+                attacker=entity, target=target, action_name="Shove",
+                applies_condition="Prone"
+            )
+        elif success and not prone:
+            # Push 5ft away from shover
+            return ActionStep(
+                step_type="attack", description=msg,
+                attacker=entity, target=target, action_name="Shove"
+            )
+        else:
+            return ActionStep(
+                step_type="attack", description=msg,
+                attacker=entity, target=target, action_name="Shove"
+            )
 
     def _try_aoe_spell(self, entity, enemies, allies, battle):
         """Cast best AoE spell if cluster >= threshold enemies, avoiding allies."""
@@ -1946,7 +2061,16 @@ class TacticalAI:
     # ------------------------------------------------------------------ #
 
     def calculate_legendary_action(self, entity, battle) -> Optional[ActionStep]:
-        if entity.legendary_actions_left <= 0:
+        """
+        MM p.11 Legendary Actions:
+        - Only at END of another creature's turn
+        - One at a time
+        - Actions regain at START of creature's own turn
+        - Can't use while incapacitated
+        """
+        from engine.rules import can_use_legendary_action
+        allowed, reason = can_use_legendary_action(entity)
+        if not allowed:
             return None
         enemies = battle.get_enemies_of(entity)
         if not enemies:
