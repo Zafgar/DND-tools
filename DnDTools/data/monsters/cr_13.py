@@ -1,6 +1,9 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature, SpellInfo
 
 monsters = [
+    # ------------------------------------------------------------------ #
+    # CR 13 – Vampire                                                     #
+    # ------------------------------------------------------------------ #
     CreatureStats(name="Vampire", size="Medium", creature_type="Undead",
         armor_class=16, hit_points=144, hit_dice="17d8+68", speed=30,
         abilities=AbilityScores(strength=18,dexterity=18,constitution=18,intelligence=17,wisdom=15,charisma=18),
@@ -23,6 +26,9 @@ monsters = [
         legendary_resistance_count=3,
         challenge_rating=13.0, xp=10000, proficiency_bonus=5),
 
+    # ------------------------------------------------------------------ #
+    # CR 13 – Beholder                                                    #
+    # ------------------------------------------------------------------ #
     CreatureStats(name="Beholder", size="Large", creature_type="Aberration",
         armor_class=18, hit_points=180, hit_dice="19d10+76", speed=0, fly_speed=20,
         abilities=AbilityScores(strength=10,dexterity=14,constitution=18,intelligence=17,wisdom=15,charisma=17),
@@ -38,6 +44,9 @@ monsters = [
         legendary_resistance_count=3,
         challenge_rating=13.0, xp=10000, proficiency_bonus=5),
 
+    # ------------------------------------------------------------------ #
+    # CR 13 – Storm Giant                                                 #
+    # ------------------------------------------------------------------ #
     CreatureStats(name="Storm Giant", size="Huge", creature_type="Giant",
         armor_class=16, hit_points=230, hit_dice="20d12+100", speed=50, swim_speed=50, fly_speed=0,
         abilities=AbilityScores(strength=29,dexterity=14,constitution=20,intelligence=16,wisdom=18,charisma=18),
@@ -53,5 +62,75 @@ monsters = [
                   Feature("Legendary Resistance","3/day","legendary_resist",uses_per_day=3)],
         legendary_action_count=3,
         legendary_resistance_count=3,
+        challenge_rating=13.0, xp=10000, proficiency_bonus=5),
+
+    # ------------------------------------------------------------------ #
+    # CR 13 – Rakshasa                                                    #
+    # ------------------------------------------------------------------ #
+    CreatureStats(name="Rakshasa", size="Medium", creature_type="Fiend",
+        armor_class=16, hit_points=110, hit_dice="13d8+52", speed=40,
+        abilities=AbilityScores(strength=14,dexterity=17,constitution=18,intelligence=13,wisdom=16,charisma=20),
+        actions=[
+            Action("Multiattack","x2 Claws",0,"",0,"",range=5,is_multiattack=True,
+                   multiattack_count=2,multiattack_targets=["Claw","Claw"]),
+            Action("Claw","Melee",7,"2d6",2,"slashing",
+                   applies_condition="Cursed",condition_dc=18,condition_save="Wisdom"),
+        ],
+        damage_vulnerabilities=["piercing (magic from good-aligned)"],
+        damage_immunities=["bludgeoning piercing slashing (non-magic)"],
+        features=[
+            Feature("Limited Magic Immunity","Can't be affected or detected by spells of 6th level or lower unless it wishes to be"),
+            Feature("Innate Spellcasting","DC 18. At will: Detect Thoughts, Disguise Self, Mage Hand, Minor Illusion. 3/day each: Charm Person, Detect Magic, Invisibility, Major Image, Suggestion. 1/day each: Dominate Person, Fly, Plane Shift, True Seeing"),
+        ],
+        challenge_rating=13.0, xp=10000, proficiency_bonus=5),
+
+    # ------------------------------------------------------------------ #
+    # CR 13 – Adult White Dragon                                          #
+    # ------------------------------------------------------------------ #
+    CreatureStats(name="Adult White Dragon", size="Huge", creature_type="Dragon",
+        armor_class=18, hit_points=200, hit_dice="16d12+96", speed=40, burrow_speed=30, fly_speed=80, swim_speed=40,
+        abilities=AbilityScores(strength=22,dexterity=10,constitution=22,intelligence=8,wisdom=12,charisma=12),
+        actions=[
+            Action("Multiattack","Bite + 2 Claws",0,"",0,"",reach=10,is_multiattack=True,
+                   multiattack_count=3,multiattack_targets=["Bite","Claw","Claw"]),
+            Action("Bite","Melee",11,"2d10",6,"piercing",reach=10),
+            Action("Claw","Melee",11,"2d6",6,"slashing"),
+            Action("Tail","Melee",11,"2d8",6,"bludgeoning",reach=15),
+            Action("Cold Breath","60ft cone DC 19 CON half",0,"12d8",0,"cold",
+                   range=60,aoe_radius=60,aoe_shape="cone",condition_dc=19,condition_save="Constitution"),
+        ],
+        damage_immunities=["cold"],
+        features=[
+            Feature("Legendary Resistance","3/day auto-succeed on failed save","legendary_resist",uses_per_day=3),
+            Feature("Cold Breath","Recharge 5-6: 60ft cone 12d8 cold DC 19 CON half",recharge="5-6"),
+            Feature("Frightful Presence","120ft DC 14 WIS or Frightened 1 min"),
+        ],
+        legendary_action_count=3,
+        legendary_resistance_count=3,
+        challenge_rating=13.0, xp=10000, proficiency_bonus=5),
+
+    # ------------------------------------------------------------------ #
+    # CR 13 – Nalfeshnee                                                  #
+    # ------------------------------------------------------------------ #
+    CreatureStats(name="Nalfeshnee", size="Large", creature_type="Fiend",
+        armor_class=18, hit_points=184, hit_dice="16d10+96", speed=20, fly_speed=30,
+        abilities=AbilityScores(strength=21,dexterity=10,constitution=22,intelligence=19,wisdom=12,charisma=15),
+        actions=[
+            Action("Multiattack","Bite + Claws",0,"",0,"",range=5,is_multiattack=True,
+                   multiattack_count=2,multiattack_targets=["Bite","Claws"]),
+            Action("Bite","Melee",10,"5d10",5,"piercing"),
+            Action("Claws","Melee",10,"3d6",5,"slashing"),
+            Action("Horror Nimbus","60ft radius DC 15 WIS or Frightened",0,"",0,"",
+                   range=60,aoe_radius=60,aoe_shape="sphere",
+                   applies_condition="Frightened",condition_dc=15,condition_save="Wisdom"),
+        ],
+        damage_resistances=["cold","fire","lightning","bludgeoning piercing slashing (non-magic)"],
+        damage_immunities=["poison"],
+        condition_immunities=["Poisoned"],
+        features=[
+            Feature("Horror Nimbus","Recharge 5-6: 60ft DC 15 WIS or Frightened",recharge="5-6"),
+            Feature("Teleport","Magically teleport up to 120ft to unoccupied space"),
+            Feature("Magic Resistance","Adv on saves vs spells"),
+        ],
         challenge_rating=13.0, xp=10000, proficiency_bonus=5),
 ]
