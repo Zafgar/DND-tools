@@ -34,6 +34,11 @@ class Entity:
         # Conditions: set of strings
         self.conditions: set = set()
         self.condition_metadata: dict = {}  # "Condition": {"dc": 15, "save": "Wisdom"}
+        self.condition_sources: dict = {}   # "Condition": Entity reference (source of Frightened/Charmed)
+
+        # Grapple tracking (PHB p.195)
+        self.grappling: list = []           # List of Entity references this entity is currently grappling
+        self.grappled_by: "Entity | None" = None  # Entity that is grappling us (None if not grappled)
 
         # Resources
         self.spell_slots: dict = copy.deepcopy(stats.spell_slots)
@@ -193,6 +198,10 @@ class Entity:
                 if self.rage_active:
                     self.end_rage()
 
+        # Release grapples if defeated (NPC at 0 HP or player unconscious)
+        if self.hp <= 0 and self.grappling:
+            self._release_all_grapples()
+
         return amount, broke_conc
 
     def heal(self, amount: int):
@@ -273,22 +282,39 @@ class Entity:
     # Conditions                                                           #
     # ------------------------------------------------------------------ #
 
-    def add_condition(self, condition: str, save_ability: str = None, save_dc: int = 0):
+    def add_condition(self, condition: str, save_ability: str = None, save_dc: int = 0,
+                      source: "Entity | None" = None):
         from data.conditions import INCAPACITATING_CONDITIONS
         immune = [x.lower() for x in self.stats.condition_immunities]
         if condition.lower() not in immune:
             self.conditions.add(condition)
             if save_ability and save_dc > 0:
                 self.condition_metadata[condition] = {"save": save_ability, "dc": save_dc}
-            if condition in INCAPACITATING_CONDITIONS and self.concentrating_on:
-                self.drop_concentration()
+            if source:
+                self.condition_sources[condition] = source
+            if condition in INCAPACITATING_CONDITIONS:
+                if self.concentrating_on:
+                    self.drop_concentration()
+                # PHB: Incapacitated grappler releases grapple
+                self._release_all_grapples()
 
     def remove_condition(self, condition: str):
         self.conditions.discard(condition)
         self.condition_metadata.pop(condition, None)
+        self.condition_sources.pop(condition, None)
+        # If Grappled is removed, clean up grapple references
+        if condition == "Grappled" and self.grappled_by:
+            grappler = self.grappled_by
+            if self in grappler.grappling:
+                grappler.grappling.remove(self)
+            self.grappled_by = None
 
     def has_condition(self, condition: str) -> bool:
         return condition in self.conditions
+
+    def get_condition_source(self, condition: str) -> "Entity | None":
+        """Get the source entity for a source-dependent condition (Frightened, Charmed)."""
+        return self.condition_sources.get(condition, None)
 
     def is_incapacitated(self) -> bool:
         from data.conditions import INCAPACITATING_CONDITIONS
@@ -297,6 +323,41 @@ class Entity:
     def can_move(self) -> bool:
         from data.conditions import SPEED_ZERO_CONDITIONS
         return bool(not (self.conditions & SPEED_ZERO_CONDITIONS))
+
+    # ------------------------------------------------------------------ #
+    # Grapple Management (PHB p.195)                                       #
+    # ------------------------------------------------------------------ #
+
+    def start_grapple(self, target: "Entity"):
+        """Apply grapple: this entity grapples target."""
+        if target not in self.grappling:
+            self.grappling.append(target)
+        target.grappled_by = self
+        target.add_condition("Grappled")
+
+    def release_grapple(self, target: "Entity"):
+        """Release a specific grappled creature."""
+        if target in self.grappling:
+            self.grappling.remove(target)
+        if target.grappled_by == self:
+            target.grappled_by = None
+            target.remove_condition("Grappled")
+
+    def _release_all_grapples(self):
+        """Release all creatures this entity is grappling (e.g. when incapacitated)."""
+        for target in list(self.grappling):
+            if target.grappled_by == self:
+                target.grappled_by = None
+                target.remove_condition("Grappled")
+        self.grappling.clear()
+
+    def can_stand_from_prone(self) -> tuple[bool, str]:
+        """
+        PHB p.190-191: Standing costs half movement speed.
+        Cannot stand if speed is 0 (Grappled, Restrained, etc.).
+        """
+        from engine.rules import can_stand_from_prone
+        return can_stand_from_prone(self)
 
     # ------------------------------------------------------------------ #
     # Movement                                                             #
@@ -312,6 +373,18 @@ class Entity:
         # Exhaustion 2+: half speed
         if self.exhaustion >= 2:
             speed = speed / 2.0
+        # Exhaustion 5: speed 0
+        if self.exhaustion >= 5:
+            return 0.0
+        # Grapple drag: half speed while dragging a creature
+        # (unless grappled creature is 2+ sizes smaller)
+        if self.grappling:
+            from engine.rules import get_grapple_drag_speed_multiplier
+            worst_mult = 1.0
+            for grappled in self.grappling:
+                mult = get_grapple_drag_speed_multiplier(self, grappled)
+                worst_mult = min(worst_mult, mult)
+            speed *= worst_mult
         return speed
 
     # ------------------------------------------------------------------ #
@@ -434,8 +507,13 @@ class Entity:
         if self.has_condition("Poisoned"):
             return True
         if self.has_condition("Frightened"):
+            # PHB p.290: Disadvantage while source of fear is within line of sight
+            # We apply it broadly for simplicity (source tracking available via condition_sources)
             return True
         if self.has_condition("Restrained"):
+            return True
+        # PHB p.292: Prone creature has disadvantage on attack rolls (ALL attacks, not just ranged)
+        if self.has_condition("Prone"):
             return True
         if is_ranged and target:
             # Ranged attacks against Prone targets have Disadvantage
@@ -448,9 +526,7 @@ class Entity:
             return True
         if target and target.is_dodging and not target.is_incapacitated():
             return True
-        if self.has_condition("Prone") and is_ranged:
-            return True
-        # Exhaustion 3+
+        # Exhaustion 3+: disadvantage on attack rolls AND saving throws
         if self.exhaustion >= 3:
             return True
         return False
@@ -531,8 +607,12 @@ class Entity:
         self.hp = self.max_hp
         self.temp_hp = 0
         self.spell_slots = copy.deepcopy(self.stats.spell_slots)
+        self._release_all_grapples()
+        if self.grappled_by:
+            self.grappled_by.release_grapple(self)
         self.conditions.clear()
         self.condition_metadata.clear()
+        self.condition_sources.clear()
         self.concentrating_on = None
         self.death_save_successes = 0
         self.death_save_failures = 0
