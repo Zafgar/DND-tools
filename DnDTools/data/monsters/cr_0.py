@@ -1,0 +1,55 @@
+from data.models import CreatureStats, AbilityScores, Action, Feature
+
+monsters = [
+    CreatureStats(name="Commoner", size="Medium", creature_type="Humanoid",
+        armor_class=10, hit_points=4, hit_dice="1d8", speed=30,
+        abilities=AbilityScores(strength=10,dexterity=10,constitution=10,intelligence=10,wisdom=10,charisma=10),
+        actions=[Action("Club","Melee",2,"1d4",0,"bludgeoning",range=5)],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+
+    CreatureStats(name="Cat", size="Tiny", creature_type="Beast",
+        armor_class=12, hit_points=2, hit_dice="1d4", speed=40, climb_speed=30,
+        abilities=AbilityScores(strength=3,dexterity=15,constitution=10,intelligence=3,wisdom=12,charisma=7),
+        actions=[Action("Claws","Melee",0,"1d1",0,"slashing",range=5)],
+        skills={"Perception":3,"Stealth":4},
+        features=[Feature("Keen Smell","Adv on Perception checks that rely on smell")],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+
+    CreatureStats(name="Rat", size="Tiny", creature_type="Beast",
+        armor_class=10, hit_points=1, hit_dice="1d4-1", speed=20,
+        abilities=AbilityScores(strength=2,dexterity=11,constitution=9,intelligence=2,wisdom=10,charisma=4),
+        actions=[Action("Bite","Melee",0,"1d1",0,"piercing",range=5)],
+        features=[Feature("Keen Smell","Adv on Perception checks that rely on smell")],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+
+    CreatureStats(name="Bat", size="Tiny", creature_type="Beast",
+        armor_class=12, hit_points=1, hit_dice="1d4-1", speed=5, fly_speed=30,
+        abilities=AbilityScores(strength=2,dexterity=15,constitution=8,intelligence=2,wisdom=12,charisma=4),
+        actions=[Action("Bite","Melee",0,"1d1",0,"piercing",range=5)],
+        senses="blindsight 60 ft.",
+        features=[Feature("Echolocation","Cannot use blindsight while deafened"),
+                  Feature("Keen Hearing","Adv on Perception checks that rely on hearing")],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+
+    CreatureStats(name="Hawk", size="Tiny", creature_type="Beast",
+        armor_class=13, hit_points=1, hit_dice="1d4-1", speed=10, fly_speed=60,
+        abilities=AbilityScores(strength=5,dexterity=16,constitution=8,intelligence=2,wisdom=14,charisma=6),
+        actions=[Action("Talons","Melee",5,"1d1",0,"slashing",range=5)],
+        skills={"Perception":4},
+        features=[Feature("Keen Sight","Adv on Perception checks that rely on sight")],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+
+    CreatureStats(name="Frog", size="Tiny", creature_type="Beast",
+        armor_class=11, hit_points=1, hit_dice="1d4-1", speed=20, swim_speed=20,
+        abilities=AbilityScores(strength=1,dexterity=13,constitution=8,intelligence=1,wisdom=8,charisma=3),
+        actions=[],
+        features=[Feature("Amphibious","Can breathe air and water"),
+                  Feature("Standing Leap","Long jump 10 ft, high jump 5 ft")],
+        challenge_rating=0.0, xp=0, proficiency_bonus=2),
+
+    CreatureStats(name="Deer", size="Medium", creature_type="Beast",
+        armor_class=13, hit_points=4, hit_dice="1d8", speed=50,
+        abilities=AbilityScores(strength=11,dexterity=16,constitution=11,intelligence=2,wisdom=14,charisma=5),
+        actions=[Action("Bite","Melee",2,"1d4",0,"piercing",range=5)],
+        challenge_rating=0.0, xp=10, proficiency_bonus=2),
+]
