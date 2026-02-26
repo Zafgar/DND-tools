@@ -195,6 +195,12 @@ class BattleSystem:
         if prev_ent.hp > 0 and not skip_saves:
             self.handle_end_of_turn_saves(prev_ent)
 
+        # Check Banishment status (returns, permanent banishment, etc.)
+        self._update_banishment_status()
+
+        # Validate grapples (break if out of range)
+        self.validate_grapples()
+
         # Check Barbarian Rage end-of-turn
         if prev_ent.rage_active:
             if prev_ent.check_rage_end():
@@ -254,6 +260,9 @@ class BattleSystem:
         for eff in expired:
             del current.active_effects[eff]
             self.log(f"  [EFFECT] '{eff}' expired.")
+            # Auto-remove condition if it matches effect name (e.g. Guiding Bolt)
+            if current.has_condition(eff):
+                current.remove_condition(eff)
 
         # Check hazard terrain at start of turn
         if current.hp > 0:
@@ -287,6 +296,87 @@ class BattleSystem:
         if current.concentrating_on:
             self.log(f"  [CONCENTRATION] {current.concentrating_on.name}")
         return current
+
+    def _update_banishment_status(self):
+        """Check all banished entities for return conditions."""
+        # Iterate a copy since we might remove entities
+        for ent in list(self.entities):
+            if "Banished" not in ent.conditions:
+                continue
+
+            caster = ent.condition_sources.get("Banished")
+            should_return = False
+            permanent_banish = False
+
+            # 1. Check Concentration: If caster lost it, target returns immediately
+            if not caster or not caster.concentrating_on or caster.concentrating_on.name != "Banishment":
+                should_return = True
+                self.log(f"[BANISHMENT] Concentration broken/ended. {ent.name} returns.")
+            
+            # 2. Check Duration: If time runs out (active_effects <= 0)
+            elif ent.active_effects.get("Banishment", 0) <= 0:
+                # Duration expired naturally (1 minute passed)
+                # Check planes
+                native = ent.stats.native_plane
+                current = self.current_plane
+                
+                if native and current and native.lower() != current.lower():
+                    permanent_banish = True
+                else:
+                    should_return = True
+                    self.log(f"[BANISHMENT] Duration expired. {ent.name} returns.")
+
+            if permanent_banish:
+                self.log(f"[BANISHMENT] {ent.name} is permanently banished to {ent.stats.native_plane}!")
+                ent.remove_condition("Banished")
+                self.entities.remove(ent)
+                # Adjust turn index if needed
+                if self.turn_index >= len(self.entities):
+                    self.turn_index = 0
+
+            elif should_return:
+                ent.remove_condition("Banished")
+                # Find return spot
+                rx, ry = ent.banished_from if ent.banished_from else (ent.grid_x, ent.grid_y)
+                if self.is_occupied(rx, ry, exclude=ent):
+                    # Find nearest free space
+                    # Spiral search
+                    found = False
+                    for r in range(1, 6): # Search up to 30ft away
+                        for dx in range(-r, r+1):
+                            for dy in range(-r, r+1):
+                                nx, ny = rx + dx, ry + dy
+                                if self.is_passable(nx, ny, exclude=ent):
+                                    rx, ry = nx, ny
+                                    found = True
+                                    break
+                            if found: break
+                        if found: break
+                
+                ent.grid_x, ent.grid_y = rx, ry
+                self.log(f"[BANISHMENT] {ent.name} reappears at ({int(rx)}, {int(ry)}).")
+
+    def validate_grapples(self):
+        """Check all active grapples and break them if invalid (out of reach)."""
+        for grappler in self.entities:
+            # Check targets this entity is grappling
+            for target in list(grappler.grappling):
+                # 1. Check if grappler incapacitated
+                if grappler.is_incapacitated():
+                    grappler.release_grapple(target)
+                    self.log(f"[GRAPPLE] {grappler.name} incapacitated; releases {target.name}.")
+                    continue
+                
+                # 2. Check range
+                dist = self.get_distance(grappler, target)
+                # Reach is usually 5ft (1 square). Large creatures might have more?
+                # Standard grapple reach is 5ft unless specified.
+                # We'll use max_melee_reach of grappler.
+                reach = grappler.get_max_melee_reach() / 5.0
+                
+                if dist > reach + 0.1:
+                    grappler.release_grapple(target)
+                    self.log(f"[GRAPPLE] {target.name} broke free from {grappler.name} (out of reach).")
 
     def get_total_save_bonus(self, entity: Entity, ability: str) -> int:
         """Get save bonus including auras (e.g. Paladin)."""
@@ -382,15 +472,34 @@ class BattleSystem:
         """Check if any hostile can make an OA against mover."""
         if mover.is_disengaging:
             return []
+            
+        # Forced movement (e.g. Grappled/dragged, Shoved) does not provoke OAs
+        # If speed is 0 (Grappled), they can't move voluntarily, so it must be forced.
+        if mover.has_condition("Grappled") or mover.has_condition("Restrained") or mover.has_condition("Stunned"):
+            return []
+            
         oas = []
         for e in self.entities:
             if e == mover or e.hp <= 0 or e.reaction_used:
                 continue
             if e.is_player == mover.is_player:
                 continue  # same team
-            was_adjacent = math.hypot(old_x - e.grid_x, old_y - e.grid_y) < 1.5
-            now_adjacent = self.is_adjacent(e, mover)
-            if was_adjacent and not now_adjacent:
+            
+            # Calculate reach in squares (1 square = 5 ft)
+            reach_squares = e.get_max_melee_reach() / 5.0
+            
+            # Calculate distance BEFORE move (using old coordinates)
+            dist_old = self._calculate_distance_coords(
+                e.grid_x, e.grid_y, e.size_in_squares,
+                old_x, old_y, mover.size_in_squares
+            )
+            
+            # Calculate distance AFTER move (current coordinates)
+            dist_new = self.get_distance(e, mover)
+            
+            # Trigger OA if target was within reach AND is now outside reach
+            # Add small tolerance for floating point comparisons
+            if dist_old <= reach_squares + 0.01 and dist_new > reach_squares + 0.01:
                 oas.append(e)
         return oas
 
@@ -445,6 +554,14 @@ class BattleSystem:
     # ------------------------------------------------------------------ #
     # Grid / Geometry                                                      #
     # ------------------------------------------------------------------ #
+
+    def _calculate_distance_coords(self, x1, y1, s1, x2, y2, s2) -> float:
+        """Calculate distance between two entities given their coordinates and sizes."""
+        # Distance in X (0 if ranges overlap)
+        dx = max(0, x2 - (x1 + s1), x1 - (x2 + s2))
+        # Distance in Y (0 if ranges overlap)
+        dy = max(0, y2 - (y1 + s1), y1 - (y2 + s2))
+        return math.hypot(dx, dy)
 
     def get_distance(self, e1: Entity, e2: Entity) -> float:
         # Calculate distance between the edges of the entities (0 if touching/overlapping)
@@ -529,10 +646,10 @@ class BattleSystem:
         return None
 
     def get_enemies_of(self, entity: Entity) -> List[Entity]:
-        return [e for e in self.entities if e.is_player != entity.is_player and e.hp > 0]
+        return [e for e in self.entities if e.is_player != entity.is_player and e.hp > 0 and "Banished" not in e.conditions]
 
     def get_allies_of(self, entity: Entity) -> List[Entity]:
-        return [e for e in self.entities if e.is_player == entity.is_player and e.hp > 0 and e != entity]
+        return [e for e in self.entities if e.is_player == entity.is_player and e.hp > 0 and e != entity and "Banished" not in e.conditions]
 
     # ------------------------------------------------------------------ #
     # Terrain                                                              #

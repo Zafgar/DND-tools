@@ -58,7 +58,7 @@ monsters = [
                         multiattack_count=2,multiattack_targets=["Chain","Chain"]),
                  Action("Chain","Melee",8,"2d6",4,"slashing",reach=10,
                         applies_condition="Restrained",condition_dc=14,condition_save="Strength")],
-        reactions=[Action("Unnerving Mask","When hit, force DC 13 WIS or Frightened","reaction")],
+        reactions=[Action("Unnerving Mask","When hit, force DC 13 WIS or Frightened",action_type="reaction")],
         saving_throws={"Constitution":7,"Wisdom":4,"Charisma":5},
         skills={"Deception":5,"Intimidation":5,"Perception":4},
         damage_resistances=["cold","bludgeoning","piercing","slashing"],

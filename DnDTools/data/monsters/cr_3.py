@@ -12,6 +12,16 @@ monsters = [
         features=[Feature("Keen Sight and Smell","Adv Perception involving sight or smell")],
         challenge_rating=3.0, xp=700, proficiency_bonus=2),
 
+    CreatureStats(name="Giant Scorpion", size="Large", creature_type="Beast",
+        armor_class=15, hit_points=52, hit_dice="7d10+14", speed=40,
+        abilities=AbilityScores(strength=15,dexterity=13,constitution=15,intelligence=1,wisdom=9,charisma=3),
+        actions=[Action("Multiattack","x2 Claw + Sting",0,"",0,"",range=5,is_multiattack=True,
+                        multiattack_count=3,multiattack_targets=["Claw","Claw","Sting"]),
+                 Action("Claw","Melee",4,"1d8",2,"bludgeoning",applies_condition="Grappled",condition_dc=12,condition_save="Strength"),
+                 Action("Sting","Melee",4,"1d10",2,"piercing",applies_condition="Poisoned",condition_dc=12,condition_save="Constitution")],
+        senses="blindsight 60 ft.",
+        challenge_rating=3.0, xp=700, proficiency_bonus=2),
+
     CreatureStats(name="Vampire Spawn", size="Medium", creature_type="Undead",
         armor_class=15, hit_points=82, hit_dice="11d8+33", speed=30,
         abilities=AbilityScores(strength=16,dexterity=16,constitution=16,intelligence=11,wisdom=10,charisma=12),

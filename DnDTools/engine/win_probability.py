@@ -20,9 +20,9 @@ class WinProbabilityCalculator:
     def calculate(self, battle: "BattleSystem") -> dict:
         """Calculate current win probability for players."""
         try:
-            players = [e for e in battle.entities if e.is_player and e.hp > 0]
+            players = [e for e in battle.entities if e.is_player and e.hp > 0 and "Banished" not in e.conditions]
             enemies = [e for e in battle.entities
-                       if not e.is_player and e.hp > 0 and not e.is_lair and not e.is_summon]
+                       if not e.is_player and e.hp > 0 and not e.is_lair and not e.is_summon and "Banished" not in e.conditions]
             player_summons = [e for e in battle.entities
                               if e.is_summon and e.is_player and e.hp > 0]
             enemy_summons = [e for e in battle.entities

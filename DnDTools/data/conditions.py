@@ -1,6 +1,12 @@
 # D&D 5e 2014 Conditions with mechanical effects (PHB Appendix A, p.290-292)
 
 CONDITIONS = {
+    "Banished": (
+        "The creature is banished to another plane of existence. It is incapacitated. "
+        "If the spell ends before 1 minute, the creature returns. If the spell lasts "
+        "for 1 minute and the creature is not native to this plane, it does not return. "
+        "While banished, the creature is not on the grid."
+    ),
     "Blinded": (
         "A blinded creature can't see and automatically fails any ability check "
         "that requires sight. Attack rolls against the creature have advantage, "
@@ -30,6 +36,10 @@ CONDITIONS = {
         "to its speed. The condition ends if the grappler is incapacitated or if an "
         "effect removes the grappled creature from the reach of the grappler. "
         "KEY: A grappled+prone creature CANNOT stand up (speed is 0)."
+    ),
+    "Guiding Bolt": (
+        "The next attack roll made against this target has advantage, thanks to the "
+        "dim light glittering on it. The condition ends after the attack."
     ),
     "Incapacitated": (
         "An incapacitated creature can't take actions or reactions."
@@ -86,6 +96,11 @@ CONDITIONS = {
 
 # Mechanical effects used by the rules engine
 CONDITION_EFFECTS = {
+    "Banished": {
+        "incapacitated": True,
+        "no_actions": True,
+        "no_reactions": True,
+    },
     "Blinded": {
         "attack_disadvantage": True,
         "attacked_advantage": True,
@@ -104,6 +119,9 @@ CONDITION_EFFECTS = {
         "attack_disadvantage": True,
         "check_disadvantage": True,
         "cannot_move_toward_source": True,
+    },
+    "Guiding Bolt": {
+        "attacked_advantage": True,
     },
     "Grappled": {
         "speed_zero": True,
@@ -177,11 +195,11 @@ CONDITION_EFFECTS = {
     },
 }
 
-INCAPACITATING_CONDITIONS = {"Incapacitated", "Paralyzed", "Stunned", "Unconscious", "Petrified"}
-SPEED_ZERO_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified"}
+INCAPACITATING_CONDITIONS = {"Incapacitated", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
+SPEED_ZERO_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
 
 # Conditions that prevent standing from Prone (because speed is 0)
-PREVENTS_STANDUP_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified"}
+PREVENTS_STANDUP_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
 
 # Conditions that require a source entity for their effects (e.g. Frightened, Charmed)
-SOURCE_DEPENDENT_CONDITIONS = {"Frightened", "Charmed"}
+SOURCE_DEPENDENT_CONDITIONS = {"Frightened", "Charmed", "Banished"}

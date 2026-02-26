@@ -58,6 +58,7 @@ monsters = [
         armor_class=15, hit_points=9, hit_dice="2d8", speed=30,
         abilities=AbilityScores(strength=11,dexterity=12,constitution=11,intelligence=12,wisdom=14,charisma=16),
         actions=[Action("Rapier","Melee",3,"1d8",1,"piercing",range=5)],
+        reactions=[Action("Parry","Adds 2 to AC against one melee attack that would hit it","reaction")],
         skills={"Deception":5,"Insight":4,"Persuasion":5},
         challenge_rating=0.125, xp=25, proficiency_bonus=2),
 

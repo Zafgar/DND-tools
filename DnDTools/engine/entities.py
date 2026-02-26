@@ -85,7 +85,7 @@ class Entity:
         self.rage_active: bool = False
         self.rage_rounds: int = 0         # Rounds since rage started (max 10 = 1 min)
         self.rage_damage_taken: bool = False  # Did we take damage this round?
-        self.rage_damage_dealt: bool = False  # Did we deal damage or attack this round?
+        self.attacked_this_turn: bool = False # Did we make an attack roll this turn?
         self.rages_left: int = stats.rage_count
         self.ki_points_left: int = stats.ki_points
         self.sorcery_points_left: int = stats.sorcery_points
@@ -98,6 +98,14 @@ class Entity:
 
         # Sneak Attack used this turn
         self.sneak_attack_used: bool = False
+
+        # Banishment tracking
+        self.banished_from: tuple[float, float] | None = None
+
+        # Wild Shape / Polymorph tracking
+        self.is_wild_shaped: bool = False
+        self.wild_shape_name: str = ""
+        self.original_form: dict | None = None
 
         # Initialize channel divinity uses from features
         for feat in stats.features:
@@ -124,11 +132,106 @@ class Entity:
             ac += 2
         return ac
 
+    def get_max_melee_reach(self) -> int:
+        """Get the maximum melee reach of this entity in feet."""
+        max_reach = 5
+        for action in self.stats.actions:
+            if action.reach:
+                max_reach = max(max_reach, action.reach)
+        return max_reach
+
+    def transform_into(self, beast_stats: CreatureStats):
+        """Transform into another creature (Wild Shape/Polymorph)."""
+        # Save original state
+        self.original_form = {
+            "hp": self.hp,
+            "max_hp": self.max_hp,
+            "ac": self.stats.armor_class,
+            "speed": self.stats.speed,
+            "str": self.stats.abilities.strength,
+            "dex": self.stats.abilities.dexterity,
+            "con": self.stats.abilities.constitution,
+            "actions": self.stats.actions,
+            "features": self.stats.features,
+            "size": self.stats.size,
+            "skills": self.stats.skills,
+            "saving_throws": self.stats.saving_throws,
+            "spells_known": self.stats.spells_known,
+            "cantrips": self.stats.cantrips,
+        }
+        
+        # Apply beast stats
+        self.hp = beast_stats.hit_points
+        self.max_hp = beast_stats.hit_points
+        self.temp_hp = 0 
+        
+        # Physical stats change
+        self.stats.abilities.strength = beast_stats.abilities.strength
+        self.stats.abilities.dexterity = beast_stats.abilities.dexterity
+        self.stats.abilities.constitution = beast_stats.abilities.constitution
+        self.stats.armor_class = beast_stats.armor_class
+        self.stats.speed = beast_stats.speed
+        self.stats.size = beast_stats.size
+        
+        # Actions & Features
+        self.stats.actions = beast_stats.actions
+        # Merge features (keep mental/class features, add beast traits like Pack Tactics)
+        self.stats.features = self.original_form["features"] + beast_stats.features
+        
+        # Merge Skills & Saves (Use higher bonus)
+        new_skills = self.stats.skills.copy()
+        for sk, bonus in beast_stats.skills.items():
+            if sk not in new_skills or bonus > new_skills[sk]:
+                new_skills[sk] = bonus
+        self.stats.skills = new_skills
+        
+        new_saves = self.stats.saving_throws.copy()
+        for sv, bonus in beast_stats.saving_throws.items():
+            if sv not in new_saves or bonus > new_saves[sv]:
+                new_saves[sv] = bonus
+        self.stats.saving_throws = new_saves
+
+        # Disable spells unless Beast Spells feature
+        if not self.has_feature("beast_spells"):
+            self.stats.spells_known = []
+            self.stats.cantrips = []
+
+        self.is_wild_shaped = True
+        self.wild_shape_name = beast_stats.name
+
+    def revert_form(self):
+        """Revert to original form."""
+        if not self.original_form: return
+        
+        orig = self.original_form
+        self.hp = orig["hp"]
+        self.max_hp = orig["max_hp"]
+        self.stats.armor_class = orig["ac"]
+        self.stats.speed = orig["speed"]
+        self.stats.abilities.strength = orig["str"]
+        self.stats.abilities.dexterity = orig["dex"]
+        self.stats.abilities.constitution = orig["con"]
+        self.stats.actions = orig["actions"]
+        self.stats.features = orig["features"]
+        self.stats.size = orig["size"]
+        self.stats.skills = orig["skills"]
+        self.stats.saving_throws = orig["saving_throws"]
+        self.stats.spells_known = orig["spells_known"]
+        self.stats.cantrips = orig["cantrips"]
+        
+        self.original_form = None
+        self.is_wild_shaped = False
+        self.wild_shape_name = ""
+
+    def record_attack(self):
+        """Record that this entity made an attack roll this turn (hit or miss)."""
+        self.attacked_this_turn = True
+
     # ------------------------------------------------------------------ #
     # HP / Damage                                                          #
     # ------------------------------------------------------------------ #
 
-    def take_damage(self, amount: int, damage_type: str = "") -> tuple[int, bool]:
+    def take_damage(self, amount: int, damage_type: str = "", is_magical: bool = False) -> tuple[int, bool]:
         """
         Apply damage. Returns (damage_dealt, broke_concentration).
         Respects temp HP, resistances, immunities, vulnerabilities, rage.
@@ -137,10 +240,26 @@ class Entity:
         if dtype_lower in [x.lower() for x in self.stats.damage_immunities]:
             return 0, False
 
-        # Rage resistance: half damage from bludgeoning, piercing, slashing
-        if self.rage_active and dtype_lower in ("bludgeoning", "piercing", "slashing"):
-            amount = amount // 2
-        elif dtype_lower in [x.lower() for x in self.stats.damage_resistances]:
+        # Check resistances (Rage + Native)
+        is_resistant = False
+        if self.rage_active:
+            if self.has_feature("totem_bear") and dtype_lower != "psychic":
+                is_resistant = True
+            elif dtype_lower in ("bludgeoning", "piercing", "slashing"):
+                is_resistant = True
+        
+        if not is_resistant:
+            for r in self.stats.damage_resistances:
+                r_lower = r.lower()
+                if dtype_lower in r_lower:
+                    # Check for non-magical condition
+                    if "non-magic" in r_lower or "non-silvered" in r_lower:
+                        if not is_magical:
+                            is_resistant = True
+                    else:
+                        is_resistant = True
+
+        if is_resistant:
             amount = amount // 2
 
         if dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]:
@@ -156,6 +275,16 @@ class Entity:
             self.temp_hp -= absorbed
             amount -= absorbed
 
+        # Wild Shape Damage Carry-over
+        if self.is_wild_shaped and amount > 0:
+            if self.hp - amount <= 0:
+                excess = amount - self.hp
+                self.hp = 0
+                self.revert_form()
+                # Apply excess damage to original form
+                if excess > 0:
+                    return self.take_damage(excess, damage_type, is_magical)
+
         self.hp -= amount
 
         # Relentless Endurance (Half-Orc): Drop to 1 HP instead of 0
@@ -167,7 +296,7 @@ class Entity:
         self.hp = max(self.hp, 0 if not self.is_player else -self.max_hp)
 
         # Track rage damage taken
-        if self.rage_active and amount > 0:
+        if self.rage_active:
             self.rage_damage_taken = True
 
         # Concentration check on damage
@@ -230,7 +359,7 @@ class Entity:
         self.rage_active = True
         self.rage_rounds = 0
         self.rage_damage_taken = False
-        self.rage_damage_dealt = False
+        self.attacked_this_turn = False
         self.rages_left -= 1
         # Rage grants advantage on STR checks/saves (tracked via condition-like flag)
         return True
@@ -240,7 +369,7 @@ class Entity:
         self.rage_active = False
         self.rage_rounds = 0
         self.rage_damage_taken = False
-        self.rage_damage_dealt = False
+        self.attacked_this_turn = False
 
     def check_rage_end(self) -> bool:
         """Check if rage should end at end of turn. Returns True if rage ended."""
@@ -251,12 +380,12 @@ class Entity:
         if self.rage_rounds >= 10:
             self.end_rage()
             return True
-        if not self.rage_damage_dealt and not self.rage_damage_taken:
+        if not self.attacked_this_turn and not self.rage_damage_taken:
             self.end_rage()
             return True
         # Reset per-round tracking
         self.rage_damage_taken = False
-        self.rage_damage_dealt = False
+        self.attacked_this_turn = False
         return False
 
     # ------------------------------------------------------------------ #
@@ -402,6 +531,10 @@ class Entity:
             base += random.randint(1, 4)
         if "Bane" in self.active_effects:
             base -= random.randint(1, 4)
+        # Resistance: +1d4 to one save (consumable)
+        if "Resistance" in self.active_effects:
+            base += random.randint(1, 4)
+            self.active_effects.pop("Resistance")
         return base
 
     def get_attack_bonus_effects(self) -> int:
@@ -414,7 +547,11 @@ class Entity:
         return bonus
 
     def get_skill_bonus(self, skill: str) -> int:
-        return self.stats.skills.get(skill, 0)
+        bonus = self.stats.skills.get(skill, 0)
+        # Guidance: +1d4 to ability checks
+        if "Guidance" in self.active_effects:
+            bonus += random.randint(1, 4)
+        return bonus
 
     # ------------------------------------------------------------------ #
     # Class feature helpers                                                #
@@ -499,6 +636,8 @@ class Entity:
                 return True
             if target.has_condition("Prone") and not is_ranged:
                 return True
+            if target.has_condition("Guiding Bolt"):
+                return True
         return False
 
     def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False, is_threatened: bool = False) -> bool:
@@ -581,6 +720,13 @@ class Entity:
             self.initiative = max(r1, r2)
         else:
             self.initiative = random.randint(1, 20) + dex_mod
+            
+        # Guidance check (Ability Check)
+        if "Guidance" in self.active_effects:
+            bonus = random.randint(1, 4)
+            self.initiative += bonus
+            self.active_effects.pop("Guidance")
+            
         return self.initiative
 
     # ------------------------------------------------------------------ #

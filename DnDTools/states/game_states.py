@@ -944,6 +944,10 @@ class BattleState(GameState):
         self.spell_targeting: SpellInfo | None = None
         self.spell_caster: Entity | None = None
 
+        # Manual Action Targeting
+        self.action_targeting: Action | None = None
+        self.action_caster: Entity | None = None
+
         self._build_buttons()
 
         if not self.battle.combat_started:
@@ -1098,6 +1102,8 @@ class BattleState(GameState):
         # Rain animation
         if self.battle.weather in ("Rain", "Ash"):
             self._update_weather_fx()
+
+        self.battle.validate_grapples()
 
         # Update FX
         for ft in self.floating_texts:
@@ -1326,6 +1332,18 @@ class BattleState(GameState):
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
+            
+            # --- Counterspell Check ---
+            if step.step_type == "spell" and not step.counter_checked:
+                step.counter_checked = True
+                # Check if any enemy can counterspell
+                lvl = step.slot_used if step.slot_used > 0 else (step.spell.level if step.spell else 0)
+                potential = self.battle.check_counterspell_reaction(step.attacker, lvl)
+                if potential:
+                    self.reaction_pending = potential
+                    self.reaction_type = "counterspell"
+                    self.reaction_context = {"caster": step.attacker, "level": lvl, "step_idx": self.pending_step_idx}
+                    return # Pause confirmation to ask for reaction
 
             # Handle summon spawning
             if step.step_type == "summon" and step.summon_name:
@@ -1399,6 +1417,16 @@ class BattleState(GameState):
         """Apply effects based on user choice."""
         if not target: return
 
+        # Ensure applies_condition is set from spell if missing in the step
+        if not step.applies_condition and step.spell and step.spell.applies_condition:
+            step.applies_condition = step.spell.applies_condition
+
+        # Handle Legendary Resistance outcome
+        if outcome == "legendary":
+            target.legendary_resistances_left -= 1
+            self._log(f"[LEGENDARY] {target.name} uses Legendary Resistance! ({target.legendary_resistances_left} left)")
+            outcome = "save"
+
         dmg = step.damage
         cond = step.applies_condition
         attacker_name = step.attacker.name if step.attacker else "Unknown"
@@ -1407,13 +1435,22 @@ class BattleState(GameState):
         rnd = self.battle.round
 
         # Track attack results
-        if step.step_type in ("attack", "multiattack", "bonus_attack", "legendary"):
+        is_attack = step.step_type in ("attack", "multiattack", "bonus_attack", "legendary", "reaction") or (step.step_type == "spell" and step.attack_roll > 0)
+        
+        if is_attack:
             is_hit = outcome in ("hit", "crit", "fail")
+            if step.attacker:
+                step.attacker.record_attack()
             self.battle.stats_tracker.record_attack(
                 rnd, attacker_name, is_hit,
                 is_critical=(outcome == "crit"),
                 is_fumble=False,
                 attacker_is_player=step.attacker.is_player if step.attacker else False)
+            
+            # Guiding Bolt consumption: The advantage is used on the next attack (hit, miss, or crit)
+            if target.has_condition("Guiding Bolt"):
+                target.remove_condition("Guiding Bolt")
+                self._log(f"  [EFFECT] Guiding Bolt on {target.name} consumed.")
 
         if outcome == "hit" or outcome == "fail":
             # --- AI REACTION CHECK (Shield) ---
@@ -1447,6 +1484,35 @@ class BattleState(GameState):
                             
                             # Skip damage application
                             return
+            
+            # --- AI REACTION CHECK (Parry) ---
+            # Generic Parry: Adds AC (usually 2 or 3) against melee attack
+            if not target.is_player and not target.reaction_used and outcome in ("hit", "crit") and step.step_type in ("attack", "multiattack", "bonus_attack", "legendary", "reaction"):
+                # Check if attack is melee (range <= 5 or adjacent)
+                is_melee = (step.action and step.action.range <= 5) or (self.battle.get_distance(target, step.attacker) <= 1.5)
+                
+                if is_melee:
+                    parry = next((r for r in target.stats.reactions if "Parry" in r.name), None)
+                    if parry:
+                        # Determine bonus (parse description or default to 2)
+                        bonus = 2
+                        if "3" in parry.description: bonus = 3
+                        if "4" in parry.description: bonus = 4
+                        
+                        # Use if it changes the outcome OR if low HP
+                        should_parry = (step.attack_roll > 0 and target.armor_class + bonus >= step.attack_roll) or (target.hp < target.max_hp * 0.5)
+                        
+                        if should_parry:
+                            target.reaction_used = True
+                            self._log(f"[REACTION] {target.name} uses Parry! AC +{bonus}.")
+                            self._spawn_damage_text(target, "Parry!", is_heal=True)
+                            
+                            if step.attack_roll > 0 and step.attack_roll <= target.armor_class + bonus:
+                                outcome = "miss"
+                                self._log(f"  -> Attack now MISSES!")
+                                if step.step_type in ("attack", "multiattack", "bonus_attack", "legendary"):
+                                    self.battle.stats_tracker.entity_stats[attacker_name].attacks_hit -= 1
+                                return
 
             # Full effect
             if dmg > 0:
@@ -1473,7 +1539,7 @@ class BattleState(GameState):
                     self._spawn_damage_text(target, "Dodge!", is_heal=True)
 
                 old_hp = target.hp
-                dealt, broke = target.take_damage(dmg, step.damage_type)
+                dealt, broke = target.take_damage(dmg, step.damage_type, is_magical=step.is_magical)
                 
                 # --- AI REACTION CHECK (Hellish Rebuke) ---
                 if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
@@ -1497,6 +1563,27 @@ class BattleState(GameState):
                         r_dealt, _ = step.attacker.take_damage(rebuke_dmg, "fire")
                         self._spawn_damage_text(step.attacker, r_dealt)
                         self._log(f"  -> {step.attacker.name} takes {r_dealt} fire damage.")
+
+                # --- AI REACTION CHECK (Generic "When hit" effects) ---
+                if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
+                    for reaction in target.stats.reactions:
+                        # Unnerving Mask (Chain Devil)
+                        if "Unnerving Mask" in reaction.name:
+                            target.reaction_used = True
+                            self._log(f"[REACTION] {target.name} uses {reaction.name}!")
+                            # DC 13 WIS or Frightened
+                            dc = 13
+                            match = re.search(r"DC (\d+)", reaction.description)
+                            if match: dc = int(match.group(1))
+                            
+                            save_bonus = step.attacker.get_save_bonus("Wisdom")
+                            roll = random.randint(1, 20) + save_bonus
+                            if roll >= dc:
+                                self._log(f"  -> {step.attacker.name} saves vs Unnerving Mask.")
+                            else:
+                                self._log(f"  -> {step.attacker.name} failed save! Frightened.")
+                                step.attacker.add_condition("Frightened", source=target)
+                            break
 
                 if outcome == "fail":
                     # Evasion (Fail): Half damage instead of full
@@ -1547,8 +1634,8 @@ class BattleState(GameState):
                 if step.spell and not step.spell.repeat_save:
                     save_ab = None
 
-                # Pass source entity for source-dependent conditions (Frightened, Charmed)
-                condition_source = step.attacker if cond in ("Frightened", "Charmed") else None
+                # Pass source entity for source-dependent conditions (Frightened, Charmed, Banished)
+                condition_source = step.attacker if cond in ("Frightened", "Charmed", "Banished") else None
                 target.add_condition(cond, save_ability=save_ab, save_dc=dc, source=condition_source)
                 self.battle.stats_tracker.record_condition(
                     rnd, target.name, cond, applied_by=attacker_name,
@@ -1560,17 +1647,51 @@ class BattleState(GameState):
                     if dropped_spell:
                         self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
                 self._log(f"  -> {target.name} is {cond}")
+
+                # Special handling for Banishment: Remove from map immediately
+                if cond == "Banished":
+                    target.banished_from = (target.grid_x, target.grid_y)
+                    target.grid_x = -1000.0  # Move off-map
+                    target.grid_y = -1000.0
+                    self._log(f"  [BANISHMENT] {target.name} vanishes to a demiplane!")
+        
+        # Handle Transformation (Wild Shape)
+        if step.step_type == "transform" and step.attacker and step.transform_stats:
+            step.attacker.transform_into(step.transform_stats)
+            self._log(f"  -> {step.attacker.name} transforms into {step.transform_stats.name}!")
+            self._spawn_damage_text(step.attacker, "Wild Shape!", is_heal=True)
+        
+        # Handle special actions (Shake Awake, Cleansing Touch)
+        if step.action_name == "Shake Awake":
+            if target.has_condition("Unconscious") and target.hp > 0:
+                target.remove_condition("Unconscious")
+                self._log(f"  -> {target.name} wakes up!")
+        
+        elif step.action_name == "Cleansing Touch" or step.action_name == "Lesser Restoration":
+            # Remove one spell or condition
+            removed = False
+            for c in ["Paralyzed", "Blinded", "Deafened", "Poisoned", "Stunned"]:
+                if target.has_condition(c):
+                    target.remove_condition(c)
+                    self._log(f"  -> {target.name} is no longer {c}.")
+                    removed = True
+                    break
             
             # Apply duration effects (Buffs/Debuffs that aren't conditions, e.g. Bless, Haste)
-            if step.spell and step.spell.duration and not step.applies_condition:
-                 # Parse duration roughly
-                 rounds = 10 # default 1 min
-                 if "minute" in step.spell.duration: rounds = 10
-                 elif "hour" in step.spell.duration: rounds = 600
-                 elif "round" in step.spell.duration: rounds = int(step.spell.duration.split()[0])
-                 
-                 target.active_effects[step.spell.name] = rounds
-                 self._log(f"  -> {step.spell.name} applied ({rounds} rnds)")
+            # Also track duration for Banishment (critical for permanent banishment logic)
+            if step.spell and step.spell.duration:
+                 # Skip if it's a condition-applying spell that ISN'T Banishment (usually handled by save repeats)
+                 if step.applies_condition and step.applies_condition not in ("Banished", "Guiding Bolt"):
+                     pass
+                 else:
+                     # Parse duration roughly
+                     rounds = 10 # default 1 min
+                     if "minute" in step.spell.duration: rounds = 10
+                     elif "hour" in step.spell.duration: rounds = 600
+                     elif "round" in step.spell.duration: rounds = int(step.spell.duration.split()[0])
+                     
+                     target.active_effects[step.spell.name] = rounds
+                     self._log(f"  -> {step.spell.name} applied ({rounds} rnds)")
 
         elif outcome == "save":
             # Half damage (usually), no condition
@@ -1585,7 +1706,7 @@ class BattleState(GameState):
                                                           entity_is_player=target.is_player)
             if half_dmg > 0:
                 old_hp = target.hp
-                dealt, broke = target.take_damage(half_dmg, step.damage_type)
+                dealt, broke = target.take_damage(half_dmg, step.damage_type, is_magical=step.is_magical)
                 roll_str = self.current_step_rolls.get(target, "")
                 roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
                 self._log(f"  -> {target.name} SAVED{roll_msg}: takes {dealt} {step.damage_type}")
@@ -1627,7 +1748,7 @@ class BattleState(GameState):
 
             if final_dmg > 0:
                 old_hp = target.hp
-                dealt, broke = target.take_damage(final_dmg, step.damage_type)
+                dealt, broke = target.take_damage(final_dmg, step.damage_type, is_magical=step.is_magical)
                 self._log(f"  -> {target.name} takes {dealt} {step.damage_type} (CRIT)")
                 self._spawn_damage_text(target, dealt)
                 self.battle.stats_tracker.record_damage(
@@ -1681,7 +1802,12 @@ class BattleState(GameState):
         elif curr == "crit": new = "miss"
         elif curr == "miss": new = "hit"
         elif curr == "fail": new = "save"
-        elif curr == "save": new = "fail"
+        elif curr == "save": 
+            if target.legendary_resistances_left > 0:
+                new = "legendary"
+            else:
+                new = "fail"
+        elif curr == "legendary": new = "fail"
         else: new = curr
         self.current_step_outcomes[target] = new
 
@@ -2138,12 +2264,21 @@ class BattleState(GameState):
         self.roll_modal_open = True
 
     def _roll_skill(self, skill, bonus):
+        # Check for Guidance
+        guidance_bonus = 0
+        if self.selected_entity and "Guidance" in self.selected_entity.active_effects:
+            guidance_bonus = random.randint(1, 4)
+            self.selected_entity.active_effects.pop("Guidance")
+            self._log(f"[EFFECT] Guidance used on {skill}.")
+
         val, text = roll_d20()
-        total = val + bonus
-        self._log(f"[SKILL] {self.selected_entity.name} {skill}: {text} + {bonus} = {total}")
+        total = val + bonus + guidance_bonus
+        
+        expr = f"d20({val}) + {bonus}" + (f" + {guidance_bonus}(Guidance)" if guidance_bonus else "")
+        self._log(f"[SKILL] {self.selected_entity.name} {skill}: {expr} = {total}")
 
         self.roll_modal_title = f"{skill} Check"
-        self.roll_modal_expression = f"d20({val}) + {bonus}"
+        self.roll_modal_expression = expr
         self.roll_modal_total = total
         self.roll_modal_nat = val
         self.roll_modal_open = True
@@ -2275,6 +2410,20 @@ class BattleState(GameState):
                         continue
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._cancel_spell_targeting()
+                    continue
+
+            # Action Targeting Interception
+            if self.action_targeting:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    if mx < GRID_W and my >= TOP_BAR_H:
+                        if event.button == 1: # Left click to execute
+                            self._execute_manual_action(event.pos)
+                        elif event.button == 3: # Right click to cancel
+                            self._cancel_action_targeting()
+                        continue
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self._cancel_action_targeting()
                     continue
 
             try:
@@ -2672,6 +2821,8 @@ class BattleState(GameState):
             self._draw_ctx_menu(screen, mp)
         if self.spell_targeting:
             self._draw_spell_targeting_overlay(screen, mp)
+        if self.action_targeting:
+            self._draw_action_targeting_overlay(screen, mp)
 
         if self.scenario_modal:
             self.scenario_modal.draw(screen, mp)
@@ -3264,9 +3415,17 @@ class BattleState(GameState):
 
         # Legendary resources
         if sel.stats.legendary_action_count:
-            ln(f"Legendary Actions: {sel.legendary_actions_left}/{sel.stats.legendary_action_count}", COLORS["legendary"])
+            txt = f"Legendary Actions: {sel.legendary_actions_left}/{sel.stats.legendary_action_count}"
+            ln(txt, COLORS["legendary"])
+            
         if sel.stats.legendary_resistance_count:
-            ln(f"Legendary Resist: {sel.legendary_resistances_left}/{sel.stats.legendary_resistance_count}", COLORS["legendary"])
+            txt = f"Legendary Resist: {sel.legendary_resistances_left}/{sel.stats.legendary_resistance_count}"
+            s = fonts.small.render(txt, True, COLORS["legendary"])
+            r = pygame.Rect(x0, y, s.get_width(), 20)
+            screen.blit(s, (x0, y))
+            if sel.legendary_resistances_left > 0:
+                self.ui_click_zones.append((r, lambda: self._use_legendary_resistance_manual(sel)))
+            y += 20
 
         # Class Resources
         if sel.stats.character_class:
@@ -3276,6 +3435,11 @@ class BattleState(GameState):
                 ln(f"Race: {sel.stats.race}", COLORS["text_dim"])
         if hasattr(sel, 'rage_active') and sel.stats.rage_count > 0:
             rage_str = "ACTIVE" if sel.rage_active else "Inactive"
+            if sel.rage_active:
+                if sel.attacked_this_turn or sel.rage_damage_taken:
+                    rage_str += " (Sustained)"
+                else:
+                    rage_str += " (Ending)"
             rage_c = COLORS["danger"] if sel.rage_active else COLORS["text_dim"]
             ln(f"Rage: {rage_str} ({sel.rages_left}/{sel.stats.rage_count} uses)", rage_c)
         if sel.stats.ki_points > 0:
@@ -3349,6 +3513,10 @@ class BattleState(GameState):
                 if line_rect.collidepoint(mp):
                     s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
                     self.active_tooltip = f"{feat.name}: {feat.description}"
+                
+                # Click to use feature (if it has uses)
+                if feat.uses_per_day > 0 or feat.recharge:
+                    self.ui_click_zones.append((line_rect, lambda f=feat: self._use_feature_manual(sel, f)))
 
                 screen.blit(s, (x0+8, y))
                 y += 20
@@ -3404,12 +3572,20 @@ class BattleState(GameState):
                         desc = ". ".join(parts)
                     self.active_tooltip = f"{act.name}: {desc}"
 
+                # Click to target action
+                self.ui_click_zones.append((line_rect, lambda a=act: self._start_action_targeting(sel, a)))
+
                 screen.blit(s, (x0+8, y))
                 y += 20
 
         draw_action_section("ACTIONS:", sel.stats.actions)
         draw_action_section("BONUS ACTIONS:", sel.stats.bonus_actions)
         draw_action_section("REACTIONS:", sel.stats.reactions)
+        
+        # Filter and draw Legendary Actions
+        leg_actions = [a for a in sel.stats.actions if a.action_type == "legendary"]
+        if leg_actions:
+            draw_action_section("LEGENDARY ACTIONS:", leg_actions)
 
         return y
 
@@ -3658,6 +3834,8 @@ class BattleState(GameState):
             damage_type=spell.damage_type,
             save_dc=caster.stats.spell_save_dc,
             save_ability=spell.save_ability,
+            applies_condition=spell.applies_condition,
+            condition_dc=caster.stats.spell_save_dc,
             aoe_center=aoe_center if aoe_center else tuple()
         )
 
@@ -3668,6 +3846,127 @@ class BattleState(GameState):
         self._prepare_step_outcomes()
         self._cancel_spell_targeting()
         self._log(f"[ACTION] Casting {spell.name} on {len(targets)} targets...")
+
+    # ------------------------------------------------------------------ #
+    # Manual Action Targeting & Execution                                  #
+    # ------------------------------------------------------------------ #
+
+    def _start_action_targeting(self, entity, action):
+        self.action_caster = entity
+        self.action_targeting = action
+        self._log(f"[TARGETING] Select target for {action.name} ({action.range}ft)")
+
+    def _cancel_action_targeting(self):
+        self.action_caster = None
+        self.action_targeting = None
+        self._log("[TARGETING] Cancelled.")
+
+    def _draw_action_targeting_overlay(self, screen, mp):
+        if not self.action_targeting or not self.action_caster:
+            return
+
+        mx, my = mp
+        if mx > GRID_W or my < TOP_BAR_H:
+            return
+
+        caster = self.action_caster
+        action = self.action_targeting
+        gsz = self.battle.grid_size
+        cx, cy = self._grid_to_screen(caster.grid_x, caster.grid_y)
+        caster_px = (cx + gsz//2, cy + gsz//2)
+        gx, gy = self._screen_to_grid(mx, my)
+        
+        # Range check
+        dist_ft = math.hypot(gx - caster.grid_x, gy - caster.grid_y) * 5
+        in_range = dist_ft <= action.range + 2 # tolerance
+        
+        color = (255, 200, 50, 100) if in_range else (255, 50, 50, 100)
+        border = (255, 200, 50) if in_range else (255, 50, 50)
+
+        # Draw Range Circle
+        range_px = int(action.range / 5 * gsz)
+        pygame.draw.circle(screen, (255, 255, 255), caster_px, range_px, 1)
+
+        # Draw Template
+        if action.aoe_radius > 0:
+            radius_px = int(action.aoe_radius / 5 * gsz)
+            aoe_surf = pygame.Surface((radius_px*2, radius_px*2), pygame.SRCALPHA)
+            pygame.draw.circle(aoe_surf, color, (radius_px, radius_px), radius_px)
+            pygame.draw.circle(aoe_surf, border, (radius_px, radius_px), radius_px, 2)
+            
+            snap_gx, snap_gy = int(gx) + 0.5, int(gy) + 0.5
+            sx, sy = self._grid_to_screen(snap_gx, snap_gy)
+            screen.blit(aoe_surf, (sx - radius_px, sy - radius_px))
+        else:
+            pygame.draw.line(screen, border, caster_px, (mx, my), 2)
+            pygame.draw.circle(screen, border, (mx, my), 5)
+
+        txt = f"{action.name}: {dist_ft:.1f}ft / {action.range}ft"
+        t_surf = fonts.small.render(txt, True, border)
+        screen.blit(t_surf, (mx + 15, my + 15))
+
+    def _execute_manual_action(self, mp):
+        mx, my = mp
+        if mx > GRID_W or my < TOP_BAR_H: return
+
+        caster = self.action_caster
+        action = self.action_targeting
+        gx, gy = self._screen_to_grid(mx, my)
+
+        # Targets
+        targets = []
+        aoe_center = None
+        
+        if action.aoe_radius > 0:
+            aoe_center = (gx, gy)
+            for ent in self.battle.entities:
+                if ent.hp <= 0: continue
+                d = math.hypot(ent.grid_x - gx, ent.grid_y - gy) * 5
+                if d <= action.aoe_radius:
+                    targets.append(ent)
+        else:
+            t = self.battle.get_entity_at(gx, gy)
+            if t and t.hp > 0:
+                targets.append(t)
+
+        if not targets and action.aoe_radius == 0:
+            self._log("[TARGETING] No target selected.")
+            return
+
+        # Roll damage
+        dmg = roll_dice(action.damage_dice)
+        if action.damage_bonus:
+            dmg += action.damage_bonus
+
+        step = ActionStep(
+            step_type=action.action_type if action.action_type in ("legendary","reaction","bonus_attack") else "attack",
+            description=f"{caster.name} uses {action.name}.",
+            attacker=caster, targets=targets, action=action,
+            damage=dmg, damage_type=action.damage_type,
+            action_name=action.name,
+            save_dc=action.condition_dc, save_ability=action.condition_save,
+            applies_condition=action.applies_condition,
+            aoe_center=aoe_center if aoe_center else tuple()
+        )
+
+        plan = TurnPlan(entity=caster, steps=[step])
+        self.pending_plan = plan
+        self.pending_step_idx = 0
+        self._prepare_step_outcomes()
+        self._cancel_action_targeting()
+        self._log(f"[ACTION] Using {action.name}...")
+
+    def _use_legendary_resistance_manual(self, entity):
+        if entity.legendary_resistances_left > 0:
+            entity.legendary_resistances_left -= 1
+            self._log(f"[DM] {entity.name} manually expends a Legendary Resistance. ({entity.legendary_resistances_left} left)")
+            self._save_undo_snapshot()
+
+    def _use_feature_manual(self, entity, feature):
+        if entity.can_use_feature(feature.name):
+            entity.use_feature(feature.name)
+            self._log(f"[DM] {entity.name} uses {feature.name}.")
+            self._save_undo_snapshot()
 
     def _draw_log_tab(self, screen, sel, x0, y, mp):
         # Filter Buttons
@@ -3836,6 +4135,7 @@ class BattleState(GameState):
                 elif outcome == "miss": txt, col = "MISS", COLORS["text_dim"]
                 elif outcome == "fail": txt, col = "FAIL (Full)", COLORS["danger"]
                 elif outcome == "save": txt, col = "SAVE (Half)", COLORS["success"]
+                elif outcome == "legendary": txt, col = "LEGENDARY RESIST", COLORS["legendary"]
                 else: txt, col = outcome.upper(), COLORS["text_main"]
 
                 r_toggle = pygame.Rect(bx+200, y, 140, 26)
@@ -3955,6 +4255,13 @@ class BattleState(GameState):
                     dealt, broke = mover.take_damage(dmg, melee_action.damage_type)
                     self._spawn_damage_text(mover, dealt)
                     self._log(f"  -> {'CRIT!' if is_crit else 'HIT'} ({total})! Dealt {dealt} {melee_action.damage_type}.")
+                    
+                    # SENTINEL FEAT: Speed becomes 0 and movement stops
+                    if reactor.has_feature("sentinel"):
+                        self._log(f"[SENTINEL] {mover.name}'s speed becomes 0!")
+                        mover.movement_left = 0
+                        # Cancel the move destination (stay in current square)
+                        dest_x, dest_y = mover.grid_x, mover.grid_y
                 else:
                     self._log(f"  -> MISS ({total}).")
                 
@@ -3969,8 +4276,28 @@ class BattleState(GameState):
         elif self.reaction_type == "counterspell":
             if allowed:
                 self._log(f"[REACTION] {reactor.name} uses Counterspell (Slot expended).")
+                # Consume spell slot (assume lowest available >= 3)
+                slot = reactor.get_slot_for_level(3)
+                if slot > 0:
+                    reactor.use_spell_slot(slot)
+                
                 reactor.reaction_used = True
+                
+                # Cancel the spell effect in the pending plan
+                idx = self.reaction_context.get("step_idx", -1)
+                if self.pending_plan and idx == self.pending_step_idx:
+                    step = self.pending_plan.steps[idx]
+                    step.description += " [COUNTERED]"
+                    step.damage = 0
+                    step.applies_condition = ""
+                    step.targets = [] # No targets affected
+                    self._log(f"  -> The spell fizzles!")
+
             self.reaction_pending.pop(0)
+            
+            # Auto-resume confirmation (will proceed with fizzled spell if countered)
+            if not self.reaction_pending:
+                self._confirm_step()
 
     # --- Aura Trigger Modal ---
     def _open_next_aura_modal(self):

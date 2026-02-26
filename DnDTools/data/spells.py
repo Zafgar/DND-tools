@@ -22,6 +22,10 @@ _spells = {
     "Fire Bolt": SpellInfo("Fire Bolt", level=0, action_type="action", range=120, targets="single",
                            damage_dice="1d10", damage_type="fire", damage_scaling="1d10"),
     
+    "Guidance": SpellInfo("Guidance", level=0, action_type="action", range=0, targets="touch",
+                          concentration=True, duration="1 minute",
+                          description="Target adds +1d4 to one ability check."),
+
     "Poison Spray": SpellInfo("Poison Spray", level=0, action_type="action", range=10, targets="single",
                               damage_dice="1d12", damage_type="poison", save_ability="Constitution", half_on_save=False),
     
@@ -38,6 +42,10 @@ _spells = {
     "Sacred Flame": SpellInfo("Sacred Flame", level=0, action_type="action", range=60, targets="single",
                               damage_dice="1d8", damage_type="radiant", save_ability="Dexterity", half_on_save=False),
     
+    "Resistance": SpellInfo("Resistance", level=0, action_type="action", range=0, targets="touch",
+                            concentration=True, duration="1 minute",
+                            description="Target adds +1d4 to one saving throw."),
+
     "Shocking Grasp": SpellInfo("Shocking Grasp", level=0, action_type="action", range=5, targets="single",
                                 damage_dice="1d8", damage_type="lightning", description="Advantage if target in metal armor"),
     
@@ -68,7 +76,8 @@ _spells = {
                           save_ability="Strength", applies_condition="Restrained", concentration=True, duration="1 minute", targets="aoe"),
     
     "Guiding Bolt": SpellInfo("Guiding Bolt", level=1, action_type="action", range=120, targets="single",
-                              damage_dice="4d6", damage_type="radiant", description="Next attack vs target has Adv"),
+                              damage_dice="4d6", damage_type="radiant", description="Next attack vs target has Adv",
+                              applies_condition="Guiding Bolt", duration="2 rounds"),
     
     "Hail of Thorns": SpellInfo("Hail of Thorns", level=1, action_type="bonus", range=0, targets="self", concentration=True,
                                 damage_dice="1d10", damage_type="piercing", description="Next hit explodes 5ft radius"),
@@ -137,6 +146,9 @@ _spells = {
     "Invisibility": SpellInfo("Invisibility", level=2, action_type="action", range=0, targets="single",
                               applies_condition="Invisible", concentration=True, duration="1 hour"),
     
+    "Lesser Restoration": SpellInfo("Lesser Restoration", level=2, action_type="action", range=0, targets="touch",
+                                    description="End disease or condition: blinded, deafened, paralyzed, poisoned"),
+
     "Misty Step": SpellInfo("Misty Step", level=2, action_type="bonus", range=0, targets="self",
                             description="Teleport 30ft"),
     
@@ -218,7 +230,7 @@ _spells = {
 
     # --- LEVEL 4 ---
     "Banishment": SpellInfo("Banishment", level=4, school="Abjuration", action_type="action", range=60, targets="single",
-                            save_ability="Charisma", applies_condition="Incapacitated", concentration=True, duration="1 minute", repeat_save=False,
+                            save_ability="Charisma", applies_condition="Banished", concentration=True, duration="1 minute", repeat_save=False,
                             description="Banishes creature to another plane. Target is Incapacitated."),
 
     "Blight": SpellInfo("Blight", level=4, action_type="action", range=30, targets="single",
