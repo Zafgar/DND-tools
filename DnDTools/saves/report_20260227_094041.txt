@@ -1,0 +1,145 @@
+============================================================
+         BATTLE REPORT
+============================================================
+Winner: PLAYERS
+Total Rounds: 3
+Players: 5  |  Enemies: 3
+Player Casualties: 0  |  Enemy Casualties: 3
+
+Total Player Damage: 345  (avg 115.0/round)
+Total Enemy Damage:  10  (avg 3.3/round)
+Total Player Healing: 0
+
+MVP: Arcane Wizard (DMG:141 HEAL:0 KILLS:0)
+
+------------------------------------------------------------
+COMBATANT DETAILS
+------------------------------------------------------------
+
+[Player] Arcane Wizard (ALIVE)
+  HP: 52 -> 52/52
+  Damage Dealt: 141  |  Taken: 0
+  DPR: 70.5  |  Healing: Done 0 / Recv 0
+  Attacks: 0/0 (0%)  |  Crits: 0
+  Spells: 5  |  Kills: 0  |  Downed: 0
+  Top Abilities: Fireball:72, Cone of Cold:69
+  Slots Used: Lvl3:3, Lvl5:2
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Player] Holy Paladin (ALIVE)
+  HP: 85 -> 85/85
+  Damage Dealt: 64  |  Taken: 0
+  DPR: 21.3  |  Healing: Done 0 / Recv 0
+  Attacks: 2/4 (50.0%)  |  Crits: 0
+  Spells: 1  |  Kills: 1  |  Downed: 0
+  Top Abilities: Longsword:64
+  Slots Used: Lvl1:1
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Player] Elven Ranger (ALIVE)
+  HP: 74 -> 64/74
+  Damage Dealt: 53  |  Taken: 10
+  DPR: 26.5  |  Healing: Done 0 / Recv 0
+  Attacks: 6/10 (60.0%)  |  Crits: 0
+  Spells: 1  |  Kills: 1  |  Downed: 0
+  Top Abilities: Longbow:53
+  Slots Used: Lvl1:1
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Player] Veteran Fighter (ALIVE)
+  HP: 94 -> 94/94
+  Damage Dealt: 46  |  Taken: 0
+  DPR: 23.0  |  Healing: Done 0 / Recv 0
+  Attacks: 6/7 (85.7%)  |  Crits: 0
+  Spells: 0  |  Kills: 0  |  Downed: 0
+  Top Abilities: Longsword:46
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Player] Shadow Rogue (ALIVE)
+  HP: 66 -> 66/66
+  Damage Dealt: 41  |  Taken: 0
+  DPR: 20.5  |  Healing: Done 0 / Recv 0
+  Attacks: 2/2 (100.0%)  |  Crits: 0
+  Spells: 0  |  Kills: 1  |  Downed: 0
+  Top Abilities: Rapier:41
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Enemy] Archmage (DEAD)
+  HP: 99 -> 0/99
+  Damage Dealt: 4  |  Taken: 117
+  DPR: 2.0  |  Healing: Done 0 / Recv 0
+  Attacks: 1/2 (50.0%)  |  Crits: 0
+  Spells: 0  |  Kills: 0  |  Downed: 1
+  Top Abilities: Dagger:4
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 1/1  |  Death Saves: 0/0
+
+[Enemy] Archmage 2 (DEAD)
+  HP: 99 -> 0/99
+  Damage Dealt: 3  |  Taken: 101
+  DPR: 3.0  |  Healing: Done 0 / Recv 0
+  Attacks: 1/1 (100.0%)  |  Crits: 0
+  Spells: 0  |  Kills: 0  |  Downed: 1
+  Top Abilities: Dagger:3
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 0/0  |  Death Saves: 0/0
+
+[Enemy] Archmage 3 (DEAD)
+  HP: 99 -> 0/99
+  Damage Dealt: 3  |  Taken: 127
+  DPR: 1.0  |  Healing: Done 0 / Recv 0
+  Attacks: 1/3 (33.3%)  |  Crits: 0
+  Spells: 0  |  Kills: 0  |  Downed: 1
+  Top Abilities: Dagger:3
+  Conditions Applied: 0  |  Suffered: 0
+  Saves: 2/2  |  Death Saves: 0/0
+
+------------------------------------------------------------
+SPELL USAGE
+------------------------------------------------------------
+  Fireball: Cast 3x  DMG:72  HEAL:0
+  Cone of Cold: Cast 2x  DMG:69  HEAL:0
+  Hunter's Mark: Cast 1x  DMG:0  HEAL:0
+  Divine Favor: Cast 1x  DMG:0  HEAL:0
+
+------------------------------------------------------------
+TOP 10 HITS
+------------------------------------------------------------
+  1. R3 Holy Paladin -> Archmage 3: 54 slashing (Longsword)
+  2. R2 Arcane Wizard -> Archmage: 46 cold (Cone of Cold)
+  3. R1 Arcane Wizard -> Archmage 2: 36 fire (Fireball)
+  4. R2 Shadow Rogue -> Archmage: 28 piercing (Rapier)
+  5. R2 Arcane Wizard -> Archmage 3: 23 cold (Cone of Cold)
+  6. R1 Arcane Wizard -> Archmage 3: 18 fire (Fireball)
+  7. R1 Arcane Wizard -> Archmage: 18 fire (Fireball)
+  8. R3 Elven Ranger -> Archmage 3: 15 piercing (Longbow)
+  9. R2 Shadow Rogue -> Archmage: 13 piercing (Rapier)
+  10. R1 Elven Ranger -> Archmage: 12 piercing (Longbow)
+
+------------------------------------------------------------
+RESOURCE USAGE
+------------------------------------------------------------
+  Arcane Wizard:
+    1st: 4 -> used 0
+    2nd: 3 -> used 0
+    3rd: 3 -> used 3
+    4th: 3 -> used 0
+    5th: 2 -> used 2
+  Elven Ranger:
+    1st: 4 -> used 1
+    2nd: 3 -> used 0
+    3rd: 2 -> used 0
+  Holy Paladin:
+    1st: 4 -> used 1
+    2nd: 3 -> used 0
+    3rd: 2 -> used 0
+    Lay on Hands: started with 50
+
+============================================================
+Report generated: 2026-02-27T09:40:40.833161
+============================================================

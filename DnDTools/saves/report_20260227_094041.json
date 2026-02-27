@@ -1,0 +1,725 @@
+{
+  "timestamp": "2026-02-27T09:40:40.833161",
+  "summary": {
+    "winner": "players",
+    "total_rounds": 3,
+    "player_count": 5,
+    "enemy_count": 3,
+    "total_player_damage_dealt": 345,
+    "total_enemy_damage_dealt": 10,
+    "total_player_healing": 0,
+    "total_enemy_healing": 0,
+    "player_casualties": 0,
+    "enemy_casualties": 3,
+    "avg_damage_per_round_players": 115.0,
+    "avg_damage_per_round_enemies": 3.3
+  },
+  "combatants": [
+    {
+      "name": "Arcane Wizard",
+      "side": "Player",
+      "hp_start": 52,
+      "hp_end": 52,
+      "hp_max": 52,
+      "total_damage_dealt": 141,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 0,
+      "attacks_hit": 0,
+      "hit_rate_pct": 0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 5,
+      "spell_slots_used": {
+        "3": 3,
+        "5": 2
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 70.5,
+      "damage_by_type": {
+        "fire": 72,
+        "cold": 69
+      },
+      "damage_by_ability": {
+        "Fireball": 72,
+        "Cone of Cold": 69
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Holy Paladin",
+      "side": "Player",
+      "hp_start": 85,
+      "hp_end": 85,
+      "hp_max": 85,
+      "total_damage_dealt": 64,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 1,
+      "times_downed": 0,
+      "attacks_made": 4,
+      "attacks_hit": 2,
+      "hit_rate_pct": 50.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 1,
+      "spell_slots_used": {
+        "1": 1
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 21.3,
+      "damage_by_type": {
+        "slashing": 64
+      },
+      "damage_by_ability": {
+        "Longsword": 64
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 3
+    },
+    {
+      "name": "Elven Ranger",
+      "side": "Player",
+      "hp_start": 74,
+      "hp_end": 64,
+      "hp_max": 74,
+      "total_damage_dealt": 53,
+      "total_damage_taken": 10,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 1,
+      "times_downed": 0,
+      "attacks_made": 10,
+      "attacks_hit": 6,
+      "hit_rate_pct": 60.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 1,
+      "spell_slots_used": {
+        "1": 1
+      },
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 26.5,
+      "damage_by_type": {
+        "piercing": 53
+      },
+      "damage_by_ability": {
+        "Longbow": 53
+      },
+      "damage_taken_by_type": {
+        "piercing": 10
+      },
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Veteran Fighter",
+      "side": "Player",
+      "hp_start": 94,
+      "hp_end": 94,
+      "hp_max": 94,
+      "total_damage_dealt": 46,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 0,
+      "attacks_made": 7,
+      "attacks_hit": 6,
+      "hit_rate_pct": 85.7,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 23.0,
+      "damage_by_type": {
+        "slashing": 46
+      },
+      "damage_by_ability": {
+        "Longsword": 46
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Shadow Rogue",
+      "side": "Player",
+      "hp_start": 66,
+      "hp_end": 66,
+      "hp_max": 66,
+      "total_damage_dealt": 41,
+      "total_damage_taken": 0,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 1,
+      "times_downed": 0,
+      "attacks_made": 2,
+      "attacks_hit": 2,
+      "hit_rate_pct": 100.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 20.5,
+      "damage_by_type": {
+        "piercing": 41
+      },
+      "damage_by_ability": {
+        "Rapier": 41
+      },
+      "damage_taken_by_type": {},
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Archmage",
+      "side": "Enemy",
+      "hp_start": 99,
+      "hp_end": 0,
+      "hp_max": 99,
+      "total_damage_dealt": 4,
+      "total_damage_taken": 117,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 1,
+      "attacks_made": 2,
+      "attacks_hit": 1,
+      "hit_rate_pct": 50.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "1/1",
+      "death_saves": "0/0",
+      "damage_per_round": 2.0,
+      "damage_by_type": {
+        "piercing": 4
+      },
+      "damage_by_ability": {
+        "Dagger": 4
+      },
+      "damage_taken_by_type": {
+        "piercing": 53,
+        "fire": 18,
+        "cold": 46
+      },
+      "movement_total_ft": 0.0,
+      "rounds_active": 2
+    },
+    {
+      "name": "Archmage 2",
+      "side": "Enemy",
+      "hp_start": 99,
+      "hp_end": 0,
+      "hp_max": 99,
+      "total_damage_dealt": 3,
+      "total_damage_taken": 101,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 1,
+      "attacks_made": 1,
+      "attacks_hit": 1,
+      "hit_rate_pct": 100.0,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "0/0",
+      "death_saves": "0/0",
+      "damage_per_round": 3.0,
+      "damage_by_type": {
+        "piercing": 3
+      },
+      "damage_by_ability": {
+        "Dagger": 3
+      },
+      "damage_taken_by_type": {
+        "fire": 36,
+        "slashing": 46,
+        "piercing": 19
+      },
+      "movement_total_ft": 0.0,
+      "rounds_active": 1
+    },
+    {
+      "name": "Archmage 3",
+      "side": "Enemy",
+      "hp_start": 99,
+      "hp_end": 0,
+      "hp_max": 99,
+      "total_damage_dealt": 3,
+      "total_damage_taken": 127,
+      "total_healing_done": 0,
+      "total_healing_received": 0,
+      "kills": 0,
+      "times_downed": 1,
+      "attacks_made": 3,
+      "attacks_hit": 1,
+      "hit_rate_pct": 33.3,
+      "critical_hits": 0,
+      "critical_misses": 0,
+      "spells_cast": 0,
+      "spell_slots_used": {},
+      "conditions_applied": 0,
+      "conditions_suffered": 0,
+      "saving_throws": "2/2",
+      "death_saves": "0/0",
+      "damage_per_round": 1.0,
+      "damage_by_type": {
+        "piercing": 3
+      },
+      "damage_by_ability": {
+        "Dagger": 3
+      },
+      "damage_taken_by_type": {
+        "fire": 18,
+        "cold": 23,
+        "piercing": 22,
+        "slashing": 64
+      },
+      "movement_total_ft": 0.0,
+      "rounds_active": 3
+    }
+  ],
+  "damage_breakdown": {
+    "by_damage_type": {
+      "piercing": 104,
+      "fire": 72,
+      "slashing": 110,
+      "cold": 69
+    },
+    "top_10_hits": [
+      {
+        "round": 3,
+        "source": "Holy Paladin",
+        "target": "Archmage 3",
+        "amount": 54,
+        "type": "slashing",
+        "ability": "Longsword",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Arcane Wizard",
+        "target": "Archmage",
+        "amount": 46,
+        "type": "cold",
+        "ability": "Cone of Cold",
+        "critical": false
+      },
+      {
+        "round": 1,
+        "source": "Arcane Wizard",
+        "target": "Archmage 2",
+        "amount": 36,
+        "type": "fire",
+        "ability": "Fireball",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Shadow Rogue",
+        "target": "Archmage",
+        "amount": 28,
+        "type": "piercing",
+        "ability": "Rapier",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Arcane Wizard",
+        "target": "Archmage 3",
+        "amount": 23,
+        "type": "cold",
+        "ability": "Cone of Cold",
+        "critical": false
+      },
+      {
+        "round": 1,
+        "source": "Arcane Wizard",
+        "target": "Archmage 3",
+        "amount": 18,
+        "type": "fire",
+        "ability": "Fireball",
+        "critical": false
+      },
+      {
+        "round": 1,
+        "source": "Arcane Wizard",
+        "target": "Archmage",
+        "amount": 18,
+        "type": "fire",
+        "ability": "Fireball",
+        "critical": false
+      },
+      {
+        "round": 3,
+        "source": "Elven Ranger",
+        "target": "Archmage 3",
+        "amount": 15,
+        "type": "piercing",
+        "ability": "Longbow",
+        "critical": false
+      },
+      {
+        "round": 2,
+        "source": "Shadow Rogue",
+        "target": "Archmage",
+        "amount": 13,
+        "type": "piercing",
+        "ability": "Rapier",
+        "critical": false
+      },
+      {
+        "round": 1,
+        "source": "Elven Ranger",
+        "target": "Archmage",
+        "amount": 12,
+        "type": "piercing",
+        "ability": "Longbow",
+        "critical": false
+      }
+    ]
+  },
+  "spell_usage": {
+    "spells": [
+      {
+        "name": "Fireball",
+        "times_cast": 3,
+        "total_damage": 72,
+        "total_healing": 0,
+        "highest_slot": 3,
+        "casters": [
+          "Arcane Wizard"
+        ]
+      },
+      {
+        "name": "Cone of Cold",
+        "times_cast": 2,
+        "total_damage": 69,
+        "total_healing": 0,
+        "highest_slot": 5,
+        "casters": [
+          "Arcane Wizard"
+        ]
+      },
+      {
+        "name": "Hunter's Mark",
+        "times_cast": 1,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 1,
+        "casters": [
+          "Elven Ranger"
+        ]
+      },
+      {
+        "name": "Divine Favor",
+        "times_cast": 1,
+        "total_damage": 0,
+        "total_healing": 0,
+        "highest_slot": 1,
+        "casters": [
+          "Holy Paladin"
+        ]
+      }
+    ],
+    "total_slots_used": {
+      "1": 2,
+      "3": 3,
+      "5": 2
+    },
+    "total_spells_cast": 7,
+    "total_cantrips": 0
+  },
+  "healing_breakdown": {
+    "by_healer": {},
+    "by_ability": {},
+    "total_healing": 0
+  },
+  "conditions_timeline": [],
+  "death_events": [
+    {
+      "round": 2,
+      "entity": "Archmage 2",
+      "type": "death",
+      "killed_by": "Elven Ranger"
+    },
+    {
+      "round": 2,
+      "entity": "Archmage",
+      "type": "death",
+      "killed_by": "Shadow Rogue"
+    },
+    {
+      "round": 3,
+      "entity": "Archmage 3",
+      "type": "death",
+      "killed_by": "Holy Paladin"
+    }
+  ],
+  "resource_usage": {
+    "Arcane Wizard": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 3,
+          "4th": 3,
+          "5th": 2
+        },
+        "used": {
+          "3": 3,
+          "5": 2
+        }
+      }
+    },
+    "Elven Ranger": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 2
+        },
+        "used": {
+          "1": 1
+        }
+      }
+    },
+    "Holy Paladin": {
+      "spell_slots": {
+        "initial": {
+          "1st": 4,
+          "2nd": 3,
+          "3rd": 2
+        },
+        "used": {
+          "1": 1
+        }
+      },
+      "Lay on Hands": {
+        "initial": 50
+      }
+    }
+  },
+  "round_by_round": [
+    {
+      "round": 1,
+      "player_damage": 130,
+      "enemy_damage": 6,
+      "events": 12
+    },
+    {
+      "round": 2,
+      "player_damage": 129,
+      "enemy_damage": 4,
+      "events": 8
+    },
+    {
+      "round": 3,
+      "player_damage": 86,
+      "enemy_damage": 0,
+      "events": 4
+    }
+  ],
+  "mvp": {
+    "name": "Arcane Wizard",
+    "damage_dealt": 141,
+    "healing_done": 0,
+    "kills": 0,
+    "conditions_applied": 0,
+    "score": 141.0
+  },
+  "combat_log": [
+    "=== DEPLOYMENT PHASE ===",
+    "Drag characters to position them. Click START COMBAT when ready.",
+    "=== COMBAT STARTED ===",
+    "Initiative order: Elven Ranger > Archmage 3 > Archmage > Holy Paladin > Arcane Wizard > Shadow Rogue > Archmage 2 > Veteran Fighter",
+    "--- Round 1: Elven Ranger's turn ---",
+    "Combat started! Initiative rolled.",
+    "--- Round 1: Elven Ranger's turn ---",
+    "[SYSTEM] Auto-Battle STARTED.",
+    "[AI PLAN] Elven Ranger: 5 step(s) queued \u2013 review below.",
+    "[ACTION] Elven Ranger casts Hunter's Mark on Archmage (+1d6 on weapon hits, Concentration)",
+    "[ACTION] Elven Ranger moves 35 ft.",
+    "[ACTION] Elven Ranger Longbow (13+8=21 vs AC 12) Hit? \u2192 Archmage [Hunter's Mark +2]",
+    "  -> Archmage takes 12 piercing",
+    "[ACTION] Elven Ranger Longbow (2+8=10 vs AC 12) Hit? \u2192 Archmage",
+    "[ACTION] Elven Ranger Longbow (3+8=11 vs AC 12) Hit? \u2192 Archmage",
+    "[AI] Turn complete.",
+    "--- Archmage 3's turn (Round 1, Initiative 14) ---",
+    "[AI PLAN] Archmage 3: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage 3 moves 30 ft.",
+    "[ACTION] Archmage 3 Dagger (11+6=17 vs AC 16) Hit? \u2192 Elven Ranger",
+    "  -> Elven Ranger takes 3 piercing",
+    "[AI] Turn complete.",
+    "--- Archmage's turn (Round 1, Initiative 12) ---",
+    "[AI PLAN] Archmage: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage moves 15 ft.",
+    "[ACTION] Archmage Dagger (5+6=11 vs AC 16) Hit? \u2192 Elven Ranger",
+    "[AI] Turn complete.",
+    "--- Holy Paladin's turn (Round 1, Initiative 11) ---",
+    "[PLAYER TURN] Holy Paladin \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Holy Paladin: 3 step(s) queued \u2013 review below.",
+    "[ACTION] Holy Paladin casts Divine Favor (+1d4 radiant on weapon hits)",
+    "[ACTION] Holy Paladin moves 30 ft.",
+    "[ACTION] Holy Paladin Dashes (Action): Holy Paladin moves 10 ft.",
+    "[AI] Turn complete.",
+    "--- Arcane Wizard's turn (Round 1, Initiative 9) ---",
+    "[PLAYER TURN] Arcane Wizard \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Arcane Wizard: 1 step(s) queued \u2013 review below.",
+    "[ACTION] Arcane Wizard casts Fireball (DC 17 Dexterity)",
+    "  -> Archmage 3 SAVED (Rolled 19+2=21 vs DC 17): takes 18 fire",
+    "  -> Archmage SAVED (Rolled 20+2=22 vs DC 17): takes 18 fire",
+    "  -> Archmage 2 FAILED save (Rolled 6+2=8 vs DC 17): takes 36 fire",
+    "[AI] Turn complete.",
+    "--- Shadow Rogue's turn (Round 1, Initiative 9) ---",
+    "[PLAYER TURN] Shadow Rogue \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Shadow Rogue: 3 step(s) queued \u2013 review below.",
+    "[ACTION] Shadow Rogue uses Cunning Action to Hide (Stealth 35 vs PP 10).",
+    "[ACTION] Shadow Rogue moves 25 ft.",
+    "[ACTION] Shadow Rogue Dashes (Action): Shadow Rogue moves 20 ft.",
+    "[AI] Turn complete.",
+    "--- Archmage 2's turn (Round 1, Initiative 4) ---",
+    "[AI PLAN] Archmage 2: 3 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage 2 moves 25 ft.",
+    "[ACTION] Archmage 2 Dagger (15+6=21 vs AC 16) Hit? \u2192 Elven Ranger",
+    "  -> Elven Ranger takes 3 piercing",
+    "[ACTION] Archmage 2 spreads out to avoid AoE (5 ft).",
+    "[AI] Turn complete.",
+    "--- Veteran Fighter's turn (Round 1, Initiative 3) ---",
+    "[PLAYER TURN] Veteran Fighter \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Veteran Fighter: 8 step(s) queued \u2013 review below.",
+    "[ACTION] Veteran Fighter moves 30 ft.",
+    "[ACTION] Veteran Fighter Longsword (12+8=20 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 9 slashing",
+    "[ACTION] Veteran Fighter Longsword (10+8=18 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 11 slashing",
+    "[ACTION] Veteran Fighter Longsword (6+8=14 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 9 slashing",
+    "[ACTION] Veteran Fighter uses Action Surge!",
+    "[ACTION] Veteran Fighter Longsword (15+8=23 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 5 slashing",
+    "[ACTION] Veteran Fighter Longsword (11+8=19 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 6 slashing",
+    "[ACTION] Veteran Fighter Longsword (6+8=14 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 6 slashing",
+    "[AI] Turn complete.",
+    "=== ROUND 2 ===",
+    "--- Elven Ranger's turn (Round 2, Initiative 18) ---",
+    "  [STATUS] Grappled",
+    "  [CONCENTRATION] Hunter's Mark",
+    "[PLAYER TURN] Elven Ranger \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Elven Ranger: 3 step(s) queued \u2013 review below.",
+    "[ACTION] Elven Ranger Longbow ((4,18) Dis+8=12 vs AC 12) Hit? \u2192 Archmage 2 [Colossus Slayer +2]",
+    "  -> Archmage 2 takes 7 piercing",
+    "[ACTION] Elven Ranger Longbow ((16,20) Dis+8=24 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 5 piercing",
+    "[ACTION] Elven Ranger Longbow ((15,20) Dis+8=23 vs AC 12) Hit? \u2192 Archmage 2",
+    "  -> Archmage 2 takes 7 piercing",
+    "[AI] Turn complete.",
+    "--- Archmage 3's turn (Round 2, Initiative 14) ---",
+    "[AI PLAN] Archmage 3: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage 3 moves 5 ft.",
+    "[ACTION] Archmage 3 Dagger (1+6=7 vs AC 16) Hit? \u2192 Elven Ranger",
+    "[AI] Turn complete.",
+    "--- Archmage's turn (Round 2, Initiative 12) ---",
+    "  [STATUS] Prone",
+    "[AI PLAN] Archmage: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage stands up (costs 8 ft movement).",
+    "[ACTION] Archmage Dagger ((17,6) Adv+6=23 vs AC 16) Hit? \u2192 Elven Ranger",
+    "  -> Elven Ranger takes 4 piercing",
+    "[AI] Turn complete.",
+    "--- Holy Paladin's turn (Round 2, Initiative 11) ---",
+    "  [CONCENTRATION] Divine Favor",
+    "[PLAYER TURN] Holy Paladin \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Holy Paladin: 1 step(s) queued \u2013 review below.",
+    "[ACTION] Holy Paladin grapples Archmage! (Athletics 23 vs 4)",
+    "[AI] Turn complete.",
+    "--- Arcane Wizard's turn (Round 2, Initiative 9) ---",
+    "  [CONCENTRATION] Hold Person",
+    "[PLAYER TURN] Arcane Wizard \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Arcane Wizard: 1 step(s) queued \u2013 review below.",
+    "[ACTION] Arcane Wizard casts Cone of Cold (DC 17 Constitution)",
+    "  -> Archmage 3 SAVED (Rolled 16+1=17 vs DC 17): takes 23 cold",
+    "  -> Archmage FAILED save (Rolled 14+1=15 vs DC 17): takes 46 cold",
+    "[AI] Turn complete.",
+    "--- Shadow Rogue's turn (Round 2, Initiative 9) ---",
+    "  [STATUS] Invisible",
+    "[PLAYER TURN] Shadow Rogue \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Shadow Rogue: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Shadow Rogue Rapier ((6,3) Adv+9=15 vs AC 12) Hit? \u2192 Archmage [Revealed] [Sneak Attack 5d6=21]",
+    "  -> Archmage takes 28 piercing",
+    "[ACTION] Shadow Rogue Rapier (10+9=19 vs AC 12) Hit? \u2192 Archmage",
+    "  -> Archmage takes 13 piercing",
+    "[AI] Turn complete.",
+    "--- Veteran Fighter's turn (Round 2, Initiative 3) ---",
+    "[PLAYER TURN] Veteran Fighter \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Veteran Fighter: 2 step(s) queued \u2013 review below.",
+    "[ACTION] Veteran Fighter moves 10 ft.",
+    "[ACTION] Veteran Fighter grapples Archmage 3! (Athletics 14 vs 12)",
+    "[AI] Turn complete.",
+    "=== ROUND 3 ===",
+    "--- Elven Ranger's turn (Round 3, Initiative 18) ---",
+    "  [STATUS] Prone",
+    "  [CONCENTRATION] Hunter's Mark",
+    "[PLAYER TURN] Elven Ranger \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Elven Ranger: 4 step(s) queued \u2013 review below.",
+    "[ACTION] Elven Ranger stands up (costs 9 ft movement).",
+    "[ACTION] Elven Ranger Longbow ((7,6) Dis+8=14 vs AC 12) Hit? \u2192 Archmage 3 [Colossus Slayer +5]",
+    "  -> Archmage 3 takes 15 piercing",
+    "[ACTION] Elven Ranger Longbow ((10,5) Dis+8=13 vs AC 12) Hit? \u2192 Archmage 3",
+    "  -> Archmage 3 takes 7 piercing",
+    "[ACTION] Elven Ranger Longbow ((1,17) Dis+8=9 vs AC 12) Hit? \u2192 Archmage 3",
+    "[AI] Turn complete.",
+    "--- Archmage 3's turn (Round 3, Initiative 14) ---",
+    "  [STATUS] Grappled",
+    "  [STATUS] Prone",
+    "[AI PLAN] Archmage 3: 1 step(s) queued \u2013 review below.",
+    "[ACTION] Archmage 3 Dagger ((7,15) Dis+6=13 vs AC 16) Hit? \u2192 Elven Ranger",
+    "[AI] Turn complete.",
+    "--- Holy Paladin's turn (Round 3, Initiative 11) ---",
+    "  [CONCENTRATION] Divine Favor",
+    "[PLAYER TURN] Holy Paladin \u2013 log their action with 'LOG PLAYER ACTION'",
+    "[AI PLAN] Holy Paladin: 3 step(s) queued \u2013 review below.",
+    "[ACTION] Holy Paladin moves 5 ft.",
+    "[ACTION] Holy Paladin Longsword ((20,13) Adv+8=28 vs AC 12) CRIT! \u2192 Archmage 3 [Divine Smite (3st slot) 4d8=35 + Improved Smite +10]",
+    "  -> Archmage 3 takes 54 slashing",
+    "=== COMBAT OVER: PLAYERS WIN! ===",
+    "[ACTION] Holy Paladin Longsword ((8,9) Adv+8=17 vs AC 12) Hit? \u2192 Archmage 3 [Improved Smite +4]",
+    "  -> Archmage 3 takes 10 slashing",
+    "=== COMBAT OVER: PLAYERS WIN! ===",
+    "[AI] Turn complete."
+  ]
+}

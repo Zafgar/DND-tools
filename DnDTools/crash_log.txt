@@ -1,235 +1,113 @@
-2026-02-25 17:11:04,361 [INFO] Game starting...
-2026-02-25 17:11:35,606 [INFO] [BATTLE] === DEPLOYMENT PHASE ===
-2026-02-25 17:11:35,606 [INFO] [BATTLE] Drag characters to position them. Click START COMBAT when ready.
-2026-02-25 17:11:38,081 [INFO] [BATTLE] [MOVE] Young Black Dragon moved 33 ft.
-2026-02-25 17:11:38,592 [INFO] [BATTLE] [MOVE] Young Black Dragon 2 moved 13 ft.
-2026-02-25 17:11:40,167 [INFO] [BATTLE] [MOVE] Grukk Barbarian moved 11 ft.
-2026-02-25 17:11:41,138 [INFO] [BATTLE] [MOVE] Grukk Barbarian moved 31 ft.
-2026-02-25 17:11:42,327 [INFO] [BATTLE] [MOVE] War Cleric moved 32 ft.
-2026-02-25 17:11:43,389 [INFO] [BATTLE] [MOVE] Shadow Rogue moved 94 ft.
-2026-02-25 17:11:44,562 [INFO] [BATTLE] [MOVE] Fiend Warlock moved 43 ft.
-2026-02-25 17:11:45,511 [INFO] [BATTLE] [MOVE] Draconic Sorcerer moved 19 ft.
-2026-02-25 17:11:46,673 [INFO] [BATTLE] [MOVE] Lore Bard moved 57 ft.
-2026-02-25 17:11:47,857 [INFO] [BATTLE] [MOVE] Moon Druid moved 78 ft.
-2026-02-25 17:11:51,456 [INFO] [BATTLE] [DM] Weather changed to Rain
-2026-02-25 17:11:52,232 [INFO] [BATTLE] [DM] Weather changed to Fog
-2026-02-25 17:11:53,082 [INFO] [BATTLE] [DM] Weather changed to Ash
-2026-02-25 17:11:54,260 [INFO] [BATTLE] [TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove.
-2026-02-25 17:12:24,014 [INFO] [BATTLE] [TERRAIN] Terrain placement mode OFF.
-2026-02-25 17:12:25,952 [INFO] [BATTLE] === COMBAT STARTED ===
-2026-02-25 17:12:25,952 [INFO] [BATTLE] Initiative order: Fiend Warlock > Young Black Dragon > Lore Bard > Grukk Barbarian > Moon Druid > Young Black Dragon 2 > Shadow Rogue > War Cleric > Draconic Sorcerer
-2026-02-25 17:12:25,952 [INFO] [BATTLE] --- Round 1: Fiend Warlock's turn ---
-2026-02-25 17:12:25,953 [INFO] [BATTLE] Combat started! Initiative rolled.
-2026-02-25 17:12:25,953 [INFO] [BATTLE] --- Round 1: Fiend Warlock's turn ---
-2026-02-25 17:12:32,382 [INFO] [BATTLE] [AI PLAN] Fiend Warlock: 3 step(s) queued – review below.
-2026-02-25 17:12:34,958 [INFO] [BATTLE] [ACTION] Fiend Warlock repositions 30 ft.
-2026-02-25 17:12:40,323 [INFO] [BATTLE] [ACTION] Fiend Warlock casts Hex on Young Black Dragon 2 (+1d6 necrotic on hits, Concentration)
-2026-02-25 17:12:43,090 [INFO] [BATTLE] [ACTION] Fiend Warlock casts Eldritch Blast (13+9=22 vs AC 18) Hit? \u2192 Young Black Dragon
-2026-02-25 17:12:43,090 [INFO] [BATTLE]   -> Young Black Dragon takes 14 force
-2026-02-25 17:12:43,091 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:12:48,425 [INFO] [BATTLE] --- Young Black Dragon's turn (Round 1, Initiative 19) ---
-2026-02-25 17:12:50,135 [INFO] [BATTLE] [AI PLAN] Young Black Dragon: 2 step(s) queued – review below.
-2026-02-25 17:12:51,378 [INFO] [BATTLE] [ACTION] Young Black Dragon moves 20 ft.
-2026-02-25 17:12:54,224 [INFO] [BATTLE] [ACTION] Young Black Dragon uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:12:54,224 [INFO] [BATTLE]   -> Fiend Warlock FAILED save: takes 58 acid
-2026-02-25 17:12:54,224 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:12:57,575 [INFO] [BATTLE] [SYSTEM] Auto-Battle STARTED.
-2026-02-25 17:12:57,740 [INFO] [BATTLE] --- Lore Bard's turn (Round 1, Initiative 15) ---
-2026-02-25 17:12:57,740 [INFO] [BATTLE] [PLAYER TURN] Lore Bard – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:12:57,921 [INFO] [BATTLE] [AI PLAN] Lore Bard: 1 step(s) queued – review below.
-2026-02-25 17:12:58,104 [INFO] [BATTLE] [ACTION] Lore Bard casts Dissonant Whispers on Young Black Dragon (DC 17 Wisdom)
-2026-02-25 17:12:58,104 [INFO] [BATTLE]   -> Young Black Dragon FAILED save (Rolled 3+3=6 vs DC 17): takes 11 psychic
-2026-02-25 17:12:58,105 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:12:58,287 [INFO] [BATTLE] --- Grukk Barbarian's turn (Round 1, Initiative 14) ---
-2026-02-25 17:12:58,287 [INFO] [BATTLE] [PLAYER TURN] Grukk Barbarian – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:12:58,471 [INFO] [BATTLE] [AI PLAN] Grukk Barbarian: 4 step(s) queued – review below.
-2026-02-25 17:12:58,650 [INFO] [BATTLE] [ACTION] Grukk Barbarian enters a RAGE! (Resistance to B/P/S, +3 melee damage)
-2026-02-25 17:12:58,833 [INFO] [BATTLE] [ACTION] Grukk Barbarian moves 15 ft.
-2026-02-25 17:12:59,016 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((12,1) Adv+9=21 vs AC 18) Hit? \u2192 Young Black Dragon
-2026-02-25 17:12:59,016 [INFO] [BATTLE]   -> Young Black Dragon takes 9 slashing
-2026-02-25 17:12:59,197 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((19,20) Adv+9=29 vs AC 18) CRIT! \u2192 Young Black Dragon
-2026-02-25 17:12:59,198 [INFO] [BATTLE]   -> Young Black Dragon takes 19 slashing
-2026-02-25 17:12:59,198 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:12:59,378 [INFO] [BATTLE] --- Moon Druid's turn (Round 1, Initiative 14) ---
-2026-02-25 17:12:59,378 [INFO] [BATTLE] [PLAYER TURN] Moon Druid – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:12:59,562 [INFO] [BATTLE] [AI PLAN] Moon Druid: 2 step(s) queued – review below.
-2026-02-25 17:12:59,741 [INFO] [BATTLE] [ACTION] Moon Druid Dashes (Action): Moon Druid moves 35 ft.
-2026-02-25 17:12:59,922 [INFO] [BATTLE] [ACTION] Moon Druid Wild Shapes into a Giant Scorpion!
-2026-02-25 17:12:59,923 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:00,105 [INFO] [BATTLE] --- Young Black Dragon 2's turn (Round 1, Initiative 13) ---
-2026-02-25 17:13:00,289 [INFO] [BATTLE] [AI PLAN] Young Black Dragon 2: 2 step(s) queued – review below.
-2026-02-25 17:13:00,470 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 moves 15 ft.
-2026-02-25 17:13:00,653 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:13:00,653 [INFO] [BATTLE]   -> Fiend Warlock FAILED save (Rolled 8+2=10 vs DC 14): takes 47 acid
-2026-02-25 17:13:00,654 [INFO] [BATTLE]   -> Grukk Barbarian FAILED save (Rolled 1+2=3 vs DC 14): takes 23 acid
-2026-02-25 17:13:00,654 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:00,836 [INFO] [BATTLE] --- Shadow Rogue's turn (Round 1, Initiative 8) ---
-2026-02-25 17:13:00,836 [INFO] [BATTLE] [PLAYER TURN] Shadow Rogue – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:01,022 [INFO] [BATTLE] [AI PLAN] Shadow Rogue: 2 step(s) queued – review below.
-2026-02-25 17:13:01,201 [INFO] [BATTLE] [ACTION] Shadow Rogue uses Cunning Action to Hide (Stealth 25 vs PP 16).
-2026-02-25 17:13:01,383 [INFO] [BATTLE] [ACTION] Shadow Rogue moves 25 ft.
-2026-02-25 17:13:01,383 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:01,566 [INFO] [BATTLE] --- War Cleric's turn (Round 1, Initiative 5) ---
-2026-02-25 17:13:01,566 [INFO] [BATTLE] [PLAYER TURN] War Cleric – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:01,749 [INFO] [BATTLE] [AI PLAN] War Cleric: 2 step(s) queued – review below.
-2026-02-25 17:13:01,934 [INFO] [BATTLE] [ACTION] War Cleric disengages and moves 25 ft.
-2026-02-25 17:13:02,115 [INFO] [BATTLE] [ACTION] War Cleric casts Banishment on Young Black Dragon 2 (DC 16 Charisma)
-2026-02-25 17:13:02,115 [INFO] [BATTLE]   -> War Cleric stops concentrating on Banishment.
-2026-02-25 17:13:02,116 [INFO] [BATTLE]   -> Young Black Dragon 2 is Banished
-2026-02-25 17:13:02,116 [INFO] [BATTLE]   [BANISHMENT] Young Black Dragon 2 vanishes to a demiplane!
-2026-02-25 17:13:02,116 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:02,301 [INFO] [BATTLE] [BANISHMENT] Duration expired. Young Black Dragon 2 returns.
-2026-02-25 17:13:02,301 [INFO] [BATTLE] [BANISHMENT] Young Black Dragon 2 reappears at (10, 3).
-2026-02-25 17:13:02,301 [INFO] [BATTLE] --- Draconic Sorcerer's turn (Round 1, Initiative 4) ---
-2026-02-25 17:13:02,301 [INFO] [BATTLE] [PLAYER TURN] Draconic Sorcerer – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:02,484 [INFO] [BATTLE] [AI PLAN] Draconic Sorcerer: 1 step(s) queued – review below.
-2026-02-25 17:13:02,666 [INFO] [BATTLE] [ACTION] Draconic Sorcerer casts Scorching Ray (7+9=16 vs AC 18) Hit? \u2192 Young Black Dragon
-2026-02-25 17:13:02,667 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:02,847 [INFO] [BATTLE] === ROUND 2 ===
-2026-02-25 17:13:02,848 [INFO] [BATTLE]   [DEATH] Death Save: d20=3 (Failure) [0/3 S, 1/3 F]
-2026-02-25 17:13:02,848 [INFO] [BATTLE] --- Fiend Warlock's turn (Round 2, Initiative 21) ---
-2026-02-25 17:13:02,848 [INFO] [BATTLE]   [STATUS] Unconscious
-2026-02-25 17:13:02,848 [INFO] [BATTLE] [PLAYER TURN] Fiend Warlock – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:03,029 [INFO] [BATTLE] --- Young Black Dragon's turn (Round 2, Initiative 19) ---
-2026-02-25 17:13:03,211 [INFO] [BATTLE] [AI PLAN] Young Black Dragon: 2 step(s) queued – review below.
-2026-02-25 17:13:03,393 [INFO] [BATTLE] [ACTION] Young Black Dragon moves 5 ft.
-2026-02-25 17:13:03,573 [INFO] [BATTLE] [ACTION] Young Black Dragon uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:13:03,573 [INFO] [BATTLE]   -> Grukk Barbarian FAILED save (Rolled 8+2=10 vs DC 14): takes 12 acid
-2026-02-25 17:13:03,574 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:03,754 [INFO] [BATTLE] --- Lore Bard's turn (Round 2, Initiative 15) ---
-2026-02-25 17:13:03,754 [INFO] [BATTLE] [PLAYER TURN] Lore Bard – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:03,937 [INFO] [BATTLE] [AI PLAN] Lore Bard: 1 step(s) queued – review below.
-2026-02-25 17:13:04,119 [INFO] [BATTLE] [ACTION] Lore Bard casts Dissonant Whispers on Young Black Dragon (DC 17 Wisdom)
-2026-02-25 17:13:04,119 [INFO] [BATTLE]   -> Young Black Dragon FAILED save (Rolled 3+3=6 vs DC 17): takes 7 psychic
-2026-02-25 17:13:04,120 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:04,301 [INFO] [BATTLE] --- Grukk Barbarian's turn (Round 2, Initiative 14) ---
-2026-02-25 17:13:04,301 [INFO] [BATTLE] [PLAYER TURN] Grukk Barbarian – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:04,482 [INFO] [BATTLE] [AI PLAN] Grukk Barbarian: 2 step(s) queued – review below.
-2026-02-25 17:13:04,666 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((3,17) Adv+9=26 vs AC 18) Hit? \u2192 Young Black Dragon
-2026-02-25 17:13:04,666 [INFO] [BATTLE]   -> Young Black Dragon takes 10 slashing
-2026-02-25 17:13:04,852 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((20,13) Adv+9=29 vs AC 18) CRIT! \u2192 Young Black Dragon
-2026-02-25 17:13:04,852 [INFO] [BATTLE]   -> Young Black Dragon takes 29 slashing
-2026-02-25 17:13:04,853 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:05,033 [INFO] [BATTLE] --- Moon Druid's turn (Round 2, Initiative 14) ---
-2026-02-25 17:13:05,033 [INFO] [BATTLE] [PLAYER TURN] Moon Druid – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:05,218 [INFO] [BATTLE] [AI PLAN] Moon Druid: 3 step(s) queued – review below.
-2026-02-25 17:13:05,401 [INFO] [BATTLE] [ACTION] Moon Druid disengages and moves 35 ft.
-2026-02-25 17:13:05,582 [INFO] [BATTLE] [ACTION] Moon Druid Dashes (Action): Moon Druid moves 35 ft.
-2026-02-25 17:13:05,766 [INFO] [BATTLE] [ACTION] Moon Druid Wild Shapes into a Giant Scorpion!
-2026-02-25 17:13:05,766 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:05,949 [INFO] [BATTLE] --- Young Black Dragon 2's turn (Round 2, Initiative 13) ---
-2026-02-25 17:13:06,131 [INFO] [BATTLE] [AI PLAN] Young Black Dragon 2: 2 step(s) queued – review below.
-2026-02-25 17:13:06,313 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 moves 5 ft.
-2026-02-25 17:13:06,493 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:13:06,493 [INFO] [BATTLE]   -> Grukk Barbarian FAILED save (Rolled 1+2=3 vs DC 14): takes 22 acid
-2026-02-25 17:13:06,493 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:06,671 [INFO] [BATTLE] --- Shadow Rogue's turn (Round 2, Initiative 8) ---
-2026-02-25 17:13:06,671 [INFO] [BATTLE]   [STATUS] Invisible
-2026-02-25 17:13:06,671 [INFO] [BATTLE] [PLAYER TURN] Shadow Rogue – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:06,854 [INFO] [BATTLE] [AI PLAN] Shadow Rogue: 3 step(s) queued – review below.
-2026-02-25 17:13:07,040 [INFO] [BATTLE] [ACTION] Shadow Rogue moves 20 ft.
-2026-02-25 17:13:07,222 [INFO] [BATTLE] [ACTION] Shadow Rogue Rapier ((15,3) Adv+9=24 vs AC 18) Hit? \u2192 Young Black Dragon [Revealed] [Sneak Attack 5d6=18]
-2026-02-25 17:13:07,222 [INFO] [BATTLE]   -> Young Black Dragon takes 24 piercing
-2026-02-25 17:13:07,405 [INFO] [BATTLE] [ACTION] Shadow Rogue Rapier (17+9=26 vs AC 18) Hit? \u2192 Young Black Dragon
-2026-02-25 17:13:07,405 [INFO] [BATTLE]   -> Young Black Dragon takes 12 piercing
-2026-02-25 17:13:07,405 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:07,586 [INFO] [BATTLE] --- War Cleric's turn (Round 2, Initiative 5) ---
-2026-02-25 17:13:07,586 [INFO] [BATTLE]   [CONCENTRATION] Banishment
-2026-02-25 17:13:07,586 [INFO] [BATTLE] [PLAYER TURN] War Cleric – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:07,765 [INFO] [BATTLE] [AI PLAN] War Cleric: 1 step(s) queued – review below.
-2026-02-25 17:13:07,945 [INFO] [BATTLE] [ACTION] War Cleric casts Banishment on Young Black Dragon 2 (DC 16 Charisma)
-2026-02-25 17:13:07,945 [INFO] [BATTLE]   -> Young Black Dragon 2 SAVED (Rolled 16+5=21 vs DC 16): no damage
-2026-02-25 17:13:07,945 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:08,130 [INFO] [BATTLE] --- Draconic Sorcerer's turn (Round 2, Initiative 4) ---
-2026-02-25 17:13:08,130 [INFO] [BATTLE] [PLAYER TURN] Draconic Sorcerer – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:08,311 [INFO] [BATTLE] [AI PLAN] Draconic Sorcerer: 1 step(s) queued – review below.
-2026-02-25 17:13:08,489 [INFO] [BATTLE] [ACTION] Draconic Sorcerer casts Scorching Ray (3+9=12 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:08,490 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:08,673 [INFO] [BATTLE] === ROUND 3 ===
-2026-02-25 17:13:08,674 [INFO] [BATTLE]   [DEATH] Death Save: d20=10 (Success) [1/3 S, 1/3 F]
-2026-02-25 17:13:08,674 [INFO] [BATTLE] --- Fiend Warlock's turn (Round 3, Initiative 21) ---
-2026-02-25 17:13:08,674 [INFO] [BATTLE]   [STATUS] Unconscious
-2026-02-25 17:13:08,674 [INFO] [BATTLE] [PLAYER TURN] Fiend Warlock – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:08,856 [INFO] [BATTLE] --- Lore Bard's turn (Round 3, Initiative 15) ---
-2026-02-25 17:13:08,856 [INFO] [BATTLE] [PLAYER TURN] Lore Bard – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:09,067 [INFO] [BATTLE] [AI PLAN] Lore Bard: 1 step(s) queued – review below.
-2026-02-25 17:13:09,244 [INFO] [BATTLE] [ACTION] Lore Bard Dashes (Action): Lore Bard moves 60 ft.
-2026-02-25 17:13:09,244 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:09,426 [INFO] [BATTLE] --- Grukk Barbarian's turn (Round 3, Initiative 14) ---
-2026-02-25 17:13:09,426 [INFO] [BATTLE] [PLAYER TURN] Grukk Barbarian – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:09,612 [INFO] [BATTLE] [AI PLAN] Grukk Barbarian: 3 step(s) queued – review below.
-2026-02-25 17:13:09,792 [INFO] [BATTLE] [ACTION] Grukk Barbarian moves 15 ft.
-2026-02-25 17:13:09,975 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((16,14) Adv+9=25 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:09,975 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 16 slashing
-2026-02-25 17:13:10,159 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((2,11) Adv+9=20 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:10,159 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 8 slashing
-2026-02-25 17:13:10,160 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:10,343 [INFO] [BATTLE] --- Moon Druid's turn (Round 3, Initiative 14) ---
-2026-02-25 17:13:10,343 [INFO] [BATTLE] [PLAYER TURN] Moon Druid – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:10,527 [INFO] [BATTLE] [AI PLAN] Moon Druid: 2 step(s) queued – review below.
-2026-02-25 17:13:10,710 [INFO] [BATTLE] [ACTION] Moon Druid disengages and moves 35 ft.
-2026-02-25 17:13:10,890 [INFO] [BATTLE] [ACTION] Moon Druid Produce Flame (18+9=27 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:10,890 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 6 fire
-2026-02-25 17:13:10,890 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:11,073 [INFO] [BATTLE] --- Young Black Dragon 2's turn (Round 3, Initiative 13) ---
-2026-02-25 17:13:11,255 [INFO] [BATTLE] [AI PLAN] Young Black Dragon 2: 1 step(s) queued – review below.
-2026-02-25 17:13:11,439 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:13:11,439 [INFO] [BATTLE]   -> Lore Bard SAVED (Rolled 17+7=24 vs DC 14): takes 25 acid
-2026-02-25 17:13:11,439 [INFO] [BATTLE]   -> Grukk Barbarian FAILED save (Rolled 10+2=12 vs DC 14): takes 25 acid
-2026-02-25 17:13:11,440 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:11,622 [INFO] [BATTLE] --- Shadow Rogue's turn (Round 3, Initiative 8) ---
-2026-02-25 17:13:11,622 [INFO] [BATTLE] [PLAYER TURN] Shadow Rogue – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:11,805 [INFO] [BATTLE] [AI PLAN] Shadow Rogue: 4 step(s) queued – review below.
-2026-02-25 17:13:11,985 [INFO] [BATTLE] [ACTION] Shadow Rogue uses Cunning Action to Hide (Stealth 37 vs PP 16).
-2026-02-25 17:13:12,166 [INFO] [BATTLE] [ACTION] Shadow Rogue moves 5 ft.
-2026-02-25 17:13:12,347 [INFO] [BATTLE] [ACTION] Shadow Rogue Rapier ((16,20) Adv+9=29 vs AC 18) CRIT! \u2192 Young Black Dragon 2 [Revealed] [Sneak Attack 5d6=44]
-2026-02-25 17:13:12,347 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 56 piercing
-2026-02-25 17:13:12,532 [INFO] [BATTLE] [ACTION] Shadow Rogue Rapier (5+9=14 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:12,532 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:12,713 [INFO] [BATTLE] --- War Cleric's turn (Round 3, Initiative 5) ---
-2026-02-25 17:13:12,713 [INFO] [BATTLE]   [CONCENTRATION] Banishment
-2026-02-25 17:13:12,713 [INFO] [BATTLE] [PLAYER TURN] War Cleric – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:12,890 [INFO] [BATTLE] [AI PLAN] War Cleric: 1 step(s) queued – review below.
-2026-02-25 17:13:13,074 [INFO] [BATTLE] [ACTION] War Cleric casts Banishment on Young Black Dragon 2 (DC 16 Charisma)
-2026-02-25 17:13:13,075 [INFO] [BATTLE]   -> Young Black Dragon 2 SAVED (Rolled 19+5=24 vs DC 16): no damage
-2026-02-25 17:13:13,075 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:13,255 [INFO] [BATTLE] --- Draconic Sorcerer's turn (Round 3, Initiative 4) ---
-2026-02-25 17:13:13,255 [INFO] [BATTLE] [PLAYER TURN] Draconic Sorcerer – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:13,439 [INFO] [BATTLE] [AI PLAN] Draconic Sorcerer: 1 step(s) queued – review below.
-2026-02-25 17:13:13,619 [INFO] [BATTLE] [ACTION] Draconic Sorcerer casts Scorching Ray (10+9=19 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:13,619 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 22 fire
-2026-02-25 17:13:13,620 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:13,801 [INFO] [BATTLE] === ROUND 4 ===
-2026-02-25 17:13:13,801 [INFO] [BATTLE]   [DEATH] Death Save: d20=13 (Success) [2/3 S, 1/3 F]
-2026-02-25 17:13:13,801 [INFO] [BATTLE] --- Fiend Warlock's turn (Round 4, Initiative 21) ---
-2026-02-25 17:13:13,801 [INFO] [BATTLE]   [STATUS] Unconscious
-2026-02-25 17:13:13,801 [INFO] [BATTLE] [PLAYER TURN] Fiend Warlock – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:13,983 [INFO] [BATTLE] --- Lore Bard's turn (Round 4, Initiative 15) ---
-2026-02-25 17:13:13,983 [INFO] [BATTLE] [PLAYER TURN] Lore Bard – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:14,166 [INFO] [BATTLE] [AI PLAN] Lore Bard: 2 step(s) queued – review below.
-2026-02-25 17:13:14,344 [INFO] [BATTLE] [ACTION] Lore Bard disengages and moves 30 ft.
-2026-02-25 17:13:14,528 [INFO] [BATTLE] [ACTION] Lore Bard casts Dissonant Whispers on Young Black Dragon 2 (DC 17 Wisdom)
-2026-02-25 17:13:14,528 [INFO] [BATTLE]   -> Young Black Dragon 2 SAVED (Rolled 20+3=23 vs DC 17): takes 5 psychic
-2026-02-25 17:13:14,529 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:14,708 [INFO] [BATTLE] --- Grukk Barbarian's turn (Round 4, Initiative 14) ---
-2026-02-25 17:13:14,708 [INFO] [BATTLE] [PLAYER TURN] Grukk Barbarian – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:14,894 [INFO] [BATTLE] [AI PLAN] Grukk Barbarian: 2 step(s) queued – review below.
-2026-02-25 17:13:15,077 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((6,3) Adv+9=15 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:15,255 [INFO] [BATTLE] [ACTION] Grukk Barbarian Greataxe ((3,5) Adv+9=14 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:15,256 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:15,434 [INFO] [BATTLE] --- Moon Druid's turn (Round 4, Initiative 14) ---
-2026-02-25 17:13:15,434 [INFO] [BATTLE] [PLAYER TURN] Moon Druid – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:15,616 [INFO] [BATTLE] [AI PLAN] Moon Druid: 1 step(s) queued – review below.
-2026-02-25 17:13:15,799 [INFO] [BATTLE] [ACTION] Moon Druid Produce Flame (2+9=11 vs AC 18) Hit? \u2192 Young Black Dragon 2
-2026-02-25 17:13:15,799 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:15,979 [INFO] [BATTLE] --- Young Black Dragon 2's turn (Round 4, Initiative 13) ---
-2026-02-25 17:13:16,161 [INFO] [BATTLE] [AI PLAN] Young Black Dragon 2: 1 step(s) queued – review below.
-2026-02-25 17:13:16,344 [INFO] [BATTLE] [ACTION] Young Black Dragon 2 uses Acid Breath (DC 14 Dexterity)
-2026-02-25 17:13:16,344 [INFO] [BATTLE]   -> Grukk Barbarian SAVED (Rolled 17+2=19 vs DC 14): takes 13 acid
-2026-02-25 17:13:16,344 [INFO] [BATTLE] [AI] Turn complete.
-2026-02-25 17:13:16,530 [INFO] [BATTLE] --- Shadow Rogue's turn (Round 4, Initiative 8) ---
-2026-02-25 17:13:16,530 [INFO] [BATTLE] [PLAYER TURN] Shadow Rogue – log their action with 'LOG PLAYER ACTION'
-2026-02-25 17:13:16,714 [INFO] [BATTLE] [AI PLAN] Shadow Rogue: 2 step(s) queued – review below.
-2026-02-25 17:13:16,898 [INFO] [BATTLE] [ACTION] Shadow Rogue Rapier (13+9=22 vs AC 18) Hit? \u2192 Young Black Dragon 2 [Sneak Attack 5d6=20]
-2026-02-25 17:13:16,898 [INFO] [BATTLE]   -> Young Black Dragon 2 takes 27 piercing
-2026-02-25 17:13:16,898 [INFO] [BATTLE] === COMBAT OVER: PLAYERS WIN! ===
+2026-02-27 12:31:32,502 [INFO] Game starting...
+2026-02-27 12:31:44,523 [INFO] [BATTLE] === DEPLOYMENT PHASE ===
+2026-02-27 12:31:44,523 [INFO] [BATTLE] Drag characters to position them. Click START COMBAT when ready.
+2026-02-27 12:31:45,657 [INFO] [BATTLE] [MOVE] Holy Paladin moved 25 ft.
+2026-02-27 12:31:46,790 [INFO] [BATTLE] [MOVE] Veteran Fighter moved 30 ft.
+2026-02-27 12:31:48,393 [INFO] [BATTLE] === COMBAT STARTED ===
+2026-02-27 12:31:48,393 [INFO] [BATTLE] Initiative order: Veteran Fighter > Banshee > Holy Paladin > Ettin 2 > Ettin
+2026-02-27 12:31:48,393 [INFO] [BATTLE] --- Round 1: Veteran Fighter's turn ---
+2026-02-27 12:31:48,394 [INFO] [BATTLE] Combat started! Initiative rolled.
+2026-02-27 12:31:48,394 [INFO] [BATTLE] --- Round 1: Veteran Fighter's turn ---
+2026-02-27 12:31:49,352 [INFO] [BATTLE] [SYSTEM] Auto-Battle STARTED.
+2026-02-27 12:31:49,525 [INFO] [BATTLE] [AI PLAN] Veteran Fighter: 8 step(s) queued – review below.
+2026-02-27 12:31:49,703 [INFO] [BATTLE] [ACTION] Veteran Fighter moves 30 ft.
+2026-02-27 12:31:49,883 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (11+8=19 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:49,884 [INFO] [BATTLE]   -> Banshee takes 8 slashing
+2026-02-27 12:31:50,065 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (3+8=11 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:50,246 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (7+8=15 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:50,246 [INFO] [BATTLE]   -> Banshee takes 11 slashing
+2026-02-27 12:31:50,428 [INFO] [BATTLE] [ACTION] Veteran Fighter uses Action Surge!
+2026-02-27 12:31:50,611 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (4+8=12 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:50,611 [INFO] [BATTLE]   -> Banshee takes 6 slashing
+2026-02-27 12:31:50,795 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (12+8=20 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:50,795 [INFO] [BATTLE]   -> Banshee takes 8 slashing
+2026-02-27 12:31:50,976 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (4+8=12 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:31:50,976 [INFO] [BATTLE]   -> Banshee takes 11 slashing
+2026-02-27 12:31:50,976 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:31:51,157 [INFO] [BATTLE] --- Banshee's turn (Round 1, Initiative 18) ---
+2026-02-27 12:31:51,339 [INFO] [BATTLE] [AI PLAN] Banshee: 1 step(s) queued – review below.
+2026-02-27 12:31:51,517 [INFO] [BATTLE] [ACTION] Banshee Corrupting Touch (9+4=13 vs AC 18) Hit? \u2192 Veteran Fighter
+2026-02-27 12:31:51,518 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:31:51,700 [INFO] [BATTLE] --- Holy Paladin's turn (Round 1, Initiative 10) ---
+2026-02-27 12:31:51,700 [INFO] [BATTLE] [PLAYER TURN] Holy Paladin – log their action with 'LOG PLAYER ACTION'
+2026-02-27 12:31:51,882 [INFO] [BATTLE] [AI PLAN] Holy Paladin: 3 step(s) queued – review below.
+2026-02-27 12:31:52,059 [INFO] [BATTLE] [ACTION] Holy Paladin casts Divine Favor (+1d4 radiant on weapon hits)
+2026-02-27 12:31:52,240 [INFO] [BATTLE] [ACTION] Holy Paladin moves 30 ft.
+2026-02-27 12:31:52,417 [INFO] [BATTLE] [ACTION] Holy Paladin Dashes (Action): Holy Paladin moves 20 ft.
+2026-02-27 12:31:52,417 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:31:52,601 [INFO] [BATTLE] --- Ettin 2's turn (Round 1, Initiative 7) ---
+2026-02-27 12:31:52,783 [INFO] [BATTLE] [SYSTEM] Auto-Battle STOPPED.
+2026-02-27 12:31:55,268 [INFO] [BATTLE] [AI PLAN] Ettin 2: 3 step(s) queued – review below.
+2026-02-27 12:31:56,456 [INFO] [BATTLE] [ACTION] Ettin 2 moves 30 ft.
+2026-02-27 12:31:57,702 [INFO] [BATTLE] [ACTION] Ettin 2 Battleaxe (15+7=22 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:31:57,703 [INFO] [BATTLE]   -> Holy Paladin takes 9 slashing
+2026-02-27 12:31:58,595 [INFO] [BATTLE] [ACTION] Ettin 2 Morningstar (12+7=19 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:31:58,596 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:31:59,731 [INFO] [BATTLE] --- Ettin's turn (Round 1, Initiative 0) ---
+2026-02-27 12:32:00,898 [INFO] [BATTLE] [AI PLAN] Ettin: 3 step(s) queued – review below.
+2026-02-27 12:32:03,380 [INFO] [BATTLE] [ACTION] Ettin moves 40 ft.
+2026-02-27 12:32:05,369 [INFO] [BATTLE] [ACTION] Ettin Battleaxe (20+7=27 vs AC 20) CRIT! \u2192 Holy Paladin
+2026-02-27 12:32:05,369 [INFO] [BATTLE]   -> Holy Paladin takes 28 slashing
+2026-02-27 12:32:06,888 [INFO] [BATTLE] [ACTION] Ettin Morningstar (10+7=17 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:32:06,888 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:32:07,988 [INFO] [BATTLE] === ROUND 2 ===
+2026-02-27 12:32:07,988 [INFO] [BATTLE] --- Veteran Fighter's turn (Round 2, Initiative 20) ---
+2026-02-27 12:32:07,988 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:32:07,988 [INFO] [BATTLE] [PLAYER TURN] Veteran Fighter – log their action with 'LOG PLAYER ACTION'
+2026-02-27 12:32:12,926 [INFO] [BATTLE] [AI PLAN] Veteran Fighter: 3 step(s) queued – review below.
+2026-02-27 12:32:15,681 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (8+8=16 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:32:15,681 [INFO] [BATTLE]   -> Banshee takes 8 slashing
+2026-02-27 12:32:18,162 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (18+8=26 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:32:18,162 [INFO] [BATTLE]   -> Banshee takes 7 slashing
+2026-02-27 12:32:18,914 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (13+8=21 vs AC 12) Hit? \u2192 Banshee
+2026-02-27 12:32:18,915 [INFO] [BATTLE]   -> Banshee takes 5 slashing
+2026-02-27 12:32:18,915 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:32:20,881 [INFO] [BATTLE] --- Holy Paladin's turn (Round 2, Initiative 10) ---
+2026-02-27 12:32:20,881 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:32:20,881 [INFO] [BATTLE] [PLAYER TURN] Holy Paladin – log their action with 'LOG PLAYER ACTION'
+2026-02-27 12:32:23,906 [INFO] [BATTLE] [AI PLAN] Holy Paladin: 3 step(s) queued – review below.
+2026-02-27 12:32:29,231 [INFO] [BATTLE] [ACTION] Holy Paladin casts Divine Favor (+1d4 radiant on weapon hits)
+2026-02-27 12:32:44,564 [INFO] [BATTLE] [ACTION] Holy Paladin Longsword (7+8=15 vs AC 12) Hit? \u2192 Ettin 2 [Divine Smite (1st slot) 2d8=8 + Improved Smite +6]
+2026-02-27 12:32:44,564 [INFO] [BATTLE]   -> Ettin 2 takes 19 slashing
+2026-02-27 12:32:47,729 [INFO] [BATTLE] [ACTION] Holy Paladin Longsword (19+8=27 vs AC 12) Hit? \u2192 Ettin 2 [Improved Smite +4]
+2026-02-27 12:32:47,729 [INFO] [BATTLE]   -> Ettin 2 takes 9 slashing
+2026-02-27 12:32:47,730 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:32:50,623 [INFO] [BATTLE] --- Ettin 2's turn (Round 2, Initiative 7) ---
+2026-02-27 12:32:50,623 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:32:51,078 [INFO] [BATTLE] [AI PLAN] Ettin 2: 2 step(s) queued – review below.
+2026-02-27 12:32:55,071 [INFO] [BATTLE] [ACTION] Ettin 2 Battleaxe ((11,12) Adv+7=19 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:32:55,420 [INFO] [BATTLE] [ACTION] Ettin 2 Morningstar ((7,16) Adv+7=23 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:32:55,420 [INFO] [BATTLE]   -> Holy Paladin takes 16 piercing
+2026-02-27 12:32:55,420 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:32:56,373 [INFO] [BATTLE] --- Ettin's turn (Round 2, Initiative 0) ---
+2026-02-27 12:32:56,373 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:32:58,207 [INFO] [BATTLE] [AI PLAN] Ettin: 2 step(s) queued – review below.
+2026-02-27 12:32:59,911 [INFO] [BATTLE] [ACTION] Ettin Battleaxe ((19,13) Adv+7=26 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:32:59,911 [INFO] [BATTLE]   -> Holy Paladin takes 12 slashing
+2026-02-27 12:33:00,674 [INFO] [BATTLE] [ACTION] Ettin Morningstar ((13,5) Adv+7=20 vs AC 20) Hit? \u2192 Holy Paladin
+2026-02-27 12:33:00,674 [INFO] [BATTLE]   -> Holy Paladin takes 16 piercing
+2026-02-27 12:33:00,674 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:33:01,563 [INFO] [BATTLE] === ROUND 3 ===
+2026-02-27 12:33:01,563 [INFO] [BATTLE] --- Veteran Fighter's turn (Round 3, Initiative 20) ---
+2026-02-27 12:33:01,563 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:33:01,563 [INFO] [BATTLE] [PLAYER TURN] Veteran Fighter – log their action with 'LOG PLAYER ACTION'
+2026-02-27 12:33:03,871 [INFO] [BATTLE] [AI PLAN] Veteran Fighter: 3 step(s) queued – review below.
+2026-02-27 12:33:05,652 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (6+8=14 vs AC 12) Hit? \u2192 Ettin 2
+2026-02-27 12:33:05,652 [INFO] [BATTLE]   -> Ettin 2 takes 8 slashing
+2026-02-27 12:33:05,982 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (6+8=14 vs AC 12) Hit? \u2192 Ettin 2
+2026-02-27 12:33:05,982 [INFO] [BATTLE]   -> Ettin 2 takes 11 slashing
+2026-02-27 12:33:06,375 [INFO] [BATTLE] [ACTION] Veteran Fighter Longsword (19+8=27 vs AC 12) CRIT! \u2192 Ettin 2
+2026-02-27 12:33:06,375 [INFO] [BATTLE]   -> Ettin 2 takes 14 slashing
+2026-02-27 12:33:06,375 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:33:07,248 [INFO] [BATTLE] --- Holy Paladin's turn (Round 3, Initiative 10) ---
+2026-02-27 12:33:07,248 [INFO] [BATTLE]   [STATUS] Prone
+2026-02-27 12:33:07,248 [INFO] [BATTLE]   [STATUS] Grappled
+2026-02-27 12:33:07,248 [INFO] [BATTLE] [PLAYER TURN] Holy Paladin – log their action with 'LOG PLAYER ACTION'
+2026-02-27 12:33:08,104 [INFO] [BATTLE] [AI PLAN] Holy Paladin: 2 step(s) queued – review below.
+2026-02-27 12:33:08,104 [INFO] [BATTLE] [GRAPPLE] Ettin 2 broke free from Holy Paladin (out of reach).
+2026-02-27 12:33:08,104 [INFO] [BATTLE] [GRAPPLE] Ettin broke free from Holy Paladin (out of reach).
+2026-02-27 12:33:08,104 [INFO] [BATTLE] [GRAPPLE] Holy Paladin broke free from Ettin 2 (out of reach).
+2026-02-27 12:33:14,809 [INFO] [BATTLE] [ACTION] Holy Paladin casts Divine Favor (+1d4 radiant on weapon hits)
+2026-02-27 12:33:16,222 [INFO] [BATTLE] [ACTION] Holy Paladin Disengages (Action) and retreats.
+2026-02-27 12:33:16,222 [INFO] [BATTLE] [AI] Turn complete.
+2026-02-27 12:33:26,502 [INFO] [BATTLE] [AI] Holy Paladin: Nothing to do

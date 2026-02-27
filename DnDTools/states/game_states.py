@@ -3076,11 +3076,13 @@ class BattleState(GameState):
         # For Cone, origin is attacker. For Sphere, origin is target point.
         origin_x, origin_y = cx_grid, cy_grid
         if shape == "cone" and step.attacker:
-            origin_x, origin_y = step.attacker.grid_x, step.attacker.grid_y
+            size = step.attacker.size_in_squares
+            origin_x = step.attacker.grid_x + size / 2.0
+            origin_y = step.attacker.grid_y + size / 2.0
             sx, sy = self._grid_to_screen(origin_x, origin_y)
 
-        cx_px = int(sx + gsz // 2)
-        cy_px = int(sy + gsz // 2)
+        cx_px = int(sx)
+        cy_px = int(sy)
         radius_px = int(radius / 5 * gsz)
 
         # Semi-transparent overlay
@@ -3724,7 +3726,8 @@ class BattleState(GameState):
 
         # Caster screen pos
         cx, cy = self._grid_to_screen(caster.grid_x, caster.grid_y)
-        caster_px = (cx + gsz//2, cy + gsz//2)
+        size = caster.size_in_squares
+        caster_px = (cx + (size * gsz)//2, cy + (size * gsz)//2)
 
         # Mouse grid pos
         gx, gy = self._screen_to_grid(mx, my)
@@ -3873,7 +3876,8 @@ class BattleState(GameState):
         action = self.action_targeting
         gsz = self.battle.grid_size
         cx, cy = self._grid_to_screen(caster.grid_x, caster.grid_y)
-        caster_px = (cx + gsz//2, cy + gsz//2)
+        size = caster.size_in_squares
+        caster_px = (cx + (size * gsz)//2, cy + (size * gsz)//2)
         gx, gy = self._screen_to_grid(mx, my)
         
         # Range check
