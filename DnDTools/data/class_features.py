@@ -978,6 +978,1132 @@ MONK_SHADOW = {
 # ============================================================
 # Rage count by Barbarian level
 # ============================================================
+# ============================================================
+# ADDITIONAL SUBCLASSES (XGtE, SCAG, PHB missing)
+# ============================================================
+
+# --- BARBARIAN ---
+BARBARIAN_ANCESTRAL_GUARDIAN = {
+    3: [
+        Feature("Ancestral Protectors", "While raging, first creature you hit has disadvantage "
+                "on attacks that don't target you. Others have resistance to its attacks.",
+                feature_type="class", mechanic="ancestral_protectors"),
+    ],
+    6: [
+        Feature("Spirit Shield", "Reaction: reduce damage to ally within 30ft by 2d6 while raging.",
+                feature_type="class", mechanic="spirit_shield", mechanic_value="2d6"),
+    ],
+    10: [
+        Feature("Consult the Spirits", "Clairvoyance or Augury as ritual. 1/short rest.",
+                feature_type="class", mechanic="consult_spirits", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    14: [
+        Feature("Vengeful Ancestors", "Spirit Shield also deals force damage to attacker = reduction.",
+                feature_type="class", mechanic="vengeful_ancestors"),
+    ],
+}
+
+BARBARIAN_STORM_HERALD = {
+    3: [
+        Feature("Storm Aura", "Bonus action while raging: 10ft aura. Desert=fire, Sea=lightning, "
+                "Tundra=temp HP. Scales with level.",
+                feature_type="class", mechanic="storm_aura"),
+    ],
+    6: [
+        Feature("Storm Soul", "Desert=fire resistance, Sea=lightning+swim, Tundra=cold resistance.",
+                feature_type="class", mechanic="storm_soul"),
+    ],
+    10: [
+        Feature("Shielding Storm", "Allies in aura gain your damage resistance type.",
+                feature_type="class", mechanic="shielding_storm"),
+    ],
+    14: [
+        Feature("Raging Storm", "Desert=reaction fire, Sea=reaction knockdown, Tundra=speed 0.",
+                feature_type="class", mechanic="raging_storm"),
+    ],
+}
+
+BARBARIAN_ZEALOT = {
+    3: [
+        Feature("Divine Fury", "First hit each turn while raging: +1d6+half level radiant/necrotic.",
+                feature_type="class", mechanic="divine_fury", mechanic_value="1d6"),
+        Feature("Warrior of the Gods", "Spells to raise you from dead cost no material components.",
+                feature_type="class", mechanic="warrior_of_gods"),
+    ],
+    6: [
+        Feature("Fanatical Focus", "While raging, re-roll failed save. 1/rage.",
+                feature_type="class", mechanic="fanatical_focus"),
+    ],
+    10: [
+        Feature("Zealous Presence", "Bonus action: 10 creatures within 60ft get advantage "
+                "on attacks and saves until start of next turn. 1/long rest.",
+                feature_type="class", mechanic="zealous_presence", uses_per_day=1),
+    ],
+    14: [
+        Feature("Rage Beyond Death", "While raging, you don't die from 0 HP. "
+                "Still make death saves; die when rage ends if at 0.",
+                feature_type="class", mechanic="rage_beyond_death"),
+    ],
+}
+
+# --- FIGHTER ---
+FIGHTER_ELDRITCH_KNIGHT = {
+    3: [
+        Feature("Spellcasting (Eldritch Knight)", "Learn wizard spells (abjuration/evocation). "
+                "INT-based. Third-caster spell slots.",
+                feature_type="class", mechanic="eldritch_knight_spellcasting"),
+        Feature("Weapon Bond", "Bonus action: summon bonded weapon to hand. Can't be disarmed.",
+                feature_type="class", mechanic="weapon_bond"),
+    ],
+    7: [
+        Feature("War Magic", "After casting cantrip, one weapon attack as bonus action.",
+                feature_type="class", mechanic="war_magic"),
+    ],
+    10: [
+        Feature("Eldritch Strike", "After weapon hit, target has disadvantage on next save vs your spell.",
+                feature_type="class", mechanic="eldritch_strike"),
+    ],
+    15: [
+        Feature("Arcane Charge", "Teleport 30ft when you Action Surge.",
+                feature_type="class", mechanic="arcane_charge"),
+    ],
+    18: [
+        Feature("Improved War Magic", "After casting any spell, one weapon attack as bonus action.",
+                feature_type="class", mechanic="improved_war_magic"),
+    ],
+}
+
+FIGHTER_ARCANE_ARCHER = {
+    3: [
+        Feature("Arcane Shot", "2 options from Arcane Shot list. 2 uses/short rest.",
+                feature_type="class", uses_per_day=2, mechanic="arcane_shot",
+                short_rest_recharge=True),
+        Feature("Magic Arrow", "Non-magical arrows become +1 magical.",
+                feature_type="class", mechanic="magic_arrow"),
+    ],
+    7: [
+        Feature("Curving Shot", "Bonus action: redirect missed arrow at new target within 60ft.",
+                feature_type="class", mechanic="curving_shot"),
+    ],
+    15: [
+        Feature("Ever-Ready Shot", "Regain 1 Arcane Shot use on initiative if you have 0 left.",
+                feature_type="class", mechanic="ever_ready_shot"),
+    ],
+}
+
+FIGHTER_CAVALIER = {
+    3: [
+        Feature("Born to the Saddle", "Advantage on saves to avoid falling off mount.",
+                feature_type="class", mechanic="born_to_saddle"),
+        Feature("Unwavering Mark", "Melee target is marked. Disadvantage on attacks not targeting "
+                "you. Bonus action attack on your turn if it attacks someone else.",
+                feature_type="class", mechanic="unwavering_mark"),
+    ],
+    7: [
+        Feature("Warding Maneuver", "Reaction: +1d8 AC to ally within 5ft. STR mod/long rest.",
+                feature_type="class", mechanic="warding_maneuver"),
+    ],
+    10: [
+        Feature("Hold the Line", "Creatures provoke OA when moving within your reach (not just leaving).",
+                feature_type="class", mechanic="hold_the_line"),
+    ],
+    15: [
+        Feature("Ferocious Charger", "Move 10ft+ straight then hit: target STR save or knocked prone.",
+                feature_type="class", mechanic="ferocious_charger"),
+    ],
+    18: [
+        Feature("Vigilant Defender", "Special reaction each turn (not your own) for OA.",
+                feature_type="class", mechanic="vigilant_defender"),
+    ],
+}
+
+FIGHTER_SAMURAI = {
+    3: [
+        Feature("Fighting Spirit", "Bonus action: advantage on all attacks + 5 temp HP. "
+                "3/long rest.",
+                feature_type="class", uses_per_day=3, mechanic="fighting_spirit"),
+    ],
+    7: [
+        Feature("Elegant Courtier", "Add WIS mod to persuasion. Proficiency in WIS saves.",
+                feature_type="class", mechanic="elegant_courtier"),
+    ],
+    10: [
+        Feature("Tireless Spirit", "Regain 1 Fighting Spirit use on initiative if you have 0.",
+                feature_type="class", mechanic="tireless_spirit"),
+    ],
+    15: [
+        Feature("Rapid Strike", "Forgo advantage on one attack to make an extra attack.",
+                feature_type="class", mechanic="rapid_strike"),
+    ],
+    18: [
+        Feature("Strength Before Death", "On reaching 0 HP, take an extra turn immediately. "
+                "1/long rest.",
+                feature_type="class", mechanic="strength_before_death", uses_per_day=1),
+    ],
+}
+
+# --- PALADIN ---
+PALADIN_ANCIENTS = {
+    3: [
+        Feature("Channel Divinity: Nature's Wrath", "Restrain creature within 10ft (STR/DEX save).",
+                feature_type="class", mechanic="natures_wrath"),
+        Feature("Channel Divinity: Turn the Faithless", "Fey/fiend within 30ft flee (WIS save).",
+                feature_type="class", mechanic="turn_faithless"),
+    ],
+    7: [
+        Feature("Aura of Warding", "You + allies within 10ft: resistance to spell damage.",
+                feature_type="class", mechanic="aura_of_warding", aura_radius=10),
+    ],
+    15: [
+        Feature("Undying Sentinel", "When reduced to 0 HP, drop to 1 instead. 1/long rest.",
+                feature_type="class", mechanic="undying_sentinel", uses_per_day=1),
+    ],
+    20: [
+        Feature("Elder Champion", "Action: transform for 1 min. Regain 10 HP per turn, "
+                "cast paladin spells as bonus action, enemies within 10ft have disadvantage "
+                "on saves vs your spells.",
+                feature_type="class", mechanic="elder_champion", uses_per_day=1),
+    ],
+}
+
+PALADIN_CONQUEST = {
+    3: [
+        Feature("Channel Divinity: Conquering Presence", "Each creature of choice within 30ft: "
+                "WIS save or Frightened for 1 min.",
+                feature_type="class", mechanic="conquering_presence"),
+        Feature("Channel Divinity: Guided Strike", "+10 to one attack roll.",
+                feature_type="class", mechanic="guided_strike"),
+    ],
+    7: [
+        Feature("Aura of Conquest", "Frightened creatures within 10ft: speed 0, take psychic "
+                "damage = half paladin level at start of turn.",
+                feature_type="class", mechanic="aura_of_conquest", aura_radius=10),
+    ],
+    15: [
+        Feature("Scornful Rebuke", "When hit by attack, attacker takes psychic = CHA mod.",
+                feature_type="class", mechanic="scornful_rebuke"),
+    ],
+    20: [
+        Feature("Invincible Conqueror", "Action: 1 min, resistance to all damage, extra attack, "
+                "crit on 19-20. 1/long rest.",
+                feature_type="class", mechanic="invincible_conqueror", uses_per_day=1),
+    ],
+}
+
+PALADIN_REDEMPTION = {
+    3: [
+        Feature("Channel Divinity: Emissary of Peace", "+5 to Persuasion for 10 min.",
+                feature_type="class", mechanic="emissary_peace"),
+        Feature("Channel Divinity: Rebuke the Violent", "When enemy damages ally within 30ft, "
+                "attacker takes same radiant damage (WIS save for half).",
+                feature_type="class", mechanic="rebuke_violent"),
+    ],
+    7: [
+        Feature("Aura of the Guardian", "Reaction: take damage instead of ally within 10ft.",
+                feature_type="class", mechanic="aura_of_guardian", aura_radius=10),
+    ],
+    15: [
+        Feature("Protective Spirit", "Regain 1d6+half paladin level HP at end of turn if below half HP.",
+                feature_type="class", mechanic="protective_spirit"),
+    ],
+    20: [
+        Feature("Emissary of Redemption", "Resistance to all damage from other creatures. "
+                "Attacker takes radiant = half the damage they dealt.",
+                feature_type="class", mechanic="emissary_redemption", uses_per_day=1),
+    ],
+}
+
+PALADIN_CROWN = {
+    3: [
+        Feature("Channel Divinity: Champion Challenge", "Each creature within 30ft: "
+                "can't move more than 30ft away (WIS save).",
+                feature_type="class", mechanic="champion_challenge"),
+        Feature("Channel Divinity: Turn the Tide", "Each creature within 30ft that can hear you "
+                "regains 1d6+CHA HP (if at half HP or below).",
+                feature_type="class", mechanic="turn_the_tide"),
+    ],
+    7: [
+        Feature("Divine Allegiance", "Reaction: take damage instead of ally within 5ft.",
+                feature_type="class", mechanic="divine_allegiance"),
+    ],
+    15: [
+        Feature("Unyielding Spirit", "Advantage on saves vs paralyzed and stunned.",
+                feature_type="class", mechanic="unyielding_spirit"),
+    ],
+    20: [
+        Feature("Exalted Champion", "Action: 1 hour. Resistance to B/P/S, allies within 30ft "
+                "have advantage on death saves and WIS saves. 1/long rest.",
+                feature_type="class", mechanic="exalted_champion", uses_per_day=1),
+    ],
+}
+
+# --- ROGUE ---
+ROGUE_ARCANE_TRICKSTER = {
+    3: [
+        Feature("Spellcasting (Arcane Trickster)", "Learn wizard spells (enchantment/illusion). "
+                "INT-based. Third-caster.",
+                feature_type="class", mechanic="arcane_trickster_spellcasting"),
+        Feature("Mage Hand Legerdemain", "Invisible Mage Hand. Use to steal, pick locks, disarm traps.",
+                feature_type="class", mechanic="mage_hand_legerdemain"),
+    ],
+    9: [
+        Feature("Magical Ambush", "Cast spell while hidden: target has disadvantage on save.",
+                feature_type="class", mechanic="magical_ambush"),
+    ],
+    13: [
+        Feature("Versatile Trickster", "Bonus action: Mage Hand gives you advantage on attack.",
+                feature_type="class", mechanic="versatile_trickster"),
+    ],
+    17: [
+        Feature("Spell Thief", "Reaction: steal spell from caster (save DC 8+INT+prof). 1/long rest.",
+                feature_type="class", mechanic="spell_thief", uses_per_day=1),
+    ],
+}
+
+ROGUE_SWASHBUCKLER = {
+    3: [
+        Feature("Fancy Footwork", "Melee attack target can't make OA against you that turn.",
+                feature_type="class", mechanic="fancy_footwork"),
+        Feature("Rakish Audacity", "Add CHA to initiative. Sneak Attack without advantage if "
+                "no other creature within 5ft of you (1-on-1).",
+                feature_type="class", mechanic="rakish_audacity"),
+    ],
+    9: [
+        Feature("Panache", "WIS (Persuasion) vs WIS (Insight): charmed or goaded.",
+                feature_type="class", mechanic="panache"),
+    ],
+    13: [
+        Feature("Elegant Maneuver", "Bonus action: advantage on next Acrobatics or Athletics check.",
+                feature_type="class", mechanic="elegant_maneuver"),
+    ],
+    17: [
+        Feature("Master Duelist", "Miss an attack: re-roll with advantage. 1/short rest.",
+                feature_type="class", mechanic="master_duelist", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+}
+
+ROGUE_SCOUT = {
+    3: [
+        Feature("Skirmisher", "Reaction: move half speed without OA when enemy ends turn within 5ft.",
+                feature_type="class", mechanic="skirmisher"),
+        Feature("Survivalist", "Proficiency (expertise) in Nature and Survival.",
+                feature_type="class", mechanic="survivalist"),
+    ],
+    9: [
+        Feature("Superior Mobility", "+10ft to speed.",
+                feature_type="class", mechanic="superior_mobility"),
+    ],
+    13: [
+        Feature("Ambush Master", "Advantage on initiative. First creature you hit in first round "
+                "gives allies advantage on attacks vs it.",
+                feature_type="class", mechanic="ambush_master"),
+    ],
+    17: [
+        Feature("Sudden Strike", "Extra Sneak Attack damage on a second creature in same turn.",
+                feature_type="class", mechanic="sudden_strike"),
+    ],
+}
+
+ROGUE_INQUISITIVE = {
+    3: [
+        Feature("Ear for Deceit", "Minimum 8 on Insight checks.",
+                feature_type="class", mechanic="ear_for_deceit"),
+        Feature("Eye for Detail", "Bonus action: Perception or Investigation check.",
+                feature_type="class", mechanic="eye_for_detail"),
+        Feature("Insightful Fighting", "Bonus action: Insight vs Deception. Success: Sneak Attack "
+                "that target for 1 min without advantage.",
+                feature_type="class", mechanic="insightful_fighting"),
+    ],
+    9: [
+        Feature("Steady Eye", "Advantage on Perception/Investigation if moved half speed or less.",
+                feature_type="class", mechanic="steady_eye"),
+    ],
+    13: [
+        Feature("Unerring Eye", "Action: sense illusions, shapechangers, etc. WIS mod/long rest.",
+                feature_type="class", mechanic="unerring_eye"),
+    ],
+    17: [
+        Feature("Eye for Weakness", "Insightful Fighting Sneak Attack: +3d6 damage.",
+                feature_type="class", mechanic="eye_for_weakness"),
+    ],
+}
+
+ROGUE_MASTERMIND = {
+    3: [
+        Feature("Master of Intrigue", "Mimic speech patterns. Proficiency with disguise kit, "
+                "forgery kit, one gaming set.",
+                feature_type="class", mechanic="master_of_intrigue"),
+        Feature("Master of Tactics", "Help action as bonus action, 30ft range.",
+                feature_type="class", mechanic="master_of_tactics"),
+    ],
+    9: [
+        Feature("Insightful Manipulator", "1 min study: learn two of creature's INT/WIS/CHA/levels "
+                "relative to yours.",
+                feature_type="class", mechanic="insightful_manipulator"),
+    ],
+    13: [
+        Feature("Misdirection", "Reaction: redirect attack from you to creature providing cover.",
+                feature_type="class", mechanic="misdirection"),
+    ],
+    17: [
+        Feature("Soul of Deceit", "Thoughts can't be read. Deception always succeeds vs truth magic.",
+                feature_type="class", mechanic="soul_of_deceit"),
+    ],
+}
+
+# --- RANGER ---
+RANGER_GLOOM_STALKER = {
+    3: [
+        Feature("Dread Ambusher", "+WIS to initiative. First turn: +10ft speed, extra attack "
+                "for +1d8 damage.",
+                feature_type="class", mechanic="dread_ambusher"),
+        Feature("Umbral Sight", "Darkvision 60ft (or +30ft). Invisible to creatures using darkvision.",
+                feature_type="class", mechanic="umbral_sight"),
+    ],
+    7: [
+        Feature("Iron Mind", "Proficiency in WIS saves.",
+                feature_type="class", mechanic="iron_mind"),
+    ],
+    11: [
+        Feature("Stalker's Flurry", "Miss an attack: make another weapon attack as part of same action.",
+                feature_type="class", mechanic="stalkers_flurry"),
+    ],
+    15: [
+        Feature("Shadowy Dodge", "Reaction: impose disadvantage on attack against you (no advantage).",
+                feature_type="class", mechanic="shadowy_dodge"),
+    ],
+}
+
+RANGER_HORIZON_WALKER = {
+    3: [
+        Feature("Detect Portal", "Action: sense nearest planar portal within 1 mile. 1/short rest.",
+                feature_type="class", mechanic="detect_portal", uses_per_day=1,
+                short_rest_recharge=True),
+        Feature("Planar Warrior", "Bonus action: mark creature. Next hit deals +1d8 force.",
+                feature_type="class", mechanic="planar_warrior", mechanic_value="1d8"),
+    ],
+    7: [
+        Feature("Ethereal Step", "Bonus action: step into Ethereal Plane until end of turn. "
+                "1/short rest.",
+                feature_type="class", mechanic="ethereal_step", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    11: [
+        Feature("Distant Strike", "Teleport 10ft before each attack. If attack 2+ targets, "
+                "make one extra attack.",
+                feature_type="class", mechanic="distant_strike"),
+    ],
+    15: [
+        Feature("Spectral Defense", "Reaction: resistance to all damage from an attack.",
+                feature_type="class", mechanic="spectral_defense"),
+    ],
+}
+
+RANGER_MONSTER_SLAYER = {
+    3: [
+        Feature("Hunter's Sense", "Action: learn immunities, resistances, vulnerabilities. "
+                "WIS mod/long rest.",
+                feature_type="class", mechanic="hunters_sense"),
+        Feature("Slayer's Prey", "Bonus action: mark creature. +1d6 damage once per turn.",
+                feature_type="class", mechanic="slayers_prey", mechanic_value="1d6"),
+    ],
+    7: [
+        Feature("Supernatural Defense", "+1d6 to saves and grapple escapes from Slayer's Prey target.",
+                feature_type="class", mechanic="supernatural_defense"),
+    ],
+    11: [
+        Feature("Magic-User's Nemesis", "Reaction: force concentration check or counter teleport/plane shift.",
+                feature_type="class", mechanic="magic_users_nemesis"),
+    ],
+    15: [
+        Feature("Slayer's Counter", "Reaction: on target forcing a save, make a weapon attack. "
+                "Hit = auto-succeed the save.",
+                feature_type="class", mechanic="slayers_counter"),
+    ],
+}
+
+# --- CLERIC ---
+CLERIC_KNOWLEDGE = {
+    1: [
+        Feature("Blessings of Knowledge", "Proficiency (expertise) in two knowledge skills.",
+                feature_type="class", mechanic="blessings_of_knowledge"),
+    ],
+    2: [
+        Feature("Channel Divinity: Knowledge of the Ages", "10 min proficiency with one skill or tool.",
+                feature_type="class", mechanic="knowledge_of_ages"),
+    ],
+    6: [
+        Feature("Channel Divinity: Read Thoughts", "Read surface thoughts (WIS save). Then Suggestion.",
+                feature_type="class", mechanic="read_thoughts"),
+    ],
+    8: [
+        Feature("Potent Spellcasting", "Add WIS mod to cleric cantrip damage.",
+                feature_type="class", mechanic="potent_spellcasting"),
+    ],
+    17: [
+        Feature("Visions of the Past", "Meditate to see past events. 1/short rest.",
+                feature_type="class", mechanic="visions_past", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+}
+
+CLERIC_NATURE = {
+    1: [
+        Feature("Acolyte of Nature", "Learn one druid cantrip and proficiency in one of "
+                "Animal Handling, Nature, Survival.",
+                feature_type="class", mechanic="acolyte_of_nature"),
+    ],
+    2: [
+        Feature("Channel Divinity: Charm Animals/Plants", "Charm beasts/plants within 30ft (WIS save).",
+                feature_type="class", mechanic="charm_animals_plants"),
+    ],
+    6: [
+        Feature("Dampen Elements", "Reaction: grant resistance to acid/cold/fire/lightning/thunder "
+                "to ally within 30ft.",
+                feature_type="class", mechanic="dampen_elements"),
+    ],
+    8: [
+        Feature("Divine Strike", "+1d8 cold/fire/lightning damage once per turn.",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8"),
+    ],
+    17: [
+        Feature("Master of Nature", "Command charmed beasts/plants as bonus action.",
+                feature_type="class", mechanic="master_of_nature"),
+    ],
+}
+
+CLERIC_TEMPEST = {
+    1: [
+        Feature("Wrath of the Storm", "Reaction: when hit by creature within 5ft, 2d8 lightning/thunder "
+                "(DEX save for half). WIS mod/long rest.",
+                feature_type="class", mechanic="wrath_of_storm"),
+    ],
+    2: [
+        Feature("Channel Divinity: Destructive Wrath", "Max lightning/thunder damage instead of rolling.",
+                feature_type="class", mechanic="destructive_wrath"),
+    ],
+    6: [
+        Feature("Thunderbolt Strike", "Lightning damage pushes Large or smaller 10ft.",
+                feature_type="class", mechanic="thunderbolt_strike"),
+    ],
+    8: [
+        Feature("Divine Strike", "+1d8 thunder damage once per turn.",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8"),
+    ],
+    17: [
+        Feature("Stormborn", "Fly speed = walking speed when outdoors.",
+                feature_type="class", mechanic="stormborn"),
+    ],
+}
+
+CLERIC_TRICKERY = {
+    1: [
+        Feature("Blessing of the Trickster", "Touch: advantage on Stealth for 1 hour.",
+                feature_type="class", mechanic="blessing_trickster"),
+    ],
+    2: [
+        Feature("Channel Divinity: Invoke Duplicity", "Create illusory double for 1 min. "
+                "Advantage on attacks when you and duplicate are within 5ft of target.",
+                feature_type="class", mechanic="invoke_duplicity"),
+    ],
+    6: [
+        Feature("Channel Divinity: Cloak of Shadows", "Invisible until end of next turn.",
+                feature_type="class", mechanic="cloak_of_shadows"),
+    ],
+    8: [
+        Feature("Divine Strike", "+1d8 poison damage once per turn.",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8"),
+    ],
+    17: [
+        Feature("Improved Duplicity", "Create 4 duplicates instead of 1.",
+                feature_type="class", mechanic="improved_duplicity"),
+    ],
+}
+
+CLERIC_FORGE = {
+    1: [
+        Feature("Blessing of the Forge", "Long rest: enchant one weapon or armor to +1. Lasts until next long rest.",
+                feature_type="class", mechanic="blessing_forge"),
+    ],
+    2: [
+        Feature("Channel Divinity: Artisan's Blessing", "Ritual: create simple metal item up to 100gp.",
+                feature_type="class", mechanic="artisans_blessing"),
+    ],
+    6: [
+        Feature("Soul of the Forge", "+1 AC in heavy armor. Resistance to fire damage.",
+                feature_type="class", mechanic="soul_of_forge"),
+    ],
+    8: [
+        Feature("Divine Strike", "+1d8 fire damage once per turn.",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8"),
+    ],
+    17: [
+        Feature("Saint of Forge and Fire", "Immune to fire. Resistance to nonmagical B/P/S in heavy armor.",
+                feature_type="class", mechanic="saint_forge_fire"),
+    ],
+}
+
+CLERIC_GRAVE = {
+    1: [
+        Feature("Circle of Mortality", "Healing spells on 0 HP targets: use max dice. "
+                "Spare the Dying as bonus action with 30ft range.",
+                feature_type="class", mechanic="circle_of_mortality"),
+        Feature("Eyes of the Grave", "Detect undead within 60ft. WIS mod/long rest.",
+                feature_type="class", mechanic="eyes_of_grave"),
+    ],
+    2: [
+        Feature("Channel Divinity: Path to the Grave", "Action: mark creature. "
+                "Next attack against it has vulnerability to all damage.",
+                feature_type="class", mechanic="path_to_grave"),
+    ],
+    6: [
+        Feature("Sentinel at Death's Door", "Reaction: turn critical hit against ally within 30ft "
+                "into normal hit. WIS mod/long rest.",
+                feature_type="class", mechanic="sentinel_at_deaths_door"),
+    ],
+    8: [
+        Feature("Potent Spellcasting", "Add WIS mod to cleric cantrip damage.",
+                feature_type="class", mechanic="potent_spellcasting"),
+    ],
+    17: [
+        Feature("Keeper of Souls", "When a creature within 60ft dies, you or ally within 60ft "
+                "regains HP = creature's number of hit dice.",
+                feature_type="class", mechanic="keeper_of_souls"),
+    ],
+}
+
+# --- WIZARD ---
+WIZARD_CONJURATION = {
+    2: [
+        Feature("Minor Conjuration", "Action: conjure non-magical object up to 3ft, 10lbs for 1 hour.",
+                feature_type="class", mechanic="minor_conjuration"),
+    ],
+    6: [
+        Feature("Benign Transposition", "Teleport 30ft or swap with willing ally. 1/long rest "
+                "or spend conjuration spell slot.",
+                feature_type="class", mechanic="benign_transposition"),
+    ],
+    10: [
+        Feature("Focused Conjuration", "Concentration on conjuration spells can't be broken by damage.",
+                feature_type="class", mechanic="focused_conjuration"),
+    ],
+    14: [
+        Feature("Durable Summons", "Conjured creatures gain +30 temp HP.",
+                feature_type="class", mechanic="durable_summons"),
+    ],
+}
+
+WIZARD_ENCHANTMENT = {
+    2: [
+        Feature("Hypnotic Gaze", "Action: charm adjacent creature (WIS save each turn). "
+                "Incapacitated and 0 speed.",
+                feature_type="class", mechanic="hypnotic_gaze"),
+    ],
+    6: [
+        Feature("Instinctive Charm", "Reaction: redirect attack to another creature (WIS save). 1/long rest.",
+                feature_type="class", mechanic="instinctive_charm", uses_per_day=1),
+    ],
+    10: [
+        Feature("Split Enchantment", "Single-target enchantment spells target 2 creatures.",
+                feature_type="class", mechanic="split_enchantment"),
+    ],
+    14: [
+        Feature("Alter Memories", "Charmed creature doesn't remember being charmed.",
+                feature_type="class", mechanic="alter_memories"),
+    ],
+}
+
+WIZARD_ILLUSION = {
+    2: [
+        Feature("Improved Minor Illusion", "Minor Illusion: both sound and image.",
+                feature_type="class", mechanic="improved_minor_illusion"),
+    ],
+    6: [
+        Feature("Malleable Illusions", "Action: change the nature of an active illusion.",
+                feature_type="class", mechanic="malleable_illusions"),
+    ],
+    10: [
+        Feature("Illusory Self", "Reaction: create illusory double causing attack to miss. 1/short rest.",
+                feature_type="class", mechanic="illusory_self", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    14: [
+        Feature("Illusory Reality", "Bonus action: one inanimate illusory object becomes real for 1 min.",
+                feature_type="class", mechanic="illusory_reality"),
+    ],
+}
+
+WIZARD_NECROMANCY = {
+    2: [
+        Feature("Grim Harvest", "Kill with spell: regain HP = 2x spell level (3x for necromancy).",
+                feature_type="class", mechanic="grim_harvest"),
+    ],
+    6: [
+        Feature("Undead Thralls", "Animate Dead: extra undead. +level HP, +prof to damage.",
+                feature_type="class", mechanic="undead_thralls"),
+    ],
+    10: [
+        Feature("Inured to Undeath", "Resistance to necrotic. Max HP can't be reduced.",
+                feature_type="class", mechanic="inured_to_undeath"),
+    ],
+    14: [
+        Feature("Command Undead", "Use action to control undead (CHA save for INT 8+).",
+                feature_type="class", mechanic="command_undead"),
+    ],
+}
+
+WIZARD_TRANSMUTATION = {
+    2: [
+        Feature("Minor Alchemy", "Transform material to another material (wood/stone/iron/copper/silver) "
+                "for 1 hour.",
+                feature_type="class", mechanic="minor_alchemy"),
+    ],
+    6: [
+        Feature("Transmuter's Stone", "Create a stone granting: darkvision 60ft, +10ft speed, "
+                "CON proficiency, or resistance to one element.",
+                feature_type="class", mechanic="transmuters_stone"),
+    ],
+    10: [
+        Feature("Shapechanger", "Cast Polymorph on self without spell slot. 1/short rest.",
+                feature_type="class", mechanic="shapechanger_wizard", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    14: [
+        Feature("Master Transmuter", "Destroy Transmuter's Stone for: transform, restore life, "
+                "raise dead, or restore youth.",
+                feature_type="class", mechanic="master_transmuter"),
+    ],
+}
+
+WIZARD_WAR_MAGIC = {
+    2: [
+        Feature("Arcane Deflection", "Reaction: +2 AC or +4 save. Can only cast cantrips next turn.",
+                feature_type="class", mechanic="arcane_deflection"),
+        Feature("Tactical Wit", "Add INT mod to initiative.",
+                feature_type="class", mechanic="tactical_wit"),
+    ],
+    6: [
+        Feature("Power Surge", "Deal +half wizard level force damage once per turn. INT mod charges.",
+                feature_type="class", mechanic="power_surge"),
+    ],
+    10: [
+        Feature("Durable Magic", "+2 AC and saves while concentrating.",
+                feature_type="class", mechanic="durable_magic"),
+    ],
+    14: [
+        Feature("Deflecting Shroud", "Arcane Deflection: deal 2x wizard level force damage "
+                "to up to 3 creatures within 60ft.",
+                feature_type="class", mechanic="deflecting_shroud"),
+    ],
+}
+
+WIZARD_BLADESINGING = {
+    2: [
+        Feature("Bladesong", "Bonus action: AC + INT, speed + 10, advantage on Acrobatics, "
+                "concentration checks + INT. 2/short rest.",
+                feature_type="class", uses_per_day=2, mechanic="bladesong",
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Extra Attack", "Attack twice when taking the Attack action.",
+                feature_type="class", mechanic="extra_attack"),
+    ],
+    10: [
+        Feature("Song of Defense", "While Bladesinging, spend spell slot to reduce damage "
+                "by 5x slot level.",
+                feature_type="class", mechanic="song_of_defense"),
+    ],
+    14: [
+        Feature("Song of Victory", "While Bladesinging, add INT mod to melee damage.",
+                feature_type="class", mechanic="song_of_victory"),
+    ],
+}
+
+# --- WARLOCK ---
+WARLOCK_ARCHFEY = {
+    1: [
+        Feature("Fey Presence", "Action: charm or frighten creatures in 10ft cube (WIS save). "
+                "1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="fey_presence",
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Misty Escape", "Reaction: turn invisible and teleport 60ft when damaged. "
+                "1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="misty_escape",
+                short_rest_recharge=True),
+    ],
+    10: [
+        Feature("Beguiling Defenses", "Immune to charmed. Redirect charm back (WIS save).",
+                feature_type="class", mechanic="beguiling_defenses"),
+    ],
+    14: [
+        Feature("Dark Delirium", "Action: charm or frighten one creature for 1 min (WIS save). "
+                "1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="dark_delirium",
+                short_rest_recharge=True),
+    ],
+}
+
+WARLOCK_HEXBLADE = {
+    1: [
+        Feature("Hexblade's Curse", "Bonus action: curse target for 1 min. +prof to damage, "
+                "crit on 19-20, regain HP on kill = warlock level + CHA. 1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="hexblades_curse",
+                short_rest_recharge=True),
+        Feature("Hex Warrior", "Use CHA for weapon attacks with one weapon (or pact weapon).",
+                feature_type="class", mechanic="hex_warrior"),
+    ],
+    6: [
+        Feature("Accursed Specter", "When you kill humanoid, raise as specter ally. 1/long rest.",
+                feature_type="class", uses_per_day=1, mechanic="accursed_specter"),
+    ],
+    10: [
+        Feature("Armor of Hexes", "Cursed target: 4+ on d6, attack misses you.",
+                feature_type="class", mechanic="armor_of_hexes"),
+    ],
+    14: [
+        Feature("Master of Hexes", "When cursed target dies, transfer curse to new creature.",
+                feature_type="class", mechanic="master_of_hexes"),
+    ],
+}
+
+WARLOCK_CELESTIAL = {
+    1: [
+        Feature("Healing Light", "Bonus action: heal creature within 60ft. Pool of d6s = "
+                "1 + warlock level.",
+                feature_type="class", mechanic="healing_light"),
+    ],
+    6: [
+        Feature("Radiant Soul", "Resistance to radiant. Add CHA mod to radiant/fire spell damage.",
+                feature_type="class", mechanic="radiant_soul_warlock"),
+    ],
+    10: [
+        Feature("Celestial Resilience", "You and up to 5 allies gain temp HP = warlock level + CHA "
+                "at end of short/long rest.",
+                feature_type="class", mechanic="celestial_resilience"),
+    ],
+    14: [
+        Feature("Searing Vengeance", "When making death save, regain half max HP, stand up, "
+                "deal 2d8 + CHA radiant to creatures of choice within 30ft. 1/long rest.",
+                feature_type="class", mechanic="searing_vengeance", uses_per_day=1),
+    ],
+}
+
+# --- SORCERER ---
+SORCERER_DIVINE_SOUL = {
+    1: [
+        Feature("Divine Magic", "Learn cleric spells. Bonus spell from affinity.",
+                feature_type="class", mechanic="divine_magic"),
+        Feature("Favored by the Gods", "Failed save or missed attack: +2d4. 1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="favored_by_gods",
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Empowered Healing", "1 sorcery point: re-roll healing dice for self or ally within 5ft.",
+                feature_type="class", mechanic="empowered_healing"),
+    ],
+    14: [
+        Feature("Otherworldly Wings", "Bonus action: spectral wings, fly speed 30ft.",
+                feature_type="class", mechanic="otherworldly_wings"),
+    ],
+    18: [
+        Feature("Unearthly Recovery", "Bonus action: regain HP = half max HP when below half. 1/long rest.",
+                feature_type="class", mechanic="unearthly_recovery", uses_per_day=1),
+    ],
+}
+
+SORCERER_SHADOW = {
+    1: [
+        Feature("Eyes of the Dark", "Darkvision 120ft. Darkness spell for 2 sorcery points at 3rd.",
+                feature_type="class", mechanic="eyes_of_dark"),
+        Feature("Strength of the Grave", "Drop to 1 HP instead of 0 (CHA save DC = 5 + damage). "
+                "Not radiant damage. 1/long rest.",
+                feature_type="class", uses_per_day=1, mechanic="strength_of_grave"),
+    ],
+    6: [
+        Feature("Hound of Ill Omen", "3 sorcery points: summon shadow hound.",
+                feature_type="class", mechanic="hound_of_ill_omen"),
+    ],
+    14: [
+        Feature("Shadow Walk", "Bonus action: teleport 120ft between dim light/darkness.",
+                feature_type="class", mechanic="shadow_walk"),
+    ],
+    18: [
+        Feature("Umbral Form", "6 sorcery points: shadow form for 1 min. Resistance to all damage "
+                "except force/radiant. Move through objects.",
+                feature_type="class", mechanic="umbral_form"),
+    ],
+}
+
+SORCERER_STORM = {
+    1: [
+        Feature("Wind Speaker", "Speak Primordial and its dialects.",
+                feature_type="class", mechanic="wind_speaker"),
+        Feature("Tempestuous Magic", "Bonus action: fly 10ft without OA after casting leveled spell.",
+                feature_type="class", mechanic="tempestuous_magic"),
+    ],
+    6: [
+        Feature("Heart of the Storm", "Resistance to lightning and thunder. When casting spell that "
+                "deals lightning/thunder, deal level/2 lightning/thunder to creatures of choice within 10ft.",
+                feature_type="class", mechanic="heart_of_storm"),
+        Feature("Storm Guide", "Bonus action: control rain/wind direction in 20ft radius.",
+                feature_type="class", mechanic="storm_guide"),
+    ],
+    14: [
+        Feature("Storm's Fury", "Reaction: when hit by melee, deal lightning = sorcerer level. "
+                "STR save or pushed 20ft.",
+                feature_type="class", mechanic="storms_fury"),
+    ],
+    18: [
+        Feature("Wind Soul", "Immunity to lightning and thunder. Fly speed 60ft. "
+                "Action: 30ft fly speed to 3+CHA allies for 1 hour. 1/short rest.",
+                feature_type="class", mechanic="wind_soul", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+}
+
+# --- BARD ---
+BARD_SWORDS = {
+    3: [
+        Feature("Blade Flourish", "Attack action: +10ft speed. Expend Bardic Inspiration for "
+                "Defensive (AC), Slashing (extra damage+target), Mobile (push 5ft+disengage).",
+                feature_type="class", mechanic="blade_flourish"),
+        Feature("Fighting Style", "Dueling or Two-Weapon Fighting.",
+                feature_type="class", mechanic="fighting_style_bard"),
+    ],
+    6: [
+        Feature("Extra Attack", "Attack twice when taking the Attack action.",
+                feature_type="class", mechanic="extra_attack"),
+    ],
+    14: [
+        Feature("Master's Flourish", "Use d6 instead of Bardic Inspiration die for Flourish (no cost).",
+                feature_type="class", mechanic="masters_flourish"),
+    ],
+}
+
+BARD_WHISPERS = {
+    3: [
+        Feature("Psychic Blades", "Expend Bardic Inspiration: +2d6 psychic on weapon hit (3d6@5, "
+                "5d6@10, 8d6@15).",
+                feature_type="class", mechanic="psychic_blades"),
+    ],
+    6: [
+        Feature("Mantle of Whispers", "Reaction: capture dying humanoid's shadow. "
+                "Assume their appearance.",
+                feature_type="class", mechanic="mantle_of_whispers"),
+    ],
+    14: [
+        Feature("Shadow Lore", "Action: whisper to creature. Charmed for 8 hours, obeys (WIS save). "
+                "1/long rest.",
+                feature_type="class", mechanic="shadow_lore", uses_per_day=1),
+    ],
+}
+
+BARD_GLAMOUR = {
+    3: [
+        Feature("Mantle of Inspiration", "Bonus action: spend Bardic Inspiration. "
+                "CHA mod creatures gain 5 temp HP and move reaction without OA.",
+                feature_type="class", mechanic="mantle_of_inspiration"),
+        Feature("Enthralling Performance", "Perform 1 min: charm humanoids (WIS save). "
+                "1/short rest.",
+                feature_type="class", mechanic="enthralling_performance", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Mantle of Majesty", "Bonus action: Command as bonus action for 1 min. "
+                "1/long rest.",
+                feature_type="class", mechanic="mantle_of_majesty", uses_per_day=1),
+    ],
+    14: [
+        Feature("Unbreakable Majesty", "Bonus action: creatures must CHA save to attack you "
+                "or pick another target. 1 min. 1/short rest.",
+                feature_type="class", mechanic="unbreakable_majesty", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+}
+
+# --- DRUID ---
+DRUID_DREAMS = {
+    2: [
+        Feature("Balm of the Summer Court", "Bonus action: heal ally within 120ft. "
+                "Pool of d6s = druid level.",
+                feature_type="class", mechanic="balm_summer_court"),
+    ],
+    6: [
+        Feature("Hearth of Moonlight and Shadow", "Short/long rest: 30ft invisible sphere. "
+                "+5 to Stealth and Perception.",
+                feature_type="class", mechanic="hearth_moonlight"),
+    ],
+    10: [
+        Feature("Hidden Paths", "Bonus action: teleport 60ft or teleport willing ally 30ft. "
+                "WIS mod/long rest.",
+                feature_type="class", mechanic="hidden_paths"),
+    ],
+    14: [
+        Feature("Walker in Dreams", "After short rest: Dream, Scrying, or Teleportation Circle. "
+                "1/long rest.",
+                feature_type="class", mechanic="walker_in_dreams", uses_per_day=1),
+    ],
+}
+
+DRUID_SHEPHERD = {
+    2: [
+        Feature("Spirit Totem", "Bonus action: 60ft spirit aura for 1 min. "
+                "Bear=temp HP, Hawk=advantage on perception/advantage on attacks, Unicorn=heal. "
+                "1/short rest.",
+                feature_type="class", uses_per_day=1, mechanic="spirit_totem",
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Mighty Summoner", "Summoned creatures: +2 HP per hit die, attacks are magical.",
+                feature_type="class", mechanic="mighty_summoner"),
+    ],
+    10: [
+        Feature("Guardian Spirit", "Summoned/created beasts/fey within aura regain half druid level HP.",
+                feature_type="class", mechanic="guardian_spirit"),
+    ],
+    14: [
+        Feature("Faithful Summons", "When reduced to 0 HP, Conjure Animals (8 beasts CR 1/4). "
+                "1/long rest.",
+                feature_type="class", mechanic="faithful_summons", uses_per_day=1),
+    ],
+}
+
+DRUID_SPORES = {
+    2: [
+        Feature("Halo of Spores", "Reaction: creature within 10ft takes 1d4 necrotic (CON save).",
+                feature_type="class", mechanic="halo_of_spores", mechanic_value="1d4"),
+        Feature("Symbiotic Entity", "Action: spend Wild Shape. 4 x druid level temp HP. "
+                "Halo of Spores +1d6, melee +1d6 poison.",
+                feature_type="class", mechanic="symbiotic_entity"),
+    ],
+    6: [
+        Feature("Fungal Infestation", "Reaction: animate dead humanoid with 1 HP for 1 hour. "
+                "WIS mod/long rest.",
+                feature_type="class", mechanic="fungal_infestation"),
+    ],
+    10: [
+        Feature("Spreading Spores", "Bonus action: Halo of Spores in 10ft cube within 30ft.",
+                feature_type="class", mechanic="spreading_spores"),
+    ],
+    14: [
+        Feature("Fungal Body", "Can't be blinded, deafened, frightened, or poisoned. "
+                "Crits are normal hits.",
+                feature_type="class", mechanic="fungal_body"),
+    ],
+}
+
+# --- MONK ---
+MONK_FOUR_ELEMENTS = {
+    3: [
+        Feature("Disciple of the Elements", "Spend ki for elemental disciplines. "
+                "Learn Elemental Attunement + one discipline.",
+                feature_type="class", mechanic="elemental_disciplines"),
+    ],
+    6: [
+        Feature("Extra Discipline", "Learn one additional elemental discipline.",
+                feature_type="class", mechanic="extra_discipline_6"),
+    ],
+    11: [
+        Feature("Extra Discipline", "Learn one additional elemental discipline.",
+                feature_type="class", mechanic="extra_discipline_11"),
+    ],
+    17: [
+        Feature("Extra Discipline", "Learn one additional elemental discipline.",
+                feature_type="class", mechanic="extra_discipline_17"),
+    ],
+}
+
+MONK_DRUNKEN_MASTER = {
+    3: [
+        Feature("Drunken Technique", "Flurry of Blows: Disengage and +10ft speed.",
+                feature_type="class", mechanic="drunken_technique"),
+    ],
+    6: [
+        Feature("Tipsy Sway", "Redirect missed melee attack to adjacent creature. "
+                "Stand up for 5ft movement.",
+                feature_type="class", mechanic="tipsy_sway"),
+    ],
+    11: [
+        Feature("Drunkard's Luck", "Spend 2 ki: cancel disadvantage on roll.",
+                feature_type="class", mechanic="drunkards_luck"),
+    ],
+    17: [
+        Feature("Intoxicated Frenzy", "Flurry of Blows: up to 5 attacks (each different target).",
+                feature_type="class", mechanic="intoxicated_frenzy"),
+    ],
+}
+
+MONK_KENSEI = {
+    3: [
+        Feature("Path of the Kensei", "Choose 2 kensei weapons (1 melee, 1 ranged). +2 AC on "
+                "unarmed attack while holding kensei melee. +1d4 on ranged kensei weapon.",
+                feature_type="class", mechanic="path_of_kensei"),
+    ],
+    6: [
+        Feature("One with the Blade", "Kensei weapons count as magical. "
+                "Deft Strike: 1 ki for +martial arts die damage.",
+                feature_type="class", mechanic="one_with_blade"),
+    ],
+    11: [
+        Feature("Sharpen the Blade", "Bonus action: 1-3 ki for +1 to +3 weapon. 1 min.",
+                feature_type="class", mechanic="sharpen_blade"),
+    ],
+    17: [
+        Feature("Unerring Accuracy", "Miss with monk weapon: re-roll. 1/turn.",
+                feature_type="class", mechanic="unerring_accuracy"),
+    ],
+}
+
+MONK_SUN_SOUL = {
+    3: [
+        Feature("Radiant Sun Bolt", "Ranged attack (30ft): 1d4+DEX radiant. "
+                "Can replace unarmed strike.",
+                feature_type="class", mechanic="radiant_sun_bolt"),
+    ],
+    6: [
+        Feature("Searing Arc Strike", "After Attack: spend 2+ ki for Burning Hands at that level.",
+                feature_type="class", mechanic="searing_arc_strike"),
+    ],
+    11: [
+        Feature("Searing Sunburst", "Action: 20ft radius, 150ft range. 2d6 radiant (CON save). "
+                "Spend 1-3 ki for +2d6 each.",
+                feature_type="class", mechanic="searing_sunburst"),
+    ],
+    17: [
+        Feature("Sun Shield", "Shed 30ft bright light (toggle). When hit by melee while glowing: "
+                "5+WIS radiant damage.",
+                feature_type="class", mechanic="sun_shield"),
+    ],
+}
+
+MONK_LONG_DEATH = {
+    3: [
+        Feature("Touch of Death", "When you reduce a creature to 0 HP within 5ft, "
+                "gain temp HP = WIS mod + monk level.",
+                feature_type="class", mechanic="touch_of_death"),
+    ],
+    6: [
+        Feature("Hour of Reaping", "Action: frighten creatures that can see you within 30ft (WIS save).",
+                feature_type="class", mechanic="hour_of_reaping"),
+    ],
+    11: [
+        Feature("Mastery of Death", "Spend 1 ki: drop to 1 HP instead of 0.",
+                feature_type="class", mechanic="mastery_of_death"),
+    ],
+    17: [
+        Feature("Touch of the Long Death", "10 ki max: 2d10 necrotic per ki point (CON save for half).",
+                feature_type="class", mechanic="touch_long_death"),
+    ],
+}
+
+# ============================================================
+# END OF ADDITIONAL SUBCLASSES
+# ============================================================
+
 BARBARIAN_RAGE_COUNT = {
     1: 2, 2: 2, 3: 3, 4: 3, 5: 3, 6: 4, 7: 4, 8: 4, 9: 4, 10: 4,
     11: 4, 12: 5, 13: 5, 14: 5, 15: 5, 16: 5, 17: 6, 18: 6, 19: 6, 20: -1  # unlimited
@@ -1013,41 +2139,90 @@ def get_class_features(character_class: str, level: int, subclass: str = "") -> 
         # Barbarian
         "Totem Warrior": BARBARIAN_TOTEM_BEAR,
         "Berserker": BARBARIAN_BERSERKER,
+        "Ancestral Guardian": BARBARIAN_ANCESTRAL_GUARDIAN,
+        "Storm Herald": BARBARIAN_STORM_HERALD,
+        "Zealot": BARBARIAN_ZEALOT,
         # Fighter
         "Champion": FIGHTER_CHAMPION,
         "Battle Master": FIGHTER_BATTLE_MASTER,
+        "Eldritch Knight": FIGHTER_ELDRITCH_KNIGHT,
+        "Arcane Archer": FIGHTER_ARCANE_ARCHER,
+        "Cavalier": FIGHTER_CAVALIER,
+        "Samurai": FIGHTER_SAMURAI,
         # Paladin
         "Devotion": PALADIN_DEVOTION,
         "Vengeance": PALADIN_VENGEANCE,
+        "Ancients": PALADIN_ANCIENTS,
+        "Conquest": PALADIN_CONQUEST,
+        "Redemption": PALADIN_REDEMPTION,
+        "Crown": PALADIN_CROWN,
         # Rogue
         "Assassin": ROGUE_ASSASSIN,
         "Thief": ROGUE_THIEF,
+        "Arcane Trickster": ROGUE_ARCANE_TRICKSTER,
+        "Swashbuckler": ROGUE_SWASHBUCKLER,
+        "Scout": ROGUE_SCOUT,
+        "Inquisitive": ROGUE_INQUISITIVE,
+        "Mastermind": ROGUE_MASTERMIND,
         # Ranger
         "Hunter": RANGER_HUNTER,
         "Beast Master": RANGER_BEAST_MASTER,
+        "Gloom Stalker": RANGER_GLOOM_STALKER,
+        "Horizon Walker": RANGER_HORIZON_WALKER,
+        "Monster Slayer": RANGER_MONSTER_SLAYER,
         # Cleric
         "War": CLERIC_WAR,
         "Life": CLERIC_LIFE,
         "Light": CLERIC_LIGHT,
+        "Knowledge": CLERIC_KNOWLEDGE,
+        "Nature": CLERIC_NATURE,
+        "Tempest": CLERIC_TEMPEST,
+        "Trickery": CLERIC_TRICKERY,
+        "Forge": CLERIC_FORGE,
+        "Grave": CLERIC_GRAVE,
         # Wizard
         "Evocation": WIZARD_EVOCATION,
         "Abjuration": WIZARD_ABJURATION,
         "Divination": WIZARD_DIVINATION,
+        "Conjuration": WIZARD_CONJURATION,
+        "Enchantment": WIZARD_ENCHANTMENT,
+        "Illusion": WIZARD_ILLUSION,
+        "Necromancy": WIZARD_NECROMANCY,
+        "Transmutation": WIZARD_TRANSMUTATION,
+        "War Magic": WIZARD_WAR_MAGIC,
+        "Bladesinging": WIZARD_BLADESINGING,
         # Warlock
         "Fiend": WARLOCK_FIEND,
         "Great Old One": WARLOCK_GREAT_OLD_ONE,
+        "Archfey": WARLOCK_ARCHFEY,
+        "Hexblade": WARLOCK_HEXBLADE,
+        "Celestial": WARLOCK_CELESTIAL,
         # Sorcerer
         "Draconic Bloodline": SORCERER_DRACONIC,
         "Wild Magic": SORCERER_WILD_MAGIC,
+        "Divine Soul": SORCERER_DIVINE_SOUL,
+        "Shadow Magic": SORCERER_SHADOW,
+        "Storm Sorcery": SORCERER_STORM,
         # Bard
         "College of Lore": BARD_LORE,
         "College of Valor": BARD_VALOR,
+        "College of Swords": BARD_SWORDS,
+        "College of Whispers": BARD_WHISPERS,
+        "College of Glamour": BARD_GLAMOUR,
         # Druid
         "Circle of the Moon": DRUID_MOON,
         "Circle of the Land": DRUID_LAND,
+        "Circle of Dreams": DRUID_DREAMS,
+        "Circle of the Shepherd": DRUID_SHEPHERD,
+        "Circle of Spores": DRUID_SPORES,
         # Monk
         "Way of the Open Hand": MONK_OPEN_HAND,
         "Way of Shadow": MONK_SHADOW,
+        "Way of the Four Elements": MONK_FOUR_ELEMENTS,
+        "Way of the Drunken Master": MONK_DRUNKEN_MASTER,
+        "Way of the Kensei": MONK_KENSEI,
+        "Way of the Sun Soul": MONK_SUN_SOUL,
+        "Way of the Long Death": MONK_LONG_DEATH,
     }
 
     # Gather base class features

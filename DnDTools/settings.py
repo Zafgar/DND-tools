@@ -103,7 +103,26 @@ COLORS = {
     "hp_mid":          (240, 180, 20),
     "hp_low":          (210, 50, 50),
     "hp_bg":           (20, 22, 28),
+
+    # Team Colors (for Combat Roster multi-team system)
+    "team_blue":       (50, 140, 240),
+    "team_red":        (235, 65, 65),
+    "team_green":      (50, 190, 80),
+    "team_gold":       (240, 190, 40),
+    "team_blue_dim":   (30, 80, 140),
+    "team_red_dim":    (140, 35, 35),
+    "team_green_dim":  (30, 110, 45),
+    "team_gold_dim":   (140, 110, 20),
 }
+
+# Team definitions for Combat Roster
+TEAM_COLORS = {
+    "Blue":  {"color": (50, 140, 240),  "dim": (30, 80, 140),  "glow": (70, 160, 255)},
+    "Red":   {"color": (235, 65, 65),   "dim": (140, 35, 35),  "glow": (255, 90, 90)},
+    "Green": {"color": (50, 190, 80),   "dim": (30, 110, 45),  "glow": (70, 220, 100)},
+    "Gold":  {"color": (240, 190, 40),  "dim": (140, 110, 20), "glow": (255, 210, 60)},
+}
+TEAM_NAMES = list(TEAM_COLORS.keys())
 
 # Creature type to display icon mapping (2-char symbols for tokens)
 CREATURE_ICONS = {

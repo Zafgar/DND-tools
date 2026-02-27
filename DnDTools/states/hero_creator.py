@@ -11,9 +11,10 @@ from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect
 from data.models import CreatureStats, AbilityScores, Action, SpellInfo, Feature, RacialTrait
 from data.class_features import get_class_features, BARBARIAN_RAGE_COUNT
-from data.racial_traits import get_racial_traits, RACE_TRAITS_MAP, get_racial_asi, RACE_ASI
+from data.racial_traits import (get_racial_traits, RACE_TRAITS_MAP, get_racial_asi, RACE_ASI,
+                                ALL_RACES, RACE_SPEED as RACIAL_SPEED_TABLE, get_race_size)
 from data.heroes import hero_list
-from data.hero_import import export_hero_to_file
+from data.hero_import import export_hero_to_file, import_hero_from_file, export_heroes_to_file, import_heroes_from_file
 
 try:
     from data.feats import FEATS_LIST
@@ -27,11 +28,7 @@ SAVES_DIR = os.path.join(os.path.dirname(__file__), "..", "saves")
 # Data Tables
 # ============================================================
 
-RACE_LIST = [
-    "Human", "Variant Human", "High Elf", "Wood Elf", "Drow",
-    "Hill Dwarf", "Mountain Dwarf", "Lightfoot Halfling", "Stout Halfling",
-    "Half-Orc", "Half-Elf", "Rock Gnome", "Forest Gnome", "Dragonborn", "Tiefling",
-]
+RACE_LIST = ALL_RACES
 
 CLASS_LIST = [
     "Barbarian", "Fighter", "Paladin", "Rogue", "Ranger",
@@ -39,18 +36,21 @@ CLASS_LIST = [
 ]
 
 SUBCLASS_MAP = {
-    "Barbarian": ["Totem Warrior", "Berserker"],
-    "Fighter": ["Champion", "Battle Master"],
-    "Paladin": ["Devotion", "Vengeance"],
-    "Rogue": ["Assassin", "Thief"],
-    "Ranger": ["Hunter", "Beast Master"],
-    "Cleric": ["Life", "War", "Light"],
-    "Wizard": ["Evocation", "Abjuration", "Divination"],
-    "Warlock": ["Fiend", "Great Old One"],
-    "Sorcerer": ["Draconic Bloodline", "Wild Magic"],
-    "Bard": ["College of Lore", "College of Valor"],
-    "Druid": ["Circle of the Moon", "Circle of the Land"],
-    "Monk": ["Way of the Open Hand", "Way of Shadow"],
+    "Barbarian": ["Totem Warrior", "Berserker", "Ancestral Guardian", "Storm Herald", "Zealot"],
+    "Fighter": ["Champion", "Battle Master", "Eldritch Knight", "Arcane Archer", "Cavalier", "Samurai"],
+    "Paladin": ["Devotion", "Vengeance", "Ancients", "Conquest", "Redemption", "Crown"],
+    "Rogue": ["Assassin", "Thief", "Arcane Trickster", "Swashbuckler", "Scout", "Inquisitive", "Mastermind"],
+    "Ranger": ["Hunter", "Beast Master", "Gloom Stalker", "Horizon Walker", "Monster Slayer"],
+    "Cleric": ["Life", "War", "Light", "Knowledge", "Nature", "Tempest", "Trickery", "Forge", "Grave"],
+    "Wizard": ["Evocation", "Abjuration", "Divination", "Conjuration", "Enchantment",
+               "Illusion", "Necromancy", "Transmutation", "War Magic", "Bladesinging"],
+    "Warlock": ["Fiend", "Great Old One", "Archfey", "Hexblade", "Celestial"],
+    "Sorcerer": ["Draconic Bloodline", "Wild Magic", "Divine Soul", "Shadow Magic", "Storm Sorcery"],
+    "Bard": ["College of Lore", "College of Valor", "College of Swords", "College of Whispers", "College of Glamour"],
+    "Druid": ["Circle of the Moon", "Circle of the Land", "Circle of Dreams",
+              "Circle of the Shepherd", "Circle of Spores"],
+    "Monk": ["Way of the Open Hand", "Way of Shadow", "Way of the Four Elements",
+             "Way of the Drunken Master", "Way of the Kensei", "Way of the Sun Soul", "Way of the Long Death"],
 }
 
 HIT_DICE = {
@@ -139,12 +139,7 @@ DEFAULT_AC_INFO = {
     "Monk": ("unarmored_monk", 0),              # 10 + DEX + WIS
 }
 
-RACE_SPEED = {
-    "Human": 30, "Variant Human": 30, "High Elf": 30, "Wood Elf": 35, "Drow": 30,
-    "Hill Dwarf": 25, "Mountain Dwarf": 25, "Lightfoot Halfling": 25,
-    "Stout Halfling": 25, "Half-Orc": 30, "Half-Elf": 30,
-    "Rock Gnome": 25, "Forest Gnome": 25, "Dragonborn": 30, "Tiefling": 30,
-}
+RACE_SPEED = RACIAL_SPEED_TABLE
 
 ABILITY_NAMES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
 ABILITY_ABBREVS = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
@@ -587,9 +582,14 @@ class HeroCreatorState(GameState):
         self.char_class = "Fighter"
         self.char_subclass = ""
         self.char_level = 1
+        # Free edit mode: bypass point buy restrictions
+        self.free_edit_mode = False
         # Variant Human: 2 chosen ASI abilities; Half-Elf: 2 chosen +1 abilities
         self.variant_asi_choices = []  # list of ability names
         self.halfelf_asi_choices = []  # list of ability names (not charisma)
+        # Persistent hero roster
+        self.saved_heroes = []  # List of CreatureStats loaded from disk
+        self._load_hero_roster()
 
     def _init_ui(self):
         # --- Left Column Widgets (x=30, w=370) ---
@@ -634,18 +634,32 @@ class HeroCreatorState(GameState):
         # Dropdowns list for iteration
         self.dropdowns = [self.race_dropdown, self.class_dropdown, self.subclass_dropdown]
 
+        # --- Free edit toggle ---
+        self.btn_free_edit = Button(
+            col_left_x, 482, col_left_w, 32, "MODE: POINT BUY",
+            self._toggle_free_edit, color=COLORS["panel"], font=fonts.body_bold
+        )
+
         # --- Bottom bar buttons ---
         self.btn_save = Button(
-            SCREEN_WIDTH - 330, SCREEN_HEIGHT - 68, 145, 46, "SAVE",
-            self._on_save, color=COLORS["success"], font=fonts.header_font
+            SCREEN_WIDTH - 490, SCREEN_HEIGHT - 68, 145, 46, "ADD TO ROSTER",
+            self._on_save, color=COLORS["success"], font=fonts.body_bold
+        )
+        self.btn_save_disk = Button(
+            SCREEN_WIDTH - 330, SCREEN_HEIGHT - 68, 145, 46, "SAVE TO DISK",
+            self._on_save_disk, color=COLORS["accent"], font=fonts.body_bold
         )
         self.btn_export = Button(
             SCREEN_WIDTH - 170, SCREEN_HEIGHT - 68, 145, 46, "EXPORT JSON",
-            self._on_export, color=COLORS["accent"], font=fonts.body_bold
+            self._on_export, color=COLORS["spell"], font=fonts.body_bold
         )
         self.btn_back = Button(
             20, SCREEN_HEIGHT - 68, 180, 46, "BACK TO MENU",
             self._on_back, color=COLORS["danger"], font=fonts.body_bold
+        )
+        self.btn_load = Button(
+            220, SCREEN_HEIGHT - 68, 180, 46, "LOAD HEROES",
+            self._on_load_roster, color=COLORS["neutral"], font=fonts.body_bold
         )
 
         # Apply initial selections
@@ -693,9 +707,27 @@ class HeroCreatorState(GameState):
     def _change_level(self, delta):
         self.char_level = max(1, min(20, self.char_level + delta))
 
+    def _toggle_free_edit(self):
+        self.free_edit_mode = not self.free_edit_mode
+        if self.free_edit_mode:
+            self.btn_free_edit.text = "MODE: FREE EDIT"
+            self.btn_free_edit.color = COLORS["warning"]
+        else:
+            self.btn_free_edit.text = "MODE: POINT BUY"
+            self.btn_free_edit.color = COLORS["panel"]
+
     def _change_ability(self, ability, delta):
         current = self.ability_scores[ability]
         new_val = current + delta
+
+        if self.free_edit_mode:
+            # Free edit: allow 1-30
+            if new_val < 1 or new_val > 30:
+                return
+            self.ability_scores[ability] = new_val
+            return
+
+        # Point buy mode: standard restrictions
         if new_val < POINT_BUY_MIN or new_val > POINT_BUY_MAX:
             return
         # Check points remaining
@@ -713,12 +745,61 @@ class HeroCreatorState(GameState):
             total += POINT_BUY_COST.get(self.ability_scores[ab], 0)
         return total
 
+    def _load_hero_roster(self):
+        """Load saved heroes from disk."""
+        roster_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
+        os.makedirs(roster_dir, exist_ok=True)
+        self.saved_heroes = []
+        for f in sorted(os.listdir(roster_dir)):
+            if f.endswith(".json"):
+                try:
+                    heroes = import_heroes_from_file(os.path.join(roster_dir, f))
+                    self.saved_heroes.extend(heroes)
+                except Exception:
+                    pass
+
+    def _save_hero_to_disk(self, hero):
+        """Save a single hero to the heroes/ directory."""
+        roster_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
+        os.makedirs(roster_dir, exist_ok=True)
+        safe_name = "".join(c if c.isalnum() or c in (" ", "-", "_") else "" for c in hero.name).strip()
+        if not safe_name:
+            safe_name = "hero"
+        filepath = os.path.join(roster_dir, f"{safe_name}.json")
+        export_heroes_to_file([hero], filepath)
+
     def _on_save(self):
         hero = self._build_creature_stats()
         hero_list.append(hero)
         self.status_message = f"'{hero.name}' added to hero roster!"
         self.status_timer = 180
         self.status_color = COLORS["success"]
+
+    def _on_save_disk(self):
+        hero = self._build_creature_stats()
+        try:
+            self._save_hero_to_disk(hero)
+            hero_list.append(hero)
+            self.saved_heroes.append(hero)
+            self.status_message = f"'{hero.name}' saved to disk!"
+            self.status_timer = 180
+            self.status_color = COLORS["success"]
+        except Exception as e:
+            self.status_message = f"Save failed: {e}"
+            self.status_timer = 240
+            self.status_color = COLORS["danger"]
+
+    def _on_load_roster(self):
+        """Reload heroes from disk into hero_list."""
+        self._load_hero_roster()
+        count = 0
+        for h in self.saved_heroes:
+            if not any(existing.name == h.name for existing in hero_list):
+                hero_list.append(h)
+                count += 1
+        self.status_message = f"Loaded {count} heroes from disk"
+        self.status_timer = 180
+        self.status_color = COLORS["accent"]
 
     def _on_export(self):
         hero = self._build_creature_stats()
@@ -738,10 +819,8 @@ class HeroCreatorState(GameState):
             self.status_color = COLORS["danger"]
 
     def _on_back(self):
-        if hasattr(self.manager, 'set_state'):
-            self.manager.set_state("menu")
-        elif hasattr(self.manager, 'change_state'):
-            self.manager.change_state("menu")
+        if hasattr(self.manager, 'change_state'):
+            self.manager.change_state("MENU")
 
     # ---- Build the CreatureStats ----
 
@@ -846,9 +925,11 @@ class HeroCreatorState(GameState):
         # Build unarmored flag
         is_unarmored = char_class in ("Barbarian", "Monk")
 
+        size = get_race_size(race)
+
         hero = CreatureStats(
             name=name,
-            size="Medium",
+            size=size,
             creature_type="Humanoid",
             alignment="Neutral",
             armor_class=ac,
@@ -921,8 +1002,11 @@ class HeroCreatorState(GameState):
 
             # Bottom buttons
             self.btn_save.handle_event(event)
+            self.btn_save_disk.handle_event(event)
             self.btn_export.handle_event(event)
             self.btn_back.handle_event(event)
+            self.btn_load.handle_event(event)
+            self.btn_free_edit.handle_event(event)
 
             # Scroll for features panel
             if event.type == pygame.MOUSEWHEEL:
@@ -1054,11 +1138,14 @@ class HeroCreatorState(GameState):
         prof_txt = f"Proficiency: +{prof}"
         Badge.draw(screen, 30, 470, prof_txt, COLORS["accent"])
 
+        # Free edit mode button
+        self.btn_free_edit.draw(screen, mouse_pos)
+
         # --- Summary Stats Panel ---
-        summary_panel = Panel(col_x, 500, col_w, 250, title="QUICK STATS")
+        summary_panel = Panel(col_x, 525, col_w, 230, title="QUICK STATS")
         summary_panel.draw(screen)
 
-        sy = 535
+        sy = 558
         effective = {ab: self._get_effective_score(ab) for ab in ABILITY_NAMES}
         con_mod = calc_modifier(effective["constitution"])
         hp = calc_hp(self.char_class, self.char_level, con_mod)
@@ -1121,29 +1208,43 @@ class HeroCreatorState(GameState):
         center_x = 440
         center_w = 560
 
-        panel = Panel(center_x, 70, center_w, 480, title="ABILITY SCORES (POINT BUY)")
+        title_mode = "FREE EDIT" if self.free_edit_mode else "POINT BUY"
+        panel = Panel(center_x, 70, center_w, 480, title=f"ABILITY SCORES ({title_mode})")
         panel.draw(screen)
 
-        # Points remaining
-        points_used = self._calc_points_used()
-        points_left = POINT_BUY_TOTAL - points_used
-        points_color = COLORS["success"] if points_left > 0 else (
-            COLORS["warning"] if points_left == 0 else COLORS["danger"]
-        )
-        pts_txt = f"Points Remaining: {points_left} / {POINT_BUY_TOTAL}"
-        pts_surf = fonts.body_bold.render(pts_txt, True, points_color)
-        screen.blit(pts_surf, (center_x + center_w // 2 - pts_surf.get_width() // 2, 100))
+        if self.free_edit_mode:
+            # Free edit mode: show warning
+            warn_txt = "FREE EDIT: No restrictions (1-30)"
+            warn_surf = fonts.body_bold.render(warn_txt, True, COLORS["warning"])
+            screen.blit(warn_surf, (center_x + center_w // 2 - warn_surf.get_width() // 2, 100))
 
-        # Points bar
-        bar_x = center_x + 20
-        bar_y = 122
-        bar_w = center_w - 40
-        bar_h = 6
-        pct = max(0, min(1, points_left / POINT_BUY_TOTAL))
-        pygame.draw.rect(screen, COLORS["hp_bg"], (bar_x, bar_y, bar_w, bar_h), border_radius=3)
-        if pct > 0:
-            pygame.draw.rect(screen, points_color,
-                             (bar_x, bar_y, int(bar_w * pct), bar_h), border_radius=3)
+            # Orange bar
+            bar_x = center_x + 20
+            bar_y = 122
+            bar_w = center_w - 40
+            bar_h = 6
+            pygame.draw.rect(screen, COLORS["warning"], (bar_x, bar_y, bar_w, bar_h), border_radius=3)
+        else:
+            # Points remaining
+            points_used = self._calc_points_used()
+            points_left = POINT_BUY_TOTAL - points_used
+            points_color = COLORS["success"] if points_left > 0 else (
+                COLORS["warning"] if points_left == 0 else COLORS["danger"]
+            )
+            pts_txt = f"Points Remaining: {points_left} / {POINT_BUY_TOTAL}"
+            pts_surf = fonts.body_bold.render(pts_txt, True, points_color)
+            screen.blit(pts_surf, (center_x + center_w // 2 - pts_surf.get_width() // 2, 100))
+
+            # Points bar
+            bar_x = center_x + 20
+            bar_y = 122
+            bar_w = center_w - 40
+            bar_h = 6
+            pct = max(0, min(1, points_left / POINT_BUY_TOTAL))
+            pygame.draw.rect(screen, COLORS["hp_bg"], (bar_x, bar_y, bar_w, bar_h), border_radius=3)
+            if pct > 0:
+                pygame.draw.rect(screen, points_color,
+                                 (bar_x, bar_y, int(bar_w * pct), bar_h), border_radius=3)
 
         # Racial ASI bonuses
         racial_bonuses = self._get_racial_bonuses()
@@ -1161,6 +1262,7 @@ class HeroCreatorState(GameState):
         # Saving throw proficiencies for current class
         prof_saves = SAVING_THROW_PROF.get(self.char_class, ())
         prof_bonus = calc_proficiency(self.char_level)
+        points_used = self._calc_points_used() if not self.free_edit_mode else 0
 
         row_h = 62
         for i, ab in enumerate(ABILITY_NAMES):
@@ -1196,7 +1298,7 @@ class HeroCreatorState(GameState):
             # Minus button
             minus_hover = minus_rect.collidepoint(mouse_pos)
             minus_col = COLORS["danger_hover"] if minus_hover else COLORS["danger_dim"]
-            can_decrease = base_score > POINT_BUY_MIN
+            can_decrease = base_score > (1 if self.free_edit_mode else POINT_BUY_MIN)
             if not can_decrease:
                 minus_col = COLORS["disabled"]
             pygame.draw.rect(screen, minus_col, minus_rect, border_radius=4)
@@ -1213,9 +1315,12 @@ class HeroCreatorState(GameState):
 
             # Plus button
             plus_hover = plus_rect.collidepoint(mouse_pos)
-            can_increase = base_score < POINT_BUY_MAX and (
-                points_used + POINT_BUY_COST.get(base_score + 1, 99) - cost <= POINT_BUY_TOTAL
-            )
+            if self.free_edit_mode:
+                can_increase = base_score < 30
+            else:
+                can_increase = base_score < POINT_BUY_MAX and (
+                    points_used + POINT_BUY_COST.get(base_score + 1, 99) - cost <= POINT_BUY_TOTAL
+                )
             plus_col = COLORS["success_hover"] if (plus_hover and can_increase) else (
                 COLORS["success_dim"] if can_increase else COLORS["disabled"]
             )
@@ -1579,5 +1684,7 @@ class HeroCreatorState(GameState):
 
         # Buttons
         self.btn_back.draw(screen, mouse_pos)
+        self.btn_load.draw(screen, mouse_pos)
         self.btn_save.draw(screen, mouse_pos)
+        self.btn_save_disk.draw(screen, mouse_pos)
         self.btn_export.draw(screen, mouse_pos)
