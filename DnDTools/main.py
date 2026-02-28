@@ -37,6 +37,7 @@ from flask import Flask, request, jsonify
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from states.game_states import MenuState, BattleState, EncounterSetupState
 from states.hero_creator import HeroCreatorState
+from states.combat_roster import CombatRosterState
 
 # --- FLASK SERVER SETUP ---
 app = Flask(__name__)
@@ -80,6 +81,7 @@ class GameManager:
             "MENU":  MenuState(self),
             "SETUP": EncounterSetupState(self),
             "HERO_CREATOR": HeroCreatorState(self),
+            "COMBAT_ROSTER": CombatRosterState(self),
             "BATTLE": None,
         }
         self.current_state = self.states["MENU"]
@@ -89,6 +91,11 @@ class GameManager:
         self.server_thread.start()
 
     def change_state(self, state_name: str):
+        # Recreate certain states fresh each time
+        if state_name == "HERO_CREATOR":
+            self.states["HERO_CREATOR"] = HeroCreatorState(self)
+        elif state_name == "COMBAT_ROSTER":
+            self.states["COMBAT_ROSTER"] = CombatRosterState(self)
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
 

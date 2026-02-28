@@ -14,6 +14,7 @@ class Entity:
         self.is_player = is_player
         self.is_lair = False
         self.lair_owner = None  # Reference to the entity that owns this lair action
+        self.team = ""  # Team name for multi-team combat (e.g. "Blue", "Red", "Green", "Gold")
 
         # Dynamic HP
         self.hp = stats.hit_points
