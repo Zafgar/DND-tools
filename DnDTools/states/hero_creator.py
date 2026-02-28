@@ -17,9 +17,13 @@ from data.heroes import hero_list
 from data.hero_import import export_hero_to_file, import_hero_from_file, export_heroes_to_file, import_heroes_from_file
 
 try:
-    from data.feats import FEATS_LIST
+    from data.feats import ALL_FEATS, get_feats_available, FEATS_BY_NAME
 except ImportError:
-    FEATS_LIST = []
+    ALL_FEATS = []
+    FEATS_BY_NAME = {}
+    def get_feats_available(**kw): return []
+
+from data.spells import _spells as SPELL_DATABASE, get_spell
 
 SAVES_DIR = os.path.join(os.path.dirname(__file__), "..", "saves")
 
@@ -165,6 +169,198 @@ POINT_BUY_COST = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
 POINT_BUY_TOTAL = 27
 POINT_BUY_MIN = 8
 POINT_BUY_MAX = 15
+
+# ASI / Feat levels per class (all classes get ASI at 4, 8, 12, 16, 19; Fighter/Rogue get extras)
+ASI_LEVELS = {
+    "Barbarian": [4, 8, 12, 16, 19],
+    "Bard": [4, 8, 12, 16, 19],
+    "Cleric": [4, 8, 12, 16, 19],
+    "Druid": [4, 8, 12, 16, 19],
+    "Fighter": [4, 6, 8, 12, 14, 16, 19],
+    "Monk": [4, 8, 12, 16, 19],
+    "Paladin": [4, 8, 12, 16, 19],
+    "Ranger": [4, 8, 12, 16, 19],
+    "Rogue": [4, 8, 10, 12, 16, 19],
+    "Sorcerer": [4, 8, 12, 16, 19],
+    "Warlock": [4, 8, 12, 16, 19],
+    "Wizard": [4, 8, 12, 16, 19],
+}
+
+# D&D 5e skills with governing ability
+ALL_SKILLS = [
+    ("Acrobatics", "dexterity"), ("Animal Handling", "wisdom"), ("Arcana", "intelligence"),
+    ("Athletics", "strength"), ("Deception", "charisma"), ("History", "intelligence"),
+    ("Insight", "wisdom"), ("Intimidation", "charisma"), ("Investigation", "intelligence"),
+    ("Medicine", "wisdom"), ("Nature", "intelligence"), ("Perception", "wisdom"),
+    ("Performance", "charisma"), ("Persuasion", "charisma"), ("Religion", "intelligence"),
+    ("Sleight of Hand", "dexterity"), ("Stealth", "dexterity"), ("Survival", "wisdom"),
+]
+
+CLASS_SKILL_CHOICES = {
+    "Barbarian": (2, ["Animal Handling", "Athletics", "Intimidation", "Nature", "Perception", "Survival"]),
+    "Bard": (3, [s[0] for s in ALL_SKILLS]),  # Any 3
+    "Cleric": (2, ["History", "Insight", "Medicine", "Persuasion", "Religion"]),
+    "Druid": (2, ["Arcana", "Animal Handling", "Insight", "Medicine", "Nature", "Perception", "Religion", "Survival"]),
+    "Fighter": (2, ["Acrobatics", "Animal Handling", "Athletics", "History", "Insight", "Intimidation", "Perception", "Survival"]),
+    "Monk": (2, ["Acrobatics", "Athletics", "History", "Insight", "Religion", "Stealth"]),
+    "Paladin": (2, ["Athletics", "Insight", "Intimidation", "Medicine", "Persuasion", "Religion"]),
+    "Ranger": (3, ["Animal Handling", "Athletics", "Insight", "Investigation", "Nature", "Perception", "Stealth", "Survival"]),
+    "Rogue": (4, ["Acrobatics", "Athletics", "Deception", "Insight", "Intimidation", "Investigation", "Perception", "Performance", "Persuasion", "Sleight of Hand", "Stealth"]),
+    "Sorcerer": (2, ["Arcana", "Deception", "Insight", "Intimidation", "Persuasion", "Religion"]),
+    "Warlock": (2, ["Arcana", "Deception", "History", "Intimidation", "Investigation", "Nature", "Religion"]),
+    "Wizard": (2, ["Arcana", "History", "Insight", "Investigation", "Medicine", "Religion"]),
+}
+
+# Class spell lists (mapping class to list of spell names from SPELL_DATABASE)
+CLASS_SPELL_LISTS = {
+    "Wizard": {
+        "cantrips": ["Acid Splash", "Chill Touch", "Fire Bolt", "Mage Hand", "Poison Spray", "Ray of Frost", "Shocking Grasp"],
+        "spells": ["Burning Hands", "Chromatic Orb", "Mage Armor", "Magic Missile", "Shield", "Thunderwave",
+                   "Blindness/Deafness", "Hold Person", "Invisibility", "Misty Step", "Scorching Ray", "Shatter", "Web", "Mirror Image",
+                   "Counterspell", "Dispel Magic", "Fear", "Fireball", "Fly", "Haste", "Lightning Bolt",
+                   "Banishment", "Blight", "Dimension Door", "Greater Invisibility", "Ice Storm", "Wall of Fire",
+                   "Cloudkill", "Cone of Cold", "Hold Monster",
+                   "Chain Lightning", "Disintegrate", "Sunbeam",
+                   "Finger of Death", "Fire Storm", "Plane Shift",
+                   "Dominate Monster", "Power Word Stun", "Sunburst",
+                   "Meteor Swarm", "Power Word Kill", "Time Stop"],
+    },
+    "Sorcerer": {
+        "cantrips": ["Acid Splash", "Chill Touch", "Fire Bolt", "Mage Hand", "Poison Spray", "Ray of Frost", "Shocking Grasp"],
+        "spells": ["Burning Hands", "Chromatic Orb", "Mage Armor", "Magic Missile", "Shield", "Thunderwave",
+                   "Blindness/Deafness", "Hold Person", "Invisibility", "Misty Step", "Scorching Ray", "Shatter", "Web",
+                   "Counterspell", "Dispel Magic", "Fear", "Fireball", "Fly", "Haste", "Lightning Bolt",
+                   "Banishment", "Blight", "Dimension Door", "Greater Invisibility", "Ice Storm", "Wall of Fire",
+                   "Cloudkill", "Cone of Cold", "Hold Monster",
+                   "Chain Lightning", "Disintegrate", "Sunbeam",
+                   "Finger of Death", "Fire Storm",
+                   "Dominate Monster", "Power Word Stun",
+                   "Meteor Swarm", "Power Word Kill"],
+    },
+    "Cleric": {
+        "cantrips": ["Guidance", "Resistance", "Sacred Flame"],
+        "spells": ["Bless", "Command", "Cure Wounds", "Guiding Bolt", "Healing Word", "Inflict Wounds", "Shield of Faith",
+                   "Blindness/Deafness", "Hold Person", "Lesser Restoration", "Silence", "Spiritual Weapon", "Enhance Ability",
+                   "Animate Dead", "Dispel Magic", "Revivify", "Spirit Guardians",
+                   "Banishment",
+                   "Flame Strike", "Mass Cure Wounds",
+                   "Sunbeam",
+                   "Fire Storm",
+                   "Sunburst"],
+    },
+    "Druid": {
+        "cantrips": ["Guidance", "Poison Spray", "Resistance"],
+        "spells": ["Cure Wounds", "Entangle", "Faerie Fire", "Healing Word", "Thunderwave",
+                   "Heat Metal", "Hold Person", "Lesser Restoration", "Moonbeam", "Enhance Ability",
+                   "Call Lightning", "Conjure Animals", "Dispel Magic",
+                   "Blight", "Ice Storm", "Wall of Fire",
+                   "Mass Cure Wounds",
+                   "Sunbeam",
+                   "Fire Storm", "Plane Shift",
+                   "Sunburst"],
+    },
+    "Bard": {
+        "cantrips": ["Mage Hand", "Vicious Mockery"],
+        "spells": ["Cure Wounds", "Dissonant Whispers", "Faerie Fire", "Healing Word", "Heroism", "Tasha's Hideous Laughter",
+                   "Blindness/Deafness", "Hold Person", "Invisibility", "Lesser Restoration", "Silence", "Enhance Ability",
+                   "Counterspell", "Dispel Magic", "Fear",
+                   "Dimension Door", "Greater Invisibility",
+                   "Hold Monster", "Mass Cure Wounds",
+                   "Dominate Monster", "Power Word Stun",
+                   "Power Word Kill"],
+    },
+    "Warlock": {
+        "cantrips": ["Chill Touch", "Eldritch Blast", "Mage Hand", "Poison Spray"],
+        "spells": ["Burning Hands", "Hellish Rebuke", "Hex",
+                   "Hold Person", "Invisibility", "Misty Step", "Shatter", "Mirror Image",
+                   "Counterspell", "Dispel Magic", "Fear", "Fly", "Vampiric Touch",
+                   "Banishment", "Blight", "Dimension Door",
+                   "Cone of Cold", "Hold Monster",
+                   "Chain Lightning",
+                   "Finger of Death", "Plane Shift",
+                   "Dominate Monster", "Power Word Stun",
+                   "Power Word Kill"],
+    },
+    "Paladin": {
+        "cantrips": [],
+        "spells": ["Bless", "Command", "Cure Wounds", "Divine Favor", "Heroism", "Shield of Faith",
+                   "Lesser Restoration", "Magic Weapon",
+                   "Dispel Magic", "Revivify",
+                   "Banishment"],
+    },
+    "Ranger": {
+        "cantrips": [],
+        "spells": ["Cure Wounds", "Entangle", "Hail of Thorns", "Hunter's Mark",
+                   "Lesser Restoration", "Silence",
+                   "Conjure Animals", "Lightning Bolt",
+                   "Greater Invisibility"],
+    },
+    "Fighter": {  # Eldritch Knight
+        "cantrips": ["Fire Bolt", "Ray of Frost", "Shocking Grasp", "Mage Hand"],
+        "spells": ["Burning Hands", "Magic Missile", "Shield", "Thunderwave",
+                   "Blindness/Deafness", "Hold Person", "Misty Step", "Scorching Ray", "Shatter", "Web", "Mirror Image",
+                   "Counterspell", "Dispel Magic", "Fireball", "Fly", "Haste", "Lightning Bolt"],
+    },
+    "Rogue": {  # Arcane Trickster
+        "cantrips": ["Fire Bolt", "Mage Hand", "Ray of Frost", "Shocking Grasp"],
+        "spells": ["Burning Hands", "Chromatic Orb", "Mage Armor", "Magic Missile", "Shield", "Thunderwave",
+                   "Blindness/Deafness", "Hold Person", "Invisibility", "Misty Step", "Scorching Ray", "Web", "Mirror Image",
+                   "Counterspell", "Dispel Magic", "Fear", "Fireball", "Fly", "Haste"],
+    },
+}
+
+# Cantrips known by level (full casters)
+CANTRIPS_KNOWN = {
+    "Wizard":   {1: 3, 4: 4, 10: 5},
+    "Sorcerer": {1: 4, 4: 5, 10: 6},
+    "Cleric":   {1: 3, 4: 4, 10: 5},
+    "Druid":    {1: 2, 4: 3, 10: 4},
+    "Bard":     {1: 2, 4: 3, 10: 4},
+    "Warlock":  {1: 2, 4: 3, 10: 4},
+    "Fighter":  {3: 2, 10: 3},
+    "Rogue":    {3: 2, 10: 3},
+}
+
+# Spells known by level (for Sorcerer, Bard, Ranger, Warlock, EK, AT)
+SPELLS_KNOWN_TABLE = {
+    "Sorcerer": {1:2,2:3,3:4,4:5,5:6,6:7,7:8,8:9,9:10,10:11,11:12,13:13,15:14,17:15},
+    "Bard":     {1:4,2:5,3:6,4:7,5:8,6:9,7:10,8:11,9:12,10:14,11:15,13:16,15:18,17:19,18:20},
+    "Ranger":   {2:2,3:3,5:4,7:5,9:6,11:7,13:8,15:9,17:10,19:11},
+    "Warlock":  {1:2,2:3,3:4,4:5,5:6,6:7,7:8,8:9,9:10,11:11,13:12,15:13,17:14,19:15},
+    "Fighter":  {3:3,4:4,7:5,8:6,10:7,11:8,13:9,14:10,16:11,19:12,20:13},
+    "Rogue":    {3:3,4:4,7:5,8:6,10:7,11:8,13:9,14:10,16:11,19:12,20:13},
+}
+
+# Equipment choices per class (simplified)
+WEAPON_CHOICES = {
+    "Barbarian": ["Greataxe", "Greatsword", "Handaxe (x2)", "Maul"],
+    "Fighter": ["Longsword + Shield", "Greatsword", "Longbow", "Two Shortswords", "Rapier + Shield"],
+    "Paladin": ["Longsword + Shield", "Greatsword", "Warhammer + Shield", "Two Shortswords"],
+    "Rogue": ["Rapier", "Shortsword", "Shortbow + Dagger", "Two Daggers"],
+    "Ranger": ["Longbow", "Two Shortswords", "Shortsword + Shield"],
+    "Cleric": ["Mace + Shield", "Warhammer + Shield", "Light Crossbow"],
+    "Wizard": ["Quarterstaff", "Dagger"],
+    "Warlock": ["Light Crossbow", "Quarterstaff", "Two Daggers"],
+    "Sorcerer": ["Light Crossbow", "Dagger", "Quarterstaff"],
+    "Bard": ["Rapier", "Longsword", "Shortbow + Dagger"],
+    "Druid": ["Quarterstaff + Shield", "Scimitar + Shield", "Club"],
+    "Monk": ["Shortsword", "Quarterstaff", "Handaxe (x2)", "Dart (x10)"],
+}
+
+ARMOR_CHOICES = {
+    "Barbarian": ["No Armor (Unarmored Defense)", "Shield"],
+    "Fighter": ["Chain Mail", "Leather Armor", "Scale Mail", "Chain Mail + Shield"],
+    "Paladin": ["Chain Mail + Shield", "Scale Mail + Shield", "Ring Mail + Shield"],
+    "Rogue": ["Leather Armor", "Studded Leather"],
+    "Ranger": ["Scale Mail", "Leather Armor"],
+    "Cleric": ["Chain Mail + Shield", "Scale Mail + Shield", "Leather Armor + Shield"],
+    "Wizard": ["No Armor"],
+    "Warlock": ["Leather Armor", "Studded Leather"],
+    "Sorcerer": ["No Armor"],
+    "Bard": ["Leather Armor", "Studded Leather"],
+    "Druid": ["Leather Armor + Shield", "Hide Armor + Shield"],
+    "Monk": ["No Armor (Unarmored Defense)"],
+}
 
 
 # ============================================================
@@ -587,6 +783,25 @@ class HeroCreatorState(GameState):
         # Variant Human: 2 chosen ASI abilities; Half-Elf: 2 chosen +1 abilities
         self.variant_asi_choices = []  # list of ability names
         self.halfelf_asi_choices = []  # list of ability names (not charisma)
+        # Feat selection
+        self.selected_feats = []  # list of feat name strings
+        self.feat_scroll = 0
+        # Spell selection
+        self.selected_spells = []  # list of spell name strings
+        self.selected_cantrips = []  # list of cantrip name strings
+        self.spell_scroll = 0
+        # Skill proficiency selection
+        self.skill_proficiencies = set()  # set of skill name strings
+        # Equipment choices
+        self.weapon_choice = 0
+        self.armor_choice = 0
+        # Right panel tab system
+        self.right_tab = "features"  # features, feats, spells, skills
+        # Edit existing hero
+        self.editing_hero_name = None
+        self.hero_browser_open = False
+        self.hero_browser_scroll = 0
+        self.hero_browser_search = ""
         # Persistent hero roster
         self.saved_heroes = []  # List of CreatureStats loaded from disk
         self._load_hero_roster()
@@ -642,15 +857,15 @@ class HeroCreatorState(GameState):
 
         # --- Bottom bar buttons ---
         self.btn_save = Button(
-            SCREEN_WIDTH - 490, SCREEN_HEIGHT - 68, 145, 46, "ADD TO ROSTER",
+            SCREEN_WIDTH - 510, SCREEN_HEIGHT - 68, 150, 46, "ADD TO ROSTER",
             self._on_save, color=COLORS["success"], font=fonts.body_bold
         )
         self.btn_save_disk = Button(
-            SCREEN_WIDTH - 330, SCREEN_HEIGHT - 68, 145, 46, "SAVE TO DISK",
+            SCREEN_WIDTH - 350, SCREEN_HEIGHT - 68, 150, 46, "SAVE TO DISK",
             self._on_save_disk, color=COLORS["accent"], font=fonts.body_bold
         )
         self.btn_export = Button(
-            SCREEN_WIDTH - 170, SCREEN_HEIGHT - 68, 145, 46, "EXPORT JSON",
+            SCREEN_WIDTH - 190, SCREEN_HEIGHT - 68, 150, 46, "EXPORT JSON",
             self._on_export, color=COLORS["spell"], font=fonts.body_bold
         )
         self.btn_back = Button(
@@ -661,6 +876,23 @@ class HeroCreatorState(GameState):
             220, SCREEN_HEIGHT - 68, 180, 46, "LOAD HEROES",
             self._on_load_roster, color=COLORS["neutral"], font=fonts.body_bold
         )
+        self.btn_edit_hero = Button(
+            420, SCREEN_HEIGHT - 68, 180, 46, "EDIT HERO",
+            self._toggle_hero_browser, color=COLORS["warning"], font=fonts.body_bold
+        )
+
+        # Right panel tab buttons
+        self.right_tab_buttons = {}
+        tab_names = [("features", "Features"), ("feats", "Feats"), ("spells", "Spells"), ("skills", "Skills")]
+        tab_x = 1030
+        tab_w = 870 // 4
+        for i, (key, label) in enumerate(tab_names):
+            self.right_tab_buttons[key] = Button(
+                tab_x + i * tab_w, 70, tab_w, 30, label,
+                lambda k=key: self._set_right_tab(k),
+                color=COLORS["accent"] if key == "features" else COLORS["panel"],
+                font=fonts.small_bold
+            )
 
         # Apply initial selections
         self.char_race = self.race_dropdown.value
@@ -695,9 +927,20 @@ class HeroCreatorState(GameState):
     def _on_class_change(self, value):
         self.char_class = value
         self._refresh_subclass_options()
+        # Reset selections that depend on class
+        self.selected_feats = [f for f in self.selected_feats if f in FEATS_BY_NAME]
+        self.selected_spells = []
+        self.selected_cantrips = []
+        self.skill_proficiencies = set()
+        self.feat_scroll = 0
+        self.spell_scroll = 0
 
     def _on_subclass_change(self, value):
         self.char_subclass = value if value != "(None)" else ""
+        # Reset spells when subclass changes (e.g. Eldritch Knight vs Champion)
+        self.selected_spells = []
+        self.selected_cantrips = []
+        self.spell_scroll = 0
 
     def _refresh_subclass_options(self):
         opts = SUBCLASS_MAP.get(self.char_class, [])
@@ -822,6 +1065,195 @@ class HeroCreatorState(GameState):
         if hasattr(self.manager, 'change_state'):
             self.manager.change_state("MENU")
 
+    def _set_right_tab(self, tab):
+        self.right_tab = tab
+        for key, btn in self.right_tab_buttons.items():
+            btn.color = COLORS["accent"] if key == tab else COLORS["panel"]
+
+    # ---- Feat Selection ----
+
+    def _get_max_feats(self):
+        """Number of ASI/Feat slots available at current level."""
+        levels = ASI_LEVELS.get(self.char_class, [4, 8, 12, 16, 19])
+        return sum(1 for lv in levels if lv <= self.char_level)
+
+    def _get_available_feats(self):
+        """Get feats available based on character prerequisites."""
+        abilities = {ab: self._get_effective_score(ab) for ab in ABILITY_NAMES}
+        return get_feats_available(
+            character_class=self.char_class,
+            race=self.char_race,
+            level=self.char_level,
+            abilities=abilities,
+        )
+
+    def _toggle_feat(self, feat_name):
+        """Toggle a feat on/off."""
+        if feat_name in self.selected_feats:
+            self.selected_feats.remove(feat_name)
+        elif len(self.selected_feats) < self._get_max_feats():
+            self.selected_feats.append(feat_name)
+
+    # ---- Spell Selection ----
+
+    def _get_class_cantrips(self):
+        """Get available cantrips for current class."""
+        # Check for third-caster subclasses
+        if self.char_class == "Fighter" and self.char_subclass != "Eldritch Knight":
+            return []
+        if self.char_class == "Rogue" and self.char_subclass != "Arcane Trickster":
+            return []
+        spell_list = CLASS_SPELL_LISTS.get(self.char_class, {})
+        return spell_list.get("cantrips", [])
+
+    def _get_class_spells(self):
+        """Get available spells for current class, filtered by max spell level."""
+        # Check for third-caster subclasses
+        lookup_class = self.char_class
+        if self.char_class == "Fighter" and self.char_subclass != "Eldritch Knight":
+            return []
+        if self.char_class == "Rogue" and self.char_subclass != "Arcane Trickster":
+            return []
+
+        spell_list = CLASS_SPELL_LISTS.get(lookup_class, {})
+        all_spells = spell_list.get("spells", [])
+        # Filter by max castable spell level
+        slots = calc_spell_slots(self.char_class, self.char_level, self.char_subclass)
+        if not slots:
+            return []
+        max_level = max(i + 1 for i, name in enumerate(SLOT_LEVEL_NAMES) if name in slots) if slots else 0
+        result = []
+        for sname in all_spells:
+            spell = SPELL_DATABASE.get(sname)
+            if spell and spell.level <= max_level:
+                result.append(sname)
+        return result
+
+    def _get_max_cantrips(self):
+        """Max cantrips known for current class/level."""
+        table = CANTRIPS_KNOWN.get(self.char_class, {})
+        max_known = 0
+        for lv, count in table.items():
+            if self.char_level >= lv:
+                max_known = count
+        return max_known
+
+    def _get_max_spells(self):
+        """Max spells known for current class/level."""
+        # Prepared casters (Cleric, Druid, Paladin) can prepare ability_mod + level spells
+        if self.char_class in ("Cleric", "Druid"):
+            ability_key = SPELLCASTING_ABILITY.get(self.char_class, "").lower()
+            if ability_key:
+                mod = calc_modifier(self._get_effective_score(ability_key))
+                return max(1, mod + self.char_level)
+            return self.char_level
+        if self.char_class == "Paladin":
+            ability_key = "charisma"
+            mod = calc_modifier(self._get_effective_score(ability_key))
+            return max(1, mod + self.char_level // 2)
+        if self.char_class == "Wizard":
+            # Wizard spellbook: 6 + 2 per level above 1
+            return 6 + 2 * (self.char_level - 1)
+        # Spells known casters
+        table = SPELLS_KNOWN_TABLE.get(self.char_class, {})
+        known = 0
+        for lv, count in table.items():
+            if self.char_level >= lv:
+                known = count
+        return known
+
+    def _toggle_cantrip(self, name):
+        if name in self.selected_cantrips:
+            self.selected_cantrips.remove(name)
+        elif len(self.selected_cantrips) < self._get_max_cantrips():
+            self.selected_cantrips.append(name)
+
+    def _toggle_spell(self, name):
+        if name in self.selected_spells:
+            self.selected_spells.remove(name)
+        elif len(self.selected_spells) < self._get_max_spells():
+            self.selected_spells.append(name)
+
+    # ---- Skill Selection ----
+
+    def _get_skill_choices(self):
+        """Get (count, options) for skill proficiency choices."""
+        return CLASS_SKILL_CHOICES.get(self.char_class, (2, [s[0] for s in ALL_SKILLS]))
+
+    def _toggle_skill(self, skill_name):
+        max_skills, _ = self._get_skill_choices()
+        if skill_name in self.skill_proficiencies:
+            self.skill_proficiencies.discard(skill_name)
+        elif len(self.skill_proficiencies) < max_skills:
+            self.skill_proficiencies.add(skill_name)
+
+    # ---- Edit Existing Hero ----
+
+    def _toggle_hero_browser(self):
+        self.hero_browser_open = not self.hero_browser_open
+        self.hero_browser_scroll = 0
+        self.hero_browser_search = ""
+
+    def _load_hero_into_editor(self, hero):
+        """Populate editor fields from an existing hero's CreatureStats."""
+        self.editing_hero_name = hero.name
+        self.name_input.text = hero.name
+
+        # Set race
+        if hero.race in RACE_LIST:
+            self.char_race = hero.race
+            idx = RACE_LIST.index(hero.race)
+            self.race_dropdown.selected = idx
+
+        # Set class
+        if hero.character_class in CLASS_LIST:
+            self.char_class = hero.character_class
+            idx = CLASS_LIST.index(hero.character_class)
+            self.class_dropdown.selected = idx
+            self._refresh_subclass_options()
+
+        # Set subclass
+        if hero.subclass:
+            opts = ["(None)"] + SUBCLASS_MAP.get(self.char_class, [])
+            if hero.subclass in opts:
+                self.char_subclass = hero.subclass
+                self.subclass_dropdown.selected = opts.index(hero.subclass)
+            else:
+                self.char_subclass = hero.subclass
+
+        # Set level
+        self.char_level = max(1, min(20, hero.character_level))
+
+        # Set ability scores (subtract racial bonuses to get base scores)
+        racial_bonuses = get_racial_asi(hero.race)
+        for ab in ABILITY_NAMES:
+            total = getattr(hero.abilities, ab, 10)
+            bonus = racial_bonuses.get(ab, 0)
+            self.ability_scores[ab] = max(1, total - bonus)
+
+        # Enable free edit since loaded heroes may have non-point-buy scores
+        self.free_edit_mode = True
+        self.btn_free_edit.text = "MODE: FREE EDIT"
+        self.btn_free_edit.color = COLORS["warning"]
+
+        # Load feat names from hero features that match known feats
+        self.selected_feats = []
+        for feat in hero.features:
+            if feat.name in FEATS_BY_NAME:
+                self.selected_feats.append(feat.name)
+
+        # Load spells
+        self.selected_spells = [s.name for s in hero.spells_known]
+        self.selected_cantrips = [s.name for s in hero.cantrips]
+
+        # Load skills
+        self.skill_proficiencies = set(hero.skills.keys()) if hero.skills else set()
+
+        self.hero_browser_open = False
+        self.status_message = f"Editing '{hero.name}'"
+        self.status_timer = 120
+        self.status_color = COLORS["warning"]
+
     # ---- Build the CreatureStats ----
 
     def _build_creature_stats(self):
@@ -903,8 +1335,151 @@ class HeroCreatorState(GameState):
         # Racial traits
         racial_traits = get_racial_traits(race)
 
+        # --- Apply selected feats ---
+        feat_features = []
+        for feat_name in self.selected_feats:
+            feat_obj = FEATS_BY_NAME.get(feat_name)
+            if not feat_obj:
+                continue
+            # Apply feat ASI bonuses
+            if feat_obj.ability_increase:
+                ai = feat_obj.ability_increase
+                # Parse "STR+1", "CON+1", "CHA+1", etc. (take first option if "or")
+                parts = ai.split(" or ")
+                part = parts[0].strip()
+                if "+" in part:
+                    ab_abbr, val = part.split("+")
+                    ab_map = {"STR": "strength", "DEX": "dexterity", "CON": "constitution",
+                              "INT": "intelligence", "WIS": "wisdom", "CHA": "charisma"}
+                    ab_key = ab_map.get(ab_abbr.strip().upper())
+                    if ab_key:
+                        try:
+                            bonus = int(val)
+                            current = getattr(abilities, ab_key)
+                            setattr(abilities, ab_key, min(20, current + bonus))
+                        except ValueError:
+                            pass
+            # Convert feat to Feature for combat engine
+            feat_feature = Feature(
+                name=feat_obj.name,
+                description=feat_obj.combat_effect or feat_obj.description[:100],
+                feature_type="feat",
+                mechanic=feat_obj.mechanic,
+                mechanic_value=feat_obj.mechanic_value,
+            )
+            feat_features.append(feat_feature)
+        features = features + feat_features
+
+        # Recalc HP after feat bonuses (Tough feat: +2 HP per level)
+        if "Tough" in self.selected_feats:
+            hp += 2 * level
+        # Recalc con_mod after feats (Durable, etc. may have changed CON)
+        con_mod = calc_modifier(abilities.constitution)
+        hp = calc_hp(char_class, level, con_mod)
+        if race == "Hill Dwarf":
+            hp += level
+        if char_class == "Sorcerer" and subclass == "Draconic Bloodline":
+            hp += level
+        if "Tough" in self.selected_feats:
+            hp += 2 * level
+
+        # Recalc AC after feat changes
+        ac = calc_ac(char_class, abilities, subclass)
+        # Dual Wielder feat: +1 AC
+        if "Dual Wielder" in self.selected_feats:
+            ac += 1
+
+        # Mobile feat: +10 speed
+        if "Mobile" in self.selected_feats:
+            speed += 10
+
         # Actions
         actions = build_default_actions(char_class, abilities, prof, level)
+
+        # --- Generate feat-based combat actions ---
+        str_mod = calc_modifier(abilities.strength)
+        dex_mod = calc_modifier(abilities.dexterity)
+        if "Great Weapon Master" in self.selected_feats:
+            atk = str_mod + prof - 5
+            actions.append(Action("GWM Power Attack", "Heavy weapon: -5 attack, +10 damage",
+                                  atk, "1d12", str_mod + 10, "slashing", range=5,
+                                  action_type="action"))
+        if "Sharpshooter" in self.selected_feats:
+            atk = dex_mod + prof - 5
+            actions.append(Action("Sharpshooter Shot", "Ranged: -5 attack, +10 damage",
+                                  atk, "1d8", dex_mod + 10, "piercing", range=150,
+                                  action_type="action"))
+        if "Polearm Master" in self.selected_feats:
+            atk = str_mod + prof
+            actions.append(Action("Polearm Butt", "Bonus action butt end strike",
+                                  atk, "1d4", str_mod, "bludgeoning", range=5,
+                                  action_type="bonus"))
+        if "Shield Master" in self.selected_feats:
+            actions.append(Action("Shield Bash", "Bonus action shove after Attack",
+                                  str_mod + prof, "0", 0, "bludgeoning", range=5,
+                                  action_type="bonus"))
+        if "Crossbow Expert" in self.selected_feats:
+            atk = dex_mod + prof
+            actions.append(Action("Hand Crossbow (Bonus)", "Bonus action crossbow attack",
+                                  atk, "1d6", dex_mod, "piercing", range=30,
+                                  action_type="bonus"))
+        if "Martial Adept" in self.selected_feats:
+            feat_features_list = [f for f in features if f.name == "Martial Adept"]
+            if not feat_features_list:
+                features.append(Feature("Superiority Die", "1 superiority die (d6)",
+                                        mechanic="superiority_dice", mechanic_value="1d6",
+                                        uses_per_day=1, short_rest_recharge=True))
+        if "Healer" in self.selected_feats:
+            actions.append(Action("Healer's Kit", "Heal 1d6+4+max HD (1/creature/rest)",
+                                  0, "1d6", 4, "healing", range=5, action_type="action"))
+
+        # --- Generate racial trait combat actions ---
+        for trait in racial_traits:
+            if trait.mechanic == "breath_weapon" and trait.damage_dice:
+                save_dc_val = 8 + prof + calc_modifier(abilities.constitution)
+                actions.append(Action(
+                    "Breath Weapon", f"{trait.damage_type} breath ({trait.damage_dice})",
+                    0, trait.damage_dice, 0, trait.damage_type or "fire", range=15,
+                    aoe_radius=15, aoe_shape="cone",
+                    condition_save=trait.save_ability or "Dexterity",
+                    condition_dc=save_dc_val
+                ))
+            elif trait.mechanic == "healing_hands":
+                actions.append(Action(
+                    "Healing Hands", f"Heal {level} HP (1/long rest)",
+                    0, f"{level}", 0, "healing", range=5, action_type="action"
+                ))
+            elif trait.mechanic == "hellish_rebuke":
+                actions.append(Action(
+                    "Hellish Rebuke (Racial)", "2d10 fire damage (reaction, 1/day)",
+                    0, "2d10", 0, "fire", range=60, action_type="reaction"
+                ))
+            elif trait.mechanic == "relentless_endurance":
+                features.append(Feature("Relentless Endurance", "Drop to 1 HP instead of 0 (1/long rest)",
+                                        mechanic="relentless_endurance", uses_per_day=1))
+
+        # --- Assign selected spells and cantrips ---
+        spells_known = []
+        for sname in self.selected_spells:
+            spell = SPELL_DATABASE.get(sname)
+            if spell:
+                spells_known.append(get_spell(sname,
+                    save_dc_fixed=spell_save_dc if not spell.save_dc_fixed else spell.save_dc_fixed,
+                    attack_bonus_fixed=spell_atk if not spell.attack_bonus_fixed else spell.attack_bonus_fixed))
+        cantrips_list = []
+        for sname in self.selected_cantrips:
+            spell = SPELL_DATABASE.get(sname)
+            if spell:
+                cantrips_list.append(get_spell(sname,
+                    save_dc_fixed=spell_save_dc if not spell.save_dc_fixed else spell.save_dc_fixed,
+                    attack_bonus_fixed=spell_atk if not spell.attack_bonus_fixed else spell.attack_bonus_fixed))
+
+        # --- Apply skill proficiencies ---
+        skills = {}
+        for skill_name, ability_name in ALL_SKILLS:
+            if skill_name in self.skill_proficiencies:
+                mod = calc_modifier(self._get_effective_score(ability_name))
+                skills[skill_name] = mod + prof
 
         # Resource pools
         ki_points = level if char_class == "Monk" and level >= 2 else 0
@@ -939,6 +1514,7 @@ class HeroCreatorState(GameState):
             speed=speed,
             abilities=abilities,
             saving_throws=saving_throws,
+            skills=skills,
             proficiency_bonus=prof,
             challenge_rating=cr,
             character_class=char_class,
@@ -952,6 +1528,8 @@ class HeroCreatorState(GameState):
             spell_save_dc=spell_save_dc,
             spell_attack_bonus=spell_atk,
             spell_slots=spell_slots,
+            spells_known=spells_known,
+            cantrips=cantrips_list,
             ki_points=ki_points,
             sorcery_points=sorcery_points,
             lay_on_hands_pool=lay_on_hands_pool,
@@ -1007,25 +1585,64 @@ class HeroCreatorState(GameState):
             self.btn_back.handle_event(event)
             self.btn_load.handle_event(event)
             self.btn_free_edit.handle_event(event)
+            self.btn_edit_hero.handle_event(event)
 
-            # Scroll for features panel
+            # Right panel tab buttons
+            for btn in self.right_tab_buttons.values():
+                btn.handle_event(event)
+
+            # Right panel content clicks (feats, spells, skills)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if mouse_pos[0] > 1030:
+                    if self.right_tab == "feats":
+                        self._handle_feat_clicks(mouse_pos)
+                    elif self.right_tab == "spells":
+                        self._handle_spell_clicks(mouse_pos)
+                    elif self.right_tab == "skills":
+                        self._handle_skill_clicks(mouse_pos)
+
+            # Hero browser clicks
+            if self.hero_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._handle_hero_browser_click(mouse_pos)
+
+            # Scroll for right panel
             if event.type == pygame.MOUSEWHEEL:
-                # Check if mouse is in right column feature area
-                if mouse_pos[0] > 1050 and mouse_pos[1] < 550:
-                    self.feature_scroll = max(0, self.feature_scroll - event.y * 20)
-                elif mouse_pos[0] > 1050 and mouse_pos[1] >= 550:
-                    self.trait_scroll = max(0, self.trait_scroll - event.y * 20)
+                if mouse_pos[0] > 1030:
+                    if self.right_tab == "features":
+                        if mouse_pos[1] < 550:
+                            self.feature_scroll = max(0, self.feature_scroll - event.y * 20)
+                        else:
+                            self.trait_scroll = max(0, self.trait_scroll - event.y * 20)
+                    elif self.right_tab == "feats":
+                        self.feat_scroll = max(0, self.feat_scroll - event.y * 20)
+                    elif self.right_tab == "spells":
+                        self.spell_scroll = max(0, self.spell_scroll - event.y * 20)
+                # Hero browser scroll
+                if self.hero_browser_open and 400 <= mouse_pos[0] <= 1520:
+                    self.hero_browser_scroll = max(0, self.hero_browser_scroll - event.y * 25)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
-                    if mouse_pos[0] > 1050 and mouse_pos[1] < 550:
-                        self.feature_scroll = max(0, self.feature_scroll - 20)
-                    elif mouse_pos[0] > 1050 and mouse_pos[1] >= 550:
-                        self.trait_scroll = max(0, self.trait_scroll - 20)
+                    if mouse_pos[0] > 1030:
+                        if self.right_tab == "features":
+                            if mouse_pos[1] < 550:
+                                self.feature_scroll = max(0, self.feature_scroll - 20)
+                            else:
+                                self.trait_scroll = max(0, self.trait_scroll - 20)
+                        elif self.right_tab == "feats":
+                            self.feat_scroll = max(0, self.feat_scroll - 20)
+                        elif self.right_tab == "spells":
+                            self.spell_scroll = max(0, self.spell_scroll - 20)
                 elif event.button == 5:
-                    if mouse_pos[0] > 1050 and mouse_pos[1] < 550:
-                        self.feature_scroll += 20
-                    elif mouse_pos[0] > 1050 and mouse_pos[1] >= 550:
-                        self.trait_scroll += 20
+                    if mouse_pos[0] > 1030:
+                        if self.right_tab == "features":
+                            if mouse_pos[1] < 550:
+                                self.feature_scroll += 20
+                            else:
+                                self.trait_scroll += 20
+                        elif self.right_tab == "feats":
+                            self.feat_scroll += 20
+                        elif self.right_tab == "spells":
+                            self.spell_scroll += 20
 
     def _handle_ability_clicks(self, mouse_pos):
         """Check if an ability +/- button or ASI choice was clicked."""
@@ -1054,6 +1671,91 @@ class HeroCreatorState(GameState):
                 if btn_rect.collidepoint(mouse_pos):
                     self._toggle_asi_choice(ab)
 
+    def _handle_feat_clicks(self, mouse_pos):
+        """Handle clicks on feat list items."""
+        right_x = 1030
+        right_w = 870
+        content_y = 158  # Matches _draw_feats_tab: info_y(133) + 25
+        available = self._get_available_feats()
+        row_h = 36
+        for i, feat in enumerate(available):
+            fy = content_y + i * row_h - self.feat_scroll
+            if fy < 133 or fy > SCREEN_HEIGHT - 100:
+                continue
+            item_rect = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._toggle_feat(feat.name)
+                break
+
+    def _handle_spell_clicks(self, mouse_pos):
+        """Handle clicks on spell/cantrip list items."""
+        right_x = 1030
+        right_w = 870
+        row_h = 32
+        # Match the draw method coordinates exactly
+        cantrips = self._get_class_cantrips()
+        cy = 140 - self.spell_scroll  # Matches _draw_spells_tab header start
+        cy += 20  # Skip "CANTRIPS" header
+        for i, name in enumerate(cantrips):
+            fy = cy + i * row_h
+            if fy < 133 or fy > SCREEN_HEIGHT - 100:
+                continue
+            item_rect = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._toggle_cantrip(name)
+                return
+        # Spells section
+        spells = self._get_class_spells()
+        sy = cy + len(cantrips) * row_h + 15 + 20  # +15 gap, +20 header
+        for i, name in enumerate(spells):
+            fy = sy + i * row_h
+            if fy < 133 or fy > SCREEN_HEIGHT - 100:
+                continue
+            item_rect = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._toggle_spell(name)
+                return
+
+    def _handle_skill_clicks(self, mouse_pos):
+        """Handle clicks on skill selection."""
+        right_x = 1030
+        right_w = 870
+        _, available = self._get_skill_choices()
+        row_h = 32
+        cy = 155  # Matches _draw_skills_tab start
+        for i, (skill_name, ability) in enumerate(ALL_SKILLS):
+            fy = cy + i * row_h
+            if fy < 133 or fy > SCREEN_HEIGHT - 100:
+                continue
+            item_rect = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._toggle_skill(skill_name)
+                break
+
+    def _handle_hero_browser_click(self, mouse_pos):
+        """Handle clicks in the hero browser overlay."""
+        # Close button area
+        close_rect = pygame.Rect(1480, 95, 30, 30)
+        if close_rect.collidepoint(mouse_pos):
+            self.hero_browser_open = False
+            return
+
+        # Hero list items
+        all_heroes = list(hero_list) + [h for h in self.saved_heroes if not any(e.name == h.name for e in hero_list)]
+        if self.hero_browser_search:
+            search = self.hero_browser_search.lower()
+            all_heroes = [h for h in all_heroes if search in h.name.lower() or
+                          search in h.character_class.lower() or search in h.race.lower()]
+        row_h = 40
+        for i, hero in enumerate(all_heroes):
+            fy = 140 + i * row_h - self.hero_browser_scroll
+            if fy < 130 or fy > SCREEN_HEIGHT - 200:
+                continue
+            item_rect = pygame.Rect(420, fy, 1080, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._load_hero_into_editor(hero)
+                return
+
     def update(self):
         if self.status_timer > 0:
             self.status_timer -= 1
@@ -1078,6 +1780,10 @@ class HeroCreatorState(GameState):
 
         # Draw computed stats summary in the center-bottom area
         self._draw_computed_stats(screen, mouse_pos)
+
+        # Draw hero browser overlay (on top of everything else)
+        if self.hero_browser_open:
+            self._draw_hero_browser(screen, mouse_pos)
 
         # Draw dropdown overlays last (so they are on top)
         for dd in self.dropdowns:
@@ -1370,80 +2076,90 @@ class HeroCreatorState(GameState):
             self._draw_asi_choices(screen, mouse_pos, center_x, start_y + 6 * row_h + 15, center_w)
 
     def _draw_right_column(self, screen, mouse_pos):
-        """Draw right column: features and racial traits."""
+        """Draw right column: tabbed panel with features/feats/spells/skills."""
         right_x = 1030
         right_w = 870
 
-        # --- Class Features Panel ---
+        # Draw tab buttons
+        for key, btn in self.right_tab_buttons.items():
+            btn.draw(screen, mouse_pos)
+
+        # Draw active tab indicator
+        tab_keys = ["features", "feats", "spells", "skills"]
+        active_idx = tab_keys.index(self.right_tab) if self.right_tab in tab_keys else 0
+        tab_w = right_w // 4
+        indicator_rect = pygame.Rect(right_x + active_idx * tab_w, 100, tab_w, 3)
+        pygame.draw.rect(screen, COLORS["accent"], indicator_rect)
+
+        # Draw tab content
+        if self.right_tab == "features":
+            self._draw_features_tab(screen, mouse_pos)
+        elif self.right_tab == "feats":
+            self._draw_feats_tab(screen, mouse_pos)
+        elif self.right_tab == "spells":
+            self._draw_spells_tab(screen, mouse_pos)
+        elif self.right_tab == "skills":
+            self._draw_skills_tab(screen, mouse_pos)
+
+    def _draw_features_tab(self, screen, mouse_pos):
+        """Draw class features and racial traits."""
+        right_x = 1030
+        right_w = 870
+
+        # --- Class Features ---
         feat_panel_h = 440
-        feat_panel = Panel(right_x, 70, right_w, feat_panel_h, title="CLASS FEATURES")
-        feat_panel.draw(screen)
+        panel = Panel(right_x, 103, right_w, feat_panel_h, title="CLASS FEATURES")
+        panel.draw(screen)
 
         features = get_class_features(self.char_class, self.char_level, self.char_subclass)
 
-        clip_rect = pygame.Rect(right_x + 5, 100, right_w - 10, feat_panel_h - 40)
+        clip_rect = pygame.Rect(right_x + 5, 133, right_w - 10, feat_panel_h - 40)
         screen.set_clip(clip_rect)
 
-        fy = 105 - self.feature_scroll
+        fy = 138 - self.feature_scroll
         for feat in features:
-            if fy > 70 + feat_panel_h:
+            if fy > 103 + feat_panel_h:
                 break
-            if fy + 40 >= 100:
-                # Feature name
+            if fy + 40 >= 133:
                 name_surf = fonts.body_bold.render(feat.name, True, COLORS["text_bright"])
                 screen.blit(name_surf, (right_x + 15, fy))
-
-                # Mechanic badge
                 if feat.mechanic:
                     badge_x = right_x + 20 + name_surf.get_width() + 5
                     if badge_x + 80 < right_x + right_w:
                         Badge.draw(screen, badge_x, fy + 2, feat.mechanic,
                                    COLORS.get(self.char_class.lower(), COLORS["accent_dim"]),
                                    font=fonts.tiny_font)
-
-                # Description (truncated)
                 if feat.description:
-                    desc_text = feat.description
-                    if len(desc_text) > 100:
-                        desc_text = desc_text[:97] + "..."
+                    desc_text = feat.description[:97] + "..." if len(feat.description) > 100 else feat.description
                     desc_surf = fonts.small_font.render(desc_text, True, COLORS["text_dim"])
-                    # Clip the description to not overflow
                     desc_clip = pygame.Rect(right_x + 15, fy + 20, right_w - 30, 16)
-                    old_clip = screen.get_clip()
                     screen.set_clip(desc_clip.clip(clip_rect))
                     screen.blit(desc_surf, (right_x + 15, fy + 20))
                     screen.set_clip(clip_rect)
-
-                # Uses indicator
                 if feat.uses_per_day > 0:
-                    uses_txt = f"{feat.uses_per_day}/day"
-                    if feat.short_rest_recharge:
-                        uses_txt = f"{feat.uses_per_day}/rest"
+                    uses_txt = f"{feat.uses_per_day}/rest" if feat.short_rest_recharge else f"{feat.uses_per_day}/day"
                     uses_s = fonts.tiny_font.render(uses_txt, True, COLORS["warning"])
                     screen.blit(uses_s, (right_x + right_w - 70, fy + 3))
-
             fy += 42
-
         screen.set_clip(None)
 
-        # Scroll indicator
-        if len(features) * 42 > feat_panel_h - 40:
-            max_scroll = max(0, len(features) * 42 - feat_panel_h + 40)
-            if max_scroll > 0:
-                sb_total_h = feat_panel_h - 40
-                sb_h = max(20, int(sb_total_h * sb_total_h / (len(features) * 42)))
-                sb_y = 100 + int((sb_total_h - sb_h) * min(1, self.feature_scroll / max_scroll))
-                sb_rect = pygame.Rect(right_x + right_w - 8, sb_y, 5, sb_h)
-                pygame.draw.rect(screen, COLORS["scrollbar_thumb"], sb_rect, border_radius=2)
+        # Scrollbar
+        total_h = len(features) * 42
+        if total_h > feat_panel_h - 40:
+            max_scroll = max(1, total_h - feat_panel_h + 40)
+            sb_total_h = feat_panel_h - 40
+            sb_h = max(20, int(sb_total_h * sb_total_h / total_h))
+            sb_y = 133 + int((sb_total_h - sb_h) * min(1, self.feature_scroll / max_scroll))
+            pygame.draw.rect(screen, COLORS["scrollbar_thumb"],
+                             (right_x + right_w - 8, sb_y, 5, sb_h), border_radius=2)
 
-        # --- Racial Traits Panel ---
-        trait_y = 530
+        # --- Racial Traits ---
+        trait_y = 560
         trait_h = SCREEN_HEIGHT - trait_y - 90
         trait_panel = Panel(right_x, trait_y, right_w, trait_h, title=f"RACIAL TRAITS - {self.char_race}")
         trait_panel.draw(screen)
 
         traits = get_racial_traits(self.char_race)
-
         clip_rect2 = pygame.Rect(right_x + 5, trait_y + 30, right_w - 10, trait_h - 40)
         screen.set_clip(clip_rect2)
 
@@ -1452,28 +2168,393 @@ class HeroCreatorState(GameState):
             if ty > trait_y + trait_h:
                 break
             if ty + 30 >= trait_y + 30:
-                # Trait name
                 tn = fonts.body_bold.render(trait.name, True, COLORS["text_bright"])
                 screen.blit(tn, (right_x + 15, ty))
-
-                # Description
                 if trait.description:
-                    desc = trait.description
-                    if len(desc) > 90:
-                        desc = desc[:87] + "..."
+                    desc = trait.description[:87] + "..." if len(trait.description) > 90 else trait.description
                     td = fonts.small_font.render(desc, True, COLORS["text_dim"])
                     desc_clip2 = pygame.Rect(right_x + 15, ty + 20, right_w - 30, 16)
-                    old_clip2 = screen.get_clip()
                     screen.set_clip(desc_clip2.clip(clip_rect2))
                     screen.blit(td, (right_x + 15, ty + 20))
                     screen.set_clip(clip_rect2)
-
-                # Mechanic badge
                 if trait.mechanic:
                     Badge.draw(screen, right_x + 20 + tn.get_width() + 5, ty + 2,
                                trait.mechanic, COLORS["accent_dim"], font=fonts.tiny_font)
-
             ty += 40
+        screen.set_clip(None)
+
+    def _draw_feats_tab(self, screen, mouse_pos):
+        """Draw feat selection tab."""
+        right_x = 1030
+        right_w = 870
+
+        max_feats = self._get_max_feats()
+        selected_count = len(self.selected_feats)
+        panel = Panel(right_x, 103, right_w, SCREEN_HEIGHT - 193,
+                      title=f"FEAT SELECTION ({selected_count}/{max_feats} slots)")
+        panel.draw(screen)
+
+        # Info bar
+        info_y = 133
+        if max_feats == 0:
+            no_feat_txt = "No ASI/Feat slots available at this level (first at level 4)"
+            ns = fonts.body_font.render(no_feat_txt, True, COLORS["text_muted"])
+            screen.blit(ns, (right_x + 15, info_y + 10))
+            return
+
+        slots_txt = f"ASI/Feat slots: {selected_count}/{max_feats}  |  Level required: {ASI_LEVELS.get(self.char_class, [4])[0]}"
+        slots_col = COLORS["success"] if selected_count < max_feats else COLORS["warning"]
+        ss = fonts.small_bold.render(slots_txt, True, slots_col)
+        screen.blit(ss, (right_x + 15, info_y))
+
+        # Available feats list
+        available = self._get_available_feats()
+        row_h = 36
+        content_y = info_y + 25
+        clip_rect = pygame.Rect(right_x + 5, content_y, right_w - 10, SCREEN_HEIGHT - content_y - 100)
+        screen.set_clip(clip_rect)
+
+        for i, feat in enumerate(available):
+            fy = content_y + i * row_h - self.feat_scroll
+            if fy > SCREEN_HEIGHT - 100:
+                break
+            if fy + row_h < content_y:
+                continue
+
+            is_selected = feat.name in self.selected_feats
+            is_hover = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2).collidepoint(mouse_pos)
+
+            # Row background
+            if is_selected:
+                pygame.draw.rect(screen, COLORS["success_dim"],
+                                 (right_x + 5, fy, right_w - 10, row_h - 2), border_radius=4)
+                pygame.draw.rect(screen, COLORS["success"],
+                                 (right_x + 5, fy, right_w - 10, row_h - 2), 1, border_radius=4)
+            elif is_hover:
+                pygame.draw.rect(screen, COLORS["hover"],
+                                 (right_x + 5, fy, right_w - 10, row_h - 2), border_radius=4)
+
+            # Checkbox
+            cb_rect = pygame.Rect(right_x + 12, fy + 8, 18, 18)
+            pygame.draw.rect(screen, COLORS["border"], cb_rect, 1, border_radius=3)
+            if is_selected:
+                pygame.draw.rect(screen, COLORS["success"], cb_rect.inflate(-4, -4), border_radius=2)
+
+            # Feat name
+            name_col = COLORS["text_bright"] if is_selected else COLORS["text_main"]
+            ns = fonts.body_bold.render(feat.name, True, name_col)
+            screen.blit(ns, (right_x + 38, fy + 2))
+
+            # Combat effect (brief)
+            if feat.combat_effect:
+                effect_text = feat.combat_effect[:80] + "..." if len(feat.combat_effect) > 80 else feat.combat_effect
+                es = fonts.tiny_font.render(effect_text, True, COLORS["text_dim"])
+                effect_clip = pygame.Rect(right_x + 38, fy + 20, right_w - 60, 14)
+                old_clip = screen.get_clip()
+                screen.set_clip(effect_clip.clip(clip_rect))
+                screen.blit(es, (right_x + 38, fy + 20))
+                screen.set_clip(clip_rect)
+
+            # Prerequisite badge
+            if feat.prerequisite:
+                prereq_x = right_x + right_w - 140
+                Badge.draw(screen, prereq_x, fy + 5, feat.prerequisite[:15],
+                           COLORS["warning_dim"], font=fonts.tiny_font)
+
+            # ASI badge
+            if feat.ability_increase:
+                asi_x = right_x + right_w - 60
+                Badge.draw(screen, asi_x, fy + 5, feat.ability_increase.split(" or ")[0][:8],
+                           COLORS["accent_dim"], font=fonts.tiny_font)
+
+        screen.set_clip(None)
+
+        # Scrollbar
+        total_h = len(available) * row_h
+        panel_h = SCREEN_HEIGHT - content_y - 100
+        if total_h > panel_h:
+            max_scroll = max(1, total_h - panel_h)
+            sb_h = max(20, int(panel_h * panel_h / total_h))
+            sb_y = content_y + int((panel_h - sb_h) * min(1, self.feat_scroll / max_scroll))
+            pygame.draw.rect(screen, COLORS["scrollbar_thumb"],
+                             (right_x + right_w - 8, sb_y, 5, sb_h), border_radius=2)
+
+    def _draw_spells_tab(self, screen, mouse_pos):
+        """Draw spell selection tab."""
+        right_x = 1030
+        right_w = 870
+        spell_ability = SPELLCASTING_ABILITY.get(self.char_class, "")
+
+        if not spell_ability and self.char_subclass not in ("Eldritch Knight", "Arcane Trickster"):
+            panel = Panel(right_x, 103, right_w, SCREEN_HEIGHT - 193, title="SPELLS")
+            panel.draw(screen)
+            txt = f"{self.char_class} is not a spellcasting class"
+            if self.char_class == "Fighter":
+                txt += " (select Eldritch Knight subclass for spells)"
+            elif self.char_class == "Rogue":
+                txt += " (select Arcane Trickster subclass for spells)"
+            ns = fonts.body_font.render(txt, True, COLORS["text_muted"])
+            screen.blit(ns, (right_x + 15, 145))
+            return
+
+        max_cantrips = self._get_max_cantrips()
+        max_spells = self._get_max_spells()
+        panel = Panel(right_x, 103, right_w, SCREEN_HEIGHT - 193,
+                      title=f"SPELLS  |  Cantrips: {len(self.selected_cantrips)}/{max_cantrips}  |  Spells: {len(self.selected_spells)}/{max_spells}")
+        panel.draw(screen)
+
+        row_h = 32
+        clip_rect = pygame.Rect(right_x + 5, 133, right_w - 10, SCREEN_HEIGHT - 233)
+        screen.set_clip(clip_rect)
+
+        # Cantrips section
+        cantrips = self._get_class_cantrips()
+        cy = 140 - self.spell_scroll
+        if cantrips:
+            hdr = fonts.small_bold.render(f"CANTRIPS ({len(self.selected_cantrips)}/{max_cantrips})", True, COLORS["spell"])
+            screen.blit(hdr, (right_x + 15, cy))
+            cy += 20
+            for name in cantrips:
+                if cy > SCREEN_HEIGHT - 100:
+                    break
+                if cy + row_h >= 133:
+                    is_sel = name in self.selected_cantrips
+                    is_hov = pygame.Rect(right_x + 5, cy, right_w - 10, row_h - 2).collidepoint(mouse_pos)
+                    if is_sel:
+                        pygame.draw.rect(screen, COLORS["spell_dim"],
+                                         (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+                    elif is_hov:
+                        pygame.draw.rect(screen, COLORS["hover"],
+                                         (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+                    # Checkbox
+                    cb = pygame.Rect(right_x + 12, cy + 6, 16, 16)
+                    pygame.draw.rect(screen, COLORS["border"], cb, 1, border_radius=2)
+                    if is_sel:
+                        pygame.draw.rect(screen, COLORS["spell"], cb.inflate(-4, -4), border_radius=1)
+                    # Name
+                    ns = fonts.body_font.render(name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
+                    screen.blit(ns, (right_x + 35, cy + 5))
+                    # Spell info
+                    spell = SPELL_DATABASE.get(name)
+                    if spell:
+                        info = f"{spell.damage_dice} {spell.damage_type}" if spell.damage_dice else spell.description[:40]
+                        info_s = fonts.tiny_font.render(info, True, COLORS["text_dim"])
+                        screen.blit(info_s, (right_x + 350, cy + 8))
+                cy += row_h
+
+        # Spells section
+        spells = self._get_class_spells()
+        cy += 15
+        if spells or CLASS_SPELL_LISTS.get(self.char_class, {}).get("spells"):
+            hdr = fonts.small_bold.render(f"SPELLS ({len(self.selected_spells)}/{max_spells})", True, COLORS["accent"])
+            if cy + 20 >= 133:
+                screen.blit(hdr, (right_x + 15, cy))
+            cy += 20
+            for name in spells:
+                if cy > SCREEN_HEIGHT - 100:
+                    break
+                if cy + row_h >= 133:
+                    is_sel = name in self.selected_spells
+                    is_hov = pygame.Rect(right_x + 5, cy, right_w - 10, row_h - 2).collidepoint(mouse_pos)
+                    if is_sel:
+                        pygame.draw.rect(screen, COLORS["accent_dim"],
+                                         (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+                    elif is_hov:
+                        pygame.draw.rect(screen, COLORS["hover"],
+                                         (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+                    # Checkbox
+                    cb = pygame.Rect(right_x + 12, cy + 6, 16, 16)
+                    pygame.draw.rect(screen, COLORS["border"], cb, 1, border_radius=2)
+                    if is_sel:
+                        pygame.draw.rect(screen, COLORS["accent"], cb.inflate(-4, -4), border_radius=1)
+                    # Name + level
+                    spell = SPELL_DATABASE.get(name)
+                    lvl_str = f"[Lv{spell.level}]" if spell else ""
+                    ns = fonts.body_font.render(f"{lvl_str} {name}", True,
+                                                 COLORS["text_bright"] if is_sel else COLORS["text_main"])
+                    screen.blit(ns, (right_x + 35, cy + 5))
+                    # Spell info
+                    if spell:
+                        info_parts = []
+                        if spell.damage_dice:
+                            info_parts.append(f"{spell.damage_dice} {spell.damage_type}")
+                        if spell.heals:
+                            info_parts.append(f"Heal {spell.heals}")
+                        if spell.applies_condition:
+                            info_parts.append(spell.applies_condition)
+                        if spell.concentration:
+                            info_parts.append("Conc.")
+                        info = " | ".join(info_parts) if info_parts else spell.description[:40]
+                        info_s = fonts.tiny_font.render(info, True, COLORS["text_dim"])
+                        screen.blit(info_s, (right_x + 350, cy + 8))
+                cy += row_h
+
+        screen.set_clip(None)
+
+        # Scrollbar
+        total_h = (len(cantrips) + len(spells) + 3) * row_h
+        panel_h = SCREEN_HEIGHT - 233
+        if total_h > panel_h:
+            max_scroll = max(1, total_h - panel_h)
+            sb_h = max(20, int(panel_h * panel_h / total_h))
+            sb_y = 133 + int((panel_h - sb_h) * min(1, self.spell_scroll / max_scroll))
+            pygame.draw.rect(screen, COLORS["scrollbar_thumb"],
+                             (right_x + right_w - 8, sb_y, 5, sb_h), border_radius=2)
+
+    def _draw_skills_tab(self, screen, mouse_pos):
+        """Draw skill proficiency selection tab."""
+        right_x = 1030
+        right_w = 870
+        max_skills, available = self._get_skill_choices()
+        selected_count = len(self.skill_proficiencies)
+
+        panel = Panel(right_x, 103, right_w, SCREEN_HEIGHT - 193,
+                      title=f"SKILL PROFICIENCIES ({selected_count}/{max_skills})")
+        panel.draw(screen)
+
+        info_txt = f"Choose {max_skills} skills from your class list ({self.char_class})"
+        is_s = fonts.small_bold.render(info_txt, True, COLORS["text_dim"])
+        screen.blit(is_s, (right_x + 15, 133))
+
+        prof = calc_proficiency(self.char_level)
+        row_h = 32
+        cy = 155
+
+        for skill_name, ability in ALL_SKILLS:
+            is_available = skill_name in available
+            is_sel = skill_name in self.skill_proficiencies
+            is_hov = pygame.Rect(right_x + 5, cy, right_w - 10, row_h - 2).collidepoint(mouse_pos)
+
+            # Row background
+            if is_sel:
+                pygame.draw.rect(screen, COLORS["accent_dim"],
+                                 (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+            elif is_hov and is_available:
+                pygame.draw.rect(screen, COLORS["hover"],
+                                 (right_x + 5, cy, right_w - 10, row_h - 2), border_radius=3)
+
+            # Checkbox
+            cb = pygame.Rect(right_x + 12, cy + 6, 16, 16)
+            cb_col = COLORS["accent"] if is_available else COLORS["disabled"]
+            pygame.draw.rect(screen, cb_col if is_sel else COLORS["border"], cb, 1, border_radius=2)
+            if is_sel:
+                pygame.draw.rect(screen, COLORS["accent"], cb.inflate(-4, -4), border_radius=1)
+
+            # Skill name
+            name_col = COLORS["text_bright"] if is_sel else (
+                COLORS["text_main"] if is_available else COLORS["text_muted"]
+            )
+            ns = fonts.body_font.render(skill_name, True, name_col)
+            screen.blit(ns, (right_x + 35, cy + 5))
+
+            # Ability badge
+            ab_abbr = ability[:3].upper()
+            Badge.draw(screen, right_x + 250, cy + 5, ab_abbr,
+                       COLORS.get(self.char_class.lower(), COLORS["accent_dim"]),
+                       font=fonts.tiny_font)
+
+            # Bonus
+            mod = calc_modifier(self._get_effective_score(ability))
+            total = mod + (prof if is_sel else 0)
+            bonus_str = f"+{total}" if total >= 0 else str(total)
+            bs = fonts.body_bold.render(bonus_str, True,
+                                         COLORS["accent"] if is_sel else COLORS["text_muted"])
+            screen.blit(bs, (right_x + 310, cy + 5))
+
+            # Not-available indicator
+            if not is_available and not is_sel:
+                na = fonts.tiny_font.render("(other class)", True, COLORS["text_muted"])
+                screen.blit(na, (right_x + 370, cy + 8))
+
+            cy += row_h
+
+    def _draw_hero_browser(self, screen, mouse_pos):
+        """Draw the hero browser overlay for editing existing heroes."""
+        # Overlay background
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        # Browser panel
+        bx, by, bw, bh = 400, 80, 1120, SCREEN_HEIGHT - 160
+        pygame.draw.rect(screen, COLORS["panel"], (bx, by, bw, bh), border_radius=8)
+        pygame.draw.rect(screen, COLORS["border_glow"], (bx, by, bw, bh), 2, border_radius=8)
+
+        # Title
+        title = fonts.header_font.render("SELECT HERO TO EDIT", True, COLORS["text_bright"])
+        screen.blit(title, (bx + bw // 2 - title.get_width() // 2, by + 10))
+
+        # Close button
+        close_rect = pygame.Rect(bx + bw - 40, by + 8, 30, 30)
+        close_hover = close_rect.collidepoint(mouse_pos)
+        pygame.draw.rect(screen, COLORS["danger"] if close_hover else COLORS["danger_dim"],
+                         close_rect, border_radius=4)
+        xs = fonts.body_bold.render("X", True, COLORS["text_bright"])
+        screen.blit(xs, (close_rect.centerx - xs.get_width() // 2,
+                         close_rect.centery - xs.get_height() // 2))
+
+        # Hero list
+        all_heroes = list(hero_list) + [h for h in self.saved_heroes if not any(e.name == h.name for e in hero_list)]
+
+        if not all_heroes:
+            nt = fonts.body_font.render("No heroes available. Create one first, or load from disk.",
+                                         True, COLORS["text_muted"])
+            screen.blit(nt, (bx + 20, by + 60))
+            return
+
+        # Column headers
+        hdr_y = by + 45
+        headers = [("Name", bx + 20), ("Race", bx + 300), ("Class", bx + 500),
+                   ("Level", bx + 700), ("HP", bx + 800), ("AC", bx + 880)]
+        for htext, hx in headers:
+            hs = fonts.small_bold.render(htext, True, COLORS["text_muted"])
+            screen.blit(hs, (hx, hdr_y))
+
+        Divider.draw(screen, bx + 10, hdr_y + 20, bw - 20)
+
+        # Hero rows
+        row_h = 40
+        clip_rect = pygame.Rect(bx + 5, hdr_y + 25, bw - 10, bh - 80)
+        screen.set_clip(clip_rect)
+
+        for i, hero in enumerate(all_heroes):
+            fy = hdr_y + 28 + i * row_h - self.hero_browser_scroll
+            if fy > by + bh - 20:
+                break
+            if fy + row_h < hdr_y + 25:
+                continue
+
+            item_rect = pygame.Rect(bx + 10, fy, bw - 20, row_h - 2)
+            is_hov = item_rect.collidepoint(mouse_pos)
+
+            if is_hov:
+                pygame.draw.rect(screen, COLORS["hover"], item_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["accent"], item_rect, 1, border_radius=4)
+            elif i % 2 == 0:
+                pygame.draw.rect(screen, COLORS["panel_light"], item_rect, border_radius=4)
+
+            # Hero info
+            ns = fonts.body_bold.render(hero.name[:25], True, COLORS["text_bright"])
+            screen.blit(ns, (bx + 20, fy + 8))
+
+            rs = fonts.body_font.render(hero.race[:20], True, COLORS["text_main"])
+            screen.blit(rs, (bx + 300, fy + 8))
+
+            cls_txt = hero.character_class
+            if hero.subclass:
+                cls_txt += f" ({hero.subclass[:12]})"
+            cs = fonts.body_font.render(cls_txt[:25], True,
+                                         COLORS.get(hero.character_class.lower(), COLORS["text_main"]))
+            screen.blit(cs, (bx + 500, fy + 8))
+
+            ls = fonts.body_bold.render(str(hero.character_level), True, COLORS["accent"])
+            screen.blit(ls, (bx + 720, fy + 8))
+
+            hs = fonts.body_bold.render(str(hero.hit_points), True, COLORS["hp_full"])
+            screen.blit(hs, (bx + 810, fy + 8))
+
+            acs = fonts.body_bold.render(str(hero.armor_class), True, COLORS["accent"])
+            screen.blit(acs, (bx + 890, fy + 8))
 
         screen.set_clip(None)
 
@@ -1685,6 +2766,7 @@ class HeroCreatorState(GameState):
         # Buttons
         self.btn_back.draw(screen, mouse_pos)
         self.btn_load.draw(screen, mouse_pos)
+        self.btn_edit_hero.draw(screen, mouse_pos)
         self.btn_save.draw(screen, mouse_pos)
         self.btn_save_disk.draw(screen, mouse_pos)
         self.btn_export.draw(screen, mouse_pos)
