@@ -82,6 +82,11 @@ class Entity:
         self.summon_rounds_left: int = 0
         self.summon_spell_name: str = ""  # Which spell created this summon
 
+        # Lucky feat uses (3/long rest)
+        self.lucky_uses_left: int = 3 if any(f.mechanic == "lucky" for f in stats.features) else 0
+        # Savage Attacker tracking
+        self.savage_attacker_used: bool = False
+
         # Class resource tracking
         self.rage_active: bool = False
         self.rage_rounds: int = 0         # Rounds since rage started (max 10 = 1 min)
@@ -131,6 +136,9 @@ class Entity:
             ac += 5
         if "Shield of Faith" in self.active_effects:
             ac += 2
+        # Defensive Duelist: reaction adds proficiency to AC (tracked as effect)
+        if "Defensive Duelist" in self.active_effects:
+            ac += self.stats.proficiency_bonus
         return ac
 
     def get_max_melee_reach(self) -> int:
@@ -263,6 +271,11 @@ class Entity:
         if is_resistant:
             amount = amount // 2
 
+        # Heavy Armor Master: reduce nonmagical B/P/S by 3 while in heavy armor
+        if self.has_feature("heavy_armor_master") and not is_magical:
+            if dtype_lower in ("bludgeoning", "piercing", "slashing"):
+                amount = max(0, amount - 3)
+
         if dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]:
             amount = amount * 2
 
@@ -306,6 +319,10 @@ class Entity:
             dc = max(10, amount // 2)
             con_bonus = self.get_save_bonus("Constitution")
             roll = random.randint(1, 20) + con_bonus
+            # War Caster: advantage on concentration saves
+            if self.has_feature("war_caster"):
+                roll2 = random.randint(1, 20) + con_bonus
+                roll = max(roll, roll2)
             if roll < dc:
                 self.drop_concentration()
                 broke_conc = True
@@ -623,8 +640,12 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def has_attack_advantage(self, target: "Entity" = None, is_ranged: bool = False, dist: float = 0) -> bool:
+        # Invisible attacker has advantage (unless target has Alert)
         if self.has_condition("Invisible"):
-            return True
+            if target and target.has_feature("alert"):
+                pass  # Alert: unseen attackers don't gain advantage
+            else:
+                return True
         # Reckless Attack (Barbarian) - melee STR attacks
         if self.rage_active and self.has_feature("reckless_attack") and not is_ranged:
             return True
@@ -647,26 +668,20 @@ class Entity:
         if self.has_condition("Poisoned"):
             return True
         if self.has_condition("Frightened"):
-            # PHB p.290: Disadvantage while source of fear is within line of sight
-            # We apply it broadly for simplicity (source tracking available via condition_sources)
             return True
         if self.has_condition("Restrained"):
             return True
-        # PHB p.292: Prone creature has disadvantage on attack rolls (ALL attacks, not just ranged)
         if self.has_condition("Prone"):
             return True
         if is_ranged and target:
-            # Ranged attacks against Prone targets have Disadvantage
             if target.has_condition("Prone"):
                 return True
-            # Disadvantage if threatened (enemy within 5ft), unless Crossbow Expert
             if is_threatened and not self.has_feature("crossbow_expert"):
                 return True
         if target and target.has_condition("Invisible"):
             return True
         if target and target.is_dodging and not target.is_incapacitated():
             return True
-        # Exhaustion 3+: disadvantage on attack rolls AND saving throws
         if self.exhaustion >= 3:
             return True
         return False
@@ -721,13 +736,17 @@ class Entity:
             self.initiative = max(r1, r2)
         else:
             self.initiative = random.randint(1, 20) + dex_mod
-            
+
+        # Alert feat: +5 to initiative
+        if self.has_feature("alert"):
+            self.initiative += 5
+
         # Guidance check (Ability Check)
         if "Guidance" in self.active_effects:
             bonus = random.randint(1, 4)
             self.initiative += bonus
             self.active_effects.pop("Guidance")
-            
+
         return self.initiative
 
     # ------------------------------------------------------------------ #
@@ -740,6 +759,7 @@ class Entity:
         self.reaction_used = False
         self.movement_left = self.get_speed()
         self.sneak_attack_used = False
+        self.savage_attacker_used = False
         self.is_dodging = False
         self.is_disengaging = False
 
@@ -779,6 +799,9 @@ class Entity:
         self.rage_active = False
         self.marked_target = None
         self.sneak_attack_used = False
+        # Lucky feat
+        if self.has_feature("lucky"):
+            self.lucky_uses_left = 3
         # Channel divinity
         for feat in self.stats.features:
             if feat.mechanic == "channel_divinity" and feat.uses_per_day > 0:

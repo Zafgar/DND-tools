@@ -656,52 +656,112 @@ def calc_spell_slots(char_class, level, subclass=""):
     return slots
 
 
-def build_default_actions(char_class, abilities, prof_bonus, level):
+def build_default_actions(char_class, abilities, prof_bonus, level, weapon_choice=""):
     """Build default weapon/attack actions for a class."""
     str_mod = calc_modifier(abilities.strength)
     dex_mod = calc_modifier(abilities.dexterity)
 
+    # Weapon database: name -> (die, damage_type, range, ability, is_heavy, is_finesse, is_reach)
+    WEAPONS = {
+        "Greataxe": ("1d12", "slashing", 5, "str", True, False, False),
+        "Greatsword": ("2d6", "slashing", 5, "str", True, False, False),
+        "Maul": ("2d6", "bludgeoning", 5, "str", True, False, False),
+        "Longsword": ("1d8", "slashing", 5, "str", False, False, False),
+        "Warhammer": ("1d8", "bludgeoning", 5, "str", False, False, False),
+        "Rapier": ("1d8", "piercing", 5, "dex", False, True, False),
+        "Shortsword": ("1d6", "piercing", 5, "dex", False, True, False),
+        "Scimitar": ("1d6", "slashing", 5, "dex", False, True, False),
+        "Mace": ("1d6", "bludgeoning", 5, "str", False, False, False),
+        "Quarterstaff": ("1d6", "bludgeoning", 5, "str", False, False, False),
+        "Club": ("1d4", "bludgeoning", 5, "str", False, False, False),
+        "Dagger": ("1d4", "piercing", 5, "dex", False, True, False),
+        "Handaxe": ("1d6", "slashing", 5, "str", False, False, False),
+        "Longbow": ("1d8", "piercing", 150, "dex", True, False, False),
+        "Shortbow": ("1d6", "piercing", 80, "dex", False, False, False),
+        "Light Crossbow": ("1d8", "piercing", 80, "dex", False, False, False),
+        "Hand Crossbow": ("1d6", "piercing", 30, "dex", False, False, False),
+        "Halberd": ("1d10", "slashing", 5, "str", True, False, True),
+        "Glaive": ("1d10", "slashing", 5, "str", True, False, True),
+        "Pike": ("1d10", "piercing", 5, "str", True, False, True),
+        "Dart": ("1d4", "piercing", 20, "dex", False, True, False),
+    }
+
     actions = []
 
-    if char_class == "Barbarian":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Greataxe", "Melee weapon attack", atk, "1d12", str_mod, "slashing", range=5))
-    elif char_class == "Fighter":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Longsword", "Melee weapon attack", atk, "1d8", str_mod, "slashing", range=5))
-    elif char_class == "Paladin":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Longsword", "Melee weapon attack", atk, "1d8", str_mod, "slashing", range=5))
-    elif char_class == "Rogue":
-        atk = dex_mod + prof_bonus
-        actions.append(Action("Shortsword", "Melee finesse weapon", atk, "1d6", dex_mod, "piercing", range=5))
-        actions.append(Action("Shortbow", "Ranged weapon attack", atk, "1d6", dex_mod, "piercing", range=80))
-    elif char_class == "Ranger":
-        atk = dex_mod + prof_bonus
-        actions.append(Action("Longbow", "Ranged weapon attack", atk, "1d8", dex_mod, "piercing", range=150))
-        actions.append(Action("Shortsword", "Melee finesse weapon", atk, "1d6", dex_mod, "piercing", range=5))
-    elif char_class == "Cleric":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Mace", "Melee weapon attack", atk, "1d6", str_mod, "bludgeoning", range=5))
-    elif char_class == "Wizard":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Quarterstaff", "Melee weapon attack", atk, "1d6", str_mod, "bludgeoning", range=5))
-    elif char_class == "Warlock":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Quarterstaff", "Melee weapon attack", atk, "1d6", str_mod, "bludgeoning", range=5))
-    elif char_class == "Sorcerer":
-        atk = dex_mod + prof_bonus
-        actions.append(Action("Dagger", "Melee/ranged weapon", atk, "1d4", dex_mod, "piercing", range=5))
-    elif char_class == "Bard":
-        atk = dex_mod + prof_bonus
-        actions.append(Action("Rapier", "Melee finesse weapon", atk, "1d8", dex_mod, "piercing", range=5))
-    elif char_class == "Druid":
-        atk = str_mod + prof_bonus
-        actions.append(Action("Quarterstaff", "Melee weapon attack", atk, "1d6", str_mod, "bludgeoning", range=5))
-    elif char_class == "Monk":
-        atk = dex_mod + prof_bonus
-        ma_die = MONK_MARTIAL_ARTS.get(level, "1d4")
-        actions.append(Action("Unarmed Strike", "Melee martial arts", atk, ma_die, dex_mod, "bludgeoning", range=5))
+    def _add_weapon(name, shield=False):
+        """Add a weapon action."""
+        w = WEAPONS.get(name)
+        if not w:
+            return
+        die, dtype, rng, ab, heavy, finesse, reach = w
+        mod = dex_mod if ab == "dex" else str_mod
+        # Finesse: use better of STR/DEX
+        if finesse:
+            mod = max(str_mod, dex_mod)
+        atk = mod + prof_bonus
+        r = max(rng, 10 if reach else 5)
+        actions.append(Action(name, f"{'Ranged' if rng > 5 else 'Melee'} weapon attack",
+                              atk, die, mod, dtype, range=rng, reach=r))
+
+    # Parse weapon choice string
+    if weapon_choice:
+        wc = weapon_choice
+        if "Shield" in wc or "shield" in wc:
+            # Extract weapon name before " + Shield" or " + shield"
+            parts = wc.replace(" + Shield", "").replace(" + shield", "").replace(" +Shield", "").strip()
+            if parts and parts in WEAPONS:
+                _add_weapon(parts)
+            elif "Two " in wc:
+                name = wc.replace("Two ", "").replace("s", "").strip()
+                if name in WEAPONS:
+                    _add_weapon(name)
+            else:
+                # Fallback to class default
+                weapon_choice = ""
+        elif wc.startswith("Two "):
+            name = wc[4:].rstrip("s").strip()
+            if name in WEAPONS:
+                _add_weapon(name)
+        elif "(" in wc:
+            # "Handaxe (x2)" style
+            name = wc.split("(")[0].strip()
+            if name in WEAPONS:
+                _add_weapon(name)
+        elif wc in WEAPONS:
+            _add_weapon(wc)
+        else:
+            weapon_choice = ""  # Invalid, fall through to defaults
+
+    if not weapon_choice:
+        # Default weapons by class
+        if char_class == "Barbarian":
+            _add_weapon("Greataxe")
+        elif char_class == "Fighter":
+            _add_weapon("Longsword")
+        elif char_class == "Paladin":
+            _add_weapon("Longsword")
+        elif char_class == "Rogue":
+            _add_weapon("Shortsword")
+            _add_weapon("Shortbow")
+        elif char_class == "Ranger":
+            _add_weapon("Longbow")
+            _add_weapon("Shortsword")
+        elif char_class == "Cleric":
+            _add_weapon("Mace")
+        elif char_class == "Wizard":
+            _add_weapon("Quarterstaff")
+        elif char_class == "Warlock":
+            _add_weapon("Quarterstaff")
+        elif char_class == "Sorcerer":
+            _add_weapon("Dagger")
+        elif char_class == "Bard":
+            _add_weapon("Rapier")
+        elif char_class == "Druid":
+            _add_weapon("Quarterstaff")
+        elif char_class == "Monk":
+            atk = dex_mod + prof_bonus
+            ma_die = MONK_MARTIAL_ARTS.get(level, "1d4")
+            actions.append(Action("Unarmed Strike", "Melee martial arts", atk, ma_die, dex_mod, "bludgeoning", range=5))
 
     # Add multiattack if Extra Attack is available
     has_extra = False
@@ -833,25 +893,35 @@ class HeroCreatorState(GameState):
             on_change=lambda v: self._on_subclass_change(v)
         )
 
+        # Weapon dropdown
+        weapon_opts = WEAPON_CHOICES.get(self.char_class, ["Default"])
+        self.weapon_dropdown = Dropdown(
+            col_left_x, 334 + 78, col_left_w, 34,
+            ["Default"] + weapon_opts,
+            selected=0, label="Weapon",
+            on_change=lambda v: setattr(self, 'weapon_choice_str', v if v != "Default" else "")
+        )
+        self.weapon_choice_str = ""
+
         self.level_buttons = []
         # Level selector
         self.level_down_btn = Button(
-            col_left_x, 425, 40, 34, "-",
+            col_left_x, 425 + 78, 40, 34, "-",
             lambda: self._change_level(-1),
             color=COLORS["danger"], style="outline", font=fonts.body_bold
         )
         self.level_up_btn = Button(
-            col_left_x + col_left_w - 40, 425, 40, 34, "+",
+            col_left_x + col_left_w - 40, 425 + 78, 40, 34, "+",
             lambda: self._change_level(1),
             color=COLORS["success"], style="outline", font=fonts.body_bold
         )
 
         # Dropdowns list for iteration
-        self.dropdowns = [self.race_dropdown, self.class_dropdown, self.subclass_dropdown]
+        self.dropdowns = [self.race_dropdown, self.class_dropdown, self.subclass_dropdown, self.weapon_dropdown]
 
         # --- Free edit toggle ---
         self.btn_free_edit = Button(
-            col_left_x, 482, col_left_w, 32, "MODE: POINT BUY",
+            col_left_x, 560, col_left_w, 32, "MODE: POINT BUY",
             self._toggle_free_edit, color=COLORS["panel"], font=fonts.body_bold
         )
 
@@ -934,6 +1004,10 @@ class HeroCreatorState(GameState):
         self.skill_proficiencies = set()
         self.feat_scroll = 0
         self.spell_scroll = 0
+        # Update weapon dropdown
+        weapon_opts = WEAPON_CHOICES.get(value, ["Default"])
+        self.weapon_dropdown.set_options(["Default"] + weapon_opts)
+        self.weapon_choice_str = ""
 
     def _on_subclass_change(self, value):
         self.char_subclass = value if value != "(None)" else ""
@@ -1394,7 +1468,7 @@ class HeroCreatorState(GameState):
             speed += 10
 
         # Actions
-        actions = build_default_actions(char_class, abilities, prof, level)
+        actions = build_default_actions(char_class, abilities, prof, level, self.weapon_choice_str)
 
         # --- Generate feat-based combat actions ---
         str_mod = calc_modifier(abilities.strength)
@@ -1809,10 +1883,10 @@ class HeroCreatorState(GameState):
     # ---- Drawing Sub-sections ----
 
     def _draw_left_column(self, screen, mouse_pos):
-        """Draw left column: name, race, class, subclass, level."""
+        """Draw left column: name, race, class, subclass, weapon, level."""
         col_x = 20
         col_w = 390
-        panel = Panel(col_x, 70, col_w, 410, title="CHARACTER INFO")
+        panel = Panel(col_x, 70, col_w, 490, title="CHARACTER INFO")
         panel.draw(screen)
 
         # Name input
@@ -1827,9 +1901,12 @@ class HeroCreatorState(GameState):
         # Subclass dropdown
         self.subclass_dropdown.draw(screen, mouse_pos)
 
+        # Weapon dropdown
+        self.weapon_dropdown.draw(screen, mouse_pos)
+
         # Level selector
         lbl = fonts.small_bold.render("Level", True, COLORS["text_dim"])
-        screen.blit(lbl, (30, 407))
+        screen.blit(lbl, (30, 485))
 
         self.level_down_btn.draw(screen, mouse_pos)
         self.level_up_btn.draw(screen, mouse_pos)
@@ -1837,21 +1914,21 @@ class HeroCreatorState(GameState):
         # Level display
         level_txt = fonts.header_font.render(str(self.char_level), True, COLORS["text_bright"])
         level_cx = 30 + 370 // 2
-        screen.blit(level_txt, (level_cx - level_txt.get_width() // 2, 428))
+        screen.blit(level_txt, (level_cx - level_txt.get_width() // 2, 506))
 
         # Proficiency badge
         prof = calc_proficiency(self.char_level)
         prof_txt = f"Proficiency: +{prof}"
-        Badge.draw(screen, 30, 470, prof_txt, COLORS["accent"])
+        Badge.draw(screen, 30, 548, prof_txt, COLORS["accent"])
 
         # Free edit mode button
         self.btn_free_edit.draw(screen, mouse_pos)
 
         # --- Summary Stats Panel ---
-        summary_panel = Panel(col_x, 525, col_w, 230, title="QUICK STATS")
+        summary_panel = Panel(col_x, 600, col_w, 230, title="QUICK STATS")
         summary_panel.draw(screen)
 
-        sy = 558
+        sy = 633
         effective = {ab: self._get_effective_score(ab) for ab in ABILITY_NAMES}
         con_mod = calc_modifier(effective["constitution"])
         hp = calc_hp(self.char_class, self.char_level, con_mod)
@@ -1901,7 +1978,7 @@ class HeroCreatorState(GameState):
 
         for i, (label, val, color) in enumerate(stats_data):
             row_y = sy + i * 28
-            if row_y > 730:
+            if row_y > 810:
                 break
             lbl_s = fonts.body_font.render(label, True, COLORS["text_dim"])
             val_s = fonts.body_bold.render(val, True, color)
