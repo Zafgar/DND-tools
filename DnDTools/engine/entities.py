@@ -108,6 +108,11 @@ class Entity:
         # Banishment tracking
         self.banished_from: tuple[float, float] | None = None
 
+        # Elevation & Flying
+        self.elevation: int = 0           # Current elevation in feet
+        self.is_flying: bool = False      # Currently airborne
+        self.is_climbing: bool = False    # Currently climbing (half speed)
+
         # Wild Shape / Polymorph tracking
         self.is_wild_shaped: bool = False
         self.wild_shape_name: str = ""
@@ -117,6 +122,47 @@ class Entity:
         for feat in stats.features:
             if feat.mechanic == "channel_divinity" and feat.uses_per_day > 0:
                 self.channel_divinity_left = feat.uses_per_day
+
+    @property
+    def can_fly(self) -> bool:
+        """Entity has a fly speed (innate or from spells)."""
+        if self.stats.fly_speed > 0:
+            return True
+        if "Fly" in self.active_effects:
+            return True
+        return False
+
+    @property
+    def effective_fly_speed(self) -> int:
+        """Fly speed in feet (0 if can't fly)."""
+        if "Fly" in self.active_effects:
+            return max(self.stats.fly_speed, 60)
+        return self.stats.fly_speed
+
+    def start_flying(self) -> bool:
+        """Begin flying. Returns False if entity can't fly."""
+        if not self.can_fly:
+            return False
+        self.is_flying = True
+        self.is_climbing = False
+        return True
+
+    def land(self, ground_elevation: int = 0):
+        """Land at ground level."""
+        self.is_flying = False
+        self.elevation = ground_elevation
+
+    def start_climbing(self) -> bool:
+        """Begin climbing (half speed movement)."""
+        if self.stats.climb_speed > 0:
+            self.is_climbing = True
+            return True
+        # No climb speed: Athletics check needed (handled elsewhere), use half speed
+        self.is_climbing = True
+        return True
+
+    def stop_climbing(self):
+        self.is_climbing = False
 
     @property
     def size_in_squares(self) -> int:

@@ -11,7 +11,7 @@ import random
 from typing import List, Optional, Callable
 from engine.entities import Entity
 from engine.ai import TacticalAI, TurnPlan, ActionStep
-from engine.terrain import TerrainObject
+from engine.terrain import TerrainObject, get_elevation_at, check_los_blocked, calculate_fall_damage
 from engine.dice import roll_dice
 from engine.battle_stats import BattleStatisticsTracker
 from engine.dm_advisor import DMAdvisor
@@ -423,7 +423,10 @@ class BattleSystem:
                     self.log(f"[SAVE] {msg} -> remains {cond}.")
 
     def _check_hazard_damage(self, entity: Entity):
-        """Apply hazard terrain damage at the start of an entity's turn."""
+        """Apply hazard terrain damage at the start of an entity's turn.
+        Flying creatures above ground-level hazards are safe."""
+        if entity.is_flying:
+            return  # Flying above hazards
         t = self.get_terrain_at(int(entity.grid_x), int(entity.grid_y))
         if t and t.is_hazard:
             dmg = roll_dice(t.hazard_damage)
@@ -564,17 +567,21 @@ class BattleSystem:
         return math.hypot(dx, dy)
 
     def get_distance(self, e1: Entity, e2: Entity) -> float:
-        # Calculate distance between the edges of the entities (0 if touching/overlapping)
+        """Calculate distance between entities in grid squares, accounting for elevation.
+        Elevation difference adds to 3D distance (1 square = 5ft)."""
         s1 = e1.size_in_squares
         s2 = e2.size_in_squares
-        
+
         # Distance in X (0 if ranges overlap)
         dx = max(0, e2.grid_x - (e1.grid_x + s1), e1.grid_x - (e2.grid_x + s2))
-        
+
         # Distance in Y (0 if ranges overlap)
         dy = max(0, e2.grid_y - (e1.grid_y + s1), e1.grid_y - (e2.grid_y + s2))
-        
-        return math.hypot(dx, dy)
+
+        # Elevation difference in squares (5ft per square)
+        dz = abs(e1.elevation - e2.elevation) / 5.0
+
+        return math.sqrt(dx*dx + dy*dy + dz*dz)
 
     def is_adjacent(self, e1: Entity, e2: Entity) -> bool:
         return self.get_distance(e1, e2) < 0.5
@@ -592,50 +599,99 @@ class BattleSystem:
     def get_cover_bonus(self, attacker: Entity, target: Entity) -> int:
         """
         Calculate AC bonus from cover (0, 2, or 5).
-        Simplified 5e rule: If target is adjacent to a cover object that is
-        roughly between them and the attacker, grant +2 (Half Cover).
+        5e cover: Half (+2 AC), Three-quarters (+5 AC), Total (can't target).
+        Also considers elevation advantage (higher ground negates some cover).
         """
-        bonus = 0
-        # Check for adjacent terrain that provides cover
+        best_bonus = 0
+
+        # Elevation advantage: attacker above target reduces cover effectiveness
+        elev_diff = attacker.elevation - target.elevation
+
         for t in self.terrain:
             if not t.provides_cover:
                 continue
-            
+
             # Is terrain adjacent to target?
             dist = math.hypot(t.grid_x - target.grid_x, t.grid_y - target.grid_y)
             if dist < 1.5:
                 # Is terrain between attacker and target?
-                # Vector Target->Attacker
                 v_ta_x = attacker.grid_x - target.grid_x
                 v_ta_y = attacker.grid_y - target.grid_y
-                # Vector Target->Terrain
                 v_tt_x = t.grid_x - target.grid_x
                 v_tt_y = t.grid_y - target.grid_y
-                
-                # Dot product > 0 means roughly same direction
+
                 if (v_ta_x * v_tt_x + v_ta_y * v_tt_y) > 0:
-                    return 2 # Half cover
-        return 0
+                    cb = t.cover_bonus
+                    # If attacker is significantly above, reduce cover
+                    if elev_diff >= 10 and cb <= 2:
+                        cb = 0  # High ground negates half cover
+                    elif elev_diff >= 20 and cb <= 5:
+                        cb = 2  # Very high ground reduces 3/4 to half
+                    best_bonus = max(best_bonus, cb)
+
+        # Check LOS blocking terrain between attacker and target
+        if best_bonus == 0:
+            ax, ay = int(attacker.grid_x), int(attacker.grid_y)
+            tx, ty = int(target.grid_x), int(target.grid_y)
+            if check_los_blocked(self.terrain, ax, ay, tx, ty):
+                best_bonus = max(best_bonus, 2)  # At minimum half cover if LOS obstructed
+
+        return best_bonus
+
+    def has_line_of_sight(self, e1: Entity, e2: Entity) -> bool:
+        """Check if e1 can see e2. Considers terrain LOS blocking, darkness, invisibility."""
+        # Invisible target: can't see unless truesight/special
+        if e2.has_condition("Invisible") and not e1.has_feature("truesight"):
+            if not e1.has_feature("blindsight"):
+                return False
+
+        x1, y1 = int(e1.grid_x), int(e1.grid_y)
+        x2, y2 = int(e2.grid_x), int(e2.grid_y)
+
+        # Check terrain LOS blocking
+        if check_los_blocked(self.terrain, x1, y1, x2, y2):
+            # Flying entities at high elevation can see over some walls
+            if e1.is_flying and e1.elevation >= 15:
+                return True  # Can see over most walls from high altitude
+            return False
+
+        # Darkness check: target in magical darkness
+        t_at_target = self.get_terrain_at(x2, y2)
+        if t_at_target and t_at_target.terrain_type == "darkness":
+            if not e1.has_feature("devil_sight") and not e1.has_feature("truesight"):
+                return False
+
+        return True
 
     def is_passable(self, x: float, y: float, exclude: Entity = None) -> bool:
-        """Returns True if cell is both unoccupied by entities and traversable terrain."""
-        # Check full footprint if entity is known
+        """Returns True if cell is both unoccupied by entities and traversable terrain.
+        Flying entities ignore ground obstacles (walls, closed doors) but not other entities."""
         size = exclude.size_in_squares if exclude else 1
+        is_flyer = exclude.is_flying if exclude else False
         for dx in range(size):
             for dy in range(size):
                 check_x, check_y = x + dx, y + dy
                 if self.is_occupied(check_x, check_y, exclude=exclude):
                     return False
-                t = self.get_terrain_at(int(check_x), int(check_y))
-                if t and not t.passable:
-                    return False
+                if not is_flyer:
+                    t = self.get_terrain_at(int(check_x), int(check_y))
+                    if t and not t.passable:
+                        return False
         return True
 
-    def get_terrain_movement_cost(self, x: float, y: float) -> float:
-        """Returns movement multiplier: 1.0 normal, 2.0 difficult."""
+    def get_terrain_movement_cost(self, x: float, y: float, entity: Entity = None) -> float:
+        """Returns movement multiplier: 1.0 normal, 2.0 difficult, 2.0 climbing.
+        Flying entities ignore difficult terrain."""
+        if entity and entity.is_flying:
+            return 1.0
         t = self.get_terrain_at(int(x), int(y))
-        if t and t.is_difficult:
-            return 2.0
+        if t:
+            if t.is_difficult:
+                return 2.0
+            if t.is_climbable and entity and entity.is_climbing:
+                # Climbing without climb speed = half speed (2x cost)
+                if entity.stats.climb_speed <= 0:
+                    return 2.0
         return 1.0
 
     def get_entity_at(self, x: float, y: float) -> Optional[Entity]:
@@ -668,6 +724,90 @@ class BattleSystem:
 
     def remove_terrain_at(self, gx: int, gy: int):
         self.terrain = [t for t in self.terrain if not t.occupies(gx, gy)]
+
+    def toggle_door_at(self, gx: int, gy: int) -> bool:
+        """Toggle a door at the given position. Returns True if toggled."""
+        t = self.get_terrain_at(gx, gy)
+        if t and t.is_door:
+            if t.toggle_door():
+                state = "opens" if t.door_open else "closes"
+                self.log(f"  [DOOR] Door at ({gx},{gy}) {state}.")
+                return True
+            else:
+                self.log(f"  [DOOR] Door at ({gx},{gy}) is locked!")
+                return False
+        return False
+
+    def unlock_door_at(self, gx: int, gy: int) -> bool:
+        """Unlock a locked door at the given position."""
+        t = self.get_terrain_at(gx, gy)
+        if t and t.is_door and t.is_locked:
+            t.unlock()
+            self.log(f"  [DOOR] Door at ({gx},{gy}) unlocked!")
+            return True
+        return False
+
+    def get_elevation_at(self, gx: int, gy: int) -> int:
+        """Get ground elevation in feet at grid position."""
+        return get_elevation_at(self.terrain, gx, gy)
+
+    def apply_fall_damage(self, entity: Entity, fall_height_ft: int):
+        """Apply falling damage to an entity. 1d6 per 10ft, max 20d6. Lands prone."""
+        if fall_height_ft <= 0:
+            return
+        dmg = calculate_fall_damage(fall_height_ft)
+        if dmg > 0:
+            dealt, _ = entity.take_damage(dmg, "bludgeoning")
+            self.log(f"  [FALL] {entity.name} falls {fall_height_ft}ft and takes {dealt} bludgeoning damage!")
+            # Falling creatures land prone (PHB p.183)
+            if entity.hp > 0 and not entity.has_condition("Prone"):
+                entity.add_condition("Prone")
+                self.log(f"  [FALL] {entity.name} lands prone.")
+        entity.is_flying = False
+        entity.is_climbing = False
+
+    def move_entity_with_elevation(self, entity: Entity, new_x: float, new_y: float):
+        """Move entity and handle elevation changes, fall damage, climbing costs."""
+        old_elev = entity.elevation
+        new_ground = self.get_elevation_at(int(new_x), int(new_y))
+
+        if entity.is_flying:
+            # Flying entity: stays at current elevation or terrain elevation, whichever is higher
+            entity.elevation = max(entity.elevation, new_ground)
+        elif entity.is_climbing:
+            # Climbing: entity reaches the terrain's elevation
+            entity.elevation = new_ground
+        else:
+            # Walking: if terrain is lower, check for fall
+            if new_ground < old_elev:
+                fall_dist = old_elev - new_ground
+                t_at_new = self.get_terrain_at(int(new_x), int(new_y))
+                # Stairs/ladders/bridges are safe transitions
+                if t_at_new and t_at_new.terrain_type in ("stairs_up", "stairs_down", "ladder", "bridge"):
+                    entity.elevation = new_ground
+                elif fall_dist >= 10:
+                    # Fall damage
+                    entity.elevation = new_ground
+                    self.apply_fall_damage(entity, fall_dist)
+                else:
+                    # Small drop (< 10ft), no damage
+                    entity.elevation = new_ground
+            else:
+                # Going up: need stairs/ladder/climb, or it's same level
+                if new_ground > old_elev:
+                    t_at_new = self.get_terrain_at(int(new_x), int(new_y))
+                    if t_at_new and t_at_new.terrain_type in ("stairs_up", "stairs_down", "ladder"):
+                        entity.elevation = new_ground
+                    elif t_at_new and t_at_new.is_climbable:
+                        entity.elevation = new_ground
+                        entity.is_climbing = True
+                    else:
+                        entity.elevation = new_ground
+                else:
+                    entity.elevation = new_ground
+
+        entity.grid_x = float(new_x)
+        entity.grid_y = float(new_y)
 
     # ------------------------------------------------------------------ #
     # Manual DM operations                                                 #
@@ -778,6 +918,10 @@ class BattleSystem:
                 "grappled_by_name": e.grappled_by.name if e.grappled_by else None,
                 # Condition sources (Frightened, Charmed sources)
                 "condition_sources": {k: v.name for k, v in e.condition_sources.items()} if e.condition_sources else {},
+                # Elevation & flying
+                "elevation": e.elevation,
+                "is_flying": e.is_flying,
+                "is_climbing": e.is_climbing,
             }
             data["entities"].append(ent_data)
         return data
@@ -872,6 +1016,9 @@ class BattleSystem:
             e.summon_rounds_left = ent_data.get("summon_rounds_left", 0)
             e.summon_spell_name = ent_data.get("summon_spell_name", "")
             e.death_save_history = ent_data.get("death_save_history", [])
+            e.elevation = ent_data.get("elevation", 0)
+            e.is_flying = ent_data.get("is_flying", False)
+            e.is_climbing = ent_data.get("is_climbing", False)
 
             conc_name = ent_data.get("concentrating_on")
             if conc_name:
@@ -1004,6 +1151,9 @@ class BattleSystem:
             e.summon_rounds_left = ent_data.get("summon_rounds_left", 0)
             e.summon_spell_name = ent_data.get("summon_spell_name", "")
             e.death_save_history = ent_data.get("death_save_history", [])
+            e.elevation = ent_data.get("elevation", 0)
+            e.is_flying = ent_data.get("is_flying", False)
+            e.is_climbing = ent_data.get("is_climbing", False)
 
             conc_name = ent_data.get("concentrating_on")
             if conc_name:
