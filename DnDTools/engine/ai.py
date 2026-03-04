@@ -75,7 +75,46 @@ class TurnPlan:
 
 
 class TacticalAI:
-    """Full D&D 5e 2014 tactical AI with class mechanic awareness."""
+    """Full D&D 5e 2014 tactical AI with class mechanic and environment awareness."""
+
+    def _can_see_target(self, entity, target, battle) -> bool:
+        """Check if entity has line of sight to target. Core check for all targeting."""
+        return battle.has_line_of_sight(entity, target)
+
+    def _get_visible_enemies(self, entity, enemies, battle) -> list:
+        """Filter enemies to only those the entity can see."""
+        return [e for e in enemies if e.hp > 0 and self._can_see_target(entity, e, battle)]
+
+    def _can_ranged_attack(self, entity, target, battle) -> bool:
+        """Check if a ranged attack/spell is valid: LOS + range."""
+        if not self._can_see_target(entity, target, battle):
+            return False
+        return True
+
+    def _get_terrain_advantage_score(self, entity, battle, x, y) -> float:
+        """Score a position for tactical terrain advantage."""
+        score = 0.0
+        t = battle.get_terrain_at(int(x), int(y))
+        elev = battle.get_elevation_at(int(x), int(y))
+
+        # Elevation advantage: +2 score per 5ft height
+        if elev > 0:
+            score += elev / 5.0 * 2.0
+
+        # Cover bonus: good for ranged combatants
+        if t and t.provides_cover:
+            score += t.cover_bonus * 2.0
+
+        # Adjacent cover check (better than being on cover, hide behind it)
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                adj_t = battle.get_terrain_at(int(x) + dx, int(y) + dy)
+                if adj_t and adj_t.provides_cover:
+                    score += adj_t.cover_bonus * 0.5
+
+        return score
 
     def calculate_turn(self, entity: "Entity", battle: "BattleSystem") -> TurnPlan:
         """Optimal turn planning with god-mode knowledge.
@@ -252,7 +291,7 @@ class TacticalAI:
                             )
             else:
                 # Single target lair action
-                target = self._pick_target(owner, enemies)
+                target = self._pick_target(owner, enemies, battle)
                 if target:
                     dist = battle.get_distance(owner, target)
                     if action.range / 5.0 >= dist or action.range == 0:
@@ -297,7 +336,7 @@ class TacticalAI:
             return plan
 
         enemies = battle.get_enemies_of(entity)
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             plan.skipped = True
             plan.skip_reason = "No targets"
@@ -407,7 +446,7 @@ class TacticalAI:
             return None
 
         # 2. Pick intended target to see if we already have advantage
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
 
@@ -445,7 +484,7 @@ class TacticalAI:
         if entity.concentrating_on:
             return None
 
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
 
@@ -453,7 +492,7 @@ class TacticalAI:
         hm = next((s for s in entity.stats.spells_known if s.name == "Hunter's Mark"), None)
         if hm and entity.has_spell_slot(1):
             dist_ft = math.hypot(entity.grid_x - target.grid_x, entity.grid_y - target.grid_y) * 5
-            if dist_ft <= hm.range:
+            if dist_ft <= hm.range and battle.has_line_of_sight(entity, target):
                 entity.use_spell_slot(1)
                 entity.start_concentration(hm)
                 entity.marked_target = target
@@ -470,7 +509,7 @@ class TacticalAI:
         hex_spell = next((s for s in entity.stats.spells_known if s.name == "Hex"), None)
         if hex_spell and entity.has_spell_slot(hex_spell.level):
             dist_ft = math.hypot(entity.grid_x - target.grid_x, entity.grid_y - target.grid_y) * 5
-            if dist_ft <= hex_spell.range:
+            if dist_ft <= hex_spell.range and battle.has_line_of_sight(entity, target):
                 entity.use_spell_slot(hex_spell.level)
                 entity.start_concentration(hex_spell)
                 entity.marked_target = target
@@ -616,20 +655,42 @@ class TacticalAI:
         return "melee"
 
     def _decide_movement(self, entity, enemies, allies, battle):
-        """Optimal movement considering all factors.
+        """Optimal movement considering all factors including terrain awareness.
 
         Priority:
-        1. Escape grapple / stand from prone
-        2. Emergency: reach dying ally for touch healing
-        3. Frightened: flee from fear source
-        4. Ranged: kite away from melee threats / Misty Step escape
-        5. AoE threat: spread out from allies
-        6. Melee: approach best target with anti-clump positioning
-        7. Ranged: maintain optimal range
-        8. AoE caster: position for best cluster
+        0. Stand from prone / escape grapple
+        0.5. Start flying if beneficial
+        1. Emergency: reach dying ally for touch healing
+        2. Frightened: flee from fear source
+        3. Ranged: kite away from melee threats / Misty Step escape
+        4. AoE threat: spread out from allies
+        5. Melee: approach best target with anti-clump positioning
+        6. Ranged: maintain optimal range + seek cover/elevation
+        7. AoE caster: position for best cluster
         """
         if not entity.can_move() or entity.movement_left <= 0:
             return None
+
+        # --- -1. FLYING: Start flying if we can and it's tactically useful ---
+        if entity.can_fly and not entity.is_flying:
+            pref = self._get_combat_preference(entity)
+            # Ranged combatants should fly to gain elevation advantage and avoid ground threats
+            if pref == "ranged":
+                entity.start_flying()
+                entity.elevation = max(entity.elevation, 15)  # Gain altitude
+            else:
+                # Melee flyers: fly if target is flying or if ground is hazardous
+                ground_hazard = False
+                for e in enemies:
+                    if e.hp > 0 and e.is_flying:
+                        entity.start_flying()
+                        entity.elevation = max(entity.elevation, e.elevation)
+                        break
+                if not entity.is_flying:
+                    t = battle.get_terrain_at(int(entity.grid_x), int(entity.grid_y))
+                    if t and t.is_hazard:
+                        entity.start_flying()
+                        entity.elevation = max(entity.elevation + 10, 10)
 
         # --- 0. PRONE: Stand up or escape grapple ---
         if entity.has_condition("Prone"):
@@ -695,7 +756,7 @@ class TacticalAI:
                 if fear_dist < 6.0:
                     return self._move_away(entity, fear_source, battle)
 
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
         dist = battle.get_distance(entity, target)
@@ -717,7 +778,7 @@ class TacticalAI:
                 # Regular movement away
                 return self._move_away(entity, threats_adjacent[0], battle)
 
-        # --- 4. RANGED: Maintain optimal distance ---
+        # --- 4. RANGED: Maintain optimal distance + seek cover/elevation ---
         if preference == "ranged":
             # Find our best ranged attack/spell range
             best_range = 60  # Default
@@ -731,13 +792,30 @@ class TacticalAI:
             optimal_dist = best_range / 5.0 * 0.6  # 60% of max range in squares
             min_dist = 3.0  # At least 15ft away
 
+            # If we can't see the target, try to move to get LOS
+            if not self._can_see_target(entity, target, battle):
+                los_move = self._move_to_get_los(entity, target, battle)
+                if los_move:
+                    return los_move
+                # Fallback: move toward target (will eventually get around the wall)
+                return self._move_toward(entity, target, allies, battle)
+
             if dist < min_dist:
                 return self._move_away(entity, target, battle)
             elif dist > optimal_dist:
                 return self._move_toward(entity, target, allies, battle)
+            else:
+                # In optimal range: seek cover or elevation advantage
+                cover_move = self._seek_cover_position(entity, target, enemies, battle)
+                if cover_move:
+                    return cover_move
 
         # --- 5. MELEE: Approach target with smart positioning ---
         if preference == "melee":
+            # If we can't see the target, move to get LOS first
+            if not self._can_see_target(entity, target, battle):
+                return self._move_toward(entity, target, allies, battle)
+
             # Calculate AoE threat level for anti-clustering
             aoe_threat = self._assess_aoe_threat(entity, enemies)
             spread_dest = None
@@ -771,8 +849,111 @@ class TacticalAI:
         # Potions?
         return False
 
+    def _seek_cover_position(self, entity, target, enemies, battle):
+        """Find a nearby position with cover or elevation advantage that still has LOS to target.
+        Returns a move ActionStep or None."""
+        current_terrain_score = self._get_terrain_advantage_score(entity, battle, entity.grid_x, entity.grid_y)
+        best_spot = None
+        best_score = current_terrain_score
+
+        max_squares = min(int(entity.movement_left / 5.0), 4)  # Don't wander too far
+
+        for dx in range(-max_squares, max_squares + 1):
+            for dy in range(-max_squares, max_squares + 1):
+                nx, ny = int(entity.grid_x) + dx, int(entity.grid_y) + dy
+                if dx == 0 and dy == 0:
+                    continue
+                if not self._is_safe_passable(battle, nx, ny, entity):
+                    continue
+                move_dist = math.hypot(dx, dy) * 5
+                if move_dist > entity.movement_left:
+                    continue
+
+                # Must still have LOS to primary target
+                from engine.terrain import check_los_blocked
+                if check_los_blocked(battle.terrain, nx, ny, int(target.grid_x), int(target.grid_y)):
+                    continue
+
+                # Must still be in range
+                new_dist = math.hypot(nx - target.grid_x, ny - target.grid_y) * 5
+                if new_dist > 120:  # Max reasonable range
+                    continue
+
+                score = self._get_terrain_advantage_score(entity, battle, nx, ny)
+
+                # Bonus for distance from nearest melee enemy
+                min_enemy_dist = min(
+                    (math.hypot(nx - e.grid_x, ny - e.grid_y) for e in enemies if e.hp > 0),
+                    default=20)
+                if min_enemy_dist > 2:
+                    score += min(min_enemy_dist, 6) * 0.5
+
+                if score > best_score + 2:  # Need meaningful improvement
+                    best_score = score
+                    best_spot = (nx, ny, move_dist)
+
+        if best_spot:
+            nx, ny, move_dist = best_spot
+            old_x, old_y = entity.grid_x, entity.grid_y
+            entity.grid_x, entity.grid_y = float(nx), float(ny)
+            entity.movement_left -= move_dist
+            reason = "seeks cover" if best_score > current_terrain_score + 3 else "repositions"
+            return ActionStep(
+                step_type="move",
+                description=f"{entity.name} {reason} ({move_dist:.0f} ft).",
+                attacker=entity, new_x=float(nx), new_y=float(ny),
+                movement_ft=move_dist, old_x=old_x, old_y=old_y,
+            )
+        return None
+
+    def _move_to_get_los(self, entity, target, battle):
+        """Find a nearby position that has LOS to target. For ranged entities blocked by walls."""
+        from engine.terrain import check_los_blocked
+        best_spot = None
+        best_dist_to_target = 999
+
+        max_squares = min(int(entity.movement_left / 5.0), 6)
+
+        for dx in range(-max_squares, max_squares + 1):
+            for dy in range(-max_squares, max_squares + 1):
+                nx, ny = int(entity.grid_x) + dx, int(entity.grid_y) + dy
+                if dx == 0 and dy == 0:
+                    continue
+                if not self._is_safe_passable(battle, nx, ny, entity):
+                    continue
+                move_dist = math.hypot(dx, dy) * 5
+                if move_dist > entity.movement_left:
+                    continue
+                # Check if this position has LOS to target
+                if check_los_blocked(battle.terrain, nx, ny, int(target.grid_x), int(target.grid_y)):
+                    continue
+                # Prefer positions closest to target but still with decent range
+                dist_to_target = math.hypot(nx - target.grid_x, ny - target.grid_y)
+                if dist_to_target < best_dist_to_target:
+                    best_dist_to_target = dist_to_target
+                    best_spot = (nx, ny, move_dist)
+
+        if best_spot:
+            nx, ny, move_dist = best_spot
+            old_x, old_y = entity.grid_x, entity.grid_y
+            entity.grid_x, entity.grid_y = float(nx), float(ny)
+            entity.movement_left -= move_dist
+            return ActionStep(
+                step_type="move",
+                description=f"{entity.name} moves to get line of sight ({move_dist:.0f} ft).",
+                attacker=entity, new_x=float(nx), new_y=float(ny),
+                movement_ft=move_dist, old_x=old_x, old_y=old_y,
+            )
+        return None
+
     def _is_safe_passable(self, battle, x, y, entity):
+        # First check standard passability
         if not battle.is_passable(x, y, exclude=entity):
+            # Special case: closed (unlocked) door - AI can open it
+            t = battle.get_terrain_at(int(x), int(y))
+            if t and t.is_door and not t.door_open and not t.is_locked:
+                # Door can be opened - treat as passable
+                return True
             return False
         # Flying entities ignore ground hazards
         if entity.is_flying:
@@ -823,6 +1004,10 @@ class TacticalAI:
                         continue
 
                     move_cost = battle.get_terrain_movement_cost(nx, ny, entity)
+                    # Doors cost extra (object interaction)
+                    t = battle.get_terrain_at(int(nx), int(ny))
+                    if t and t.is_door and not t.door_open:
+                        move_cost += 0.5  # Small penalty so AI prefers open paths
                     tentative_g = g_score[current] + move_cost
 
                     if neighbor not in g_score or tentative_g < g_score[neighbor]:
@@ -869,6 +1054,11 @@ class TacticalAI:
                 cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
                 if entity.movement_left < cost:
                     break
+
+                # Auto-open closed unlocked doors (free object interaction)
+                t_at = battle.get_terrain_at(int(nx), int(ny))
+                if t_at and t_at.is_door and not t_at.door_open and not t_at.is_locked:
+                    battle.toggle_door_at(int(nx), int(ny))
 
                 # PHB p.290: Frightened creatures can't move closer to fear source
                 if fear_source:
@@ -1000,6 +1190,11 @@ class TacticalAI:
                     chosen = (nx2, ny2)
 
             if chosen:
+                # Auto-open doors when fleeing
+                t_at = battle.get_terrain_at(int(chosen[0]), int(chosen[1]))
+                if t_at and t_at.is_door and not t_at.door_open and not t_at.is_locked:
+                    battle.toggle_door_at(int(chosen[0]), int(chosen[1]))
+
                 cost = 5.0 * battle.get_terrain_movement_cost(chosen[0], chosen[1], entity)
                 if entity.movement_left >= cost:
                     entity.grid_x, entity.grid_y = chosen
@@ -1253,7 +1448,7 @@ class TacticalAI:
     def _evaluate_best_single_attack(self, entity, enemies, allies, battle):
         """Evaluate and return best single attack with EV scoring."""
         alive_enemies = [e for e in enemies if e.hp > 0]
-        sorted_enemies = sorted(alive_enemies, key=lambda e: self._score_target(entity, e), reverse=True)
+        sorted_enemies = sorted(alive_enemies, key=lambda e: self._score_target(entity, e, battle), reverse=True)
 
         best_score = -1
         best_steps = None
@@ -1469,6 +1664,9 @@ class TacticalAI:
                 dist_ft = battle.get_distance(entity, target) * 5
                 if dist_ft > spell.range:
                     continue
+                # Ranged healing spells need LOS (touch spells don't)
+                if spell.range > 5 and not battle.has_line_of_sight(entity, target):
+                    continue
 
                 slot = spell.level
                 if slot > 0:
@@ -1552,7 +1750,7 @@ class TacticalAI:
         return None
 
     def _try_dash_action(self, entity, enemies, allies, battle):
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return []
         entity.movement_left += entity.stats.speed
@@ -1811,6 +2009,9 @@ class TacticalAI:
                 dist_ft = battle.get_distance(entity, target) * 5
                 if dist_ft > spell.range:
                     continue
+                # LOS check for targeted spells
+                if not self._can_see_target(entity, target, battle):
+                    continue
 
                 # Calculate failure probability
                 save_bonus = target.get_save_bonus(spell.save_ability)
@@ -1914,7 +2115,11 @@ class TacticalAI:
             # Find best target for this spell based on Expected Value (EV)
             for target in enemies:
                 if target.hp <= 0: continue
-                
+
+                # LOS check: most spells require line of sight
+                if not self._can_see_target(entity, target, battle):
+                    continue
+
                 # Calculate damage against THIS target (vulnerability/resistance)
                 base_dmg = self._estimate_damage(spell.damage_dice, spell.damage_type, target)
                 if base_dmg <= 0: continue
@@ -2025,12 +2230,17 @@ class TacticalAI:
         for sub in sub_actions:
             alive_enemies = [e for e in enemies if e.hp > 0]
             
-            # Filter targets by range of this specific attack
-            # This prevents AI from picking a high-value target it can't reach (e.g. far away Wizard)
-            # and then skipping the attack, when it could hit the adjacent Fighter.
-            reachable_enemies = [e for e in alive_enemies if battle.get_distance(entity, e) * 5 <= sub.range]
-            
-            t = self._pick_target(entity, reachable_enemies)
+            # Filter targets by range and LOS for ranged attacks
+            reachable_enemies = []
+            for e in alive_enemies:
+                if battle.get_distance(entity, e) * 5 > sub.range:
+                    continue
+                # Ranged attacks need LOS, melee don't
+                if sub.range > 10 and not self._can_see_target(entity, e, battle):
+                    continue
+                reachable_enemies.append(e)
+
+            t = self._pick_target(entity, reachable_enemies, battle)
             if not t:
                 continue
 
@@ -2329,7 +2539,7 @@ class TacticalAI:
         my_weapons = [e for e in battle.entities
                       if e.is_summon and e.summon_owner == entity and "Spiritual Weapon" in e.name]
         for weapon in my_weapons:
-            target = self._pick_target(weapon, enemies)
+            target = self._pick_target(weapon, enemies, battle)
             if target:
                 steps = []
                 if not battle.is_adjacent(weapon, target):
@@ -2348,7 +2558,7 @@ class TacticalAI:
 
         # --- 3. Monk: Flurry of Blows ---
         if entity.has_feature("flurry_of_blows") and entity.ki_points_left > 0:
-            target = self._pick_target(entity, enemies)
+            target = self._pick_target(entity, enemies, battle)
             if target and battle.is_adjacent(entity, target):
                 return self._monk_flurry_of_blows(entity, target, allies, battle)
 
@@ -2356,11 +2566,14 @@ class TacticalAI:
         for ba in entity.stats.bonus_actions:
             if not ba.damage_dice:
                 continue
-            target = self._pick_target(entity, enemies)
+            target = self._pick_target(entity, enemies, battle)
             if not target:
                 continue
             dist = battle.get_distance(entity, target)
             if ba.range / 5.0 >= dist:
+                # Ranged bonus attacks need LOS
+                if ba.range > 10 and not self._can_see_target(entity, target, battle):
+                    continue
                 step = self._execute_attack(entity, ba, target, battle)
                 step.step_type = "bonus_attack"
                 # Apply class bonuses (Rage, HM, etc.)
@@ -2375,7 +2588,7 @@ class TacticalAI:
 
         # --- 6. Monster: Aggressive ---
         if entity.has_feature("aggressive"):
-            target = self._pick_target(entity, enemies)
+            target = self._pick_target(entity, enemies, battle)
             if target:
                 entity.movement_left += entity.stats.speed
                 move_step = self._move_toward(entity, target, allies, battle)
@@ -2459,7 +2672,7 @@ class TacticalAI:
                         )]
                 # Concentration buffs
                 if spell.concentration and not entity.concentrating_on:
-                    target = self._pick_target(entity, enemies)
+                    target = self._pick_target(entity, enemies, battle)
                     if target and (spell.level == 0 or entity.use_spell_slot(spell.level)):
                         entity.start_concentration(spell)
                         entity.bonus_action_used = True
@@ -2535,7 +2748,7 @@ class TacticalAI:
         if not hm or not entity.has_spell_slot(1):
             return None
 
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
 
@@ -2564,7 +2777,7 @@ class TacticalAI:
         if not hex_spell or not entity.has_spell_slot(1):
             return None
 
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
 
@@ -2596,7 +2809,7 @@ class TacticalAI:
         if existing:
             return None
 
-        target = self._pick_target(entity, enemies)
+        target = self._pick_target(entity, enemies, battle)
         if not target:
             return None
 
@@ -2841,8 +3054,9 @@ class TacticalAI:
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
 
-    def _pick_target(self, entity, enemies) -> Optional["Entity"]:
-        """God-mode target selection: score all enemies considering everything."""
+    def _pick_target(self, entity, enemies, battle=None) -> Optional["Entity"]:
+        """God-mode target selection: score all enemies considering everything.
+        Prioritizes visible targets but falls back to known positions if nothing visible."""
         alive = [e for e in enemies if e.hp > 0]
         if not alive:
             return None
@@ -2850,9 +3064,9 @@ class TacticalAI:
         focus = self._get_team_focus_target(entity, alive)
         if focus:
             return focus
-        return max(alive, key=lambda e: self._score_target(entity, e))
+        return max(alive, key=lambda e: self._score_target(entity, e, battle))
 
-    def _score_target(self, entity, target):
+    def _score_target(self, entity, target, battle=None):
         """Comprehensive target scoring - god mode sees everything.
 
         Factors:
@@ -2866,6 +3080,8 @@ class TacticalAI:
         8. Reachability (can we actually hit them?)
         9. AC difficulty
         10. Mark priority (Hunter's Mark, Hex)
+        11. Line of sight (can we see them?)
+        12. Elevation advantage/disadvantage
         """
         s = 0.0
         hp_pct = target.hp / max(target.max_hp, 1)
@@ -2973,6 +3189,20 @@ class TacticalAI:
         # --- 12. LEGENDARY CREATURE PENALTY: Don't waste debuffs on them ---
         if target.legendary_resistances_left > 0 and entity.stats.spellcasting_ability:
             s -= target.legendary_resistances_left * 5
+
+        # --- 13. LINE OF SIGHT: Can't target what we can't see ---
+        if battle:
+            if not self._can_see_target(entity, target, battle):
+                s -= 30  # Heavy penalty (not impossible, might move to see them)
+
+            # --- 14. ELEVATION ADVANTAGE ---
+            elev_diff = entity.elevation - target.elevation
+            if elev_diff > 0:
+                s += min(elev_diff / 5.0, 4) * 2  # Bonus for height advantage
+            elif elev_diff < 0:
+                pref = self._get_combat_preference(entity)
+                if pref == "ranged":
+                    s -= 3  # Slight penalty for shooting upward
 
         return s
 
@@ -3092,12 +3322,17 @@ class TacticalAI:
             return None
         dist = battle.get_distance(entity, target)
         actions = [a for a in entity.stats.actions if not a.is_multiattack]
-        
+        has_los = self._can_see_target(entity, target, battle)
+
         valid_actions = []
         for a in actions:
             # Check range
             if a.range / 5.0 < dist:
                 continue
+            # Ranged attacks require line of sight
+            if a.range > 10 and not has_los:
+                continue
+            # Melee attacks don't need LOS (you're adjacent, you can feel them)
             # Check usage limits
             if entity.get_feature_by_name(a.name):
                 if not entity.can_use_feature(a.name):
@@ -3309,14 +3544,20 @@ class TacticalAI:
             candidates = []
             for candidate in alive:
                 candidates.append(get_center(candidate))
-            
+
             for i in range(len(alive)):
                 for j in range(i + 1, len(alive)):
                     t1x, t1y = get_center(alive[i])
                     t2x, t2y = get_center(alive[j])
                     candidates.append(((t1x + t2x)/2, (t1y + t2y)/2))
 
+            # Import LOS check for center point visibility
+            from engine.terrain import check_los_blocked
+
             for (ccx, ccy) in candidates:
+                # Caster must have LOS to AoE center point
+                if check_los_blocked(battle.terrain, int(ecx), int(ecy), int(ccx), int(ccy)):
+                    continue
                 cluster = []
                 for e in alive:
                     # Check immunity
