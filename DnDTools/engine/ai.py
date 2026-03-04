@@ -774,6 +774,9 @@ class TacticalAI:
     def _is_safe_passable(self, battle, x, y, entity):
         if not battle.is_passable(x, y, exclude=entity):
             return False
+        # Flying entities ignore ground hazards
+        if entity.is_flying:
+            return True
         t = battle.get_terrain_at(int(x), int(y))
         if t and t.is_hazard:
             return False
@@ -819,7 +822,7 @@ class TacticalAI:
                     if not self._is_safe_passable(battle, nx, ny, entity):
                         continue
 
-                    move_cost = battle.get_terrain_movement_cost(nx, ny)
+                    move_cost = battle.get_terrain_movement_cost(nx, ny, entity)
                     tentative_g = g_score[current] + move_cost
 
                     if neighbor not in g_score or tentative_g < g_score[neighbor]:
@@ -863,7 +866,7 @@ class TacticalAI:
             fear_source = entity.get_condition_source("Frightened") if entity.has_condition("Frightened") else None
 
             for (nx, ny) in path:
-                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny)
+                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
                 if entity.movement_left < cost:
                     break
 
@@ -951,7 +954,7 @@ class TacticalAI:
 
         if path:
             for (nx, ny) in path:
-                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny)
+                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
                 if entity.movement_left < cost:
                     break
                 entity.grid_x, entity.grid_y = nx, ny
@@ -997,7 +1000,7 @@ class TacticalAI:
                     chosen = (nx2, ny2)
 
             if chosen:
-                cost = 5.0 * battle.get_terrain_movement_cost(chosen[0], chosen[1])
+                cost = 5.0 * battle.get_terrain_movement_cost(chosen[0], chosen[1], entity)
                 if entity.movement_left >= cost:
                     entity.grid_x, entity.grid_y = chosen
                     entity.movement_left -= cost

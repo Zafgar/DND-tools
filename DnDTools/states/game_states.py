@@ -904,6 +904,7 @@ class BattleState(GameState):
         self.terrain_mode = False
         self.terrain_selected_type = "wall"
         self.terrain_palette_open = False
+        self.terrain_palette_scroll = 0
         self.drawing_button = None  # None, 1 (left/paint), or 3 (right/erase)
 
         # Roll Result Modal
@@ -1001,6 +1002,8 @@ class BattleState(GameState):
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
         self.btn_advisor = Button(532, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
+        self.btn_maps    = Button(618, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
+        self.map_browser_open = False
 
         # HP quick buttons
         vals = [-10, -5, -1, 1, 5, 10]
@@ -2510,20 +2513,43 @@ class BattleState(GameState):
                 # Terrain palette
                 if self.terrain_palette_open:
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        # Calculate palette bounds to prevent click-through
+                        # Calculate palette bounds
                         pal_x, pal_y = 10, TOP_BAR_H + 10
-                        pal_w = 160
-                        pal_h = min(15, len(TERRAIN_TYPES)) * 28 + 20 + 30
+                        pal_w = 165
+                        item_h = 24
+                        max_vis = (SCREEN_HEIGHT - TOP_BAR_H - 120) // item_h
+                        scroll = getattr(self, 'terrain_palette_scroll', 0)
+                        pal_h = min(max_vis, len(TERRAIN_TYPES)) * item_h + 8 * 2 + 48
                         pal_rect = pygame.Rect(pal_x, pal_y, pal_w, pal_h)
 
                         if pal_rect.collidepoint(event.pos):
-                            for i, (ttype, props) in enumerate(TERRAIN_TYPES.items()):
-                                r = pygame.Rect(pal_x + 4, pal_y + 22 + 8 + i * 28, 130, 26)
-                                if r.collidepoint(event.pos):
-                                    self.terrain_selected_type = ttype
-                                    break
-                            # Consume event so we don't paint on the grid through the palette
+                            # Scroll with mouse wheel
+                            if event.button == 4:  # scroll up
+                                self.terrain_palette_scroll = max(0, scroll - 1)
+                            elif event.button == 5:  # scroll down
+                                self.terrain_palette_scroll = min(
+                                    len(TERRAIN_TYPES) - max_vis,
+                                    scroll + 1)
+                            else:
+                                # Click on item
+                                keys = list(TERRAIN_TYPES.keys())
+                                visible = keys[scroll:scroll + max_vis]
+                                for i, ttype in enumerate(visible):
+                                    r = pygame.Rect(pal_x + 4, pal_y + 38 + 8 + i * item_h,
+                                                    pal_w - 8, item_h - 2)
+                                    if r.collidepoint(event.pos):
+                                        self.terrain_selected_type = ttype
+                                        break
                             continue
+
+                        # Middle-click on grid to toggle doors
+                        if event.button == 2:
+                            mx, raw_my = event.pos
+                            if mx < GRID_W and raw_my >= TOP_BAR_H:
+                                gx, gy = self._screen_to_grid(mx, raw_my)
+                                gx, gy = int(gx), int(gy)
+                                self.battle.toggle_door_at(gx, gy)
+                                continue
 
                 # Pending AI confirmation
                 if self.pending_plan:
@@ -2726,6 +2752,26 @@ class BattleState(GameState):
                 self.btn_undo.handle_event(event)
                 self.btn_auto.handle_event(event)
                 self.btn_advisor.handle_event(event)
+                self.btn_maps.handle_event(event)
+
+                # Map browser clicks
+                if self.map_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    from data.maps import get_map_names
+                    maps = get_map_names()
+                    bw, bh_total = 350, 50 * len(maps) + 60
+                    bx = (SCREEN_WIDTH - bw) // 2
+                    by = (SCREEN_HEIGHT - bh_total) // 2
+                    y = by + 44
+                    for key, name, desc in maps:
+                        r = pygame.Rect(bx + 8, y, bw - 16, 42)
+                        if r.collidepoint(event.pos):
+                            self._load_premade_map(key)
+                            break
+                        y += 50
+                    # Click outside closes
+                    outer = pygame.Rect(bx, by, bw, bh_total)
+                    if not outer.collidepoint(event.pos):
+                        self.map_browser_open = False
 
                 for b in self.hp_btns:
                     b.handle_event(event)
@@ -2805,6 +2851,8 @@ class BattleState(GameState):
 
         if self.terrain_palette_open:
             self._draw_terrain_palette(screen, mp)
+        if self.map_browser_open:
+            self._draw_map_browser(screen, mp)
         if self.condition_reminder:
             self._draw_condition_reminder(screen, mp)
         if self.pending_plan:
@@ -3006,15 +3054,36 @@ class BattleState(GameState):
             r, g, b = t.color
             s.fill((r, g, b, 200))
             screen.blit(s, (rx, ry))
-            # Border
-            pygame.draw.rect(screen, tuple(min(255, c+40) for c in t.color), (rx, ry, rw, rh), 2)
-            # Label
-            lbl = fonts.tiny.render(t.label[:6], True, (255, 255, 255))
+            # Border color: brighter for elevated, darker for lowered
+            border_color = tuple(min(255, c+40) for c in t.color)
+            if t.elevation > 0:
+                border_color = (200, 200, 255)  # blue-ish for elevated
+            elif t.elevation < 0:
+                border_color = (100, 50, 50)    # dark red for pits/chasms
+            pygame.draw.rect(screen, border_color, (rx, ry, rw, rh), 2)
+            # Label (top-left)
+            lbl_text = t.label[:8]
+            lbl = fonts.tiny.render(lbl_text, True, (255, 255, 255))
             screen.blit(lbl, (rx + 2, ry + 2))
-            # Hazard indicator
+            # Elevation indicator (top-right)
+            if t.elevation != 0:
+                elev_color = (180, 200, 255) if t.elevation > 0 else (255, 150, 150)
+                elev_txt = fonts.tiny.render(f"{t.elevation:+d}ft", True, elev_color)
+                screen.blit(elev_txt, (rx + rw - elev_txt.get_width() - 2, ry + 2))
+            # Door state indicator
+            if t.is_door:
+                door_txt = "OPEN" if t.door_open else "SHUT"
+                door_color = (100, 255, 100) if t.door_open else (255, 100, 100)
+                dt = fonts.tiny.render(door_txt, True, door_color)
+                screen.blit(dt, (rx + rw//2 - dt.get_width()//2, ry + rh//2 - 6))
+            # Hazard indicator (bottom-left)
             if t.is_hazard:
                 hz = fonts.tiny.render(t.hazard_damage, True, (255, 220, 0))
                 screen.blit(hz, (rx + 2, ry + gsz - 16))
+            # LOS blocking indicator
+            if t.blocks_los and not t.is_door:
+                los_mark = fonts.tiny.render("LOS", True, (255, 80, 80))
+                screen.blit(los_mark, (rx + rw - los_mark.get_width() - 2, ry + rh - 14))
 
     # --- Weather Effects ---
     def _draw_weather(self, screen):
@@ -3134,7 +3203,7 @@ class BattleState(GameState):
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps):
             b.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
@@ -3179,6 +3248,23 @@ class BattleState(GameState):
             if ent.hp <= 0:
                 pygame.draw.line(screen, COLORS["danger"], (cx-r, cy-r), (cx+r, cy+r), 2)
                 pygame.draw.line(screen, COLORS["danger"], (cx+r, cy-r), (cx-r, cy+r), 2)
+            # Elevation badge (top-right of token)
+            if ent.elevation != 0:
+                elev_color = (150, 180, 255) if ent.elevation > 0 else (255, 150, 100)
+                elev_txt = fonts.tiny.render(f"{ent.elevation}ft", True, elev_color)
+                etx = cx + r - elev_txt.get_width()
+                ety = cy - r - 4
+                bg_rect = pygame.Rect(etx - 2, ety - 1, elev_txt.get_width() + 4, 14)
+                pygame.draw.rect(screen, (0, 0, 0, 200), bg_rect, border_radius=2)
+                screen.blit(elev_txt, (etx, ety))
+            # Flying indicator (wing icon above token)
+            if ent.is_flying:
+                fly_txt = fonts.tiny.render("FLY", True, (180, 220, 255))
+                screen.blit(fly_txt, (cx - fly_txt.get_width()//2, cy - r - 16))
+            # Climbing indicator
+            if ent.is_climbing:
+                climb_txt = fonts.tiny.render("CLIMB", True, (200, 180, 120))
+                screen.blit(climb_txt, (cx - climb_txt.get_width()//2, cy - r - 16))
 
     # --- Drag visual ---
     def _draw_drag(self, screen):
@@ -4727,24 +4813,30 @@ class BattleState(GameState):
 
     # --- Terrain palette ---
     def _draw_terrain_palette(self, screen, mp):
-        bw = 150
+        bw = 165
         pad = 8
-        item_h = 28
-        n = min(15, len(TERRAIN_TYPES)) # Limit height, maybe scroll later
-        bh = n * item_h + pad * 2 + 30
+        item_h = 24
+        max_visible = (SCREEN_HEIGHT - TOP_BAR_H - 120) // item_h
+        scroll = getattr(self, 'terrain_palette_scroll', 0)
+
+        keys = list(TERRAIN_TYPES.keys())
+        total = len(keys)
+        bh = min(max_visible, total) * item_h + pad * 2 + 48
 
         bx = 10
         by = TOP_BAR_H + 10
 
         pygame.draw.rect(screen, (35, 37, 42), (bx, by, bw, bh), border_radius=6)
         pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 1, border_radius=6)
-        hdr = fonts.small.render("Select Terrain", True, COLORS["accent"])
+        hdr = fonts.small.render("Terrain Palette", True, COLORS["accent"])
         screen.blit(hdr, (bx + 6, by + 6))
+        # Door toggle hint
+        hint = fonts.tiny.render("Middle-click: toggle door", True, COLORS["text_dim"])
+        screen.blit(hint, (bx + 6, by + 22))
 
-        y = by + pad + 22
-        # Filter or scroll if too many. For now just show all or slice
-        keys = list(TERRAIN_TYPES.keys())
-        for i, ttype in enumerate(keys):
+        y = by + pad + 38
+        visible_keys = keys[scroll:scroll + max_visible]
+        for i, ttype in enumerate(visible_keys):
             props = TERRAIN_TYPES[ttype]
             r = pygame.Rect(bx + 4, y, bw - 8, item_h - 2)
             is_sel = ttype == self.terrain_selected_type
@@ -4753,13 +4845,28 @@ class BattleState(GameState):
                 bg = COLORS["accent_hover"]
             pygame.draw.rect(screen, bg, r, border_radius=3)
             # Color swatch
-            pygame.draw.rect(screen, props["color"], (r.x + 3, r.y + 4, 16, 16), border_radius=2)
-            pygame.draw.rect(screen, (0, 0, 0), (r.x + 3, r.y + 4, 16, 16), 1, border_radius=2)
-            lbl = fonts.tiny.render(props["label"], True, COLORS["text_main"])
-            screen.blit(lbl, (r.x + 22, r.y + 6))
+            pygame.draw.rect(screen, props["color"], (r.x + 3, r.y + 3, 14, 14), border_radius=2)
+            pygame.draw.rect(screen, (0, 0, 0), (r.x + 3, r.y + 3, 14, 14), 1, border_radius=2)
+            # Label with property indicators
+            label = props["label"][:10]
+            indicators = ""
+            if props.get("elevation_ft", 0) != 0:
+                indicators += f" {props['elevation_ft']:+d}"
+            if props.get("door"):
+                indicators += " D"
+            if props.get("blocks_los"):
+                indicators += " #"
+            lbl = fonts.tiny.render(label + indicators, True, COLORS["text_main"])
+            screen.blit(lbl, (r.x + 20, r.y + 4))
             y += item_h
-            if y > SCREEN_HEIGHT - 100: # Simple overflow check
-                break
+
+        # Scroll indicators
+        if scroll > 0:
+            up_arrow = fonts.small.render("^ scroll up ^", True, COLORS["text_dim"])
+            screen.blit(up_arrow, (bx + bw//2 - up_arrow.get_width()//2, by + 36))
+        if scroll + max_visible < total:
+            dn_arrow = fonts.tiny.render("v more v", True, COLORS["text_dim"])
+            screen.blit(dn_arrow, (bx + bw//2 - dn_arrow.get_width()//2, by + bh - 14))
 
     # ------------------------------------------------------------------ #
     # Win Probability & DM Advisor                                         #
@@ -5040,11 +5147,56 @@ class BattleState(GameState):
         if self.terrain_mode:
             self.btn_terrain.text = "STOP PAINTING"
             self.btn_terrain.color = COLORS["warning"]
-            self._log("[TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove.")
+            self._log("[TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove, Middle-click=toggle door.")
         else:
             self.btn_terrain.text = "TERRAIN"
             self.btn_terrain.color = COLORS["panel"]
             self._log("[TERRAIN] Terrain placement mode OFF.")
+
+    def _toggle_map_browser(self):
+        self.map_browser_open = not self.map_browser_open
+
+    def _load_premade_map(self, map_key):
+        """Load a premade map, replacing current terrain."""
+        from data.maps import load_map_terrain
+        terrain_list = load_map_terrain(map_key)
+        if terrain_list:
+            self.battle.terrain = terrain_list
+            self.map_browser_open = False
+            self._log(f"[MAP] Loaded premade map: {map_key}")
+
+    def _draw_map_browser(self, screen, mp):
+        """Draw the premade map selection overlay."""
+        from data.maps import get_map_names
+        maps = get_map_names()
+
+        bw, bh = 350, 50 * len(maps) + 60
+        bx = (SCREEN_WIDTH - bw) // 2
+        by = (SCREEN_HEIGHT - bh) // 2
+
+        # Background
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 150))
+        screen.blit(ov, (0, 0))
+
+        pygame.draw.rect(screen, (35, 37, 42), (bx, by, bw, bh), border_radius=8)
+        pygame.draw.rect(screen, COLORS["accent"], (bx, by, bw, 36),
+                         border_top_left_radius=8, border_top_right_radius=8)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 2, border_radius=8)
+
+        hdr = fonts.body.render("Load Premade Map", True, (255, 255, 255))
+        screen.blit(hdr, (bx + 10, by + 8))
+
+        y = by + 44
+        for key, name, desc in maps:
+            r = pygame.Rect(bx + 8, y, bw - 16, 42)
+            bg = COLORS["accent_hover"] if r.collidepoint(mp) else (50, 52, 57)
+            pygame.draw.rect(screen, bg, r, border_radius=4)
+            nt = fonts.small.render(name, True, COLORS["text_main"])
+            screen.blit(nt, (r.x + 8, r.y + 4))
+            dt = fonts.tiny.render(desc[:45], True, COLORS["text_dim"])
+            screen.blit(dt, (r.x + 8, r.y + 24))
+            y += 50
 
     # Re-implementing separate callbacks for clarity
     def _open_save_modal(self):
