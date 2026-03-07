@@ -427,13 +427,10 @@ class EncounterSetupState(GameState):
                                        color=COLORS["panel"]))
             y += 40
 
+        # Load disk-saved heroes into hero_list (if not already present)
+        self._load_disk_heroes()
         self.hero_btns = []
-        y = 130
-        for h in hero_list:
-            self.hero_btns.append(Button(430, y, 220, 35, f"+ {h.name}",
-                                         lambda hero=h: self._add_hero(hero),
-                                         color=COLORS["player"]))
-            y += 40
+        self._rebuild_hero_buttons()
 
         # Lair toggle: when enabled, creatures with lair actions will use them at initiative 20
         self.lair_active = False
@@ -582,6 +579,36 @@ class EncounterSetupState(GameState):
         self.search_text = "" # Clear search when picking CR
         self._update_monster_list()
 
+    def _load_disk_heroes(self):
+        """Auto-load heroes saved to disk into hero_list if not already present."""
+        heroes_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
+        if not os.path.exists(heroes_dir):
+            return
+        for f in sorted(os.listdir(heroes_dir)):
+            if not f.endswith(".json"):
+                continue
+            try:
+                heroes = import_heroes_from_file(os.path.join(heroes_dir, f))
+                for h in heroes:
+                    if not any(existing.name == h.name for existing in hero_list):
+                        hero_list.append(h)
+            except Exception:
+                pass
+
+    def _rebuild_hero_buttons(self):
+        """Rebuild hero selection buttons from current hero_list."""
+        self.hero_btns = []
+        for h in hero_list:
+            lvl_info = ""
+            if h.character_level > 0:
+                lvl_info = f" Lv{h.character_level}"
+                if h.character_class:
+                    lvl_info = f" {h.character_class[:3]}Lv{h.character_level}"
+            label = f"+ {h.name}{lvl_info}"
+            self.hero_btns.append(Button(430, 0, 220, 35, label,
+                                         lambda hero=h: self._add_hero(hero),
+                                         color=COLORS["player"]))
+
     def _add_hero(self, stats):
         y_pos = 2 + len([e for e in self.roster if e.is_player]) * 2
         self.roster.append(Entity(stats, 3, y_pos, is_player=True))
@@ -603,7 +630,7 @@ class EncounterSetupState(GameState):
             e.long_rest()
 
     def _import_heroes_file(self):
-        """Import heroes from JSON files in the heroes/ directory."""
+        """Import heroes from JSON files in the heroes/ directory and refresh buttons."""
         if not os.path.exists(self.heroes_dir):
             return
         json_files = [f for f in os.listdir(self.heroes_dir) if f.endswith(".json")]
@@ -613,10 +640,14 @@ class EncounterSetupState(GameState):
             try:
                 heroes = import_heroes_from_file(os.path.join(self.heroes_dir, f))
                 for h in heroes:
+                    # Add to hero_list if not already present
+                    if not any(existing.name == h.name for existing in hero_list):
+                        hero_list.append(h)
                     y_pos = 2 + len([e for e in self.roster if e.is_player]) * 2
                     self.roster.append(Entity(h, 3, y_pos, is_player=True))
             except Exception as ex:
                 print(f"Import error ({f}): {ex}")
+        self._rebuild_hero_buttons()
 
     def _export_heroes_file(self):
         """Export all player heroes in roster to heroes/ directory."""
