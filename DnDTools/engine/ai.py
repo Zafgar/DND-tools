@@ -17,6 +17,33 @@ if TYPE_CHECKING:
     from engine.battle import BattleSystem
     from data.models import CreatureStats
 
+# ------------------------------------------------------------------ #
+# AI Scoring Constants                                                 #
+# ------------------------------------------------------------------ #
+# Target scoring weights
+KILL_POTENTIAL_BONUS = 50       # Bonus for killable targets
+FOCUS_FIRE_WEIGHT = 40          # Max bonus for nearly-dead targets
+THREAT_DPR_WEIGHT = 0.5         # Multiplier for enemy DPR contribution
+SPELL_SLOT_THREAT = 2           # Per remaining spell slot
+CONC_LEVEL_VALUE = 5            # Per spell level of concentration target
+CONC_AOE_BONUS = 15             # Bonus for AoE concentration spells
+CONC_CONDITION_BONUS = 10       # Bonus for debuff concentration spells
+CONC_SUMMON_BONUS = 10          # Bonus for summon concentration spells
+HEALER_PRIORITY_BONUS = 15      # Bonus for targeting healers
+DISTANCE_PENALTY_WEIGHT = 2     # Per square distance penalty
+AC_DIFFICULTY_WEIGHT = 0.5      # Per AC point above 12
+MARK_TARGET_BONUS = 25          # Bonus for Hunter's Mark/Hex targets
+
+# Grapple/shove scoring
+GRAPPLE_SHOVE_COMBO_VALUE = 40  # Value of the grapple+prone combo
+
+# Action scoring thresholds
+DODGE_HP_THRESHOLD = 0.40       # Below this HP%, consider Dodge action
+DODGE_CRITICAL_THRESHOLD = 0.25 # Below this HP%, Dodge with even 1 threat
+HEAL_MELEE_THRESHOLD = 0.30     # Below this HP%, melee fighters self-heal
+HEAL_RANGED_THRESHOLD = 0.35    # Below this HP%, ranged fighters self-heal
+DISENGAGE_HP_LOW = 0.20         # Melee fighters disengage below this HP%
+
 
 @dataclass
 class ActionStep:
@@ -1270,7 +1297,7 @@ class TacticalAI:
 
         # === EMERGENCY: Self-heal if critical ===
         pref = self._get_combat_preference(entity)
-        heal_threshold = 0.30 if pref == "melee" else 0.35
+        heal_threshold = HEAL_MELEE_THRESHOLD if pref == "melee" else HEAL_RANGED_THRESHOLD
         if entity.max_hp > 0 and (entity.hp / entity.max_hp < heal_threshold):
             heal_step = self._try_heal_action(entity)
             if heal_step:
@@ -1301,6 +1328,16 @@ class TacticalAI:
             disengage_step = self._try_disengage_action(entity, enemies, battle, pref)
             if disengage_step:
                 candidates.append((20.0, "disengage", [disengage_step]))
+
+        # --- Dodge (defensive action when low HP and surrounded) ---
+        dodge_step = self._try_dodge_action(entity, enemies, battle)
+        if dodge_step:
+            threats = [e for e in enemies if battle.is_adjacent(entity, e) and e.hp > 0]
+            hp_pct = entity.hp / max(entity.max_hp, 1)
+            # Higher score when low HP and many adjacent threats
+            dodge_score = len(threats) * 10 * (1.0 - hp_pct)
+            if dodge_score > 0:
+                candidates.append((dodge_score, "dodge", [dodge_step]))
 
         # --- AoE spell ---
         if entity.has_spell_slot(1) or entity.stats.cantrips:
@@ -1410,7 +1447,7 @@ class TacticalAI:
                 if shove_ok:
                     # This creates permanent advantage (target can't stand while grappled)
                     # Value = advantage bonus * remaining attacks from allies * expected combat length
-                    combo_value = 40 * success_chance  # Very high value
+                    combo_value = GRAPPLE_SHOVE_COMBO_VALUE * success_chance
                     combo_value += len(engaging_allies) * 10 * success_chance  # More allies = more value
                     shove_step = self._try_shove_action(entity, target)
                     if shove_step and combo_value > best_score:
@@ -1766,7 +1803,7 @@ class TacticalAI:
     def _try_disengage_action(self, entity, enemies, battle, preference="melee"):
         threats = [e for e in enemies if battle.is_adjacent(entity, e)]
         # Melee fighters rarely disengage unless very critical, Ranged do it more often
-        if preference == "melee" and entity.hp > entity.max_hp * 0.2:
+        if preference == "melee" and entity.hp > entity.max_hp * DISENGAGE_HP_LOW:
             return None
         if not threats:
             return None
@@ -1780,6 +1817,30 @@ class TacticalAI:
             move_step.step_type = "move"
             return move_step
         return None
+
+    def _try_dodge_action(self, entity, enemies, battle):
+        """Use Dodge action when threatened, low HP, and no good offensive option.
+
+        PHB p.192: Until start of next turn, attacks against you have disadvantage
+        (if you can see the attacker), and you have advantage on DEX saves.
+        Only worth it when adjacent enemies threaten us and we're wounded.
+        """
+        threats = [e for e in enemies if battle.is_adjacent(entity, e) and e.hp > 0]
+        if not threats:
+            return None
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+        # Only dodge when below threshold with 2+ threats, or critical threshold with 1+
+        if hp_pct > DODGE_HP_THRESHOLD:
+            return None
+        if hp_pct > DODGE_CRITICAL_THRESHOLD and len(threats) < 2:
+            return None
+
+        entity.is_dodging = True
+        return ActionStep(
+            step_type="wait",
+            description=f"{entity.name} takes the Dodge action (attacks have disadvantage).",
+            attacker=entity, action_name="Dodge",
+        )
 
     def _try_dash_action(self, entity, enemies, allies, battle):
         target = self._pick_target(entity, enemies, battle)
@@ -2670,11 +2731,33 @@ class TacticalAI:
                     entity.bonus_action_used = True
                     return steps
 
-        # --- 3. Monk: Flurry of Blows ---
-        if entity.has_feature("flurry_of_blows") and entity.ki_points_left > 0:
-            target = self._pick_target(entity, enemies, battle)
-            if target and battle.is_adjacent(entity, target):
-                return self._monk_flurry_of_blows(entity, target, allies, battle)
+        # --- 3. Monk: Flurry of Blows (offensive) or Patient Defense (defensive) ---
+        if entity.ki_points_left > 0:
+            if entity.has_feature("flurry_of_blows"):
+                hp_pct = entity.hp / max(entity.max_hp, 1)
+                threats = [e for e in enemies if battle.is_adjacent(entity, e) and e.hp > 0]
+                # Patient Defense: Dodge as bonus when low HP and surrounded
+                if (entity.has_feature("patient_defense") and hp_pct < DODGE_HP_THRESHOLD
+                        and len(threats) >= 2):
+                    entity.ki_points_left -= 1
+                    entity.is_dodging = True
+                    entity.bonus_action_used = True
+                    return [ActionStep(
+                        step_type="bonus_attack",
+                        description=f"{entity.name} uses Patient Defense (Dodge, 1 Ki).",
+                        attacker=entity, target=entity, action_name="Patient Defense",
+                    )]
+                # Otherwise Flurry of Blows for offense
+                target = self._pick_target(entity, enemies, battle)
+                if target and battle.is_adjacent(entity, target):
+                    return self._monk_flurry_of_blows(entity, target, allies, battle)
+
+        # --- 3b. Second Wind early if on a defensive turn (Dodge action) ---
+        took_dodge = plan and any(s.action_name == "Dodge" for s in plan.steps)
+        if took_dodge:
+            sw_step = self._try_second_wind(entity)
+            if sw_step:
+                return [sw_step]
 
         # --- 4. Bonus action attacks (Offhand, PAM, etc.) ---
         for ba in entity.stats.bonus_actions:
@@ -3204,42 +3287,41 @@ class TacticalAI:
         # --- 1. KILL POTENTIAL: Massive bonus if we can finish them ---
         our_est_dmg = self._estimate_entity_dpr(entity)
         if target.hp <= our_est_dmg * 1.2:
-            s += 50  # Huge bonus for killable targets
+            s += KILL_POTENTIAL_BONUS
 
         # --- 2. FOCUS FIRE: Wounded targets get escalating bonus ---
         # The more wounded, the higher priority (finish what allies started)
         if hp_pct < 1.0:
-            s += (1.0 - hp_pct) * 40  # Up to +40 for nearly dead
+            s += (1.0 - hp_pct) * FOCUS_FIRE_WEIGHT
 
         # --- 3. THREAT LEVEL: High DPR enemies are priority ---
         threat_dpr = self._estimate_entity_dpr(target)
-        s += threat_dpr * 0.5  # Scale threat contribution
+        s += threat_dpr * THREAT_DPR_WEIGHT
 
         # Spellcasters with remaining slots are high threat
         if target.has_spell_slot(1):
             remaining_slots = sum(target.spell_slots.values())
-            s += remaining_slots * 2
+            s += remaining_slots * SPELL_SLOT_THREAT
 
         # --- 4. CONCENTRATION DISRUPTION: Break their buffs/debuffs ---
         if target.concentrating_on:
             conc_spell = target.concentrating_on
-            # High-value concentration targets
-            conc_value = conc_spell.level * 5
+            conc_value = conc_spell.level * CONC_LEVEL_VALUE
             # AoE concentration spells (Spirit Guardians, Hypnotic Pattern) = very high value
             if conc_spell.aoe_radius > 0:
-                conc_value += 15
+                conc_value += CONC_AOE_BONUS
             # Debuff concentration (Hold Person, Banishment) = high value
             if conc_spell.applies_condition:
-                conc_value += 10
+                conc_value += CONC_CONDITION_BONUS
             # Summon concentration (Animate Dead, Conjure Animals)
             if conc_spell.summon_name:
-                conc_value += 10
+                conc_value += CONC_SUMMON_BONUS
             s += conc_value
 
         # --- 5. HEALER/SUPPORT PRIORITY: Take out healers early ---
         has_healing = any(sp.heals for sp in target.stats.spells_known)
         if has_healing and target.has_spell_slot(1):
-            s += 15
+            s += HEALER_PRIORITY_BONUS
         # Bards with inspiration
         if target.bardic_inspiration_left > 0:
             s += 8

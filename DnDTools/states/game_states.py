@@ -1093,9 +1093,19 @@ class BattleState(GameState):
             self._resolve_aura(success)
             return
 
-        # 2. Handle Reactions (Auto-accept for maximum chaos)
+        # 2. Handle Reactions (smart AI decisions)
         if self.reaction_pending:
-            self._resolve_reaction(True)
+            if self.reaction_type == "counterspell":
+                # AI evaluates whether counterspelling is worthwhile
+                reactor = self.reaction_pending[0]
+                ctx = self.reaction_context or {}
+                spell_level = ctx.get("level", 1)
+                # Counterspell if the spell is level 3+ or reactor has plenty of slots
+                should_counter = spell_level >= 3 or reactor.has_spell_slot(4)
+                self._resolve_reaction(should_counter)
+            else:
+                # OA: always take opportunity attacks
+                self._resolve_reaction(True)
             return
 
         # 3. Handle Pending Plan (Execute steps)
@@ -1566,6 +1576,25 @@ class BattleState(GameState):
                         source_is_player=step.attacker.is_player if step.attacker else False,
                         target_is_player=target.is_player)
                     return
+
+                # --- AI REACTION CHECK (Absorb Elements) ---
+                # Reaction to acid/cold/fire/lightning/thunder damage: gain resistance
+                _ABSORB_ELEMENTS_TYPES = {"acid", "cold", "fire", "lightning", "thunder"}
+                if (not target.is_player and not target.reaction_used
+                        and step.damage_type in _ABSORB_ELEMENTS_TYPES):
+                    absorb = next((s for s in target.stats.spells_known
+                                   if s.name == "Absorb Elements"), None)
+                    if absorb and target.has_spell_slot(absorb.level):
+                        # Cast if damage is significant (≥15% max HP)
+                        if dmg >= target.max_hp * 0.15:
+                            target.use_spell_slot(absorb.level)
+                            target.reaction_used = True
+                            dmg = dmg // 2  # Resistance = half damage
+                            # Store absorbed type for next melee hit bonus
+                            target.active_effects["Absorb Elements"] = 1
+                            self._log(f"[REACTION] {target.name} casts Absorb Elements! "
+                                      f"Resistance to {step.damage_type}, damage halved.")
+                            self._spawn_damage_text(target, "Absorb!", is_heal=True)
 
                 # --- AI REACTION CHECK (Uncanny Dodge) ---
                 # Halve damage from an attack you can see
