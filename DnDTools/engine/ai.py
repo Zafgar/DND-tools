@@ -535,6 +535,38 @@ class TacticalAI:
                 action_name="Divine Favor",
             )
 
+        # Spirit Shroud (TCoE) - +1d8 on attacks within 10ft, prevents healing
+        ss = next((s for s in entity.stats.spells_known if s.name == "Spirit Shroud"), None)
+        if ss and entity.has_spell_slot(3):
+            closest_dist = min(
+                (battle.get_distance(entity, e) * 5 for e in enemies if e.hp > 0),
+                default=999
+            )
+            # Only worthwhile if we'll be in melee range
+            if closest_dist <= entity.movement_left + 10:
+                entity.use_spell_slot(3)
+                entity.start_concentration(ss)
+                entity.bonus_action_used = True
+                return ActionStep(
+                    step_type="bonus_attack",
+                    description=f"{entity.name} casts Spirit Shroud (+1d8 dmg within 10ft, prevents healing)",
+                    attacker=entity, target=entity, spell=ss, slot_used=3,
+                    action_name="Spirit Shroud",
+                )
+
+        # Zephyr Strike (XGtE) - no OA + advantage on one attack
+        zs = next((s for s in entity.stats.spells_known if s.name == "Zephyr Strike"), None)
+        if zs and entity.has_spell_slot(1):
+            entity.use_spell_slot(1)
+            entity.start_concentration(zs)
+            entity.bonus_action_used = True
+            return ActionStep(
+                step_type="bonus_attack",
+                description=f"{entity.name} casts Zephyr Strike (no OA, advantage on one attack + 1d8 force)",
+                attacker=entity, target=entity, spell=zs, slot_used=1,
+                action_name="Zephyr Strike",
+            )
+
         return None
 
     def _try_post_attack_reposition(self, entity, enemies, allies, battle):
@@ -2366,6 +2398,88 @@ class TacticalAI:
             step.bonus_damage += ds_dmg
             step.damage += ds_dmg
             bonus_parts.append(f"Divine Strike +{ds_dmg}")
+
+        # --- TCoE: Ranger Dreadful Strikes (Fey Wanderer) ---
+        if entity.has_feature("dreadful_strikes") and step.is_hit and first_attack:
+            ds_feat = entity.get_feature("dreadful_strikes")
+            ds_dice = ds_feat.mechanic_value if ds_feat else "1d4"
+            ds_dmg = roll_dice_critical(ds_dice) if step.is_crit else roll_dice(ds_dice)
+            step.bonus_damage += ds_dmg
+            step.damage += ds_dmg
+            step.damage_type = "psychic"
+            bonus_parts.append(f"Dreadful Strikes +{ds_dmg}")
+
+        # --- TCoE: Ranger Gathered Swarm (Swarmkeeper) ---
+        if entity.has_feature("gathered_swarm") and step.is_hit and first_attack:
+            gs_feat = entity.get_feature("gathered_swarm")
+            gs_dice = gs_feat.mechanic_value if gs_feat else "1d6"
+            gs_dmg = roll_dice_critical(gs_dice) if step.is_crit else roll_dice(gs_dice)
+            step.bonus_damage += gs_dmg
+            step.damage += gs_dmg
+            bonus_parts.append(f"Gathered Swarm +{gs_dmg}")
+
+        # --- TCoE: Rogue Wails from the Grave (Phantom) ---
+        if (entity.has_feature("wails_from_grave") and step.is_hit and first_attack
+                and entity.has_feature("sneak_attack") and entity.sneak_attack_used):
+            # Wails triggers after Sneak Attack - deal half SA dice as necrotic to 2nd target
+            sa_dice = entity.get_sneak_attack_dice()
+            if sa_dice and entity.can_use_feature("Wails from the Grave"):
+                # Parse SA dice count and halve it
+                try:
+                    num = int(sa_dice.split("d")[0]) // 2
+                    if num >= 1:
+                        wails_dice = f"{num}d6"
+                        wails_dmg = roll_dice(wails_dice)
+                        step.bonus_damage += wails_dmg
+                        step.damage += wails_dmg
+                        bonus_parts.append(f"Wails from Grave {wails_dice}={wails_dmg}")
+                        entity.use_feature("Wails from the Grave")
+                except (ValueError, IndexError):
+                    pass
+
+        # --- TCoE: Fighter Giant's Might (Rune Knight) ---
+        if entity.has_feature("giants_might") and step.is_hit and first_attack:
+            gm_feat = entity.get_feature("giants_might")
+            gm_dice = gm_feat.mechanic_value if gm_feat else "1d6"
+            gm_dmg = roll_dice_critical(gm_dice) if step.is_crit else roll_dice(gm_dice)
+            step.bonus_damage += gm_dmg
+            step.damage += gm_dmg
+            bonus_parts.append(f"Giant's Might +{gm_dmg}")
+
+        # --- TCoE: Fighter Psionic Strike (Psi Warrior) ---
+        if entity.has_feature("psionic_power") and step.is_hit and first_attack:
+            pp_feat = entity.get_feature("psionic_power")
+            pp_dice = pp_feat.mechanic_value if pp_feat else "1d6"
+            if entity.can_use_feature("Psionic Power"):
+                pp_dmg = roll_dice_critical(pp_dice) if step.is_crit else roll_dice(pp_dice)
+                step.bonus_damage += pp_dmg
+                step.damage += pp_dmg
+                bonus_parts.append(f"Psionic Strike +{pp_dmg}")
+                entity.use_feature("Psionic Power")
+
+        # --- TCoE: Warlock Genie's Wrath ---
+        if entity.has_feature("genies_wrath") and step.is_hit and first_attack:
+            gw_dmg = entity.stats.proficiency_bonus
+            step.bonus_damage += gw_dmg
+            step.damage += gw_dmg
+            bonus_parts.append(f"Genie's Wrath +{gw_dmg}")
+
+        # --- TCoE: Monk Hand of Harm (Way of Mercy) ---
+        if (entity.has_feature("hand_of_harm") and step.is_hit and first_attack
+                and entity.ki_points_left > 0 and not is_ranged):
+            hoh_dice = "1d6"
+            wis_mod = entity.get_modifier("wisdom")
+            hoh_dmg = roll_dice(hoh_dice) + max(0, wis_mod)
+            step.bonus_damage += hoh_dmg
+            step.damage += hoh_dmg
+            entity.ki_points_left -= 1
+            bonus_parts.append(f"Hand of Harm +{hoh_dmg}")
+
+        # --- TCoE: Cleric Voice of Authority (Order Domain) ---
+        # Note: This triggers on spell cast, not on attack - handled in spell resolution
+
+        # --- TCoE: Bard Unsettling Words (College of Eloquence) ---
+        # Note: This is a bonus action debuff, handled in pre-combat bonus phase
 
         # Update description with bonus damage info
         if bonus_parts:

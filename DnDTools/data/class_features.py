@@ -2101,6 +2101,696 @@ MONK_LONG_DEATH = {
 }
 
 # ============================================================
+# TASHA'S CAULDRON OF EVERYTHING (TCoE) SUBCLASSES
+# ============================================================
+
+# --- BARBARIAN (TCoE) ---
+BARBARIAN_BEAST = {
+    3: [
+        Feature("Form of the Beast", "When you rage, choose: Bite (1d8 piercing, regain HP = prof bonus "
+                "when below half HP), Claws (1d6 slashing, extra claw attack when you attack), or "
+                "Tail (1d8 piercing, +1d8 AC reaction).",
+                feature_type="class", mechanic="form_of_the_beast"),
+    ],
+    6: [
+        Feature("Bestial Soul", "Natural weapons count as magical. Choose: swimming (= walk speed), "
+                "climbing (= walk speed), or jump distance increases.",
+                feature_type="class", mechanic="bestial_soul"),
+    ],
+    10: [
+        Feature("Infectious Fury", "When you hit with natural weapons, target makes WIS save "
+                "(DC 8+prof+CON) or uses reaction to attack an ally, or takes 2d12 psychic. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="infectious_fury",
+                save_ability="Wisdom", damage_dice="2d12", damage_type="psychic"),
+    ],
+    14: [
+        Feature("Call the Hunt", "When you rage, choose prof bonus allies within 30ft. Each gains +1d6 "
+                "damage once per turn. You gain 5 temp HP per ally.",
+                feature_type="class", mechanic="call_the_hunt"),
+    ],
+}
+
+BARBARIAN_WILD_MAGIC_BARB = {
+    3: [
+        Feature("Magic Awareness", "Action: detect spells/magic items within 60ft. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="magic_awareness"),
+        Feature("Wild Surge", "When you rage, roll d8 for a random magical effect: "
+                "teleport, AoE burst, weapon flare, etc.",
+                feature_type="class", mechanic="wild_surge"),
+    ],
+    6: [
+        Feature("Bolstering Magic", "Action: touch ally for +1d3 to attacks/checks for 10 min, "
+                "or restore an expended spell slot (up to 3rd level). Prof bonus uses/long rest.",
+                feature_type="class", mechanic="bolstering_magic"),
+    ],
+    10: [
+        Feature("Unstable Backlash", "Reaction when damaged or failing save while raging: "
+                "replace current Wild Surge effect with a new one (roll new d8).",
+                feature_type="class", mechanic="unstable_backlash"),
+    ],
+    14: [
+        Feature("Controlled Surge", "When you roll on Wild Magic table, roll twice and choose "
+                "which effect to use.",
+                feature_type="class", mechanic="controlled_surge"),
+    ],
+}
+
+# --- FIGHTER (TCoE) ---
+FIGHTER_PSI_WARRIOR = {
+    3: [
+        Feature("Psionic Power", "Psionic Energy dice (d6, = prof bonus dice). "
+                "Protective Field (reaction: reduce damage to self/ally within 30ft by 1d6+INT), "
+                "Psionic Strike (+1d6 force on weapon hit), "
+                "Telekinetic Movement (move object/creature 30ft).",
+                feature_type="class", mechanic="psionic_power", mechanic_value="1d6"),
+    ],
+    7: [
+        Feature("Telekinetic Adept", "Psi-Powered Leap (fly speed = 2x walk, bonus action), "
+                "Telekinetic Thrust (push target 10ft + knock prone on Psionic Strike, STR save).",
+                feature_type="class", mechanic="telekinetic_adept"),
+    ],
+    10: [
+        Feature("Guarded Mind", "Resistance to psychic damage. Spend Psionic Energy die to end "
+                "Charmed/Frightened on yourself.",
+                feature_type="class", mechanic="guarded_mind"),
+    ],
+    15: [
+        Feature("Bulwark of Force", "Bonus action: create half cover for prof bonus creatures "
+                "within 30ft. Lasts 1 minute. 1/long rest or spend Psionic Energy die.",
+                feature_type="class", mechanic="bulwark_of_force"),
+    ],
+    18: [
+        Feature("Telekinetic Master", "Cast Telekinesis (no components). 1/long rest or spend "
+                "Psionic Energy die. While concentrating, bonus action telekinetic weapon attack.",
+                feature_type="class", mechanic="telekinetic_master"),
+    ],
+}
+
+FIGHTER_RUNE_KNIGHT = {
+    3: [
+        Feature("Rune Carver", "Learn 2 runes (from: Cloud, Fire, Frost, Stone, Hill, Storm). "
+                "Each has a passive effect + 1/short rest activation.",
+                feature_type="class", mechanic="rune_carver"),
+        Feature("Giant's Might", "Bonus action: become Large for 1 min, advantage on STR checks/saves, "
+                "+1d6 damage once per turn. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="giants_might", mechanic_value="1d6"),
+    ],
+    7: [
+        Feature("Runic Shield", "Reaction: when ally within 60ft is hit, force reroll of attack. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="runic_shield"),
+    ],
+    10: [
+        Feature("Great Stature", "Height increases 3d4 inches. Giant's Might bonus becomes 1d8.",
+                feature_type="class", mechanic="giants_might", mechanic_value="1d8"),
+    ],
+    15: [
+        Feature("Master of Runes", "Each rune can be invoked twice per short rest.",
+                feature_type="class", mechanic="master_of_runes"),
+    ],
+    18: [
+        Feature("Runic Juggernaut", "Giant's Might makes you Huge. Bonus becomes 1d10. "
+                "+5 reach when Large/Huge.",
+                feature_type="class", mechanic="giants_might", mechanic_value="1d10"),
+    ],
+}
+
+# --- PALADIN (TCoE) ---
+PALADIN_GLORY = {
+    3: [
+        Feature("Peerless Athlete", "Channel Divinity: bonus action, 10 min. Advantage on Athletics "
+                "and Acrobatics. Carry/push/lift doubled. Long/high jump +10ft.",
+                feature_type="class", mechanic="channel_divinity", uses_per_day=1,
+                short_rest_recharge=True),
+        Feature("Inspiring Smite", "Channel Divinity: after Divine Smite, distribute 2d8+paladin level "
+                "temp HP among creatures within 30ft.",
+                feature_type="class", mechanic="inspiring_smite"),
+    ],
+    7: [
+        Feature("Aura of Alacrity", "Your walking speed increases by 10ft. Allies within 5ft "
+                "(10ft at 18th) gain +10ft speed.",
+                feature_type="class", mechanic="aura_of_alacrity", aura_radius=5),
+    ],
+    15: [
+        Feature("Glorious Defense", "Reaction: when you or ally within 10ft is hit, add CHA mod to AC. "
+                "If attack misses, melee weapon attack against attacker. CHA mod uses/long rest.",
+                feature_type="class", mechanic="glorious_defense"),
+    ],
+    20: [
+        Feature("Living Legend", "Bonus action: 1 minute. Advantage on CHA checks, misses become hits "
+                "once per turn, gain Haste-like emanation. 1/long rest.",
+                feature_type="class", mechanic="living_legend"),
+    ],
+}
+
+PALADIN_WATCHERS = {
+    3: [
+        Feature("Watcher's Will", "Channel Divinity: action, choose prof bonus creatures within 30ft. "
+                "Advantage on INT/WIS/CHA saves for 1 minute.",
+                feature_type="class", mechanic="channel_divinity", uses_per_day=1,
+                short_rest_recharge=True),
+        Feature("Abjure the Extraplanar", "Channel Divinity: action, each aberration/celestial/"
+                "elemental/fey/fiend within 30ft makes WIS save or turned for 1 minute.",
+                feature_type="class", mechanic="abjure_extraplanar",
+                save_ability="Wisdom"),
+    ],
+    7: [
+        Feature("Aura of the Sentinel", "You and allies within 10ft gain +prof bonus to initiative.",
+                feature_type="class", mechanic="aura_of_sentinel", aura_radius=10),
+    ],
+    15: [
+        Feature("Vigilant Rebuke", "Reaction: when you or ally within 30ft succeeds on INT/WIS/CHA save, "
+                "deal 2d8+CHA mod force damage to the creature that forced the save.",
+                feature_type="class", mechanic="vigilant_rebuke",
+                damage_dice="2d8", damage_type="force"),
+    ],
+    20: [
+        Feature("Mortal Bulwark", "Bonus action: 1 minute. Truesight 120ft, advantage on attacks "
+                "vs aberrations/celestials/elementals/fey/fiends, banish on hit (CHA save).",
+                feature_type="class", mechanic="mortal_bulwark"),
+    ],
+}
+
+# --- ROGUE (TCoE) ---
+ROGUE_PHANTOM = {
+    3: [
+        Feature("Whispers of the Dead", "After rest, gain proficiency in one skill or tool. "
+                "Changes after next rest.",
+                feature_type="class", mechanic="whispers_of_dead"),
+        Feature("Wails from the Grave", "After Sneak Attack, deal half Sneak Attack dice "
+                "as necrotic damage to a second creature within 30ft of first target. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="wails_from_grave"),
+    ],
+    9: [
+        Feature("Tokens of the Departed", "When a creature within 30ft dies, reaction to capture "
+                "soul trinket. Advantage on death saves and CON saves while you have one. "
+                "Destroy to ask one question of the spirit.",
+                feature_type="class", mechanic="tokens_of_departed"),
+    ],
+    13: [
+        Feature("Ghost Walk", "Bonus action: spectral form for 10 min. Fly 10ft, move through "
+                "creatures/objects. 1/long rest or destroy soul trinket.",
+                feature_type="class", mechanic="ghost_walk"),
+    ],
+    17: [
+        Feature("Death's Friend", "Wails from the Grave no longer limited by uses. "
+                "If you don't have a soul trinket at end of long rest, one appears.",
+                feature_type="class", mechanic="deaths_friend"),
+    ],
+}
+
+ROGUE_SOULKNIFE = {
+    3: [
+        Feature("Psionic Power (Soulknife)", "Psi Energy dice (d6 = prof bonus). "
+                "Psi-Bolstered Knack: add die to failed skill check. "
+                "Psychic Whispers: telepathy with prof bonus creatures for hours.",
+                feature_type="class", mechanic="psionic_power_rogue", mechanic_value="1d6"),
+        Feature("Psychic Blades", "Manifest psychic blades as simple melee weapons. "
+                "Attack: 1d6+ability mod psychic. Bonus action: 1d4+ability mod psychic second blade. "
+                "60ft thrown range. Vanish after use.",
+                feature_type="class", mechanic="psychic_blades"),
+    ],
+    9: [
+        Feature("Soul Blades", "Homing Strikes: spend Psi die to add to missed attack roll. "
+                "Psychic Teleportation: bonus action, throw blade and teleport to it (Psi die x10 ft).",
+                feature_type="class", mechanic="soul_blades"),
+    ],
+    13: [
+        Feature("Psychic Veil", "Bonus action: invisible for 1 hour or until you damage/force save. "
+                "1/long rest or spend Psi die.",
+                feature_type="class", mechanic="psychic_veil"),
+    ],
+    17: [
+        Feature("Rend Mind", "After Psychic Blades hit, force WIS save (DC 8+prof+DEX) or "
+                "Stunned for 1 minute (repeat save end of turns). 1/long rest or spend 3 Psi dice.",
+                feature_type="class", mechanic="rend_mind",
+                save_ability="Wisdom", applies_condition="Stunned"),
+    ],
+}
+
+# --- RANGER (TCoE) ---
+RANGER_FEY_WANDERER = {
+    3: [
+        Feature("Dreadful Strikes", "Once per turn, weapon attacks deal extra 1d4 psychic damage "
+                "(1d6 at 11th level). Each creature can only take this once per turn.",
+                feature_type="class", mechanic="dreadful_strikes", mechanic_value="1d4"),
+        Feature("Otherworldly Glamour", "Add WIS mod to CHA checks. Gain one CHA skill proficiency.",
+                feature_type="class", mechanic="otherworldly_glamour"),
+    ],
+    7: [
+        Feature("Beguiling Twist", "Reaction: when you or ally within 120ft saves vs Charmed/Frightened, "
+                "redirect to different creature within 120ft. WIS save or Charmed/Frightened for 1 minute.",
+                feature_type="class", mechanic="beguiling_twist",
+                save_ability="Wisdom"),
+    ],
+    11: [
+        Feature("Fey Reinforcements", "Cast Summon Fey (no material component, concentration). "
+                "1/long rest or spend spell slot of 3rd+.",
+                feature_type="class", mechanic="fey_reinforcements"),
+        Feature("Dreadful Strikes (Improved)", "Dreadful Strikes damage increases to 1d6.",
+                feature_type="class", mechanic="dreadful_strikes", mechanic_value="1d6"),
+    ],
+    15: [
+        Feature("Misty Wanderer", "Cast Misty Step without slot, WIS mod times/long rest. "
+                "Can bring willing ally within 5ft.",
+                feature_type="class", mechanic="misty_wanderer"),
+    ],
+}
+
+RANGER_SWARMKEEPER = {
+    3: [
+        Feature("Gathered Swarm", "Once per turn on hit: deal extra 1d6 piercing, OR "
+                "move target 15ft horizontally (STR save), OR move yourself 5ft (no OA). "
+                "Swarm is fey spirits/tiny beasts.",
+                feature_type="class", mechanic="gathered_swarm", mechanic_value="1d6"),
+    ],
+    7: [
+        Feature("Writhing Tide", "Bonus action: gain hover fly speed 10ft for 1 minute. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="writhing_tide"),
+    ],
+    11: [
+        Feature("Mighty Swarm", "Gathered Swarm damage becomes 1d8. Push now knocks Prone. "
+                "Self-move gains half cover until start of next turn.",
+                feature_type="class", mechanic="gathered_swarm", mechanic_value="1d8"),
+    ],
+    15: [
+        Feature("Swarming Dispersal", "Reaction when hit: become swarm, teleport 30ft, "
+                "resistance to attack damage. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="swarming_dispersal"),
+    ],
+}
+
+# --- CLERIC (TCoE) ---
+CLERIC_ORDER = {
+    1: [
+        Feature("Voice of Authority", "When you cast a spell with a slot targeting an ally, "
+                "that ally can use reaction to make one weapon attack.",
+                feature_type="class", mechanic="voice_of_authority"),
+    ],
+    2: [
+        Feature("Order's Demand", "Channel Divinity: each creature of your choice within 30ft "
+                "makes WIS save or Charmed until end of your next turn or takes damage. "
+                "You can also drop Charmed creatures Prone.",
+                feature_type="class", mechanic="channel_divinity", uses_per_day=1,
+                short_rest_recharge=True, save_ability="Wisdom",
+                applies_condition="Charmed"),
+    ],
+    6: [
+        Feature("Embodiment of the Law", "When you cast an Enchantment spell of 1st level or higher, "
+                "change casting time from action to bonus action. WIS mod uses/long rest.",
+                feature_type="class", mechanic="embodiment_of_law"),
+    ],
+    8: [
+        Feature("Divine Strike (Order)", "Once per turn, +1d8 psychic damage on weapon hit (2d8 at 14th).",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8",
+                damage_type="psychic"),
+    ],
+    17: [
+        Feature("Order's Wrath", "When you deal Divine Strike damage, curse target. "
+                "Next ally attack deals extra 2d8 psychic damage. Once per turn.",
+                feature_type="class", mechanic="orders_wrath",
+                damage_dice="2d8", damage_type="psychic"),
+    ],
+}
+
+CLERIC_PEACE = {
+    1: [
+        Feature("Emboldening Bond", "Action: bond prof bonus creatures within 30ft for 10 min. "
+                "Once per turn, bonded creature within 30ft of another can add 1d4 to attack/check/save. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="emboldening_bond"),
+    ],
+    2: [
+        Feature("Balm of Peace", "Channel Divinity: move up to your speed without provoking OA. "
+                "Heal each creature within 5ft that you pass by 2d6+WIS mod.",
+                feature_type="class", mechanic="channel_divinity", uses_per_day=1,
+                short_rest_recharge=True),
+    ],
+    6: [
+        Feature("Protective Bond", "Bonded creature can use reaction to teleport to within 5ft "
+                "of bonded ally that takes damage, taking all the damage instead. "
+                "At 17th, creature gains resistance to transferred damage.",
+                feature_type="class", mechanic="protective_bond"),
+    ],
+    8: [
+        Feature("Potent Spellcasting (Peace)", "Add WIS mod to cantrip damage.",
+                feature_type="class", mechanic="potent_spellcasting"),
+    ],
+    17: [
+        Feature("Expansive Bond", "Bond range increases to 60ft. When bonded creature takes damage, "
+                "any bonded creature can teleport to absorb (with resistance).",
+                feature_type="class", mechanic="expansive_bond"),
+    ],
+}
+
+CLERIC_TWILIGHT = {
+    1: [
+        Feature("Eyes of Night", "Darkvision 300ft, share with WIS mod creatures within 10ft. "
+                "1/long rest (or spell slot).",
+                feature_type="class", mechanic="eyes_of_night"),
+    ],
+    2: [
+        Feature("Twilight Sanctuary", "Channel Divinity: action, create 30ft sphere of dim light "
+                "centered on you. Each turn, allies in sphere gain 1d6+cleric level temp HP, "
+                "or end Charmed/Frightened. Lasts 1 minute.",
+                feature_type="class", mechanic="channel_divinity", uses_per_day=1,
+                short_rest_recharge=True, aura_radius=30),
+    ],
+    6: [
+        Feature("Steps of Night", "Bonus action: fly speed = walk speed in dim light/darkness for 1 min. "
+                "Prof bonus uses/long rest.",
+                feature_type="class", mechanic="steps_of_night"),
+    ],
+    8: [
+        Feature("Divine Strike (Twilight)", "Once per turn, +1d8 radiant damage on weapon hit (2d8 at 14th).",
+                feature_type="class", mechanic="divine_strike", mechanic_value="1d8",
+                damage_type="radiant"),
+    ],
+    17: [
+        Feature("Twilight Shroud", "Twilight Sanctuary also grants half cover to allies within it.",
+                feature_type="class", mechanic="twilight_shroud"),
+    ],
+}
+
+# --- WIZARD (TCoE) ---
+WIZARD_ORDER_OF_SCRIBES = {
+    2: [
+        Feature("Wizardly Quill", "Bonus action: create Tiny quill. Write spells in 2 min/level "
+                "(instead of 2 hours). Erase anything you write.",
+                feature_type="class", mechanic="wizardly_quill"),
+        Feature("Awakened Spellbook", "Replace damage type of a spell with another from your spellbook "
+                "(must be same level). Cast ritual spells in normal casting time.",
+                feature_type="class", mechanic="awakened_spellbook"),
+    ],
+    6: [
+        Feature("Manifest Mind", "Bonus action: manifest spellbook as Tiny spectral within 60ft. "
+                "Cast spells from its location. Move it 30ft/bonus action. Prof bonus casts/long rest.",
+                feature_type="class", mechanic="manifest_mind"),
+    ],
+    10: [
+        Feature("Master Scrivener", "Create spell scroll of 1st or 2nd level (1 min, 1/long rest). "
+                "Scroll is cast at minimum level +1. Scroll doesn't use slot to cast.",
+                feature_type="class", mechanic="master_scrivener"),
+    ],
+    14: [
+        Feature("One with the Word", "Advantage on Arcana checks. Reaction when you take damage: "
+                "reduce to 0 and lose spells from spellbook (3d6 levels worth). "
+                "1/long rest. Needs 1st-level spell per lost level to restore.",
+                feature_type="class", mechanic="one_with_the_word"),
+    ],
+}
+
+# --- WARLOCK (TCoE) ---
+WARLOCK_FATHOMLESS = {
+    1: [
+        Feature("Tentacle of the Deeps", "Bonus action: create 10ft tentacle within 60ft. "
+                "When created + bonus action each turn: melee spell attack, 1d8 cold, "
+                "reduce speed by 10ft. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="tentacle_of_deeps",
+                damage_dice="1d8", damage_type="cold"),
+    ],
+    6: [
+        Feature("Oceanic Soul", "Resistance to cold damage. Breathe underwater, swim speed = walk.",
+                feature_type="class", mechanic="oceanic_soul"),
+        Feature("Guardian Coil", "Reaction: when you or ally within 10ft of tentacle takes damage, "
+                "reduce by 1d8.",
+                feature_type="class", mechanic="guardian_coil"),
+    ],
+    10: [
+        Feature("Grasping Tentacles", "Cast Evard's Black Tentacles 1/long rest without a slot. "
+                "While concentrating on it, gain temp HP = warlock level at start of each turn. "
+                "Tentacle of the Deeps damage increases to 2d8.",
+                feature_type="class", mechanic="grasping_tentacles",
+                damage_dice="2d8"),
+    ],
+    14: [
+        Feature("Fathomless Plunge", "Action: teleport yourself and up to 5 willing creatures "
+                "within 30ft to a body of water you've seen (up to 1 mile). 1/short rest.",
+                feature_type="class", mechanic="fathomless_plunge"),
+    ],
+}
+
+WARLOCK_GENIE = {
+    1: [
+        Feature("Genie's Vessel", "Bonus action: enter Tiny vessel (extradimensional space) for "
+                "prof bonus x2 hours. Genie's Wrath: once per turn, deal extra prof bonus damage "
+                "of your genie type on hit.",
+                feature_type="class", mechanic="genies_wrath"),
+    ],
+    6: [
+        Feature("Elemental Gift", "Resistance to genie's damage type. Bonus action: fly speed 30ft "
+                "for 10 min. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="elemental_gift"),
+    ],
+    10: [
+        Feature("Sanctuary Vessel", "When you enter vessel, choose 5 willing creatures within 30ft. "
+                "All gain benefits of short rest when you exit. Bonus: +prof bonus to HP restored.",
+                feature_type="class", mechanic="sanctuary_vessel"),
+    ],
+    14: [
+        Feature("Limited Wish", "Request the effect of a 6th-level or lower spell with casting time "
+                "of 1 action. No material components needed. 1d4 long rests to recharge.",
+                feature_type="class", mechanic="limited_wish"),
+    ],
+}
+
+# --- SORCERER (TCoE) ---
+SORCERER_ABERRANT_MIND = {
+    1: [
+        Feature("Psionic Spells", "Learn extra spells: Arms of Hadar, Dissonant Whispers, Mind Sliver. "
+                "At higher levels: Calm Emotions, Detect Thoughts, Hunger of Hadar, Sending, "
+                "Evard's Black Tentacles, Summon Aberration, Telekinesis, Modify Memory.",
+                feature_type="class", mechanic="psionic_spells"),
+        Feature("Telepathic Speech", "Bonus action: telepathy with one creature within 30ft "
+                "for sorcerer level minutes. Shared language not required.",
+                feature_type="class", mechanic="telepathic_speech"),
+    ],
+    6: [
+        Feature("Psionic Sorcery", "Cast Psionic Spell spells using sorcery points (= spell level) "
+                "instead of spell slots. No verbal/somatic components when casting this way.",
+                feature_type="class", mechanic="psionic_sorcery"),
+    ],
+    14: [
+        Feature("Revelation in Flesh", "Bonus action, spend 1+ sorcery points: gain one benefit "
+                "per point for 10 min. See Invisible 60ft, fly speed = walk, swim+breathe, "
+                "squeeze through 1-inch spaces.",
+                feature_type="class", mechanic="revelation_in_flesh"),
+    ],
+    18: [
+        Feature("Warping Implosion", "Action: teleport 120ft. Each creature within 30ft of vacated space "
+                "makes STR save or 3d10 force damage + pulled to space. Half on save. 1/long rest "
+                "or 5 sorcery points.",
+                feature_type="class", mechanic="warping_implosion",
+                save_ability="Strength", damage_dice="3d10", damage_type="force"),
+    ],
+}
+
+SORCERER_CLOCKWORK_SOUL = {
+    1: [
+        Feature("Clockwork Magic", "Learn extra spells: Alarm, Protection from Evil and Good. "
+                "At higher levels: Aid, Lesser Restoration, Dispel Magic, Protection from Energy, "
+                "Freedom of Movement, Summon Construct, Greater Restoration, Wall of Force.",
+                feature_type="class", mechanic="clockwork_magic"),
+        Feature("Restore Balance", "Reaction: when a creature within 60ft rolls with adv/disadv, "
+                "cancel the adv/disadv. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="restore_balance"),
+    ],
+    6: [
+        Feature("Bastion of Law", "Action: spend 1-5 sorcery points. Target creature gains "
+                "that many d8 as ward dice. When creature takes damage, spend any number of "
+                "ward dice to reduce damage by total rolled.",
+                feature_type="class", mechanic="bastion_of_law"),
+    ],
+    14: [
+        Feature("Trance of Order", "Bonus action: 1 minute. Attack rolls, checks, saves can't "
+                "roll below 10 on d20. 1/long rest or 7 sorcery points.",
+                feature_type="class", mechanic="trance_of_order"),
+    ],
+    18: [
+        Feature("Clockwork Cavalcade", "Action: 30ft cube. Restore up to 100 HP (divided), "
+                "repair damaged objects, end 6th level or lower spells. 1/long rest or 7 SP.",
+                feature_type="class", mechanic="clockwork_cavalcade"),
+    ],
+}
+
+# --- BARD (TCoE) ---
+BARD_CREATION = {
+    3: [
+        Feature("Mote of Potential", "When you grant Bardic Inspiration, mote orbits target. "
+                "On ability check: roll twice, use higher. On attack: 2d6 thunder to target+adjacent. "
+                "On save: gain die roll as temp HP.",
+                feature_type="class", mechanic="mote_of_potential"),
+        Feature("Performance of Creation", "Action: create nonmagical item within 10ft worth "
+                "up to 20xBard level GP. Size up to Medium (Large at 6, Huge at 14). "
+                "Lasts prof bonus hours. 1/long rest or 2nd-level slot.",
+                feature_type="class", mechanic="performance_of_creation"),
+    ],
+    6: [
+        Feature("Animating Performance", "Action: animate Large or smaller nonmagical item as creature "
+                "for 1 hour. Dancing Item has AC 16, HP 10+5xBard level, +8 attack, 1d10+prof force. "
+                "1/long rest or 3rd-level slot.",
+                feature_type="class", mechanic="animating_performance"),
+    ],
+    14: [
+        Feature("Creative Crescendo", "Performance of Creation: create prof bonus items simultaneously. "
+                "One item can be up to one size larger than normal.",
+                feature_type="class", mechanic="creative_crescendo"),
+    ],
+}
+
+BARD_ELOQUENCE = {
+    3: [
+        Feature("Silver Tongue", "Treat Persuasion/Deception rolls of 9 or lower as 10.",
+                feature_type="class", mechanic="silver_tongue"),
+        Feature("Unsettling Words", "Bonus action: spend Bardic Inspiration. Target within 60ft "
+                "subtracts die from next save before start of your next turn.",
+                feature_type="class", mechanic="unsettling_words"),
+    ],
+    6: [
+        Feature("Unfailing Inspiration", "When creature uses your Bardic Inspiration and fails, "
+                "they keep the die instead of losing it.",
+                feature_type="class", mechanic="unfailing_inspiration"),
+        Feature("Universal Speech", "Action: choose prof bonus creatures within 60ft. "
+                "They understand you for 1 hour regardless of language. 1/long rest or spell slot.",
+                feature_type="class", mechanic="universal_speech"),
+    ],
+    14: [
+        Feature("Infectious Inspiration", "Reaction: when creature uses your Bardic Inspiration "
+                "and succeeds, give Bardic Inspiration to another creature within 60ft (no use cost). "
+                "CHA mod times/long rest.",
+                feature_type="class", mechanic="infectious_inspiration"),
+    ],
+}
+
+# --- DRUID (TCoE) ---
+DRUID_STARS = {
+    2: [
+        Feature("Star Map", "Free cast of Guiding Bolt, prof bonus times/long rest. "
+                "Learn Guidance cantrip.",
+                feature_type="class", mechanic="star_map"),
+        Feature("Starry Form", "Bonus action when you Wild Shape: enter starry form instead. "
+                "Choose constellation: Archer (ranged 60ft, 1d8+WIS radiant as bonus action), "
+                "Chalice (heal 1d8+WIS to creature within 30ft when you cast heal spell), "
+                "Dragon (minimum 10 on concentration saves, fly speed 20ft hover).",
+                feature_type="class", mechanic="starry_form"),
+    ],
+    6: [
+        Feature("Cosmic Omen", "After long rest, roll d6. Woe (even) or Weal (odd). "
+                "Reaction: creature within 30ft making attack/save/check subtracts (woe) or "
+                "adds (weal) 1d6. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="cosmic_omen"),
+    ],
+    10: [
+        Feature("Twinkling Constellations", "Change starry form constellation at start of each turn. "
+                "Archer/Chalice dice become 2d8.",
+                feature_type="class", mechanic="twinkling_constellations"),
+    ],
+    14: [
+        Feature("Full of Stars", "While in starry form, resistance to bludgeoning/piercing/slashing.",
+                feature_type="class", mechanic="full_of_stars"),
+    ],
+}
+
+DRUID_WILDFIRE = {
+    2: [
+        Feature("Summon Wildfire Spirit", "Expend Wild Shape use to summon Wildfire Spirit within 30ft. "
+                "HP = 5 + 5x druid level. On summon, each creature within 10ft makes DEX save: "
+                "2d6 fire damage (half on save). Commands: bonus action dodge/Flame Seed (60ft, "
+                "1d6+prof fire) /Fiery Teleportation (teleport self+allies 15ft, 1d6+prof fire AoE).",
+                feature_type="class", mechanic="wildfire_spirit",
+                damage_dice="2d6", damage_type="fire"),
+    ],
+    6: [
+        Feature("Enhanced Bond", "When you cast a damage/healing spell through wildfire spirit's space, "
+                "+1d8 to one roll. Can cast through spirit's space (spells originate from it).",
+                feature_type="class", mechanic="enhanced_bond"),
+    ],
+    10: [
+        Feature("Cauterizing Flames", "Reaction: when Small+ creature dies within 30ft of you or spirit, "
+                "spectral flame heals or damages creature within 30ft of dying creature: "
+                "2d10+WIS mod. Prof bonus uses/long rest.",
+                feature_type="class", mechanic="cauterizing_flames",
+                damage_dice="2d10"),
+    ],
+    14: [
+        Feature("Blazing Revival", "If wildfire spirit drops to 0 HP while you're within 120ft and "
+                "you have 0 HP, regain half HP and rise (end Prone). Spirit then dies. 1/long rest.",
+                feature_type="class", mechanic="blazing_revival"),
+    ],
+}
+
+# --- MONK (TCoE) ---
+MONK_ASTRAL_SELF = {
+    3: [
+        Feature("Arms of the Astral Self", "Bonus action, 1 ki: summon spectral arms for 10 min. "
+                "Reach 10ft, +WIS to attacks/damage (force), +5 reach unarmed attacks. "
+                "On summon: each creature in 10ft makes DEX save or 2xMartial Arts die force.",
+                feature_type="class", mechanic="arms_of_astral_self"),
+    ],
+    6: [
+        Feature("Visage of the Astral Self", "Bonus action, 1 ki: astral visage for 10 min. "
+                "Astral Sight (darkvision 120ft, see into Ethereal 60ft), "
+                "Wisdom of the Spirit (advantage on Insight/Intimidation), "
+                "Word of the Spirit (voice audible to 600ft).",
+                feature_type="class", mechanic="visage_of_astral_self"),
+    ],
+    11: [
+        Feature("Body of the Astral Self", "When you have both arms and visage active, spectral body "
+                "surrounds you. Reaction: reduce acid/cold/fire/force/lightning damage by 1d10+WIS. "
+                "Extra +1d10 arms damage once per turn.",
+                feature_type="class", mechanic="body_of_astral_self"),
+    ],
+    17: [
+        Feature("Awakened Astral Self", "Spend 5 ki (instead of separate costs) for full astral self. "
+                "+2 to AC while active. Third arms attack on Attack action.",
+                feature_type="class", mechanic="awakened_astral_self"),
+    ],
+}
+
+MONK_MERCY = {
+    3: [
+        Feature("Implements of Mercy", "Proficiency in Insight and Medicine, plus herbalism kit.",
+                feature_type="class", mechanic="implements_of_mercy"),
+        Feature("Hand of Healing", "Action or replace Flurry of Blows attack: spend 1 ki, "
+                "heal 1d6+WIS (increases: 1d8 at 5th, 1d10 at 11th, 1d12 at 17th). "
+                "Also removes Blinded/Deafened/Paralyzed/Poisoned/Stunned at 6th+.",
+                feature_type="class", mechanic="hand_of_healing"),
+        Feature("Hand of Harm", "Once per turn when you hit with unarmed strike: spend 1 ki, "
+                "deal extra 1d6+WIS necrotic (increases with Martial Arts die). "
+                "Target must succeed CON save or Poisoned until end of your next turn.",
+                feature_type="class", mechanic="hand_of_harm",
+                damage_type="necrotic", save_ability="Constitution",
+                applies_condition="Poisoned"),
+    ],
+    6: [
+        Feature("Physician's Touch", "Hand of Healing also ends one: Blinded, Deafened, "
+                "Paralyzed, Poisoned, or Stunned condition on target. "
+                "Hand of Harm Poisoned condition doesn't require ki.",
+                feature_type="class", mechanic="physicians_touch"),
+    ],
+    11: [
+        Feature("Flurry of Healing and Harm", "Replace each Flurry of Blows attack with "
+                "Hand of Healing (no extra ki). On Flurry: can use Hand of Harm on each "
+                "hit without spending ki (once per turn for free).",
+                feature_type="class", mechanic="flurry_healing_harm"),
+    ],
+    17: [
+        Feature("Hand of Ultimate Mercy", "Action: touch dead creature (died within 24h), "
+                "spend 5 ki. Creature returns with 4d10+WIS HP, cured of conditions. "
+                "1/long rest.",
+                feature_type="class", mechanic="hand_of_ultimate_mercy"),
+    ],
+}
+
+# ============================================================
+# END OF TASHA'S CAULDRON SUBCLASSES
+# ============================================================
+
+# ============================================================
 # END OF ADDITIONAL SUBCLASSES
 # ============================================================
 
@@ -2223,6 +2913,43 @@ def get_class_features(character_class: str, level: int, subclass: str = "") -> 
         "Way of the Kensei": MONK_KENSEI,
         "Way of the Sun Soul": MONK_SUN_SOUL,
         "Way of the Long Death": MONK_LONG_DEATH,
+        # Tasha's Cauldron of Everything (TCoE)
+        # Barbarian
+        "Path of the Beast": BARBARIAN_BEAST,
+        "Path of Wild Magic": BARBARIAN_WILD_MAGIC_BARB,
+        # Fighter
+        "Psi Warrior": FIGHTER_PSI_WARRIOR,
+        "Rune Knight": FIGHTER_RUNE_KNIGHT,
+        # Paladin
+        "Oath of Glory": PALADIN_GLORY,
+        "Oath of the Watchers": PALADIN_WATCHERS,
+        # Rogue
+        "Phantom": ROGUE_PHANTOM,
+        "Soulknife": ROGUE_SOULKNIFE,
+        # Ranger
+        "Fey Wanderer": RANGER_FEY_WANDERER,
+        "Swarmkeeper": RANGER_SWARMKEEPER,
+        # Cleric
+        "Order": CLERIC_ORDER,
+        "Peace": CLERIC_PEACE,
+        "Twilight": CLERIC_TWILIGHT,
+        # Wizard
+        "Order of Scribes": WIZARD_ORDER_OF_SCRIBES,
+        # Warlock
+        "Fathomless": WARLOCK_FATHOMLESS,
+        "Genie": WARLOCK_GENIE,
+        # Sorcerer
+        "Aberrant Mind": SORCERER_ABERRANT_MIND,
+        "Clockwork Soul": SORCERER_CLOCKWORK_SOUL,
+        # Bard
+        "College of Creation": BARD_CREATION,
+        "College of Eloquence": BARD_ELOQUENCE,
+        # Druid
+        "Circle of Stars": DRUID_STARS,
+        "Circle of Wildfire": DRUID_WILDFIRE,
+        # Monk
+        "Way of the Astral Self": MONK_ASTRAL_SELF,
+        "Way of Mercy": MONK_MERCY,
     }
 
     # Gather base class features
