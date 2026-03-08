@@ -58,7 +58,9 @@ class BattleSystem:
     # Setup                                                                #
     # ------------------------------------------------------------------ #
 
-    def start_combat(self):
+    def start_combat(self, surprise_side: str = ""):
+        """Start combat. surprise_side: 'players' if players surprise enemies,
+        'enemies' if enemies surprise players, '' for no surprise."""
         self.combat_started = True
 
         # Register entities with stats tracker
@@ -84,6 +86,22 @@ class BattleSystem:
             if not entity.is_lair:
                 entity.roll_initiative()
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
+
+        # PHB p.189: Surprise — surprised creatures can't move or act in round 1
+        if surprise_side:
+            for entity in self.entities:
+                if entity.is_lair:
+                    continue
+                # Alert feat: can't be surprised
+                if entity.has_feature("alert"):
+                    continue
+                if surprise_side == "players" and not entity.is_player:
+                    entity.is_surprised = True
+                    self.log(f"  [SURPRISE] {entity.name} is surprised!")
+                elif surprise_side == "enemies" and entity.is_player:
+                    entity.is_surprised = True
+                    self.log(f"  [SURPRISE] {entity.name} is surprised!")
+
         self.log("=== COMBAT STARTED ===")
         self.log("Initiative order: " + " > ".join(e.name for e in self.entities))
         curr = self.get_current_entity()
@@ -246,7 +264,19 @@ class BattleSystem:
                 break # Everyone dead/skipped
 
         current = self.get_current_entity()
-        
+
+        # PHB p.189: Surprised creatures skip their first turn,
+        # then surprise ends (they can use reactions afterwards)
+        if current.is_surprised:
+            current.is_surprised = False
+            self.log(f"  [SURPRISE] {current.name} is surprised and loses this turn.")
+            # Still reset turn economy so reaction becomes available after this point
+            current.reset_turn()
+            current.action_used = True
+            current.bonus_action_used = True
+            current.movement_left = 0
+            return current
+
         # 5e Rule: Legendary Actions reset at start of creature's turn
         current.reset_legendary_actions()
         current.reset_turn()
@@ -913,6 +943,7 @@ class BattleSystem:
                 "summon_owner_name": e.summon_owner.name if e.summon_owner else None,
                 "marked_target_name": e.marked_target.name if e.marked_target else None,
                 "death_save_history": e.death_save_history,
+                "is_surprised": e.is_surprised,
                 # Grapple state
                 "grappling_names": [g.name for g in e.grappling] if e.grappling else [],
                 "grappled_by_name": e.grappled_by.name if e.grappled_by else None,
@@ -1005,6 +1036,7 @@ class BattleSystem:
             e.is_lair = ent_data.get("is_lair", False)
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
+            e.is_surprised = ent_data.get("is_surprised", False)
             e.rage_active = ent_data.get("rage_active", False)
             e.rage_rounds = ent_data.get("rage_rounds", 0)
             e.rages_left = ent_data.get("rages_left", e.stats.rage_count)
@@ -1140,6 +1172,7 @@ class BattleSystem:
             e.is_lair = ent_data.get("is_lair", False)
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
+            e.is_surprised = ent_data.get("is_surprised", False)
             e.rage_active = ent_data.get("rage_active", False)
             e.rage_rounds = ent_data.get("rage_rounds", 0)
             e.rages_left = ent_data.get("rages_left", e.stats.rage_count)

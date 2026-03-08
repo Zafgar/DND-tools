@@ -2559,7 +2559,13 @@ class TacticalAI:
                 is_threatened = True
 
         adv = entity.has_attack_advantage(target, is_ranged, dist)
-        dis = entity.has_attack_disadvantage(target, is_ranged, is_threatened=is_threatened)
+        # Long range: normal_range = action.range, long_range = action.long_range
+        dist_ft = dist * 5  # grid units to feet
+        normal_range = action.range if is_ranged else 0
+        long_range = getattr(action, "long_range", 0) or 0
+        dis = entity.has_attack_disadvantage(target, is_ranged, is_threatened=is_threatened,
+                                             distance_ft=dist_ft, normal_range=normal_range,
+                                             long_range=long_range)
         allies_adj = [a for a in battle.get_allies_of(entity) if battle.is_adjacent(a, target)]
         if allies_adj:
             if entity.has_feature("pack_tactics"):
@@ -2758,6 +2764,44 @@ class TacticalAI:
             sw_step = self._try_second_wind(entity)
             if sw_step:
                 return [sw_step]
+
+        # --- 3c. Two-Weapon Fighting (PHB p.195) ---
+        # If entity attacked with a light melee weapon, can make off-hand bonus attack
+        if plan and not entity.bonus_action_used:
+            main_attacked = any(
+                s.step_type in ("attack", "multiattack") and s.action
+                and "light" in getattr(s.action, "properties", [])
+                and s.action.range <= 10  # melee weapon
+                for s in plan.steps
+            )
+            if main_attacked:
+                # Find an off-hand light weapon (different from main-hand)
+                main_names = {s.action.name for s in plan.steps
+                              if s.step_type in ("attack", "multiattack") and s.action}
+                has_dual_wielder = entity.has_feature("dual_wielder")
+                has_twf_style = entity.has_feature("two_weapon_fighting") or entity.has_feature("fighting_style_twf")
+                offhand = None
+                for a in entity.stats.actions:
+                    if a.name in main_names or a.is_multiattack:
+                        continue
+                    if a.range > 10 or not a.damage_dice:
+                        continue  # ranged/no damage
+                    if "light" in getattr(a, "properties", []) or has_dual_wielder:
+                        offhand = a
+                        break
+                if offhand:
+                    target = self._pick_target(entity, enemies, battle)
+                    if target and battle.is_adjacent(entity, target):
+                        step = self._execute_attack(entity, offhand, target, battle)
+                        step.step_type = "bonus_attack"
+                        step.action_name = f"{offhand.name} (off-hand)"
+                        # PHB: off-hand doesn't add ability mod to damage
+                        # unless Two-Weapon Fighting style
+                        if not has_twf_style:
+                            step.damage_bonus = 0
+                        self._apply_class_attack_bonuses(entity, step, target, allies, battle, first_attack=False)
+                        entity.bonus_action_used = True
+                        return [step]
 
         # --- 4. Bonus action attacks (Offhand, PAM, etc.) ---
         for ba in entity.stats.bonus_actions:

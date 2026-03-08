@@ -69,6 +69,8 @@ class Action:
     condition_dc: int = 0
     aoe_radius: int = 0
     aoe_shape: str = ""               # "cone", "sphere", "line", "cube"
+    properties: List[str] = field(default_factory=list)  # weapon: "light","finesse","heavy","reach","thrown","versatile","two-handed","loading"
+    long_range: int = 0               # long range in ft (normal range = self.range)
 
 @dataclass
 class Feature:
