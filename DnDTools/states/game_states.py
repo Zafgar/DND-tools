@@ -1026,6 +1026,24 @@ class BattleState(GameState):
         self.terrain_palette_open = False
         self.terrain_palette_scroll = 0
         self.drawing_button = None  # None, 1 (left/paint), or 3 (right/erase)
+        # Terrain tool mode: "paint", "move", "rect", "elev"
+        self.terrain_tool = "paint"
+        # Move tool state
+        self.terrain_drag_obj = None       # TerrainObject being moved
+        self.terrain_drag_offset = (0, 0)  # Grid offset from click to obj origin
+        # Rectangle tool state
+        self.terrain_rect_start = None     # (gx, gy) start corner
+        self.terrain_rect_preview = []     # list of (gx, gy) cells to preview
+        # Elevation edit state
+        self.terrain_elev_target = None    # TerrainObject being edited
+        # Copy/paste
+        self.terrain_clipboard = []        # list of dicts {terrain_type, dx, dy, elevation, ...}
+        self.terrain_select_start = None   # (gx, gy) selection start for copy
+        self.terrain_select_end = None     # (gx, gy) selection end
+        self.terrain_paste_preview = False # True when pasting
+        # Quick-access favorites (terrain types)
+        self.terrain_favorites = ["wall", "rock", "tree", "door", "platform_10",
+                                  "difficult", "water", "cover", "pillar", "fire"]
 
         # Roll Result Modal
         self.roll_modal_open = False
@@ -1118,6 +1136,8 @@ class BattleState(GameState):
         self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._open_save_modal,      color=COLORS["panel"])
         self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
         self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
+        self.btn_save_map = Button(696, SCREEN_HEIGHT-65, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
+        self.map_save_menu_open = False
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
@@ -2948,6 +2968,7 @@ class BattleState(GameState):
                 self.btn_auto.handle_event(event)
                 self.btn_advisor.handle_event(event)
                 self.btn_maps.handle_event(event)
+                self.btn_save_map.handle_event(event)
 
                 # Map browser clicks
                 if self.map_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3415,13 +3436,15 @@ class BattleState(GameState):
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map):
             b.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
             tc = COLORS["warning"]
             pygame.draw.rect(screen, tc, self.btn_terrain.rect, 2, border_radius=5)
-            sel = fonts.tiny.render(f"[{self.terrain_selected_type}]", True, tc)
+            tool_names = {"paint": "PAINT", "move": "MOVE", "rect": "RECT", "elev": "ELEV"}
+            tool_label = tool_names.get(self.terrain_tool, "PAINT")
+            sel = fonts.tiny.render(f"[{self.terrain_selected_type}] {tool_label}", True, tc)
             screen.blit(sel, (self.btn_terrain.rect.right + 4, self.btn_terrain.rect.y + 8))
 
         # Win probability bar (above grid buttons, left side)
