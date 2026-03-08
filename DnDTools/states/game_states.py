@@ -880,6 +880,93 @@ class FloatingText:
             screen.blit(txt, (cx - txt.get_width()//2, cy))
 
 
+DAMAGE_TYPE_COLORS = {
+    "fire": (255, 100, 30), "cold": (100, 180, 255), "lightning": (255, 255, 100),
+    "thunder": (160, 140, 255), "acid": (120, 220, 50), "poison": (100, 200, 50),
+    "necrotic": (120, 50, 130), "radiant": (255, 240, 180), "psychic": (255, 120, 200),
+    "force": (170, 90, 245), "piercing": (180, 180, 180), "slashing": (200, 200, 200),
+    "bludgeoning": (160, 160, 160),
+}
+
+CONDITION_BADGES = {
+    "Poisoned": ("PSN", (100, 200, 50)),
+    "Stunned": ("STN", (255, 255, 100)),
+    "Blinded": ("BLN", (80, 80, 80)),
+    "Deafened": ("DEF", (120, 120, 120)),
+    "Frightened": ("FRT", (180, 50, 180)),
+    "Paralyzed": ("PAR", (255, 200, 50)),
+    "Restrained": ("RST", (180, 120, 60)),
+    "Charmed": ("CHM", (255, 120, 200)),
+    "Incapacitated": ("INC", (150, 150, 150)),
+    "Grappled": ("GRP", (200, 140, 60)),
+    "Prone": ("PRN", (140, 100, 60)),
+    "Invisible": ("INV", (200, 200, 255)),
+    "Petrified": ("PET", (140, 140, 140)),
+    "Unconscious": ("UNC", (60, 60, 100)),
+    "Exhaustion": ("EXH", (160, 100, 40)),
+    "Concentration": ("CON", (80, 230, 180)),
+    "Dodge": ("DDG", (100, 200, 255)),
+    "Hasted": ("HST", (255, 255, 150)),
+    "Slowed": ("SLW", (100, 100, 180)),
+    "Hexed": ("HEX", (130, 50, 160)),
+    "Blessed": ("BLS", (255, 240, 180)),
+    "Silenced": ("SIL", (100, 100, 120)),
+}
+
+
+class ImpactFlash:
+    """Expanding, fading ring at a grid position — color-coded by damage type."""
+    def __init__(self, gx, gy, damage_type="slashing", is_heal=False):
+        self.gx = gx
+        self.gy = gy
+        if is_heal:
+            self.color = (80, 255, 140)
+        else:
+            self.color = DAMAGE_TYPE_COLORS.get(damage_type, (220, 220, 220))
+        self.life = 24  # frames (~0.4 sec at 60 fps)
+        self.max_life = 24
+        self.is_heal = is_heal
+
+    def update(self):
+        self.life -= 1
+
+    def draw(self, screen, get_screen_pos_func, grid_size):
+        if self.life <= 0:
+            return
+        t = 1.0 - (self.life / self.max_life)  # 0→1 over lifetime
+        sx, sy = get_screen_pos_func(self.gx, self.gy)
+        cx = sx + grid_size // 2
+        cy = sy + grid_size // 2
+
+        max_r = int(grid_size * 0.6)
+        r = int(max_r * (0.3 + 0.7 * t))
+        alpha = int(200 * (1.0 - t))
+
+        surf = pygame.Surface((max_r * 2 + 4, max_r * 2 + 4), pygame.SRCALPHA)
+        center = (max_r + 2, max_r + 2)
+        # Filled glow
+        glow_a = max(0, alpha // 3)
+        pygame.draw.circle(surf, (*self.color, glow_a), center, r)
+        # Bright ring
+        ring_w = max(2, int(3 * (1.0 - t)))
+        pygame.draw.circle(surf, (*self.color, alpha), center, r, ring_w)
+
+        screen.blit(surf, (cx - max_r - 2, cy - max_r - 2))
+
+
+class WeatherParticle:
+    """A single persistent weather particle."""
+    __slots__ = ("x", "y", "vx", "vy", "life", "size", "color")
+    def __init__(self, x, y, vx, vy, life, size, color):
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.vy = vy
+        self.life = life
+        self.size = size
+        self.color = color
+
+
 class BattleState(GameState):
     def __init__(self, manager, entities=None):
         super().__init__(manager)
@@ -903,6 +990,8 @@ class BattleState(GameState):
 
         # Visual FX
         self.floating_texts = []
+        self.impact_flashes = []
+        self.weather_particles = []
         self.turn_banner_text = ""
         self.turn_banner_timer = 0
 
@@ -1146,9 +1235,8 @@ class BattleState(GameState):
         if keys[pygame.K_a]: self.camera_x -= speed
         if keys[pygame.K_d]: self.camera_x += speed
 
-        # Rain animation
-        if self.battle.weather in ("Rain", "Ash"):
-            self._update_weather_fx()
+        # Weather particle animation
+        self._update_weather_fx()
 
         self.battle.validate_grapples()
 
@@ -1156,6 +1244,9 @@ class BattleState(GameState):
         for ft in self.floating_texts:
             ft.update()
         self.floating_texts = [ft for ft in self.floating_texts if ft.life > 0]
+        for fx in self.impact_flashes:
+            fx.update()
+        self.impact_flashes = [fx for fx in self.impact_flashes if fx.life > 0]
         if self.turn_banner_timer > 0:
             self.turn_banner_timer -= 1
             
@@ -1167,8 +1258,41 @@ class BattleState(GameState):
                 self._process_auto_battle()
 
     def _update_weather_fx(self):
-        # Simple particle system could go here, for now we just use draw time randomization
-        pass
+        w = self.battle.weather
+        if w == "Clear":
+            self.weather_particles.clear()
+            return
+
+        # Spawn new particles
+        spawn_rate = 6 if w == "Rain" else 3  # particles per frame
+        for _ in range(spawn_rate):
+            x = random.randint(0, GRID_W + 40)
+            if w == "Rain":
+                y = TOP_BAR_H - 10
+                vx = -1.5
+                vy = random.uniform(8, 14)
+                life = random.randint(40, 70)
+                size = 1
+                color = (150, 160, 255, 140)
+            elif w == "Ash":
+                y = random.choice([TOP_BAR_H - 10, random.randint(TOP_BAR_H, SCREEN_HEIGHT)])
+                vx = random.uniform(-0.5, 0.5)
+                vy = random.uniform(0.8, 2.5)
+                life = random.randint(80, 160)
+                size = random.randint(1, 3)
+                color = (180, 80, 60, 120)
+            else:
+                continue
+            self.weather_particles.append(
+                WeatherParticle(x, y, vx, vy, life, size, color))
+
+        # Update existing
+        for p in self.weather_particles:
+            p.x += p.vx
+            p.y += p.vy
+            p.life -= 1
+        self.weather_particles = [p for p in self.weather_particles
+                                  if p.life > 0 and p.y < SCREEN_HEIGHT + 20]
 
     def _screen_to_grid(self, mx, my):
         world_x = mx + self.camera_x
@@ -1200,12 +1324,15 @@ class BattleState(GameState):
         if len(self.logs) > 200:
             self.logs.pop(0)
 
-    def _spawn_damage_text(self, entity, amount, is_heal=False):
+    def _spawn_damage_text(self, entity, amount, is_heal=False, damage_type=""):
         color = COLORS["success"] if is_heal else COLORS["danger"]
         prefix = "+" if is_heal else "-"
         text = f"{prefix}{abs(amount)}"
         ft = FloatingText(entity.grid_x, entity.grid_y, text, color)
         self.floating_texts.append(ft)
+        # Impact flash effect
+        flash = ImpactFlash(entity.grid_x, entity.grid_y, damage_type, is_heal)
+        self.impact_flashes.append(flash)
 
     def _save_undo_snapshot(self):
         """Save current state to undo stack."""
@@ -1627,7 +1754,7 @@ class BattleState(GameState):
                             self._log(f"[REACTION] {target.name} casts Hellish Rebuke! {step.attacker.name} fails save.")
                         
                         r_dealt, _ = step.attacker.take_damage(rebuke_dmg, "fire")
-                        self._spawn_damage_text(step.attacker, r_dealt)
+                        self._spawn_damage_text(step.attacker, r_dealt, damage_type="fire")
                         self._log(f"  -> {step.attacker.name} takes {r_dealt} fire damage.")
 
                 # --- AI REACTION CHECK (Generic "When hit" effects) ---
@@ -1662,7 +1789,7 @@ class BattleState(GameState):
                     self._log(f"  -> {target.name} FAILED save{roll_msg}: takes {dealt} {step.damage_type}")
                 else:
                     self._log(f"  -> {target.name} takes {dealt} {step.damage_type}")
-                self._spawn_damage_text(target, dealt)
+                self._spawn_damage_text(target, dealt, damage_type=step.damage_type or "")
                 # Track damage
                 self.battle.stats_tracker.record_damage(
                     rnd, attacker_name, target.name, dealt, step.damage_type,
@@ -1776,7 +1903,7 @@ class BattleState(GameState):
                 roll_str = self.current_step_rolls.get(target, "")
                 roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
                 self._log(f"  -> {target.name} SAVED{roll_msg}: takes {dealt} {step.damage_type}")
-                self._spawn_damage_text(target, dealt)
+                self._spawn_damage_text(target, dealt, damage_type=step.damage_type or "")
                 self.battle.stats_tracker.record_damage(
                     rnd, attacker_name, target.name, dealt, step.damage_type,
                     ability_name=ability_name, was_saved=True, is_aoe=is_aoe,
@@ -2261,17 +2388,25 @@ class BattleState(GameState):
             sn = fonts.tiny.render(sp_name, True, COLORS["concentration"])
             screen.blit(sn, (cx - sn.get_width()//2, cy - radius - 14))
 
-        # Condition badges (top-right, stacked)
+        # Condition badges (individual, arranged around top of token)
         if entity.conditions:
-            n = len(entity.conditions)
-            badge_r = 8
-            badge_cx = cx + radius - 2
-            badge_cy = cy - radius + 2
-            # Background circle
-            pygame.draw.circle(screen, COLORS["spell"], (badge_cx, badge_cy), badge_r)
-            pygame.draw.circle(screen, (255, 255, 255), (badge_cx, badge_cy), badge_r, 1)
-            ns = fonts.tiny.render(str(n), True, (255, 255, 255))
-            screen.blit(ns, (badge_cx - ns.get_width()//2, badge_cy - ns.get_height()//2))
+            cond_list = list(entity.conditions.keys()) if isinstance(entity.conditions, dict) else list(entity.conditions)
+            badge_w = 22
+            badge_h = 12
+            total_w = len(cond_list) * (badge_w + 2)
+            start_x = cx - total_w // 2
+            by = cy - radius - badge_h - 2
+            for i, cond_name in enumerate(cond_list):
+                bx = start_x + i * (badge_w + 2)
+                abbr, col = CONDITION_BADGES.get(cond_name, (cond_name[:3].upper(), (170, 90, 245)))
+                # Badge background
+                badge_surf = pygame.Surface((badge_w, badge_h), pygame.SRCALPHA)
+                pygame.draw.rect(badge_surf, (*col, 200), (0, 0, badge_w, badge_h), border_radius=3)
+                pygame.draw.rect(badge_surf, (255, 255, 255, 120), (0, 0, badge_w, badge_h), 1, border_radius=3)
+                screen.blit(badge_surf, (bx, by))
+                # Badge text
+                bt = fonts.tiny.render(abbr, True, (255, 255, 255))
+                screen.blit(bt, (bx + badge_w // 2 - bt.get_width() // 2, by + badge_h // 2 - bt.get_height() // 2))
 
         # Death Save Display (below token for dying players)
         if entity.is_player and entity.hp <= 0 and entity.death_save_failures < 3 and not entity.is_stable:
@@ -2878,6 +3013,8 @@ class BattleState(GameState):
             msg = fonts.title.render("Battle Empty", True, COLORS["text_dim"])
             screen.blit(msg, (GRID_W//2 - msg.get_width()//2, SCREEN_HEIGHT//2))
 
+        for fx in self.impact_flashes:
+            fx.draw(screen, self._grid_to_screen, self.battle.grid_size)
         for ft in self.floating_texts:
             ft.draw(screen, self._grid_to_screen, self.battle.grid_size)
         self._draw_grid_buttons(screen, mp)
@@ -3150,26 +3287,41 @@ class BattleState(GameState):
         w = self.battle.weather
         if w == "Clear":
             return
-        
-        if w == "Fog":
-            # Simple fog overlay
-            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            s.fill((200, 200, 220, 40))
-            screen.blit(s, (0, 0))
-        
-        elif w == "Rain":
-            # Draw random rain drops
-            for _ in range(100):
-                rx = random.randint(0, GRID_W)
-                ry = random.randint(TOP_BAR_H, SCREEN_HEIGHT)
-                pygame.draw.line(screen, (150, 150, 255, 100), (rx, ry), (rx-2, ry+10), 1)
 
-        elif w == "Ash":
-            # Draw falling ash
-            for _ in range(50):
-                rx = random.randint(0, GRID_W)
-                ry = random.randint(TOP_BAR_H, SCREEN_HEIGHT)
-                pygame.draw.circle(screen, (100, 50, 50), (rx, ry), 2)
+        if w == "Fog":
+            # Layered fog overlay with subtle drift
+            s = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            s.fill((200, 200, 220, 35))
+            screen.blit(s, (0, 0))
+            # Drifting fog patches
+            t = pygame.time.get_ticks() * 0.001
+            for i in range(5):
+                fx = int((t * 15 + i * 250) % (GRID_W + 200)) - 100
+                fy = TOP_BAR_H + 100 + i * 120
+                patch = pygame.Surface((300, 80), pygame.SRCALPHA)
+                pygame.draw.ellipse(patch, (210, 210, 230, 18), (0, 0, 300, 80))
+                screen.blit(patch, (fx, fy))
+            return
+
+        # Draw persistent particles (Rain / Ash)
+        for p in self.weather_particles:
+            alpha = min(p.color[3], int(255 * min(p.life / 15.0, 1.0)))
+            if w == "Rain":
+                end_x = int(p.x + p.vx * 2)
+                end_y = int(p.y + p.vy * 2)
+                col = (p.color[0], p.color[1], p.color[2])
+                line_surf = pygame.Surface((abs(end_x - int(p.x)) + 4, abs(end_y - int(p.y)) + 4), pygame.SRCALPHA)
+                ox = 2 - min(0, end_x - int(p.x))
+                oy = 2 - min(0, end_y - int(p.y))
+                pygame.draw.line(line_surf, (*col, alpha),
+                                 (ox, oy),
+                                 (ox + end_x - int(p.x), oy + end_y - int(p.y)), 1)
+                screen.blit(line_surf, (min(int(p.x), end_x) - 2, min(int(p.y), end_y) - 2))
+            elif w == "Ash":
+                ash_surf = pygame.Surface((p.size * 2 + 2, p.size * 2 + 2), pygame.SRCALPHA)
+                pygame.draw.circle(ash_surf, (*p.color[:3], alpha),
+                                   (p.size + 1, p.size + 1), p.size)
+                screen.blit(ash_surf, (int(p.x) - p.size - 1, int(p.y) - p.size - 1))
 
     # --- AOE spell overlays ---
     def _draw_aoe_overlays(self, screen):
