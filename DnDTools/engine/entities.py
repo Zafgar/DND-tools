@@ -47,6 +47,10 @@ class Entity:
         self.legendary_actions_left: int = stats.legendary_action_count
         self.items: list = copy.deepcopy(stats.items)
         self.exhaustion: int = 0
+        # Hit Dice pool (PHB p.186): number of hit dice = character level
+        import re as _re
+        _hd_match = _re.search(r"(\d+)d(\d+)", stats.hit_dice)
+        self.hit_dice_remaining: int = int(_hd_match.group(1)) if _hd_match else max(stats.character_level, 1)
 
         # Feature uses (resets on long/short rest)
         self.feature_uses: dict = {}
@@ -66,6 +70,7 @@ class Entity:
         # Combat States
         self.is_dodging: bool = False
         self.is_disengaging: bool = False
+        self.is_surprised: bool = False  # PHB p.189: Surprised creatures can't move/act in round 1
 
         # Concentration
         self.concentrating_on: SpellInfo | None = None
@@ -376,7 +381,19 @@ class Entity:
         # Unconscious at 0 HP for players
         if self.hp <= 0 and self.is_player and not self.has_condition("Unconscious"):
             if self.hp <= -self.max_hp:
-                pass  # Instant death, handled elsewhere
+                # PHB p.197: Massive Damage Instant Death
+                # Remaining damage equals or exceeds max HP → instant death
+                self.death_save_failures = 3
+                self.add_condition("Unconscious")
+                self.is_stable = False
+                self.death_save_history = ["MASSIVE"]
+                if self.concentrating_on:
+                    self.drop_concentration()
+                    broke_conc = True
+                if self.rage_active:
+                    self.end_rage()
+                if hasattr(self, '_log_func') and self._log_func:
+                    self._log_func(f"  [MASSIVE DAMAGE] {self.name} is killed instantly!")
             else:
                 self.add_condition("Unconscious")
                 self.death_save_successes = 0
@@ -708,7 +725,9 @@ class Entity:
                 return True
         return False
 
-    def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False, is_threatened: bool = False) -> bool:
+    def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False,
+                                is_threatened: bool = False, distance_ft: float = 0,
+                                normal_range: int = 0, long_range: int = 0) -> bool:
         if self.has_condition("Blinded"):
             return True
         if self.has_condition("Poisoned"):
@@ -723,6 +742,9 @@ class Entity:
             if target.has_condition("Prone"):
                 return True
             if is_threatened and not self.has_feature("crossbow_expert"):
+                return True
+            # PHB p.195: Long range disadvantage
+            if normal_range > 0 and long_range > 0 and distance_ft > normal_range:
                 return True
         if target and target.has_condition("Invisible"):
             return True
@@ -819,6 +841,12 @@ class Entity:
     def long_rest(self):
         self.hp = self.max_hp
         self.temp_hp = 0
+        # PHB p.186: Regain up to half total Hit Dice (min 1) on long rest
+        import re as _re
+        _hd_match = _re.search(r"(\d+)d(\d+)", self.stats.hit_dice)
+        max_dice = int(_hd_match.group(1)) if _hd_match else max(self.stats.character_level, 1)
+        regain = max(max_dice // 2, 1)
+        self.hit_dice_remaining = min(self.hit_dice_remaining + regain, max_dice)
         self.spell_slots = copy.deepcopy(self.stats.spell_slots)
         self._release_all_grapples()
         if self.grappled_by:
@@ -853,7 +881,10 @@ class Entity:
             if feat.mechanic == "channel_divinity" and feat.uses_per_day > 0:
                 self.channel_divinity_left = feat.uses_per_day
 
-    def short_rest(self):
+    def short_rest(self, hit_dice_to_spend: int = 0) -> str:
+        """Short rest: restore Ki, short-rest features, and optionally spend Hit Dice.
+        Returns summary string."""
+        msgs = []
         # Short rest restores: Ki, Channel Divinity, some features
         self.ki_points_left = self.stats.ki_points
         # Restore short-rest features
@@ -864,6 +895,36 @@ class Entity:
         for feat in self.stats.features:
             if feat.mechanic in ("action_surge", "second_wind") and feat.uses_per_day > 0:
                 self.feature_uses[feat.name] = feat.uses_per_day
+
+        # PHB p.186: Spend Hit Dice to heal
+        if hit_dice_to_spend > 0 and self.hp < self.max_hp:
+            # Parse hit dice from stats (e.g. "10d8+30" → die size 8, max dice = 10)
+            import re as _re
+            hd_match = _re.search(r"(\d+)d(\d+)", self.stats.hit_dice)
+            if hd_match:
+                max_dice = int(hd_match.group(1))
+                die_size = int(hd_match.group(2))
+            else:
+                # Fallback: level d8
+                max_dice = max(self.stats.character_level, 1)
+                die_size = 8
+            # Track available hit dice
+            if not hasattr(self, "hit_dice_remaining"):
+                self.hit_dice_remaining = max_dice
+            dice_to_use = min(hit_dice_to_spend, self.hit_dice_remaining)
+            con_mod = self.stats.abilities.get_mod("constitution")
+            total_healed = 0
+            for _ in range(dice_to_use):
+                roll = random.randint(1, die_size) + con_mod
+                roll = max(roll, 1)  # minimum 1 HP
+                total_healed += roll
+                self.hit_dice_remaining -= 1
+            old_hp = self.hp
+            self.hp = min(self.hp + total_healed, self.max_hp)
+            actual = self.hp - old_hp
+            if actual > 0:
+                msgs.append(f"{self.name} spends {dice_to_use} Hit Dice, heals {actual} HP.")
+        return " ".join(msgs)
 
     def recharge_features(self) -> list[str]:
         """Rolls for recharge abilities (e.g. Dragon Breath). Returns logs."""

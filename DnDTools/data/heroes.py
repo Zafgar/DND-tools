@@ -24,8 +24,8 @@ hero_list = [
             Action("Multiattack", "2 attacks", 0, "", 0, "", range=5,
                    is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Greataxe", "Greataxe"]),
-            Action("Greataxe", "Melee", 9, "1d12", 5, "slashing"),
-            Action("Javelin", "Ranged", 9, "1d6", 5, "piercing", range=30),
+            Action("Greataxe", "Melee", 9, "1d12", 5, "slashing", properties=["heavy", "two-handed"]),
+            Action("Javelin", "Ranged", 9, "1d6", 5, "piercing", range=30, long_range=120, properties=["thrown"]),
         ],
         features=[
             Feature("Rage", "Bonus action: resistance to B/P/S, +3 melee damage, "
@@ -72,10 +72,10 @@ hero_list = [
             Action("Multiattack", "3 attacks", 0, "", 0, "", range=5,
                    is_multiattack=True, multiattack_count=3,
                    multiattack_targets=["Longsword", "Longsword", "Longsword"]),
-            Action("Longsword", "Melee", 8, "1d8", 4, "slashing"),
+            Action("Longsword", "Melee", 8, "1d8", 4, "slashing", properties=["versatile"]),
             Action("Shield Bash", "Melee", 8, "1d4", 4, "bludgeoning",
                    applies_condition="Prone", condition_dc=16, condition_save="Strength"),
-            Action("Heavy Crossbow", "Ranged", 6, "1d10", 2, "piercing", range=100),
+            Action("Heavy Crossbow", "Ranged", 6, "1d10", 2, "piercing", range=100, long_range=400, properties=["heavy", "loading", "two-handed"]),
         ],
         features=[
             Feature("Action Surge", "Take one additional action. 1/short rest.",
@@ -113,7 +113,7 @@ hero_list = [
             Action("Multiattack", "2 attacks", 0, "", 0, "", range=5,
                    is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Longsword", "Longsword"]),
-            Action("Longsword", "Melee", 8, "1d8", 4, "slashing"),
+            Action("Longsword", "Melee", 8, "1d8", 4, "slashing", properties=["versatile"]),
         ],
         features=[
             Feature("Divine Smite", "On melee hit: expend spell slot for 2d8 radiant "
@@ -161,7 +161,7 @@ hero_list = [
         abilities=AbilityScores(strength=8, dexterity=16, constitution=12,
                                 intelligence=20, wisdom=14, charisma=10),
         actions=[
-            Action("Quarterstaff", "Melee", 3, "1d6", -1, "bludgeoning"),
+            Action("Quarterstaff", "Melee", 3, "1d6", -1, "bludgeoning", properties=["versatile"]),
         ],
         spellcasting_ability="Intelligence", spell_save_dc=17, spell_attack_bonus=9,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2},
@@ -215,7 +215,7 @@ hero_list = [
             Action("Multiattack", "2 attacks", 0, "", 0, "", range=5,
                    is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Warhammer", "Warhammer"]),
-            Action("Warhammer", "Melee", 6, "1d8", 2, "bludgeoning"),
+            Action("Warhammer", "Melee", 6, "1d8", 2, "bludgeoning", properties=["versatile"]),
         ],
         bonus_actions=[
             Action("War Priest Strike", description="Bonus weapon attack",
@@ -270,8 +270,8 @@ hero_list = [
             Action("Multiattack", "2 attacks", 0, "", 0, "", range=5,
                    is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Rapier", "Rapier"]),
-            Action("Rapier", "Melee finesse", 9, "1d8", 5, "piercing"),
-            Action("Hand Crossbow", "Ranged", 9, "1d6", 5, "piercing", range=30),
+            Action("Rapier", "Melee finesse", 9, "1d8", 5, "piercing", properties=["finesse"]),
+            Action("Hand Crossbow", "Ranged", 9, "1d6", 5, "piercing", range=30, long_range=120, properties=["light", "loading"]),
         ],
         features=[
             Feature("Sneak Attack", "Once per turn: +5d6 damage when advantage or "
@@ -308,8 +308,8 @@ hero_list = [
             Action("Multiattack", "3 Longbow or 2 Shortsword", 0, "", 0, "",
                    range=150, is_multiattack=True, multiattack_count=3,
                    multiattack_targets=["Longbow", "Longbow", "Longbow"]),
-            Action("Longbow", "Ranged", 8, "1d8", 4, "piercing", range=150),
-            Action("Shortsword", "Melee finesse", 8, "1d6", 4, "piercing"),
+            Action("Longbow", "Ranged", 8, "1d8", 4, "piercing", range=150, long_range=600, properties=["heavy", "two-handed"]),
+            Action("Shortsword", "Melee finesse", 8, "1d6", 4, "piercing", properties=["finesse", "light"]),
         ],
         spellcasting_ability="Wisdom", spell_save_dc=15, spell_attack_bonus=7,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 2},
@@ -350,7 +350,7 @@ hero_list = [
         abilities=AbilityScores(strength=8, dexterity=14, constitution=12,
                                 intelligence=12, wisdom=10, charisma=20),
         actions=[
-            Action("Dagger", "Melee finesse", 6, "1d4", 2, "piercing"),
+            Action("Dagger", "Melee finesse", 6, "1d4", 2, "piercing", range=20, long_range=60, properties=["finesse", "light", "thrown"]),
         ],
         spellcasting_ability="Charisma", spell_save_dc=17, spell_attack_bonus=9,
         # Warlock: 2 slots at 5th level (Pact Magic), recharge on short rest
@@ -401,7 +401,7 @@ hero_list = [
         abilities=AbilityScores(strength=8, dexterity=16, constitution=14,
                                 intelligence=10, wisdom=12, charisma=20),
         actions=[
-            Action("Dagger", "Melee/Ranged", 7, "1d4", 3, "piercing", range=20),
+            Action("Dagger", "Melee/Ranged", 7, "1d4", 3, "piercing", range=20, long_range=60, properties=["finesse", "light", "thrown"]),
         ],
         spellcasting_ability="Charisma", spell_save_dc=17, spell_attack_bonus=9,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2},
@@ -456,7 +456,7 @@ hero_list = [
         abilities=AbilityScores(strength=8, dexterity=16, constitution=12,
                                 intelligence=14, wisdom=12, charisma=20),
         actions=[
-            Action("Rapier", "Melee finesse", 7, "1d8", 3, "piercing"),
+            Action("Rapier", "Melee finesse", 7, "1d8", 3, "piercing", properties=["finesse"]),
         ],
         spellcasting_ability="Charisma", spell_save_dc=17, spell_attack_bonus=9,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2},
@@ -512,7 +512,7 @@ hero_list = [
         abilities=AbilityScores(strength=10, dexterity=14, constitution=12,
                                 intelligence=12, wisdom=20, charisma=10),
         actions=[
-            Action("Scimitar", "Melee", 6, "1d6", 2, "slashing"),
+            Action("Scimitar", "Melee", 6, "1d6", 2, "slashing", properties=["finesse", "light"]),
             Action("Produce Flame", "Ranged spell", 9, "2d8", 0, "fire", range=30),
         ],
         spellcasting_ability="Wisdom", spell_save_dc=17, spell_attack_bonus=9,
@@ -566,7 +566,7 @@ hero_list = [
                    range=5, is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Unarmed Strike", "Unarmed Strike"]),
             Action("Unarmed Strike", "Melee", 8, "1d8", 4, "bludgeoning"),
-            Action("Dart", "Ranged", 8, "1d4", 4, "piercing", range=20),
+            Action("Dart", "Ranged", 8, "1d4", 4, "piercing", range=20, long_range=60, properties=["finesse", "thrown"]),
         ],
         bonus_actions=[
             Action("Bonus Unarmed Strike", "Martial Arts bonus attack",
