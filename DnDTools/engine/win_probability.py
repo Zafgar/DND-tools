@@ -531,7 +531,8 @@ class WinProbabilityCalculator:
 
     def _estimate_spell_dpr(self, entity: "Entity", targets: List["Entity"], battle: "BattleSystem") -> float:
         """Estimate spell damage per round."""
-        from engine.dice import average_damage
+        from engine.dice import average_damage, scale_cantrip_dice
+        from engine.ai import _get_spell_damage_dice
 
         best = 0.0
         for spell in entity.stats.spells_known + entity.stats.cantrips:
@@ -539,8 +540,8 @@ class WinProbabilityCalculator:
                 continue
             if spell.level > 0 and not entity.has_spell_slot(spell.level):
                 continue
-            
-            avg = average_damage(spell.damage_dice)
+
+            avg = average_damage(_get_spell_damage_dice(spell, entity))
             
             # AoE Scaling
             if spell.aoe_radius > 0:

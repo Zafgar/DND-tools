@@ -294,6 +294,24 @@ class BattleSystem:
             if current.has_condition(eff):
                 current.remove_condition(eff)
 
+        # Regeneration at start of turn (Vampire, Troll, Phoenix, etc.)
+        if current.hp > 0:
+            self._handle_regeneration(current)
+
+        # Champion Fighter: Survivor feature (regen if below half HP)
+        if current.hp > 0 and current.has_feature("survivor"):
+            if current.hp < current.max_hp // 2:
+                regen_amount = 5 + current.get_modifier("Constitution")
+                old_hp = current.hp
+                current.heal(regen_amount)
+                actual = current.hp - old_hp
+                if actual > 0:
+                    self.log(f"  [SURVIVOR] {current.name} regenerates {actual} HP (below half)")
+
+        # Concentration duration tracking: decrement rounds remaining
+        if current.concentrating_on:
+            self._tick_concentration_duration(current)
+
         # Check hazard terrain at start of turn
         if current.hp > 0:
             self._check_hazard_damage(current)
@@ -462,6 +480,54 @@ class BattleSystem:
             dmg = roll_dice(t.hazard_damage)
             dealt, _ = entity.take_damage(dmg, t.hazard_damage_type)
             self.log(f"  [HAZARD] {entity.name} takes {dealt} {t.hazard_damage_type} from {t.label}!")
+
+    def _handle_regeneration(self, entity: Entity):
+        """Handle start-of-turn regeneration for creatures with the Regeneration feature.
+        Vampire: 20 HP, Troll: 10 HP, Phoenix: 10 HP, etc.
+        Uses the 'regeneration' mechanic key and mechanic_value for HP amount."""
+        regen_feat = entity.get_feature("regeneration")
+        if not regen_feat:
+            return
+        try:
+            regen_amount = int(regen_feat.mechanic_value) if regen_feat.mechanic_value else 10
+        except ValueError:
+            regen_amount = 10
+        if entity.hp >= entity.max_hp:
+            return
+        old_hp = entity.hp
+        entity.heal(regen_amount)
+        actual = entity.hp - old_hp
+        if actual > 0:
+            self.log(f"  [REGEN] {entity.name} regenerates {actual} HP")
+
+    # Duration constants: spell duration -> rounds (1 round = 6 sec)
+    _DURATION_ROUNDS = {
+        "1 round": 1, "1 minute": 10, "10 minutes": 100,
+        "1 hour": 600, "8 hours": 4800, "24 hours": 14400,
+    }
+
+    def _tick_concentration_duration(self, entity: Entity):
+        """Track concentration spell duration. Auto-drop when expired.
+        Uses the entity's concentration_rounds_left counter."""
+        spell = entity.concentrating_on
+        if not spell or not spell.duration:
+            return
+        # Initialize counter if not set
+        if not hasattr(entity, 'concentration_rounds_left') or entity.concentration_rounds_left is None:
+            rounds = self._DURATION_ROUNDS.get(spell.duration, 0)
+            if rounds <= 0:
+                return  # Unknown or permanent duration - don't auto-expire
+            entity.concentration_rounds_left = rounds
+        # Decrement
+        entity.concentration_rounds_left -= 1
+        remaining = entity.concentration_rounds_left
+        # Log warning at key thresholds
+        if remaining == 1:
+            self.log(f"  [CONCENTRATION] {spell.name} expires next round!")
+        elif remaining <= 0:
+            self.log(f"  [CONCENTRATION] {spell.name} duration expired!")
+            entity.drop_concentration()
+            entity.concentration_rounds_left = None
 
     def _build_legendary_queue(self):
         """After each turn, legendary creatures can use their legendary actions."""

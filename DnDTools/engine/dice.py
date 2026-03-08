@@ -55,6 +55,33 @@ def roll_attack(attack_bonus: int, advantage: bool = False, disadvantage: bool =
     nat, roll_str = roll_d20(advantage, disadvantage)
     return nat + attack_bonus, nat, nat == 20, nat == 1, roll_str
 
+def scale_cantrip_dice(damage_dice: str, caster_level: int) -> str:
+    """Scale cantrip damage dice based on caster level (PHB p.201).
+    Level 1-4: 1 die, 5-10: 2 dice, 11-16: 3 dice, 17+: 4 dice.
+    For monsters, pass CR as caster_level."""
+    if not damage_dice or caster_level <= 0:
+        return damage_dice
+    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", str(damage_dice))
+    if not match:
+        return damage_dice
+    base_dice = int(match.group(1))
+    sides = int(match.group(2))
+    modifier = match.group(3) or ""
+    if caster_level >= 17:
+        multiplier = 4
+    elif caster_level >= 11:
+        multiplier = 3
+    elif caster_level >= 5:
+        multiplier = 2
+    else:
+        multiplier = 1
+    # Only scale if base is 1 die (standard cantrip pattern)
+    # Cantrips like Eldritch Blast with multiple beams are handled separately
+    if base_dice == 1:
+        return f"{multiplier}d{sides}{modifier}"
+    return damage_dice
+
+
 def average_damage(dice_str: str) -> float:
     """Calculate average damage for AI evaluation."""
     if not dice_str:

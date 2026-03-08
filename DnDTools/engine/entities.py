@@ -74,6 +74,7 @@ class Entity:
 
         # Concentration
         self.concentrating_on: SpellInfo | None = None
+        self.concentration_rounds_left: int | None = None  # Auto-tracked by BattleSystem
 
         # Death saves (players only)
         self.death_save_successes: int = 0
@@ -476,6 +477,7 @@ class Entity:
     def start_concentration(self, spell: SpellInfo) -> SpellInfo | None:
         dropped = self.concentrating_on
         self.concentrating_on = spell
+        self.concentration_rounds_left = None  # Reset; BattleSystem will initialize
         # If dropping a mark spell, clear marked target
         if dropped and dropped.name in ("Hunter's Mark", "Hex"):
             self.marked_target = None
@@ -484,6 +486,7 @@ class Entity:
     def drop_concentration(self):
         dropped = self.concentrating_on
         self.concentrating_on = None
+        self.concentration_rounds_left = None
         if dropped and dropped.name in ("Hunter's Mark", "Hex"):
             self.marked_target = None
         return dropped
