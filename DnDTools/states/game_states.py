@@ -2601,11 +2601,137 @@ class BattleState(GameState):
         if mx < GRID_W and raw_my >= TOP_BAR_H:
             gx, gy = self._screen_to_grid(mx, raw_my)
             gx, gy = int(gx), int(gy)
-            if button == 1:  # Paint
-                t = TerrainObject(self.terrain_selected_type, gx, gy)
-                self.battle.add_terrain(t)
-            elif button == 3:  # Erase
-                self.battle.remove_terrain_at(gx, gy)
+            if self.terrain_tool == "paint":
+                if button == 1:  # Paint
+                    t = TerrainObject(self.terrain_selected_type, gx, gy)
+                    self.battle.add_terrain(t)
+                elif button == 3:  # Erase
+                    self.battle.remove_terrain_at(gx, gy)
+            elif self.terrain_tool == "move":
+                if button == 1:
+                    self._terrain_move_start(gx, gy)
+                elif button == 3:
+                    self.battle.remove_terrain_at(gx, gy)
+            elif self.terrain_tool == "rect":
+                if button == 1:
+                    self._terrain_rect_click(gx, gy)
+                elif button == 3:
+                    self.battle.remove_terrain_at(gx, gy)
+            elif self.terrain_tool == "elev":
+                if button == 1:
+                    self._terrain_elev_click(gx, gy)
+                elif button == 3:
+                    self._terrain_elev_click(gx, gy, decrease=True)
+
+    # --- Terrain Move Tool ---
+    def _terrain_move_start(self, gx, gy):
+        t = self.battle.get_terrain_at(gx, gy)
+        if t:
+            self.terrain_drag_obj = t
+            self.terrain_drag_offset = (gx - t.grid_x, gy - t.grid_y)
+
+    def _terrain_move_release(self, pos):
+        if not self.terrain_drag_obj:
+            return
+        mx, raw_my = pos
+        if mx < GRID_W and raw_my >= TOP_BAR_H:
+            gx, gy = self._screen_to_grid(mx, raw_my)
+            gx, gy = int(gx), int(gy)
+            dx, dy = self.terrain_drag_offset
+            self.terrain_drag_obj.grid_x = gx - dx
+            self.terrain_drag_obj.grid_y = gy - dy
+        self.terrain_drag_obj = None
+
+    # --- Terrain Rectangle Tool ---
+    def _terrain_rect_click(self, gx, gy):
+        if self.terrain_rect_start is None:
+            self.terrain_rect_start = (gx, gy)
+        else:
+            # Fill rectangle with selected terrain
+            sx, sy = self.terrain_rect_start
+            x1, x2 = min(sx, gx), max(sx, gx)
+            y1, y2 = min(sy, gy), max(sy, gy)
+            for rx in range(x1, x2 + 1):
+                for ry in range(y1, y2 + 1):
+                    t = TerrainObject(self.terrain_selected_type, rx, ry)
+                    self.battle.add_terrain(t)
+            self.terrain_rect_start = None
+            self.terrain_rect_preview = []
+
+    def _terrain_rect_update_preview(self, pos):
+        """Update rect preview while mouse moves after first click."""
+        if self.terrain_rect_start is None:
+            self.terrain_rect_preview = []
+            return
+        mx, raw_my = pos
+        if mx < GRID_W and raw_my >= TOP_BAR_H:
+            gx, gy = self._screen_to_grid(mx, raw_my)
+            gx, gy = int(gx), int(gy)
+            sx, sy = self.terrain_rect_start
+            x1, x2 = min(sx, gx), max(sx, gx)
+            y1, y2 = min(sy, gy), max(sy, gy)
+            self.terrain_rect_preview = [(x, y) for x in range(x1, x2 + 1) for y in range(y1, y2 + 1)]
+
+    # --- Terrain Elevation Editor ---
+    def _terrain_elev_click(self, gx, gy, decrease=False):
+        t = self.battle.get_terrain_at(gx, gy)
+        if t:
+            step = -5 if decrease else 5
+            t.elevation = t.elevation + step
+            self._log(f"[TERRAIN] {t.name} elevation -> {t.elevation}ft")
+
+    # --- Terrain Copy/Paste ---
+    def _terrain_copy_selection(self):
+        """Copy terrain in selection rectangle to clipboard."""
+        if self.terrain_select_start and self.terrain_select_end:
+            sx, sy = self.terrain_select_start
+            ex, ey = self.terrain_select_end
+            x1, x2 = min(sx, ex), max(sx, ex)
+            y1, y2 = min(sy, ey), max(sy, ey)
+            self.terrain_clipboard = []
+            for t in self.battle.terrain:
+                if x1 <= t.grid_x <= x2 and y1 <= t.grid_y <= y2:
+                    self.terrain_clipboard.append({
+                        "terrain_type": t.terrain_type,
+                        "dx": t.grid_x - x1,
+                        "dy": t.grid_y - y1,
+                        "elevation": t.elevation,
+                        "door_open": t.door_open,
+                    })
+            self._log(f"[TERRAIN] Copied {len(self.terrain_clipboard)} terrain objects.")
+            self.terrain_select_start = None
+            self.terrain_select_end = None
+
+    def _terrain_paste_at(self, gx, gy):
+        """Paste clipboard terrain at grid position."""
+        if not self.terrain_clipboard:
+            return
+        count = 0
+        for item in self.terrain_clipboard:
+            t = TerrainObject(
+                item["terrain_type"],
+                gx + item["dx"],
+                gy + item["dy"],
+                elevation=item.get("elevation", -1),
+                door_open=item.get("door_open", False),
+            )
+            self.battle.add_terrain(t)
+            count += 1
+        self._log(f"[TERRAIN] Pasted {count} terrain objects.")
+        self.terrain_paste_preview = False
+
+    # --- Terrain Favorites ---
+    def _terrain_add_favorite(self):
+        """Add current terrain type to favorites."""
+        if self.terrain_selected_type not in self.terrain_favorites:
+            if len(self.terrain_favorites) >= 10:
+                self.terrain_favorites.pop()
+            self.terrain_favorites.insert(0, self.terrain_selected_type)
+
+    def _terrain_remove_favorite(self, ttype):
+        """Remove a terrain type from favorites."""
+        if ttype in self.terrain_favorites:
+            self.terrain_favorites.remove(ttype)
 
     # ------------------------------------------------------------------ #
     # Event handling                                                       #
@@ -2691,10 +2817,44 @@ class BattleState(GameState):
                     if self.terrain_mode: self._toggle_terrain_mode()
                     self.ctx_open = False
                     self.roll_modal_open = False
-                
-                # Undo Move (Z)
+                    self.map_save_menu_open = False
+
+                # Terrain tool shortcuts (when in terrain mode)
+                if event.type == pygame.KEYDOWN and self.terrain_mode:
+                    if event.key == pygame.K_1:
+                        self.terrain_tool = "paint"
+                        self.terrain_rect_start = None
+                        self._log("[TERRAIN] Tool: PAINT")
+                    elif event.key == pygame.K_2:
+                        self.terrain_tool = "move"
+                        self._log("[TERRAIN] Tool: MOVE")
+                    elif event.key == pygame.K_3:
+                        self.terrain_tool = "rect"
+                        self.terrain_rect_start = None
+                        self._log("[TERRAIN] Tool: RECT")
+                    elif event.key == pygame.K_4:
+                        self.terrain_tool = "elev"
+                        self._log("[TERRAIN] Tool: ELEV")
+                    elif event.key == pygame.K_c:
+                        # Start copy selection or copy if selection exists
+                        if self.terrain_select_start and self.terrain_select_end:
+                            self._terrain_copy_selection()
+                        else:
+                            self._log("[TERRAIN] Click to set selection start, then Shift+click for end. Press C again to copy.")
+                    elif event.key == pygame.K_v:
+                        if self.terrain_clipboard:
+                            self.terrain_paste_preview = True
+                            self._log("[TERRAIN] Click to paste terrain. ESC to cancel.")
+                    elif event.key == pygame.K_f:
+                        self._terrain_add_favorite()
+                        self._log(f"[TERRAIN] Added '{self.terrain_selected_type}' to favorites.")
+                    elif event.key == pygame.K_TAB:
+                        self._cycle_terrain_tool()
+
+                # Undo Move (Z) - only when not in terrain mode (Z is used there)
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_z:
-                    self._undo_last_action()
+                    if not self.terrain_mode:
+                        self._undo_last_action()
 
                 # Roll Result Modal - Close on any click or key
                 if self.roll_modal_open:
@@ -2728,13 +2888,16 @@ class BattleState(GameState):
                 # Terrain palette
                 if self.terrain_palette_open:
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        # Calculate palette bounds
+                        # Calculate palette bounds (matching _draw_terrain_palette)
                         pal_x, pal_y = 10, TOP_BAR_H + 10
                         pal_w = 165
                         item_h = 24
-                        max_vis = (SCREEN_HEIGHT - TOP_BAR_H - 120) // item_h
+                        toolbar_h = 28
+                        fav_h = 28
+                        header_h = 48 + toolbar_h + fav_h
+                        max_vis = (SCREEN_HEIGHT - TOP_BAR_H - 120 - toolbar_h - fav_h) // item_h
                         scroll = getattr(self, 'terrain_palette_scroll', 0)
-                        pal_h = min(max_vis, len(TERRAIN_TYPES)) * item_h + 8 * 2 + 48
+                        pal_h = min(max_vis, len(TERRAIN_TYPES)) * item_h + 8 * 2 + header_h
                         pal_rect = pygame.Rect(pal_x, pal_y, pal_w, pal_h)
 
                         if pal_rect.collidepoint(event.pos):
@@ -2745,16 +2908,33 @@ class BattleState(GameState):
                                 self.terrain_palette_scroll = min(
                                     len(TERRAIN_TYPES) - max_vis,
                                     scroll + 1)
-                            else:
-                                # Click on item
-                                keys = list(TERRAIN_TYPES.keys())
-                                visible = keys[scroll:scroll + max_vis]
-                                for i, ttype in enumerate(visible):
-                                    r = pygame.Rect(pal_x + 4, pal_y + 38 + 8 + i * item_h,
-                                                    pal_w - 8, item_h - 2)
-                                    if r.collidepoint(event.pos):
-                                        self.terrain_selected_type = ttype
+                            elif event.button == 1:
+                                # Check ui_click_zones first (toolbar, favorites)
+                                handled = False
+                                for rect, callback in self.ui_click_zones:
+                                    if rect.collidepoint(event.pos):
+                                        callback()
+                                        handled = True
                                         break
+                                if not handled:
+                                    # Click on terrain type item
+                                    keys = list(TERRAIN_TYPES.keys())
+                                    visible = keys[scroll:scroll + max_vis]
+                                    list_start_y = pal_y + 8 + header_h
+                                    for i, ttype in enumerate(visible):
+                                        r = pygame.Rect(pal_x + 4, list_start_y + i * item_h,
+                                                        pal_w - 8, item_h - 2)
+                                        if r.collidepoint(event.pos):
+                                            self.terrain_selected_type = ttype
+                                            break
+                            continue
+
+                        # Map save menu clicks
+                        if self.map_save_menu_open and event.button == 1:
+                            for rect, callback in self.ui_click_zones:
+                                if rect.collidepoint(event.pos):
+                                    callback()
+                                    break
                             continue
 
                         # Middle-click on grid to toggle doors
@@ -2834,7 +3014,21 @@ class BattleState(GameState):
                         gx, gy = self._screen_to_grid(mx, raw_my)
                         igx, igy = int(gx), int(gy)
                         if self.terrain_mode:
-                            # Start painting
+                            # Paste mode intercept
+                            if self.terrain_paste_preview:
+                                self._terrain_paste_at(igx, igy)
+                                continue
+                            # Selection mode (shift+click sets selection)
+                            mods = pygame.key.get_mods()
+                            if mods & pygame.KMOD_SHIFT:
+                                if self.terrain_select_start is None:
+                                    self.terrain_select_start = (igx, igy)
+                                    self._log(f"[TERRAIN] Selection start: ({igx},{igy}). Shift+click again for end.")
+                                else:
+                                    self.terrain_select_end = (igx, igy)
+                                    self._log(f"[TERRAIN] Selection end: ({igx},{igy}). Press C to copy.")
+                                continue
+                            # Normal tool behavior
                             self.drawing_button = 1
                             self._paint_terrain_at(event.pos, 1)
                         else:
@@ -2861,7 +3055,9 @@ class BattleState(GameState):
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self.terrain_mode:
                         self.drawing_button = None
-                    
+                        if self.terrain_tool == "move" and self.terrain_drag_obj:
+                            self._terrain_move_release(event.pos)
+
                     if self.dragging:
                         mx, raw_my = event.pos
                         my = raw_my - TOP_BAR_H
@@ -2904,8 +3100,11 @@ class BattleState(GameState):
                         self.drawing_button = None
 
                 elif event.type == pygame.MOUSEMOTION:
-                    if self.terrain_mode and self.drawing_button:
-                        self._paint_terrain_at(event.pos, self.drawing_button)
+                    if self.terrain_mode:
+                        if self.drawing_button and self.terrain_tool == "paint":
+                            self._paint_terrain_at(event.pos, self.drawing_button)
+                        if self.terrain_tool == "rect":
+                            self._terrain_rect_update_preview(event.pos)
 
                 # Tab clicks
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3069,6 +3268,9 @@ class BattleState(GameState):
 
         if self.terrain_palette_open:
             self._draw_terrain_palette(screen, mp)
+            self._draw_terrain_overlays(screen, mp)
+        if self.map_save_menu_open:
+            self._draw_map_save_menu(screen, mp)
         if self.map_browser_open:
             self._draw_map_browser(screen, mp)
         if self.condition_reminder:
@@ -5051,12 +5253,15 @@ class BattleState(GameState):
         bw = 165
         pad = 8
         item_h = 24
-        max_visible = (SCREEN_HEIGHT - TOP_BAR_H - 120) // item_h
+        toolbar_h = 28  # Tool selector row
+        fav_h = 28      # Favorites row
+        header_h = 48 + toolbar_h + fav_h
+        max_visible = (SCREEN_HEIGHT - TOP_BAR_H - 120 - toolbar_h - fav_h) // item_h
         scroll = getattr(self, 'terrain_palette_scroll', 0)
 
         keys = list(TERRAIN_TYPES.keys())
         total = len(keys)
-        bh = min(max_visible, total) * item_h + pad * 2 + 48
+        bh = min(max_visible, total) * item_h + pad * 2 + header_h
 
         bx = 10
         by = TOP_BAR_H + 10
@@ -5065,11 +5270,46 @@ class BattleState(GameState):
         pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 1, border_radius=6)
         hdr = fonts.small.render("Terrain Palette", True, COLORS["accent"])
         screen.blit(hdr, (bx + 6, by + 6))
-        # Door toggle hint
-        hint = fonts.tiny.render("Middle-click: toggle door", True, COLORS["text_dim"])
+        hint = fonts.tiny.render("Mid-click:door  Shift:select", True, COLORS["text_dim"])
         screen.blit(hint, (bx + 6, by + 22))
 
-        y = by + pad + 38
+        # --- Tool selector toolbar ---
+        ty = by + 38
+        tool_names = [("paint", "P"), ("move", "M"), ("rect", "R"), ("elev", "E")]
+        tw = (bw - 12) // len(tool_names)
+        for i, (tool_id, tool_lbl) in enumerate(tool_names):
+            tr = pygame.Rect(bx + 4 + i * tw, ty, tw - 2, toolbar_h - 4)
+            is_active = self.terrain_tool == tool_id
+            bg = COLORS["accent"] if is_active else (60, 62, 67)
+            if tr.collidepoint(mp):
+                bg = COLORS["accent_hover"]
+            pygame.draw.rect(screen, bg, tr, border_radius=3)
+            tl = fonts.tiny.render(tool_lbl, True, COLORS["text_main"])
+            screen.blit(tl, (tr.centerx - tl.get_width()//2, tr.centery - tl.get_height()//2))
+            # Store click zone
+            self.ui_click_zones.append((tr, lambda tid=tool_id: self._set_terrain_tool(tid)))
+
+        # --- Favorites bar ---
+        fy = ty + toolbar_h
+        fx = bx + 4
+        fav_size = 14
+        fav_gap = 2
+        for fi, fav_type in enumerate(self.terrain_favorites):
+            if fi >= 10:
+                break
+            props = TERRAIN_TYPES.get(fav_type, {})
+            fr = pygame.Rect(fx, fy + 2, fav_size, fav_size)
+            is_sel = fav_type == self.terrain_selected_type
+            pygame.draw.rect(screen, props.get("color", (80, 80, 80)), fr, border_radius=2)
+            if is_sel:
+                pygame.draw.rect(screen, COLORS["warning"], fr, 2, border_radius=2)
+            else:
+                pygame.draw.rect(screen, (0, 0, 0), fr, 1, border_radius=2)
+            self.ui_click_zones.append((fr, lambda ft=fav_type: self._set_terrain_fav(ft)))
+            fx += fav_size + fav_gap
+
+        # --- Terrain type list ---
+        y = by + pad + header_h
         visible_keys = keys[scroll:scroll + max_visible]
         for i, ttype in enumerate(visible_keys):
             props = TERRAIN_TYPES[ttype]
@@ -5098,10 +5338,143 @@ class BattleState(GameState):
         # Scroll indicators
         if scroll > 0:
             up_arrow = fonts.small.render("^ scroll up ^", True, COLORS["text_dim"])
-            screen.blit(up_arrow, (bx + bw//2 - up_arrow.get_width()//2, by + 36))
+            screen.blit(up_arrow, (bx + bw//2 - up_arrow.get_width()//2, by + header_h - 4))
         if scroll + max_visible < total:
             dn_arrow = fonts.tiny.render("v more v", True, COLORS["text_dim"])
             screen.blit(dn_arrow, (bx + bw//2 - dn_arrow.get_width()//2, by + bh - 14))
+
+    def _set_terrain_tool(self, tool_id):
+        """Set terrain tool from palette click."""
+        self.terrain_tool = tool_id
+        self.terrain_rect_start = None
+        self.terrain_rect_preview = []
+        self.terrain_drag_obj = None
+
+    def _set_terrain_fav(self, fav_type):
+        """Set selected terrain type from favorites click."""
+        self.terrain_selected_type = fav_type
+
+    def _draw_terrain_overlays(self, screen, mp):
+        """Draw terrain mode overlays: rect preview, selection, move ghost, paste preview."""
+        gsz = self.battle.grid_size
+
+        # Rectangle brush preview
+        if self.terrain_tool == "rect" and self.terrain_rect_preview:
+            props = TERRAIN_TYPES.get(self.terrain_selected_type, {})
+            r, g, b = props.get("color", (80, 80, 80))
+            for (gx, gy) in self.terrain_rect_preview:
+                sx, sy = self._grid_to_screen(gx, gy)
+                s = pygame.Surface((gsz, gsz), pygame.SRCALPHA)
+                s.fill((r, g, b, 100))
+                screen.blit(s, (sx, sy))
+                pygame.draw.rect(screen, (255, 255, 255, 80), (sx, sy, gsz, gsz), 1)
+
+        # Move tool: ghost of dragged object
+        if self.terrain_tool == "move" and self.terrain_drag_obj:
+            mx_s, my_s = mp
+            if mx_s < GRID_W and my_s >= TOP_BAR_H:
+                gx, gy = self._screen_to_grid(mx_s, my_s)
+                gx, gy = int(gx), int(gy)
+                dx, dy = self.terrain_drag_offset
+                ox, oy = gx - dx, gy - dy
+                sx, sy = self._grid_to_screen(ox, oy)
+                t = self.terrain_drag_obj
+                s = pygame.Surface((t.width * gsz, t.height * gsz), pygame.SRCALPHA)
+                rr, gg, bb = t.color
+                s.fill((rr, gg, bb, 120))
+                screen.blit(s, (sx, sy))
+                pygame.draw.rect(screen, (255, 255, 0), (sx, sy, t.width * gsz, t.height * gsz), 2)
+
+        # Selection rectangle
+        if self.terrain_select_start:
+            sx1, sy1 = self.terrain_select_start
+            sx_s, sy_s = self._grid_to_screen(sx1, sy1)
+            if self.terrain_select_end:
+                ex, ey = self.terrain_select_end
+                ex_s, ey_s = self._grid_to_screen(ex + 1, ey + 1)
+                sel_r = pygame.Rect(min(sx_s, ex_s), min(sy_s, ey_s),
+                                    abs(ex_s - sx_s), abs(ey_s - sy_s))
+            else:
+                sel_r = pygame.Rect(sx_s, sy_s, gsz, gsz)
+            sel_surf = pygame.Surface((sel_r.width, sel_r.height), pygame.SRCALPHA)
+            sel_surf.fill((0, 150, 255, 40))
+            screen.blit(sel_surf, sel_r.topleft)
+            pygame.draw.rect(screen, (0, 150, 255), sel_r, 2)
+
+        # Paste preview
+        if self.terrain_paste_preview and self.terrain_clipboard:
+            mx_s, my_s = mp
+            if mx_s < GRID_W and my_s >= TOP_BAR_H:
+                gx, gy = self._screen_to_grid(mx_s, my_s)
+                gx, gy = int(gx), int(gy)
+                for item in self.terrain_clipboard:
+                    px, py = gx + item["dx"], gy + item["dy"]
+                    sx, sy = self._grid_to_screen(px, py)
+                    props = TERRAIN_TYPES.get(item["terrain_type"], {})
+                    r, g, b = props.get("color", (80, 80, 80))
+                    s = pygame.Surface((gsz, gsz), pygame.SRCALPHA)
+                    s.fill((r, g, b, 90))
+                    screen.blit(s, (sx, sy))
+                    pygame.draw.rect(screen, (0, 255, 150), (sx, sy, gsz, gsz), 1)
+
+        # Elevation tool: highlight terrain under cursor
+        if self.terrain_tool == "elev":
+            mx_s, my_s = mp
+            if mx_s < GRID_W and my_s >= TOP_BAR_H:
+                gx, gy = self._screen_to_grid(mx_s, my_s)
+                gx, gy = int(gx), int(gy)
+                t = self.battle.get_terrain_at(gx, gy)
+                if t:
+                    sx, sy = self._grid_to_screen(t.grid_x, t.grid_y)
+                    pygame.draw.rect(screen, (255, 200, 0), (sx, sy, t.width * gsz, t.height * gsz), 3)
+                    elbl = fonts.small.render(f"Elev: {t.elevation}ft  (L:+5 R:-5)", True, (255, 220, 0))
+                    screen.blit(elbl, (sx, sy - 20))
+
+    def _draw_map_save_menu(self, screen, mp):
+        """Draw map save/load dropdown menu."""
+        maps_dir = os.path.join(os.path.dirname(__file__), "..", "saves", "maps")
+        os.makedirs(maps_dir, exist_ok=True)
+        map_files = sorted([f for f in os.listdir(maps_dir) if f.endswith(".json")])
+
+        mw, item_h = 200, 30
+        mx_pos = 696
+        items = ["[Save Current Map]", "[Clear All Terrain]"] + map_files
+        mh = len(items) * item_h + 10
+        my_pos = SCREEN_HEIGHT - 65 - mh - 5
+
+        pygame.draw.rect(screen, (35, 37, 42), (mx_pos, my_pos, mw, mh), border_radius=6)
+        pygame.draw.rect(screen, COLORS["border"], (mx_pos, my_pos, mw, mh), 1, border_radius=6)
+
+        y = my_pos + 5
+        for item in items:
+            r = pygame.Rect(mx_pos + 4, y, mw - 8, item_h - 2)
+            bg = (50, 52, 57)
+            if r.collidepoint(mp):
+                bg = COLORS["accent_hover"]
+            pygame.draw.rect(screen, bg, r, border_radius=3)
+            color = COLORS["success"] if item.startswith("[Save") else COLORS["danger"] if item.startswith("[Clear") else COLORS["text_main"]
+            lbl = fonts.tiny.render(item.replace(".json", "")[:22], True, color)
+            screen.blit(lbl, (r.x + 6, r.y + 6))
+            if item == "[Save Current Map]":
+                self.ui_click_zones.append((r, self._map_save_prompt))
+            elif item == "[Clear All Terrain]":
+                self.ui_click_zones.append((r, self._map_clear_all))
+            else:
+                filepath = os.path.join(maps_dir, item)
+                self.ui_click_zones.append((r, lambda fp=filepath: self._load_map_only(fp)))
+            y += item_h
+
+    def _map_save_prompt(self):
+        """Save current terrain as a map file with auto-generated name."""
+        import time
+        name = f"map_{time.strftime('%Y%m%d_%H%M%S')}"
+        self._save_map_only(name)
+
+    def _map_clear_all(self):
+        """Clear all terrain from the map."""
+        self.battle.terrain = []
+        self.map_save_menu_open = False
+        self._log("[MAP] Cleared all terrain.")
 
     # ------------------------------------------------------------------ #
     # Win Probability & DM Advisor                                         #
@@ -5380,13 +5753,65 @@ class BattleState(GameState):
         self.terrain_mode = not self.terrain_mode
         self.terrain_palette_open = self.terrain_mode
         if self.terrain_mode:
+            self.terrain_tool = "paint"
+            self.terrain_rect_start = None
+            self.terrain_rect_preview = []
+            self.terrain_drag_obj = None
+            self.terrain_paste_preview = False
+            self.terrain_select_start = None
+            self.terrain_select_end = None
             self.btn_terrain.text = "STOP PAINTING"
             self.btn_terrain.color = COLORS["warning"]
-            self._log("[TERRAIN] Terrain placement mode ON. Left-click=place, Right-click=remove, Middle-click=toggle door.")
+            self._log("[TERRAIN] Terrain mode ON. Tools: 1=Paint 2=Move 3=Rect 4=Elev | C=Copy V=Paste F=Favorite")
         else:
             self.btn_terrain.text = "TERRAIN"
             self.btn_terrain.color = COLORS["panel"]
-            self._log("[TERRAIN] Terrain placement mode OFF.")
+            self._log("[TERRAIN] Terrain mode OFF.")
+
+    def _cycle_terrain_tool(self):
+        """Cycle through terrain tools: paint -> move -> rect -> elev."""
+        tools = ["paint", "move", "rect", "elev"]
+        idx = tools.index(self.terrain_tool) if self.terrain_tool in tools else 0
+        self.terrain_tool = tools[(idx + 1) % len(tools)]
+        self.terrain_rect_start = None
+        self.terrain_rect_preview = []
+        self.terrain_drag_obj = None
+        self._log(f"[TERRAIN] Tool: {self.terrain_tool.upper()}")
+
+    # --- Map Save/Load (terrain only) ---
+    def _toggle_map_save_menu(self):
+        self.map_save_menu_open = not self.map_save_menu_open
+
+    def _save_map_only(self, name):
+        """Save only terrain data to a map file."""
+        if not name:
+            self.map_save_menu_open = False
+            return
+        maps_dir = os.path.join(os.path.dirname(__file__), "..", "saves", "maps")
+        os.makedirs(maps_dir, exist_ok=True)
+        if not name.endswith(".json"):
+            name += ".json"
+        filepath = os.path.join(maps_dir, name)
+        data = {"terrain": [t.to_dict() for t in self.battle.terrain],
+                "grid_size": self.battle.grid_size}
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+        self._log(f"[MAP] Saved map to {name}")
+        self.map_save_menu_open = False
+
+    def _load_map_only(self, filepath):
+        """Load only terrain data from a map file."""
+        if not filepath:
+            self.map_save_menu_open = False
+            return
+        try:
+            with open(filepath, "r") as f:
+                data = json.load(f)
+            self.battle.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
+            self._log(f"[MAP] Loaded map: {os.path.basename(filepath)}")
+        except Exception as ex:
+            self._log(f"[ERROR] Map load failed: {ex}")
+        self.map_save_menu_open = False
 
     def _toggle_map_browser(self):
         self.map_browser_open = not self.map_browser_open
