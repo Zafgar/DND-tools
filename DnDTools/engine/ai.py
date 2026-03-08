@@ -1295,6 +1295,32 @@ class TacticalAI:
                 entity.action_used = True
                 return loh_steps
 
+        # === EMERGENCY: Stabilize dying ally (Medicine DC 10, no healing available) ===
+        if not self._has_touch_healing(entity):
+            dying_allies = [a for a in allies if a.hp <= 0 and not a.is_stable
+                            and a.death_save_failures < 3 and not a.is_summon]
+            for dying in dying_allies:
+                if battle.is_adjacent(entity, dying):
+                    # Medicine check: d20 + WIS mod (+ proficiency if proficient)
+                    wis_mod = entity.stats.abilities.get_mod("wisdom")
+                    med_bonus = entity.stats.skills.get("Medicine", wis_mod)
+                    roll = random.randint(1, 20) + med_bonus
+                    entity.action_used = True
+                    if roll >= 10:
+                        dying.is_stable = True
+                        dying.death_save_successes = 3
+                        return [ActionStep(
+                            step_type="wait",
+                            description=f"{entity.name} stabilizes {dying.name} (Medicine {roll} vs DC 10).",
+                            attacker=entity, target=dying, action_name="Stabilize",
+                        )]
+                    else:
+                        return [ActionStep(
+                            step_type="wait",
+                            description=f"{entity.name} fails to stabilize {dying.name} (Medicine {roll} vs DC 10).",
+                            attacker=entity, target=dying, action_name="Stabilize",
+                        )]
+
         # === EMERGENCY: Self-heal if critical ===
         pref = self._get_combat_preference(entity)
         heal_threshold = HEAL_MELEE_THRESHOLD if pref == "melee" else HEAL_RANGED_THRESHOLD

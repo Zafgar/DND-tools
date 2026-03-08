@@ -38,6 +38,8 @@ class SpellInfo:
     duration: str = ""                # "1 minute", "1 hour"
     description: str = ""
     half_on_save: bool = True         # AoE spells usually deal half on save
+    ritual: bool = False              # PHB p.201: can cast as ritual (10 min extra, no slot)
+    components: str = ""              # "V", "V,S", "V,S,M" — for future Silence/Subtle checks
     # Summon support
     summon_name: str = ""             # If set, spawns a token (e.g. "Spiritual Weapon")
     summon_hp: int = 0                # HP of summoned creature (0 = object/no HP)
