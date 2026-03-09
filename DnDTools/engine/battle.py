@@ -312,6 +312,10 @@ class BattleSystem:
         if current.concentrating_on:
             self._tick_concentration_duration(current)
 
+        # Check phase triggers (behavior change at HP thresholds)
+        if current.hp > 0:
+            self._check_phase_triggers(current)
+
         # Check hazard terrain at start of turn
         if current.hp > 0:
             self._check_hazard_damage(current)
@@ -499,6 +503,17 @@ class BattleSystem:
         actual = entity.hp - old_hp
         if actual > 0:
             self.log(f"  [REGEN] {entity.name} regenerates {actual} HP")
+
+    def _check_phase_triggers(self, entity: Entity):
+        """Check if any phase mechanics should trigger based on HP thresholds."""
+        if entity.max_hp <= 0:
+            return
+        hp_pct = entity.hp / entity.max_hp
+        for feat in entity.stats.features:
+            if feat.phase_trigger_hp_pct > 0 and feat.name not in entity.active_phases:
+                if hp_pct <= feat.phase_trigger_hp_pct:
+                    entity.active_phases.add(feat.name)
+                    self.log(f"  [PHASE] {entity.name}: {feat.name} triggered! {feat.phase_description}")
 
     # Duration constants: spell duration -> rounds (1 round = 6 sec)
     _DURATION_ROUNDS = {

@@ -61,6 +61,12 @@ class Entity:
                 # Recharge abilities usually start charged (1 use)
                 self.feature_uses[feat.name] = 1
 
+        # Innate spell uses (for spells with innate_uses_per_day > 0)
+        self.innate_spell_uses: dict = {}
+        for spell in stats.spells_known:
+            if spell.innate and spell.innate_uses_per_day > 0:
+                self.innate_spell_uses[spell.name] = spell.innate_uses_per_day
+
         # Turn economy
         self.action_used: bool = False
         self.bonus_action_used: bool = False
@@ -71,6 +77,9 @@ class Entity:
         self.is_dodging: bool = False
         self.is_disengaging: bool = False
         self.is_surprised: bool = False  # PHB p.189: Surprised creatures can't move/act in round 1
+
+        # Phase tracking (for monsters with behavior changes at HP thresholds)
+        self.active_phases: set = set()  # Set of phase feature names already triggered
 
         # Concentration
         self.concentrating_on: SpellInfo | None = None
@@ -762,6 +771,30 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     _LEVEL_KEYS = {1:"1st",2:"2nd",3:"3rd",4:"4th",5:"5th",6:"6th",7:"7th",8:"8th",9:"9th"}
+
+    def can_cast_spell(self, spell) -> bool:
+        """Check if a spell can be cast (innate, at will, or has a slot)."""
+        if spell.level == 0:
+            return True  # Cantrips always castable
+        if spell.innate:
+            if spell.innate_uses_per_day < 0:
+                return True  # At will
+            return self.innate_spell_uses.get(spell.name, 0) > 0
+        return self.has_spell_slot(spell.level)
+
+    def cast_spell(self, spell) -> bool:
+        """Consume a spell resource. Returns True if successful."""
+        if spell.level == 0:
+            return True  # Cantrips free
+        if spell.innate:
+            if spell.innate_uses_per_day < 0:
+                return True  # At will
+            remaining = self.innate_spell_uses.get(spell.name, 0)
+            if remaining > 0:
+                self.innate_spell_uses[spell.name] = remaining - 1
+                return True
+            return False
+        return self.use_spell_slot(spell.level)
 
     def has_spell_slot(self, min_level: int = 1) -> bool:
         for lvl in range(min_level, 10):
