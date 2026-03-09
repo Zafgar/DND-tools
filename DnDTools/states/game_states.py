@@ -986,7 +986,17 @@ class BattleState(GameState):
         self.ts_last_update = 0     # Timestamp of last TaleSpire update
         self.auto_battle = False    # Auto-play toggle
         self.auto_timer = 0         # Timer for auto-play ticks
-        self.log_filter_mode = "all" # "all" or "selected"
+        self.log_filter_mode = "all" # "all", "selected", "damage", "healing", "conditions", "rolls"
+
+        # Direct HP input mode (type "-17" Enter to apply damage)
+        self.hp_input_active = False
+        self.hp_input_text = ""
+
+        # Collapsible panel sections
+        self.collapsed_sections = set()  # e.g. {"ABILITIES", "SAVES", "FEATURES"}
+
+        # Autosave tracking
+        self.autosave_turn_counter = 0
 
         # Visual FX
         self.floating_texts = []
@@ -1144,6 +1154,11 @@ class BattleState(GameState):
         self.btn_advisor = Button(532, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
         self.btn_maps    = Button(618, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
         self.map_browser_open = False
+        self.btn_add_entity = Button(784, SCREEN_HEIGHT-65, 72, 35, "ADD", self._toggle_add_entity_modal, color=COLORS["spell"])
+        self.add_entity_open = False
+        self.add_entity_search = ""
+        self.add_entity_scroll = 0
+        self.add_entity_is_player = False  # Toggle: add as player or enemy
 
         # HP quick buttons
         vals = [-10, -5, -1, 1, 5, 10]
@@ -1454,6 +1469,23 @@ class BattleState(GameState):
         if auras:
             self.aura_triggers = auras
             self._open_next_aura_modal()
+
+        # Autosave every 5 turns
+        self.autosave_turn_counter += 1
+        if self.autosave_turn_counter >= 5:
+            self.autosave_turn_counter = 0
+            self._perform_autosave()
+
+    def _perform_autosave(self):
+        """Autosave current battle state."""
+        try:
+            if not os.path.exists(SAVES_DIR):
+                os.makedirs(SAVES_DIR)
+            filepath = os.path.join(SAVES_DIR, "_autosave.json")
+            self.battle.save_state(filepath)
+            self._log("[AUTOSAVE] Battle state saved.")
+        except Exception as ex:
+            self._log(f"[ERROR] Autosave failed: {ex}")
 
     def _do_ai_turn(self, force_auto=False):
         curr = self.battle.get_current_entity()
@@ -2155,6 +2187,21 @@ class BattleState(GameState):
                     self.reaction_type = "counterspell"
                     self.reaction_context = {"caster": sel, "level": level}
 
+    def _apply_hp_input(self):
+        """Apply direct HP input like '-17' or '+5'."""
+        if not self.hp_input_text or not self.selected_entity:
+            self.hp_input_active = False
+            self.hp_input_text = ""
+            return
+        try:
+            amount = int(self.hp_input_text)
+        except ValueError:
+            amount = 0
+        if amount != 0:
+            self._modify_hp(amount)
+        self.hp_input_active = False
+        self.hp_input_text = ""
+
     # ------------------------------------------------------------------ #
     # Context menu                                                         #
     # ------------------------------------------------------------------ #
@@ -2851,10 +2898,76 @@ class BattleState(GameState):
                     elif event.key == pygame.K_TAB:
                         self._cycle_terrain_tool()
 
-                # Undo Move (Z) - only when not in terrain mode (Z is used there)
+                # Undo (Z or Ctrl+Z) - only when not in terrain mode
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_z:
                     if not self.terrain_mode:
                         self._undo_last_action()
+
+                # Hotkeys (only when no modals are open)
+                if event.type == pygame.KEYDOWN and not self.terrain_mode:
+                    mods = pygame.key.get_mods()
+
+                    # Space = Next Turn (when combat started)
+                    if event.key == pygame.K_SPACE and self.battle.combat_started:
+                        if not self.roll_modal_open and not self.dmg_modal_open:
+                            self._do_next_turn()
+                            continue
+
+                    # N = AI Turn
+                    if event.key == pygame.K_n and self.battle.combat_started:
+                        self._do_ai_turn()
+                        continue
+
+                    # Quick condition hotkeys (when entity selected)
+                    if self.selected_entity and not self.hp_input_active:
+                        if event.key == pygame.K_p and not mods & pygame.KMOD_CTRL:
+                            self._toggle_condition("Prone")
+                        elif event.key == pygame.K_t:
+                            self._toggle_condition("Stunned")
+                        elif event.key == pygame.K_c and not mods & pygame.KMOD_CTRL:
+                            self._toggle_condition("Charmed")
+                        elif event.key == pygame.K_r:
+                            self._toggle_condition("Restrained")
+                        elif event.key == pygame.K_f:
+                            self._toggle_condition("Frightened")
+                        elif event.key == pygame.K_i:
+                            self._toggle_condition("Invisible")
+                        elif event.key == pygame.K_x:
+                            self._toggle_condition("Poisoned")
+                        elif event.key == pygame.K_b:
+                            self._toggle_condition("Blinded")
+
+                    # Direct HP input: minus key starts, digits continue, Enter applies
+                    if self.selected_entity:
+                        if event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:
+                            self.hp_input_active = True
+                            self.hp_input_text = "-"
+                        elif event.key == pygame.K_PLUS or event.key == pygame.K_KP_PLUS or event.key == pygame.K_EQUALS:
+                            self.hp_input_active = True
+                            self.hp_input_text = "+"
+                        elif self.hp_input_active:
+                            if event.unicode.isdigit() and len(self.hp_input_text) < 5:
+                                self.hp_input_text += event.unicode
+                            elif event.key == pygame.K_BACKSPACE:
+                                self.hp_input_text = self.hp_input_text[:-1]
+                                if len(self.hp_input_text) == 0:
+                                    self.hp_input_active = False
+                            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                                self._apply_hp_input()
+                            elif event.key == pygame.K_ESCAPE:
+                                self.hp_input_active = False
+                                self.hp_input_text = ""
+
+                    # Numpad quick damage (1-9 mapped to -1 to -9 on selected)
+                    if self.selected_entity and not self.hp_input_active:
+                        numpad_map = {
+                            pygame.K_KP1: -1, pygame.K_KP2: -2, pygame.K_KP3: -3,
+                            pygame.K_KP4: -4, pygame.K_KP5: -5, pygame.K_KP6: -6,
+                            pygame.K_KP7: -7, pygame.K_KP8: -8, pygame.K_KP9: -9,
+                            pygame.K_KP0: 10,  # Numpad 0 = heal 10
+                        }
+                        if event.key in numpad_map:
+                            self._modify_hp(numpad_map[event.key])
 
                 # Roll Result Modal - Close on any click or key
                 if self.roll_modal_open:
@@ -2871,6 +2984,16 @@ class BattleState(GameState):
                 if self.condition_reminder:
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         self.condition_reminder = None
+                    continue
+
+                # Add Entity Modal
+                if self.add_entity_open:
+                    self._handle_add_entity_event(event)
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        for rect, callback in self.ui_click_zones:
+                            if rect.collidepoint(event.pos):
+                                callback()
+                                break
                     continue
 
                 # Context menu
@@ -3168,6 +3291,7 @@ class BattleState(GameState):
                 self.btn_advisor.handle_event(event)
                 self.btn_maps.handle_event(event)
                 self.btn_save_map.handle_event(event)
+                self.btn_add_entity.handle_event(event)
 
                 # Map browser clicks
                 if self.map_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3273,6 +3397,8 @@ class BattleState(GameState):
             self._draw_map_save_menu(screen, mp)
         if self.map_browser_open:
             self._draw_map_browser(screen, mp)
+        if self.add_entity_open:
+            self._draw_add_entity_modal(screen, mp)
         if self.condition_reminder:
             self._draw_condition_reminder(screen, mp)
         if self.pending_plan:
@@ -3638,7 +3764,7 @@ class BattleState(GameState):
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_add_entity):
             b.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
@@ -3822,6 +3948,21 @@ class BattleState(GameState):
             b.draw(screen, mp)
             bx += 42
 
+    def _draw_section_header(self, screen, section_key, label, x0, y, mp):
+        """Draw a collapsible section header. Returns (new_y, is_collapsed)."""
+        collapsed = section_key in self.collapsed_sections
+        arrow = ">" if collapsed else "v"
+        txt = f"{arrow} {label}"
+        s = fonts.small.render(txt, True, COLORS["text_dim"])
+        r = pygame.Rect(x0, y, s.get_width() + 10, 20)
+        if r.collidepoint(mp):
+            s = fonts.small.render(txt, True, COLORS["accent_hover"])
+        screen.blit(s, (x0, y))
+        self.ui_click_zones.append((r, lambda k=section_key: (
+            self.collapsed_sections.discard(k) if k in self.collapsed_sections
+            else self.collapsed_sections.add(k))))
+        return y + 20, collapsed
+
     def _draw_stats_tab(self, screen, sel, x0, y, mp):
 
         def ln(text, color=COLORS["text_main"], indent=0):
@@ -3830,7 +3971,7 @@ class BattleState(GameState):
             screen.blit(s, (x0+indent, y))
             y += 20
 
-        # Name, type, AC, HP
+        # Name, type, AC, HP (always visible)
         ln(f"{sel.name}", COLORS["accent"] if not sel.is_player else COLORS["player"])
         cr_str = f"CR {sel.stats.challenge_rating:.3g}" if sel.stats.challenge_rating else "Player"
         ln(f"{sel.stats.size} {sel.stats.creature_type}  |  {cr_str}  |  XP {sel.stats.xp}", COLORS["text_dim"])
@@ -3838,10 +3979,16 @@ class BattleState(GameState):
         hp_pct = sel.hp/sel.max_hp if sel.max_hp>0 else 0
         hp_c = COLORS["success"] if hp_pct>0.5 else COLORS["warning"] if hp_pct>0.25 else COLORS["danger"]
         ln(f"HP: {sel.hp}/{sel.max_hp}  TempHP: {sel.temp_hp}", hp_c)
+
+        # Direct HP input indicator
+        if self.hp_input_active and self.hp_input_text:
+            input_c = COLORS["danger"] if self.hp_input_text.startswith("-") else COLORS["success"]
+            ln(f"  HP Input: {self.hp_input_text}_ (Enter to apply)", input_c)
+
         ln(f"AC: {sel.stats.armor_class}  Speed: {sel.stats.speed}ft  Move left: {sel.movement_left:.0f}ft", COLORS["text_main"])
         if sel.stats.fly_speed:   ln(f"Fly: {sel.stats.fly_speed}ft", COLORS["text_dim"])
         if sel.stats.swim_speed:  ln(f"Swim: {sel.stats.swim_speed}ft", COLORS["text_dim"])
-        
+
         # Resistances & Immunities
         if sel.stats.damage_immunities:
             ln(f"Immune: {', '.join(sel.stats.damage_immunities)}", COLORS["success"])
@@ -3851,51 +3998,32 @@ class BattleState(GameState):
             ln(f"Vuln: {', '.join(sel.stats.damage_vulnerabilities)}", COLORS["danger"])
         if sel.stats.condition_immunities:
             ln(f"Cond Imm: {', '.join(sel.stats.condition_immunities)}", COLORS["text_dim"])
-            
+
         ln("")
 
-        # Ability scores
-        ab = sel.stats.abilities
-        ln("ABILITIES:", COLORS["text_dim"])
-        scores = [("STR",ab.strength),("DEX",ab.dexterity),("CON",ab.constitution),
-                  ("INT",ab.intelligence),("WIS",ab.wisdom),("CHA",ab.charisma)]
-        row = ""
-        for name, val in scores:
-            mod = (val-10)//2
-            row += f"{name} {val}({mod:+d})  "
-        s = fonts.tiny.render(row.strip(), True, COLORS["text_main"])
-        screen.blit(s, (x0, y))
-        y += 18
+        # Ability scores (collapsible)
+        y, collapsed = self._draw_section_header(screen, "ABILITIES", "ABILITIES / SAVES / SKILLS", x0, y, mp)
+        if not collapsed:
+            ab = sel.stats.abilities
+            scores = [("STR",ab.strength),("DEX",ab.dexterity),("CON",ab.constitution),
+                      ("INT",ab.intelligence),("WIS",ab.wisdom),("CHA",ab.charisma)]
+            row = ""
+            for name, val in scores:
+                mod = (val-10)//2
+                row += f"{name} {val}({mod:+d})  "
+            s = fonts.tiny.render(row.strip(), True, COLORS["text_main"])
+            screen.blit(s, (x0, y))
+            y += 18
 
-        # Saves
-        ln("SAVES (click to roll):", COLORS["text_dim"])
-        sx = x0
-        abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
-        for ab in abilities:
-            bonus = sel.get_save_bonus(ab)
-            is_prof = ab in sel.stats.saving_throws
-            txt = f"{ab[:3]} {bonus:+d}"
-            s_surf = fonts.tiny.render(txt, True, COLORS["text_main"] if not is_prof else COLORS["accent"])
-            w = s_surf.get_width() + 10
-            if sx + w > SCREEN_WIDTH - 20:
-                sx = x0
-                y += 24
-            r = pygame.Rect(sx, y, w, 20)
-            bg = (60, 63, 65)
-            if r.collidepoint(mp): bg = (80, 83, 85)
-            pygame.draw.rect(screen, bg, r, border_radius=4)
-            screen.blit(s_surf, (sx+5, y+2))
-            self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_save(a, b)))
-            sx += w + 5
-        y += 24
-
-        # Skills
-        if sel.stats.skills:
-            ln("SKILLS (click to roll):", COLORS["text_dim"])
+            # Saves
+            ln("SAVES (click to roll):", COLORS["text_dim"])
             sx = x0
-            for sk, bonus in sel.stats.skills.items():
-                txt = f"{sk} {bonus:+d}"
-                s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
+            abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+            for ab in abilities:
+                bonus = sel.get_save_bonus(ab)
+                is_prof = ab in sel.stats.saving_throws
+                txt = f"{ab[:3]} {bonus:+d}"
+                s_surf = fonts.tiny.render(txt, True, COLORS["text_main"] if not is_prof else COLORS["accent"])
                 w = s_surf.get_width() + 10
                 if sx + w > SCREEN_WIDTH - 20:
                     sx = x0
@@ -3905,29 +4033,50 @@ class BattleState(GameState):
                 if r.collidepoint(mp): bg = (80, 83, 85)
                 pygame.draw.rect(screen, bg, r, border_radius=4)
                 screen.blit(s_surf, (sx+5, y+2))
-                self.ui_click_zones.append((r, lambda s=sk, b=bonus: self._roll_skill(s, b)))
+                self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_save(a, b)))
                 sx += w + 5
             y += 24
-        
-        # Ability Checks (Raw checks for contests etc)
-        ln("ABILITY CHECKS:", COLORS["text_dim"])
-        sx = x0
-        for ab in abilities:
-            bonus = sel.get_modifier(ab)
-            txt = f"{ab[:3]} {bonus:+d}"
-            s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
-            w = s_surf.get_width() + 10
-            if sx + w > SCREEN_WIDTH - 20:
-                sx = x0
-                y += 24
-            r = pygame.Rect(sx, y, w, 20)
-            pygame.draw.rect(screen, (60, 63, 65) if not r.collidepoint(mp) else (80, 83, 85), r, border_radius=4)
-            screen.blit(s_surf, (sx+5, y+2))
-            self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_skill(f"{a} Check", b)))
-            sx += w + 5
-        y += 24
 
-        # Action economy indicators
+            # Skills
+            if sel.stats.skills:
+                ln("SKILLS (click to roll):", COLORS["text_dim"])
+                sx = x0
+                for sk, bonus in sel.stats.skills.items():
+                    txt = f"{sk} {bonus:+d}"
+                    s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
+                    w = s_surf.get_width() + 10
+                    if sx + w > SCREEN_WIDTH - 20:
+                        sx = x0
+                        y += 24
+                    r = pygame.Rect(sx, y, w, 20)
+                    bg = (60, 63, 65)
+                    if r.collidepoint(mp): bg = (80, 83, 85)
+                    pygame.draw.rect(screen, bg, r, border_radius=4)
+                    screen.blit(s_surf, (sx+5, y+2))
+                    self.ui_click_zones.append((r, lambda s=sk, b=bonus: self._roll_skill(s, b)))
+                    sx += w + 5
+                y += 24
+
+            # Ability Checks
+            ln("ABILITY CHECKS:", COLORS["text_dim"])
+            sx = x0
+            abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+            for ab in abilities:
+                bonus = sel.get_modifier(ab)
+                txt = f"{ab[:3]} {bonus:+d}"
+                s_surf = fonts.tiny.render(txt, True, COLORS["text_main"])
+                w = s_surf.get_width() + 10
+                if sx + w > SCREEN_WIDTH - 20:
+                    sx = x0
+                    y += 24
+                r = pygame.Rect(sx, y, w, 20)
+                pygame.draw.rect(screen, (60, 63, 65) if not r.collidepoint(mp) else (80, 83, 85), r, border_radius=4)
+                screen.blit(s_surf, (sx+5, y+2))
+                self.ui_click_zones.append((r, lambda a=ab, b=bonus: self._roll_skill(f"{a} Check", b)))
+                sx += w + 5
+            y += 24
+
+        # Action economy indicators (always visible)
         ln("")
         ln("TURN RESOURCES:", COLORS["text_dim"])
         def indicator(label, used):
@@ -3939,13 +4088,16 @@ class BattleState(GameState):
         indicator("Bonus Action", sel.bonus_action_used); y+=18
         indicator("Reaction", sel.reaction_used); y+=18
         if sel.concentrating_on:
-            ln(f"Concentrating: {sel.concentrating_on.name}", COLORS["concentration"])
+            conc_text = f"Concentrating: {sel.concentrating_on.name}"
+            if hasattr(sel, 'concentration_rounds_left') and sel.concentration_rounds_left is not None:
+                conc_text += f" ({sel.concentration_rounds_left} rnds)"
+            ln(conc_text, COLORS["concentration"])
 
         # Legendary resources
         if sel.stats.legendary_action_count:
             txt = f"Legendary Actions: {sel.legendary_actions_left}/{sel.stats.legendary_action_count}"
             ln(txt, COLORS["legendary"])
-            
+
         if sel.stats.legendary_resistance_count:
             txt = f"Legendary Resist: {sel.legendary_resistances_left}/{sel.stats.legendary_resistance_count}"
             s = fonts.small.render(txt, True, COLORS["legendary"])
@@ -3955,33 +4107,42 @@ class BattleState(GameState):
                 self.ui_click_zones.append((r, lambda: self._use_legendary_resistance_manual(sel)))
             y += 20
 
-        # Class Resources
+        # Class Resources (collapsible)
         if sel.stats.character_class:
             ln("")
-            ln(f"CLASS: {sel.stats.character_class} {sel.stats.character_level} ({sel.stats.subclass})", COLORS["accent"])
-            if sel.stats.race:
-                ln(f"Race: {sel.stats.race}", COLORS["text_dim"])
-        if hasattr(sel, 'rage_active') and sel.stats.rage_count > 0:
-            rage_str = "ACTIVE" if sel.rage_active else "Inactive"
-            if sel.rage_active:
-                if sel.attacked_this_turn or sel.rage_damage_taken:
-                    rage_str += " (Sustained)"
-                else:
-                    rage_str += " (Ending)"
-            rage_c = COLORS["danger"] if sel.rage_active else COLORS["text_dim"]
-            ln(f"Rage: {rage_str} ({sel.rages_left}/{sel.stats.rage_count} uses)", rage_c)
-        if sel.stats.ki_points > 0:
-            ln(f"Ki: {sel.ki_points_left}/{sel.stats.ki_points}", COLORS["spell"])
-        if sel.stats.sorcery_points > 0:
-            ln(f"Sorcery Points: {sel.sorcery_points_left}/{sel.stats.sorcery_points}", COLORS["spell"])
-        if sel.stats.lay_on_hands_pool > 0:
-            ln(f"Lay on Hands: {sel.lay_on_hands_left}/{sel.stats.lay_on_hands_pool} HP", COLORS["success"])
-        if sel.stats.bardic_inspiration_count > 0:
-            ln(f"Bardic Inspiration: {sel.bardic_inspiration_left}/{sel.stats.bardic_inspiration_count} ({sel.stats.bardic_inspiration_dice})", COLORS["spell"])
-        if hasattr(sel, 'marked_target') and sel.marked_target:
-            ln(f"Marked: {sel.marked_target.name}", COLORS["warning"])
+            y, collapsed = self._draw_section_header(screen, "CLASS", f"CLASS: {sel.stats.character_class} {sel.stats.character_level}", x0, y, mp)
+            if not collapsed:
+                if sel.stats.subclass:
+                    ln(f"Subclass: {sel.stats.subclass}", COLORS["accent"])
+                if sel.stats.race:
+                    ln(f"Race: {sel.stats.race}", COLORS["text_dim"])
+                if hasattr(sel, 'rage_active') and sel.stats.rage_count > 0:
+                    rage_str = "ACTIVE" if sel.rage_active else "Inactive"
+                    if sel.rage_active:
+                        if sel.attacked_this_turn or sel.rage_damage_taken:
+                            rage_str += " (Sustained)"
+                        else:
+                            rage_str += " (Ending)"
+                    rage_c = COLORS["danger"] if sel.rage_active else COLORS["text_dim"]
+                    ln(f"Rage: {rage_str} ({sel.rages_left}/{sel.stats.rage_count} uses)", rage_c)
+                if sel.stats.ki_points > 0:
+                    ln(f"Ki: {sel.ki_points_left}/{sel.stats.ki_points}", COLORS["spell"])
+                if sel.stats.sorcery_points > 0:
+                    ln(f"Sorcery Points: {sel.sorcery_points_left}/{sel.stats.sorcery_points}", COLORS["spell"])
+                if sel.stats.lay_on_hands_pool > 0:
+                    ln(f"Lay on Hands: {sel.lay_on_hands_left}/{sel.stats.lay_on_hands_pool} HP", COLORS["success"])
+                if sel.stats.bardic_inspiration_count > 0:
+                    ln(f"Bardic Inspiration: {sel.bardic_inspiration_left}/{sel.stats.bardic_inspiration_count} ({sel.stats.bardic_inspiration_dice})", COLORS["spell"])
+                if hasattr(sel, 'marked_target') and sel.marked_target:
+                    ln(f"Marked: {sel.marked_target.name}", COLORS["warning"])
+        else:
+            # Non-class resources still shown
+            if hasattr(sel, 'rage_active') and sel.stats.rage_count > 0:
+                rage_str = "ACTIVE" if sel.rage_active else "Inactive"
+                rage_c = COLORS["danger"] if sel.rage_active else COLORS["text_dim"]
+                ln(f"Rage: {rage_str} ({sel.rages_left}/{sel.stats.rage_count} uses)", rage_c)
 
-        # Conditions
+        # Conditions (always visible - important for DM)
         ln("")
         ln("CONDITIONS:", COLORS["text_dim"])
         start_x = x0
@@ -4020,41 +4181,47 @@ class BattleState(GameState):
                 parts = [line[i:i+50] for i in range(0, len(line), 50)]
                 for p in parts: ln(p, COLORS["text_main"], 8)
 
-        # Features summary
+        # Features summary (collapsible)
         if sel.stats.features:
             ln("")
-            ln("FEATURES:", COLORS["text_dim"])
-            for feat in sel.stats.features:
-                uses_str = ""
-                if feat.uses_per_day > 0:
-                    remaining = sel.feature_uses.get(feat.name, feat.uses_per_day)
-                    uses_str = f" [{remaining}/{feat.uses_per_day}]"
-                elif feat.recharge:
-                    remaining = sel.feature_uses.get(feat.name, 0)
-                    uses_str = f" [{remaining}/1]"
-                
-                # Render manually to check hover
-                txt_str = f"• {feat.name}{uses_str}"
-                s = fonts.small.render(txt_str, True, COLORS["text_main"])
-                line_rect = pygame.Rect(x0+8, y, s.get_width(), 20)
-                
-                if line_rect.collidepoint(mp):
-                    s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
-                    self.active_tooltip = f"{feat.name}: {feat.description}"
-                
-                # Click to use feature (if it has uses)
-                if feat.uses_per_day > 0 or feat.recharge:
-                    self.ui_click_zones.append((line_rect, lambda f=feat: self._use_feature_manual(sel, f)))
+            y, feat_collapsed = self._draw_section_header(screen, "FEATURES", f"FEATURES ({len(sel.stats.features)})", x0, y, mp)
+            if not feat_collapsed:
+                for feat in sel.stats.features:
+                    uses_str = ""
+                    if feat.uses_per_day > 0:
+                        remaining = sel.feature_uses.get(feat.name, feat.uses_per_day)
+                        uses_str = f" [{remaining}/{feat.uses_per_day}]"
+                    elif feat.recharge:
+                        remaining = sel.feature_uses.get(feat.name, 0)
+                        uses_str = f" [{remaining}/1]"
 
-                screen.blit(s, (x0+8, y))
-                y += 20
+                    # Render manually to check hover
+                    txt_str = f"• {feat.name}{uses_str}"
+                    s = fonts.small.render(txt_str, True, COLORS["text_main"])
+                    line_rect = pygame.Rect(x0+8, y, s.get_width(), 20)
 
-        # Helper to draw action lists
-        def draw_action_section(title, actions):
+                    if line_rect.collidepoint(mp):
+                        s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
+                        self.active_tooltip = f"{feat.name}: {feat.description}"
+
+                    # Click to use feature (if it has uses)
+                    if feat.uses_per_day > 0 or feat.recharge:
+                        self.ui_click_zones.append((line_rect, lambda f=feat: self._use_feature_manual(sel, f)))
+
+                    screen.blit(s, (x0+8, y))
+                    y += 20
+
+        # Helper to draw action lists (collapsible)
+        def draw_action_section(title, actions, section_key=None):
             nonlocal y
             if not actions: return
             ln("")
-            ln(title, COLORS["text_dim"])
+            if section_key:
+                y, collapsed = self._draw_section_header(screen, section_key, f"{title} ({len(actions)})", x0, y, mp)
+                if collapsed:
+                    return
+            else:
+                ln(title, COLORS["text_dim"])
             for act in actions:
                 # Build summary string (e.g. "+7, 1d8+4")
                 info = []
@@ -4106,8 +4273,8 @@ class BattleState(GameState):
                 screen.blit(s, (x0+8, y))
                 y += 20
 
-        draw_action_section("ACTIONS:", sel.stats.actions)
-        draw_action_section("BONUS ACTIONS:", sel.stats.bonus_actions)
+        draw_action_section("ACTIONS:", sel.stats.actions, "ACTIONS")
+        draw_action_section("BONUS ACTIONS:", sel.stats.bonus_actions, "BONUS_ACTIONS")
         draw_action_section("REACTIONS:", sel.stats.reactions)
         
         # Filter and draw Legendary Actions
@@ -4498,40 +4665,64 @@ class BattleState(GameState):
             self._log(f"[DM] {entity.name} uses {feature.name}.")
             self._save_undo_snapshot()
 
+    _LOG_FILTERS = [
+        ("all", "ALL"),
+        ("selected", "ENTITY"),
+        ("damage", "DMG"),
+        ("healing", "HEAL"),
+        ("conditions", "COND"),
+        ("rolls", "ROLLS"),
+    ]
+
+    def _log_matches_filter(self, msg, mode, sel):
+        if mode == "all":
+            return True
+        if mode == "selected" and sel:
+            return sel.name in msg
+        if mode == "damage":
+            ml = msg.lower()
+            return "damage" in ml or "hit" in ml or "[DMG]" in msg or "CRIT" in msg or "MISS" in msg
+        if mode == "healing":
+            ml = msg.lower()
+            return "heal" in ml or "[REGEN]" in msg
+        if mode == "conditions":
+            ml = msg.lower()
+            return any(kw in ml for kw in ("condition", "prone", "stunned", "charmed",
+                       "frightened", "restrained", "poisoned", "paralyzed", "blinded",
+                       "incapacitated", "petrified", "grappled", "unconscious",
+                       "invisible", "deafened", "exhaustion"))
+        if mode == "rolls":
+            return "[SAVE]" in msg or "[SKILL]" in msg or "rolled" in msg.lower()
+        return True
+
     def _draw_log_tab(self, screen, sel, x0, y, mp):
-        # Filter Buttons
-        btn_w = 110
-        btn_h = 24
-        
-        # Global Button
-        r_global = pygame.Rect(x0, y, btn_w, btn_h)
-        is_global = (self.log_filter_mode == "all")
-        c_global = COLORS["accent"] if is_global else (60, 60, 60)
-        pygame.draw.rect(screen, c_global, r_global, border_radius=4)
-        t_global = fonts.tiny.render("GLOBAL LOG", True, (255,255,255))
-        screen.blit(t_global, (r_global.centerx - t_global.get_width()//2, r_global.centery - t_global.get_height()//2))
-        self.ui_click_zones.append((r_global, lambda: setattr(self, 'log_filter_mode', 'all')))
-        
-        # Entity Button
-        r_ent = pygame.Rect(x0 + btn_w + 10, y, btn_w + 40, btn_h)
-        is_ent = (self.log_filter_mode == "selected")
-        c_ent = COLORS["accent"] if is_ent else (60, 60, 60)
-        pygame.draw.rect(screen, c_ent, r_ent, border_radius=4)
-        
-        ent_name = sel.name if sel else "Entity"
-        if len(ent_name) > 15: ent_name = ent_name[:13] + ".."
-        t_ent = fonts.tiny.render(f"LOG: {ent_name}", True, (255,255,255))
-        screen.blit(t_ent, (r_ent.centerx - t_ent.get_width()//2, r_ent.centery - t_ent.get_height()//2))
-        self.ui_click_zones.append((r_ent, lambda: setattr(self, 'log_filter_mode', 'selected')))
-        
-        y += 32
+        # Filter Buttons - draw as compact pill row
+        btn_h = 22
+        sx = x0
+        for mode, label in self._LOG_FILTERS:
+            # For entity filter, show entity name
+            if mode == "selected":
+                ent_name = sel.name[:10] if sel else "Entity"
+                label = ent_name
+            tw = fonts.tiny.size(label)[0] + 12
+            r = pygame.Rect(sx, y, tw, btn_h)
+            is_active = (self.log_filter_mode == mode)
+            bg = COLORS["accent"] if is_active else (50, 52, 57)
+            if r.collidepoint(mp) and not is_active:
+                bg = (70, 72, 77)
+            pygame.draw.rect(screen, bg, r, border_radius=4)
+            t = fonts.tiny.render(label, True, (255, 255, 255))
+            screen.blit(t, (r.centerx - t.get_width() // 2, r.centery - t.get_height() // 2))
+            self.ui_click_zones.append((r, lambda m=mode: setattr(self, 'log_filter_mode', m)))
+            sx += tw + 4
+            if sx > SCREEN_WIDTH - 30:
+                sx = x0
+                y += btn_h + 2
+
+        y += btn_h + 6
 
         # Filter logic
-        display_logs = self.logs
-        if self.log_filter_mode == "selected" and sel:
-            # Show logs containing the selected entity's name
-            name = sel.name
-            display_logs = [msg for msg in self.logs if name in msg]
+        display_logs = [msg for msg in self.logs if self._log_matches_filter(msg, self.log_filter_mode, sel)]
 
         for msg in reversed(display_logs):
             c = COLORS["accent"] if msg.startswith("[AI") else \
@@ -5887,3 +6078,116 @@ class BattleState(GameState):
             self._log(f"[LOAD] Loaded {os.path.basename(filepath)}")
         except Exception as ex:
             self._log(f"[ERROR] Load failed: {ex}")
+
+    # ------------------------------------------------------------------ #
+    # Mid-battle entity add                                                #
+    # ------------------------------------------------------------------ #
+
+    def _toggle_add_entity_modal(self):
+        self.add_entity_open = not self.add_entity_open
+        self.add_entity_search = ""
+        self.add_entity_scroll = 0
+
+    def _add_entity_to_battle(self, stats, is_player=False):
+        """Add a new entity to the active battle from the monster/hero library."""
+        self._save_undo_snapshot()
+        # Place near center of current view
+        cx = (self.camera_x + GRID_W // 2) / self.battle.grid_size
+        cy = (self.camera_y + (SCREEN_HEIGHT - TOP_BAR_H) // 2) / self.battle.grid_size
+        # Offset slightly to avoid overlap
+        offset = len(self.battle.entities) * 0.5
+        ent = Entity(copy.deepcopy(stats), cx + offset, cy, is_player=is_player)
+        # If combat already started, roll initiative
+        if self.battle.combat_started:
+            init_mod = stats.abilities.get_mod("dexterity")
+            ent.initiative = random.randint(1, 20) + init_mod
+        self.battle.entities.append(ent)
+        self.selected_entity = ent
+        self.add_entity_open = False
+        self._log(f"[DM] Added {ent.name} to battle (Init {ent.initiative}).")
+
+    def _draw_add_entity_modal(self, screen, mp):
+        """Draw the mid-battle entity add modal."""
+        bw, bh = 500, 500
+        bx = SCREEN_WIDTH // 2 - bw // 2
+        by = SCREEN_HEIGHT // 2 - bh // 2
+
+        # Background
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 150))
+        screen.blit(ov, (0, 0))
+        pygame.draw.rect(screen, (38, 40, 44), (bx, by, bw, bh), border_radius=8)
+        pygame.draw.rect(screen, COLORS["accent"], (bx, by, bw, 40), border_top_left_radius=8, border_top_right_radius=8)
+
+        # Title
+        t = fonts.body_bold.render("ADD ENTITY TO BATTLE", True, (255, 255, 255))
+        screen.blit(t, (bx + 10, by + 8))
+
+        # Search bar
+        search_y = by + 50
+        pygame.draw.rect(screen, (55, 58, 62), (bx + 10, search_y, bw - 100, 28), border_radius=4)
+        st = fonts.small.render(f"Search: {self.add_entity_search}_", True, COLORS["text_main"])
+        screen.blit(st, (bx + 15, search_y + 4))
+
+        # Player/Enemy toggle
+        toggle_r = pygame.Rect(bx + bw - 85, search_y, 75, 28)
+        toggle_c = COLORS["player"] if self.add_entity_is_player else COLORS["enemy"]
+        pygame.draw.rect(screen, toggle_c, toggle_r, border_radius=4)
+        toggle_txt = "PLAYER" if self.add_entity_is_player else "ENEMY"
+        tt = fonts.tiny.render(toggle_txt, True, (255, 255, 255))
+        screen.blit(tt, (toggle_r.centerx - tt.get_width() // 2, toggle_r.centery - tt.get_height() // 2))
+        self.ui_click_zones.append((toggle_r, lambda: setattr(self, 'add_entity_is_player', not self.add_entity_is_player)))
+
+        # Monster/Hero list
+        list_y = search_y + 36
+        all_monsters = library.get_all_monsters()
+        all_heroes = hero_list
+
+        # Combine and filter
+        combined = [(m, False) for m in all_monsters] + [(h, True) for h in all_heroes]
+        if self.add_entity_search:
+            search_lower = self.add_entity_search.lower()
+            combined = [(s, p) for s, p in combined if search_lower in s.name.lower()]
+
+        # Sort: heroes first, then by CR
+        combined.sort(key=lambda x: (not x[1], x[0].challenge_rating, x[0].name))
+
+        max_visible = (bh - 120) // 26
+        visible = combined[self.add_entity_scroll:self.add_entity_scroll + max_visible]
+
+        for i, (stats, is_hero) in enumerate(visible):
+            iy = list_y + i * 26
+            cr_str = f"CR {stats.challenge_rating:.3g}" if stats.challenge_rating else "Hero"
+            label = f"{'[H]' if is_hero else '[M]'} {stats.name} ({cr_str})"
+            r = pygame.Rect(bx + 10, iy, bw - 20, 24)
+            bg = (55, 58, 62)
+            if r.collidepoint(mp):
+                bg = (80, 83, 88)
+            pygame.draw.rect(screen, bg, r, border_radius=3)
+            c = COLORS["player"] if is_hero else COLORS["text_main"]
+            s = fonts.tiny.render(label, True, c)
+            screen.blit(s, (r.x + 6, r.y + 4))
+            self.ui_click_zones.append((r, lambda st=stats, ip=is_hero: self._add_entity_to_battle(st, is_player=ip)))
+
+        # Scroll indicator
+        if len(combined) > max_visible:
+            total_pages = (len(combined) + max_visible - 1) // max_visible
+            current_page = self.add_entity_scroll // max_visible + 1
+            pg_txt = fonts.tiny.render(f"Page {current_page}/{total_pages} (scroll to browse)", True, COLORS["text_dim"])
+            screen.blit(pg_txt, (bx + 10, by + bh - 25))
+
+    def _handle_add_entity_event(self, event):
+        """Handle events for the add entity modal."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.add_entity_open = False
+            elif event.key == pygame.K_BACKSPACE:
+                self.add_entity_search = self.add_entity_search[:-1]
+                self.add_entity_scroll = 0
+            elif event.unicode.isprintable() and len(self.add_entity_search) < 30:
+                self.add_entity_search += event.unicode
+                self.add_entity_scroll = 0
+        elif event.type == pygame.MOUSEWHEEL:
+            all_count = len(library.get_all_monsters()) + len(hero_list)
+            self.add_entity_scroll = max(0, self.add_entity_scroll - event.y * 3)
+            self.add_entity_scroll = min(self.add_entity_scroll, max(0, all_count - 10))

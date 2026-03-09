@@ -51,6 +51,9 @@ class SpellInfo:
     # Bonus damage on weapon hits (e.g. Hunter's Mark 1d6)
     bonus_damage_dice: str = ""
     bonus_damage_type: str = ""
+    # Innate spellcasting: cast without using spell slots
+    innate: bool = False              # True = innate (doesn't consume slot)
+    innate_uses_per_day: int = -1     # -1 = at will, >0 = X/day
 
 @dataclass
 class Action:
@@ -104,6 +107,9 @@ class Feature:
                                       # "fighting_style", "extra_attack"
     mechanic_value: str = ""          # Extra data: dice "5d6", HP pool "50", etc.
     short_rest_recharge: bool = False # Recharges on short rest
+    # Phase mechanic: behavior change at HP thresholds
+    phase_trigger_hp_pct: float = 0.0 # e.g. 0.5 = triggers at 50% HP
+    phase_description: str = ""       # What happens when phase triggers
 
 @dataclass
 class RacialTrait:
