@@ -10,7 +10,7 @@ import heapq
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 from data.models import Action, SpellInfo
-from engine.dice import roll_attack, roll_dice, roll_dice_critical, average_damage
+from engine.dice import roll_attack, roll_dice, roll_dice_critical, average_damage, scale_cantrip_dice
 
 if TYPE_CHECKING:
     from engine.entities import Entity
@@ -99,6 +99,23 @@ class TurnPlan:
     steps: List[ActionStep] = field(default_factory=list)
     skipped: bool = False
     skip_reason: str = ""
+
+
+def _get_effective_caster_level(entity) -> int:
+    """Get effective caster level for cantrip scaling.
+    Player heroes use character_level, monsters use CR (rounded up, min 1)."""
+    if entity.stats.character_level > 0:
+        return entity.stats.character_level
+    # Monsters: use CR as effective level for cantrip scaling
+    cr = entity.stats.challenge_rating
+    return max(1, int(cr)) if cr > 0 else 1
+
+
+def _get_spell_damage_dice(spell, entity) -> str:
+    """Get the effective damage dice for a spell, scaling cantrips by caster level."""
+    if spell.level == 0 and spell.damage_dice:
+        return scale_cantrip_dice(spell.damage_dice, _get_effective_caster_level(entity))
+    return spell.damage_dice
 
 
 class TacticalAI:
@@ -1989,7 +2006,7 @@ class TacticalAI:
             dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 13)
 
             for t in clusters:
-                base = self._estimate_damage(spell.damage_dice, spell.damage_type, t)
+                base = self._estimate_damage(_get_spell_damage_dice(spell, entity), spell.damage_type, t)
                 if base <= 0:
                     continue
 
@@ -2036,7 +2053,7 @@ class TacticalAI:
                      (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                       + entity.get_modifier(entity.stats.spellcasting_ability))
 
-                raw_dmg = roll_dice(spell.damage_dice)
+                raw_dmg = roll_dice(_get_spell_damage_dice(spell, entity))
 
                 # Empowered Evocation: add INT mod to evocation damage
                 if entity.has_feature("empowered_evocation"):
@@ -2198,7 +2215,7 @@ class TacticalAI:
                 slot_used=best_spell.level, action_name=best_spell.name,
                 save_dc=spell_dc, save_ability=best_spell.save_ability,
                 applies_condition=best_spell.applies_condition,
-                damage=roll_dice(best_spell.damage_dice) if best_spell.damage_dice else 0,
+                damage=roll_dice(_get_spell_damage_dice(best_spell, entity)) if best_spell.damage_dice else 0,
                 damage_type=best_spell.damage_type if best_spell.damage_dice else "",
             )
         return None
@@ -2240,7 +2257,8 @@ class TacticalAI:
                     continue
 
                 # Calculate damage against THIS target (vulnerability/resistance)
-                base_dmg = self._estimate_damage(spell.damage_dice, spell.damage_type, target)
+                effective_dice = _get_spell_damage_dice(spell, entity)
+                base_dmg = self._estimate_damage(effective_dice, spell.damage_type, target)
                 if base_dmg <= 0: continue
                 base_dmg += extra
 
@@ -2292,8 +2310,11 @@ class TacticalAI:
             if spell.concentration:
                 entity.start_concentration(spell)
 
+            # Scale cantrip damage dice by caster level
+            effective_dice = _get_spell_damage_dice(spell, entity)
+
             if spell.save_ability:
-                dmg = roll_dice(spell.damage_dice) + int(extra)
+                dmg = roll_dice(effective_dice) + int(extra)
                 desc = f"{entity.name} casts {spell.name} on {target.name} (DC {dc} {spell.save_ability})"
                 return ActionStep(
                     step_type="spell", description=desc,
@@ -2312,7 +2333,7 @@ class TacticalAI:
                 dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
                 is_hit = total >= target.stats.armor_class and not is_fumble
-                dmg = roll_dice_critical(spell.damage_dice) if is_crit else roll_dice(spell.damage_dice)
+                dmg = roll_dice_critical(effective_dice) if is_crit else roll_dice(effective_dice)
                 dmg += int(extra)
 
                 hit_str = "CRIT! " if is_crit else "Hit? "
@@ -3549,12 +3570,12 @@ class TacticalAI:
                 dmg_str = f"{best.damage_dice}+{best.damage_bonus}" if best.damage_bonus else best.damage_dice
                 dpr += average_damage(dmg_str) * 0.65
 
-        # Spell DPR (best damage spell or cantrip)
+        # Spell DPR (best damage spell or cantrip) - scale cantrips by caster level
         all_spells = entity.stats.spells_known + entity.stats.cantrips
         damage_spells = [s for s in all_spells if s.damage_dice]
         if damage_spells:
-            best_spell = max(damage_spells, key=lambda s: average_damage(s.damage_dice))
-            spell_dpr = average_damage(best_spell.damage_dice) * 0.6  # ~60% save/hit
+            best_spell = max(damage_spells, key=lambda s: average_damage(_get_spell_damage_dice(s, entity)))
+            spell_dpr = average_damage(_get_spell_damage_dice(best_spell, entity)) * 0.6  # ~60% save/hit
             # Only count spell DPR if it's better than physical (caster probably uses best option)
             dpr = max(dpr, spell_dpr)
 
