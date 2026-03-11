@@ -865,6 +865,29 @@ class BattleSystem:
                         return False
         return True
 
+    def is_passable_or_jumpable(self, x: float, y: float, entity: Entity = None) -> bool:
+        """Like is_passable but also allows gaps that the entity can jump/fly across.
+        Used by AI pathfinding to consider jump routes."""
+        if self.is_passable(x, y, exclude=entity):
+            return True
+        if entity and entity.is_flying:
+            # Flyer can cross anything except entity-occupied
+            return not self.is_occupied(x, y, exclude=entity)
+        # Check if it's a jumpable gap
+        t = self.get_terrain_at(int(x), int(y))
+        if t and t.is_gap and entity:
+            gap_ft = t.gap_width_ft
+            if entity.can_jump_gap(gap_ft, running_start=True):
+                return not self.is_occupied(x, y, exclude=entity)
+        return False
+
+    def get_gap_at(self, x: int, y: int):
+        """Get gap terrain at position, or None."""
+        t = self.get_terrain_at(x, y)
+        if t and t.is_gap:
+            return t
+        return None
+
     def get_terrain_movement_cost(self, x: float, y: float, entity: Entity = None) -> float:
         """Returns movement multiplier: 1.0 normal, 2.0 difficult, 2.0 climbing.
         Flying entities ignore difficult terrain."""
@@ -952,10 +975,30 @@ class BattleSystem:
         entity.is_flying = False
         entity.is_climbing = False
 
-    def move_entity_with_elevation(self, entity: Entity, new_x: float, new_y: float):
-        """Move entity and handle elevation changes, fall damage, climbing costs."""
+    def move_entity_with_elevation(self, entity: Entity, new_x: float, new_y: float,
+                                    is_jumping: bool = False):
+        """Move entity and handle elevation changes, fall damage, climbing costs.
+        is_jumping: entity is mid-jump (won't fall into gaps)."""
         old_elev = entity.elevation
         new_ground = self.get_elevation_at(int(new_x), int(new_y))
+
+        # Check for gap/chasm at destination
+        t_at_new = self.get_terrain_at(int(new_x), int(new_y))
+        if t_at_new and t_at_new.is_gap and not entity.is_flying and not is_jumping:
+            # Entity walks into a chasm without jumping - they fall!
+            fall_dist = abs(t_at_new.elevation) + old_elev
+            entity.grid_x = float(new_x)
+            entity.grid_y = float(new_y)
+            entity.elevation = t_at_new.elevation
+            if t_at_new.is_hazard:
+                # Lava/acid chasm: hazard damage on top of fall
+                from engine.dice import roll_dice
+                hdmg = roll_dice(t_at_new.hazard_damage)
+                dealt, _ = entity.take_damage(hdmg, t_at_new.hazard_damage_type)
+                self.log(f"  [HAZARD] {entity.name} falls into {t_at_new.name}! {dealt} {t_at_new.hazard_damage_type} damage!")
+            self.apply_fall_damage(entity, fall_dist)
+            self.log(f"  [CHASM] {entity.name} falls into {t_at_new.name}!")
+            return
 
         if entity.is_flying:
             # Flying entity: stays at current elevation or terrain elevation, whichever is higher
