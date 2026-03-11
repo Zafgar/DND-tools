@@ -129,10 +129,14 @@ class TacticalAI:
         """Filter enemies to only those the entity can see."""
         return [e for e in enemies if e.hp > 0 and self._can_see_target(entity, e, battle)]
 
-    def _can_ranged_attack(self, entity, target, battle) -> bool:
+    def _can_ranged_attack(self, entity, target, battle, range_ft: float = 0) -> bool:
         """Check if a ranged attack/spell is valid: LOS + range."""
         if not self._can_see_target(entity, target, battle):
             return False
+        if range_ft > 0:
+            dist_ft = battle.get_distance(entity, target) * 5
+            if dist_ft > range_ft:
+                return False
         return True
 
     def _get_terrain_advantage_score(self, entity, battle, x, y) -> float:
@@ -2252,8 +2256,8 @@ class TacticalAI:
             for target in enemies:
                 if target.hp <= 0: continue
 
-                # LOS check: most spells require line of sight
-                if not self._can_see_target(entity, target, battle):
+                # LOS + range check
+                if not self._can_ranged_attack(entity, target, battle, range_ft=spell.range):
                     continue
 
                 # Calculate damage against THIS target (vulnerability/resistance)
@@ -2261,9 +2265,6 @@ class TacticalAI:
                 base_dmg = self._estimate_damage(effective_dice, spell.damage_type, target)
                 if base_dmg <= 0: continue
                 base_dmg += extra
-
-                dist = battle.get_distance(entity, target) * 5
-                if dist > spell.range: continue
 
                 # Check if caster is threatened (enemy within 5ft) for ranged spells
                 is_threatened = False
