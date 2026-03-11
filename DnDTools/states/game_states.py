@@ -2297,6 +2297,7 @@ class BattleState(GameState):
             (f"Drop Concentration", lambda: entity.drop_concentration() or self._log(f"{entity.name} drops concentration.")),
             (f"Add Effect...", lambda: self._open_effect_modal(entity)),
             (f"Edit Notes...", lambda: self._open_notes_modal(entity)),
+            (f"SET AI TARGET", lambda: self._set_ai_forced_target(entity)),
             (f"Clear Dead", lambda: self._clear_dead_monsters()),
         ]
         x, y = pos
@@ -2321,6 +2322,20 @@ class BattleState(GameState):
         if result: self._save_undo_snapshot()
         self.effect_modal = None
         if result: self._log(f"[DM] Added effect: {result}")
+
+    def _set_ai_forced_target(self, target_entity):
+        """DM forces the current active entity to target a specific enemy on next AI turn."""
+        self.ctx_open = False
+        try:
+            curr = self.battle.get_current_entity()
+        except ValueError:
+            self._log("[DM] No active entity to assign target to.")
+            return
+        if curr == target_entity:
+            self._log("[DM] Can't target self.")
+            return
+        curr.dm_forced_target = target_entity
+        self._log(f"[DM TARGET] {curr.name} will target {target_entity.name} on next AI turn.")
 
     def _clear_dead_monsters(self):
         self._save_undo_snapshot()

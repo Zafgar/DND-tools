@@ -23,8 +23,22 @@ TERRAIN_TYPES = {
                   "icon": "♣", "blocks_los": True, "elevation_ft": 20, "climbable": True, "cover_bonus": 5},
     "house":     {"color": (110, 80, 65),  "passable": False, "label": "House",
                   "icon": "⌂", "blocks_los": True, "elevation_ft": 15, "cover_bonus": 5},
-    "chasm":     {"color": (15, 15, 28),   "passable": False, "label": "Chasm",
-                  "icon": "▼", "elevation_ft": -30},
+    "chasm":     {"color": (15, 15, 28),   "passable": False, "label": "Chasm (5ft)",
+                  "icon": "▼", "elevation_ft": -100, "is_gap": True, "gap_width_ft": 5,
+                  "description": "Bottomless chasm. Jump (5ft) or fly to cross. Fall = death."},
+    "chasm_10":  {"color": (12, 12, 25),  "passable": False, "label": "Chasm (10ft)",
+                  "icon": "▼▼", "elevation_ft": -100, "is_gap": True, "gap_width_ft": 10,
+                  "description": "Wide chasm. Long jump (10ft) or fly to cross."},
+    "chasm_15":  {"color": (10, 10, 22),  "passable": False, "label": "Chasm (15ft)",
+                  "icon": "▼!", "elevation_ft": -100, "is_gap": True, "gap_width_ft": 15,
+                  "description": "Very wide chasm. Long jump (15ft STR) or fly to cross."},
+    "chasm_20":  {"color": (8, 8, 20),    "passable": False, "label": "Chasm (20ft)",
+                  "icon": "▼!!", "elevation_ft": -100, "is_gap": True, "gap_width_ft": 20,
+                  "description": "Massive chasm. Only STR 20+ long jump or fly."},
+    "lava_chasm":{"color": (180, 40, 10), "passable": False, "label": "Lava Chasm",
+                  "icon": "▼~", "elevation_ft": -100, "is_gap": True, "gap_width_ft": 10,
+                  "hazard_damage": "10d10", "damage_type": "fire",
+                  "description": "Lava-filled chasm. Jump or fly. Falling = 10d10 fire."},
     # --- Doors ---
     "door":      {"color": (140, 100, 50), "passable": False, "label": "Door",
                   "icon": "D", "blocks_los": True, "door": True, "elevation_ft": 0},
@@ -264,6 +278,16 @@ class TerrainObject:
     @property
     def is_climbable(self) -> bool:
         return self.props.get("climbable", False)
+
+    @property
+    def is_gap(self) -> bool:
+        """Is this a gap/chasm that can be jumped over or flown across?"""
+        return self.props.get("is_gap", False)
+
+    @property
+    def gap_width_ft(self) -> int:
+        """Width of gap in feet (for jump DC)."""
+        return self.props.get("gap_width_ft", 5)
 
     @property
     def color(self) -> tuple:

@@ -760,7 +760,6 @@ class TacticalAI:
                 entity.elevation = max(entity.elevation, 15)  # Gain altitude
             else:
                 # Melee flyers: fly if target is flying or if ground is hazardous
-                ground_hazard = False
                 for e in enemies:
                     if e.hp > 0 and e.is_flying:
                         entity.start_flying()
@@ -771,6 +770,16 @@ class TacticalAI:
                     if t and t.is_hazard:
                         entity.start_flying()
                         entity.elevation = max(entity.elevation + 10, 10)
+                # Fly to cross gaps: if no path to target exists without flying
+                if not entity.is_flying and target:
+                    normal_path = self._find_path(
+                        (int(entity.grid_x), int(entity.grid_y)),
+                        (int(target.grid_x), int(target.grid_y)),
+                        battle, entity, allow_jump=False)
+                    if normal_path is None:
+                        # Can't walk there - fly if possible
+                        entity.start_flying()
+                        entity.elevation = max(entity.elevation, 15)
 
         # --- 0. PRONE: Stand up or escape grapple ---
         if entity.has_condition("Prone"):
@@ -1026,7 +1035,7 @@ class TacticalAI:
             )
         return None
 
-    def _is_safe_passable(self, battle, x, y, entity):
+    def _is_safe_passable(self, battle, x, y, entity, allow_jump=False):
         # First check standard passability
         if not battle.is_passable(x, y, exclude=entity):
             # Special case: closed (unlocked) door - AI can open it
@@ -1034,6 +1043,12 @@ class TacticalAI:
             if t and t.is_door and not t.door_open and not t.is_locked:
                 # Door can be opened - treat as passable
                 return True
+            # Special case: gap/chasm - jumpable or flyable
+            if t and t.is_gap:
+                if entity.is_flying:
+                    return not battle.is_occupied(x, y, exclude=entity)
+                if allow_jump and entity.can_jump_gap(t.gap_width_ft, running_start=True):
+                    return not battle.is_occupied(x, y, exclude=entity)
             return False
         # Flying entities ignore ground hazards
         if entity.is_flying:
@@ -1043,8 +1058,9 @@ class TacticalAI:
             return False
         return True
 
-    def _find_path(self, start, end, battle, entity):
-        """A* Pathfinding to find optimal path around obstacles."""
+    def _find_path(self, start, end, battle, entity, allow_jump=True):
+        """A* Pathfinding to find optimal path around obstacles.
+        allow_jump: if True, consider jumping across gaps/chasms."""
         def heuristic(a, b):
             return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
@@ -1052,6 +1068,8 @@ class TacticalAI:
         heapq.heappush(open_set, (0, start))
         came_from = {}
         g_score = {start: 0}
+        # Track which steps require jumping (for movement execution)
+        self._path_jump_tiles = set()
 
         if start == end:
             return []
@@ -1080,7 +1098,7 @@ class TacticalAI:
                     nx, ny = cx + dx, cy + dy
                     neighbor = (nx, ny)
 
-                    if not self._is_safe_passable(battle, nx, ny, entity):
+                    if not self._is_safe_passable(battle, nx, ny, entity, allow_jump=allow_jump):
                         continue
 
                     move_cost = battle.get_terrain_movement_cost(nx, ny, entity)
@@ -1088,6 +1106,16 @@ class TacticalAI:
                     t = battle.get_terrain_at(int(nx), int(ny))
                     if t and t.is_door and not t.door_open:
                         move_cost += 0.5  # Small penalty so AI prefers open paths
+                    # Gaps cost extra (jump cost = gap width in movement feet)
+                    if t and t.is_gap and not entity.is_flying:
+                        jump_cost = t.gap_width_ft / 5.0  # Convert to grid cost
+                        move_cost += jump_cost
+                        self._path_jump_tiles.add(neighbor)
+                    # Climbing cost for going up to climbable terrain
+                    if t and t.is_climbable and not entity.is_flying:
+                        if entity.stats.climb_speed <= 0:
+                            move_cost += 1.0  # Extra cost for climbing without climb speed
+
                     tentative_g = g_score[current] + move_cost
 
                     if neighbor not in g_score or tentative_g < g_score[neighbor]:
@@ -1095,6 +1123,11 @@ class TacticalAI:
                         g_score[neighbor] = tentative_g
                         f = tentative_g + heuristic(neighbor, end)
                         heapq.heappush(open_set, (f, neighbor))
+
+        # No normal path found - try with jumping if not already
+        if not allow_jump:
+            return None
+
         return None
 
     def _move_toward(self, entity, target, allies, battle, forced_dest=None):
@@ -1126,12 +1159,27 @@ class TacticalAI:
         end_node = (int(dest_x), int(dest_y))
         path = self._find_path(start_node, end_node, battle, entity)
 
+        jump_tiles = getattr(self, '_path_jump_tiles', set())
+        jumped_over = False
+
         if path:
             from engine.rules import can_move_toward_fear_source
             fear_source = entity.get_condition_source("Frightened") if entity.has_condition("Frightened") else None
 
             for (nx, ny) in path:
                 cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
+                is_jump = (nx, ny) in jump_tiles
+
+                # Jump cost: gap width in feet of movement (PHB p.182)
+                if is_jump:
+                    t_gap = battle.get_terrain_at(int(nx), int(ny))
+                    if t_gap and t_gap.is_gap:
+                        jump_ft = t_gap.gap_width_ft
+                        cost = entity.get_jump_cost(jump_ft)
+                        # Need 10ft running start for full long jump
+                        if entity.movement_left < cost:
+                            break
+
                 if entity.movement_left < cost:
                     break
 
@@ -1147,7 +1195,12 @@ class TacticalAI:
                         break
 
                 old_x, old_y = entity.grid_x, entity.grid_y
-                entity.grid_x, entity.grid_y = nx, ny
+                # If jumping over gap, use is_jumping=True to avoid falling
+                if is_jump:
+                    battle.move_entity_with_elevation(entity, nx, ny, is_jumping=True)
+                    jumped_over = True
+                else:
+                    entity.grid_x, entity.grid_y = nx, ny
                 entity.movement_left -= cost
 
                 # PHB p.195: Drag grappled creatures along when moving
@@ -1170,10 +1223,11 @@ class TacticalAI:
             dragged_names = [g.name for g in entity.grappling if g.hp > 0]
             if dragged_names:
                 drag_note = f" (dragging {', '.join(dragged_names)})"
+        jump_note = " (jumps across gap!)" if jumped_over else ""
 
         return ActionStep(
             step_type="move",
-            description=f"{entity.name} moves {moved_cost:.0f} ft.{drag_note}",
+            description=f"{entity.name} moves {moved_cost:.0f} ft.{jump_note}{drag_note}",
             attacker=entity,
             new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y,
@@ -1214,7 +1268,7 @@ class TacticalAI:
                     if dx == 0 and dy == 0:
                         continue
                     nx, ny = int(dest_x + dx), int(dest_y + dy)
-                    if self._is_safe_passable(battle, nx, ny, entity):
+                    if self._is_safe_passable(battle, nx, ny, entity, allow_jump=True):
                         valid_adj.append((nx, ny))
             if valid_adj:
                 dest_x, dest_y = min(valid_adj, key=lambda p: math.hypot(p[0] - entity.grid_x, p[1] - entity.grid_y))
@@ -1222,12 +1276,23 @@ class TacticalAI:
         path = self._find_path((int(entity.grid_x), int(entity.grid_y)),
                                (int(dest_x), int(dest_y)), battle, entity)
 
+        jump_tiles = getattr(self, '_path_jump_tiles', set())
+        jumped = False
         if path:
             for (nx, ny) in path:
-                cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
+                is_jump = (nx, ny) in jump_tiles
+                if is_jump:
+                    t_gap = battle.get_terrain_at(int(nx), int(ny))
+                    cost = entity.get_jump_cost(t_gap.gap_width_ft) if t_gap and t_gap.is_gap else 5.0
+                else:
+                    cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
                 if entity.movement_left < cost:
                     break
-                entity.grid_x, entity.grid_y = nx, ny
+                if is_jump:
+                    battle.move_entity_with_elevation(entity, nx, ny, is_jumping=True)
+                    jumped = True
+                else:
+                    entity.grid_x, entity.grid_y = nx, ny
                 entity.movement_left -= cost
 
         moved_cost = start_movement - entity.movement_left
@@ -1236,9 +1301,10 @@ class TacticalAI:
         if dist_moved < 0.1:
             return None
 
+        jump_note = " (jumps across gap!)" if jumped else ""
         return ActionStep(
             step_type="move",
-            description=f"{entity.name} repositions {moved_cost:.0f} ft.",
+            description=f"{entity.name} repositions {moved_cost:.0f} ft.{jump_note}",
             attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y)
 
@@ -3405,10 +3471,15 @@ class TacticalAI:
 
     def _pick_target(self, entity, enemies, battle=None) -> Optional["Entity"]:
         """God-mode target selection: score all enemies considering everything.
-        Prioritizes visible targets but falls back to known positions if nothing visible."""
+        Prioritizes DM-forced target, then team focus, then score-based selection."""
         alive = [e for e in enemies if e.hp > 0]
         if not alive:
             return None
+        # DM override: forced target takes absolute priority
+        if entity.dm_forced_target and entity.dm_forced_target.hp > 0:
+            forced = entity.dm_forced_target
+            entity.dm_forced_target = None  # Clear after use (one turn only)
+            return forced
         # Use team focus fire: coordinate with allies to kill one target at a time
         focus = self._get_team_focus_target(entity, alive)
         if focus:

@@ -77,6 +77,7 @@ class Entity:
         self.is_dodging: bool = False
         self.is_disengaging: bool = False
         self.is_surprised: bool = False  # PHB p.189: Surprised creatures can't move/act in round 1
+        self.dm_forced_target: "Entity | None" = None  # DM override: force AI to target this entity
 
         # Phase tracking (for monsters with behavior changes at HP thresholds)
         self.active_phases: set = set()  # Set of phase feature names already triggered
@@ -608,6 +609,37 @@ class Entity:
                 worst_mult = min(worst_mult, mult)
             speed *= worst_mult
         return speed
+
+    # ------------------------------------------------------------------ #
+    # Jumping (5e 2014 PHB p.182)                                          #
+    # ------------------------------------------------------------------ #
+
+    def get_long_jump_distance(self, running_start: bool = True) -> int:
+        """Long jump distance in feet.
+        Running start: STR score feet.  Standing: half that.
+        Cannot exceed remaining movement."""
+        base = self.stats.abilities.strength  # STR score, not modifier
+        dist = base if running_start else base // 2
+        return min(dist, int(self.movement_left))
+
+    def get_high_jump_distance(self, running_start: bool = True) -> int:
+        """High jump height in feet.
+        Running start: 3 + STR modifier feet.  Standing: half that.
+        Reach = jump height + 1.5x height (Medium ≈ 6ft, so +9ft reach)."""
+        str_mod = self.stats.abilities.get_mod("strength")
+        base = 3 + str_mod
+        if base < 0:
+            base = 0
+        dist = base if running_start else max(1, base // 2)
+        return dist
+
+    def can_jump_gap(self, gap_ft: int, running_start: bool = True) -> bool:
+        """Check if entity can long-jump across a gap of given width (feet)."""
+        return self.get_long_jump_distance(running_start) >= gap_ft
+
+    def get_jump_cost(self, distance_ft: int) -> float:
+        """Movement cost for a jump. Each foot of jump costs 1 foot of movement."""
+        return float(distance_ft)
 
     # ------------------------------------------------------------------ #
     # Modifiers                                                            #
