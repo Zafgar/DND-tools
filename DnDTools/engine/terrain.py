@@ -102,7 +102,7 @@ TERRAIN_TYPES = {
     "darkness":  {"color": (10, 10, 15),   "passable": True, "label": "Darkness",
                   "icon": "dk", "blocks_los": True},
     "dim_light": {"color": (40, 40, 50),   "passable": True, "label": "Dim Light",
-                  "icon": "dl"},
+                  "icon": "dl", "lightly_obscured": True},
     # --- Magical terrain ---
     "antimagic":  {"color": (60, 60, 80),  "passable": True, "label": "Antimagic Zone",
                   "icon": "AM", "description": "No magic works here."},

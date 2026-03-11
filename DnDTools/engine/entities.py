@@ -650,6 +650,42 @@ class Entity:
     # Class feature helpers                                                #
     # ------------------------------------------------------------------ #
 
+    def get_darkvision_range(self) -> int:
+        """Get darkvision range in feet. Checks racial traits, features, and senses string."""
+        best = 0
+        # Check racial traits / features with mechanic="darkvision"
+        feat = self.get_feature("darkvision")
+        if feat and feat.mechanic_value:
+            try:
+                best = max(best, int(feat.mechanic_value))
+            except (ValueError, TypeError):
+                best = max(best, 60)
+        # Check racial_traits list
+        for rt in self.stats.racial_traits:
+            if getattr(rt, 'mechanic', '') == "darkvision" and getattr(rt, 'mechanic_value', ''):
+                try:
+                    best = max(best, int(rt.mechanic_value))
+                except (ValueError, TypeError):
+                    best = max(best, 60)
+        # Check senses string (monsters: "darkvision 60 ft.")
+        import re
+        if self.stats.senses:
+            m = re.search(r'darkvision\s+(\d+)', self.stats.senses, re.IGNORECASE)
+            if m:
+                best = max(best, int(m.group(1)))
+        return best
+
+    def get_blindsight_range(self) -> int:
+        """Get blindsight range in feet from senses string or features."""
+        import re
+        if self.stats.senses:
+            m = re.search(r'blindsight\s+(\d+)', self.stats.senses, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        if self.has_feature("blindsight"):
+            return 60  # Default blindsight range
+        return 0
+
     def has_feature(self, mechanic: str) -> bool:
         """Check if entity has a feature with the given mechanic key."""
         return any(f.mechanic == mechanic for f in self.stats.features)
@@ -739,7 +775,8 @@ class Entity:
 
     def has_attack_disadvantage(self, target: "Entity" = None, is_ranged: bool = False,
                                 is_threatened: bool = False, distance_ft: float = 0,
-                                normal_range: int = 0, long_range: int = 0) -> bool:
+                                normal_range: int = 0, long_range: int = 0,
+                                battle: "BattleSystem" = None) -> bool:
         if self.has_condition("Blinded"):
             return True
         if self.has_condition("Poisoned"):
@@ -764,6 +801,12 @@ class Entity:
             return True
         if self.exhaustion >= 3:
             return True
+        # 5e 2014: Lightly obscured targets (dim light, light fog) give disadvantage
+        # Darkvision with darkness → dim light = lightly obscured → disadvantage
+        if target and battle:
+            obscurement = battle.get_target_obscurement(self, target)
+            if obscurement == "light":
+                return True
         return False
 
     # ------------------------------------------------------------------ #
@@ -818,6 +861,11 @@ class Entity:
                 self.spell_slots[key] -= 1
                 return True
         return False
+
+    def restore_spell_slot(self, level: int):
+        """Refund a spell slot (e.g. when AI step is skipped/cancelled)."""
+        key = self._LEVEL_KEYS.get(level, f"{level}th")
+        self.spell_slots[key] = self.spell_slots.get(key, 0) + 1
 
     def get_slot_for_level(self, level: int) -> int:
         """Returns the lowest slot >= level that is available."""

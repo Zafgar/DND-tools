@@ -985,7 +985,9 @@ class BattleState(GameState):
         self.undo_stack = []        # Stack of full state dicts
         self.ts_last_update = 0     # Timestamp of last TaleSpire update
         self.auto_battle = False    # Auto-play toggle
+        self.auto_battle_paused = False  # Pause without fully stopping
         self.auto_timer = 0         # Timer for auto-play ticks
+        self.auto_battle_speed = 10 # Frames per tick (lower = faster). Options: 3, 6, 10, 20, 40
         self.log_filter_mode = "all" # "all", "selected", "damage", "healing", "conditions", "rolls"
 
         # Direct HP input mode (type "-17" Enter to apply damage)
@@ -1151,6 +1153,10 @@ class BattleState(GameState):
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
+        self.btn_pause   = Button(454, SCREEN_HEIGHT-28, 72, 24, "PAUSE",     self._toggle_pause_auto,    color=COLORS["panel"])
+        self.btn_speed_down = Button(530, SCREEN_HEIGHT-28, 24, 24, "-",       self._auto_speed_down,      color=COLORS["panel"])
+        self.btn_speed_lbl  = Button(554, SCREEN_HEIGHT-28, 36, 24, "1x",      lambda: None,               color=COLORS["text_dim"])
+        self.btn_speed_up   = Button(590, SCREEN_HEIGHT-28, 24, 24, "+",       self._auto_speed_up,        color=COLORS["panel"])
         self.btn_advisor = Button(532, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
         self.btn_maps    = Button(618, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
         self.map_browser_open = False
@@ -1180,6 +1186,8 @@ class BattleState(GameState):
                                   "DENY",    lambda: self._skip_step(),   color=COLORS["danger"])
         self.btn_approve_all = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+180, 130, 38,
                                       "APPROVE ALL", lambda: self._approve_all(), color=COLORS["accent"])
+        self.btn_cancel_ai  = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+225, 130, 38,
+                                      "DO MANUALLY", lambda: self._cancel_ai_plan(), color=COLORS["warning"])
 
         # Player action buttons
         self.player_action_btns = [
@@ -1196,14 +1204,50 @@ class BattleState(GameState):
 
     def _toggle_auto_battle(self):
         self.auto_battle = not self.auto_battle
+        self.auto_battle_paused = False
         if self.auto_battle:
             self.btn_auto.color = COLORS["success"]
             self.btn_auto.text = "STOP"
+            self.btn_pause.color = COLORS["warning"]
+            self.btn_pause.text = "PAUSE"
             self._log("[SYSTEM] Auto-Battle STARTED.")
         else:
             self.btn_auto.color = COLORS["panel"]
             self.btn_auto.text = "AUTO"
+            self.btn_pause.color = COLORS["panel"]
+            self.btn_pause.text = "PAUSE"
             self._log("[SYSTEM] Auto-Battle STOPPED.")
+
+    def _toggle_pause_auto(self):
+        if not self.auto_battle:
+            return
+        self.auto_battle_paused = not self.auto_battle_paused
+        if self.auto_battle_paused:
+            self.btn_pause.color = COLORS["accent"]
+            self.btn_pause.text = "RESUME"
+            self._log("[SYSTEM] Auto-Battle PAUSED.")
+        else:
+            self.btn_pause.color = COLORS["warning"]
+            self.btn_pause.text = "PAUSE"
+            self._log("[SYSTEM] Auto-Battle RESUMED.")
+
+    def _auto_speed_up(self):
+        speeds = [40, 20, 10, 6, 3]
+        idx = speeds.index(self.auto_battle_speed) if self.auto_battle_speed in speeds else 2
+        if idx < len(speeds) - 1:
+            self.auto_battle_speed = speeds[idx + 1]
+        labels = {3: "5x", 6: "3x", 10: "1x", 20: "0.5x", 40: "0.25x"}
+        self.btn_speed_lbl.text = labels.get(self.auto_battle_speed, "1x")
+        self._log(f"[SYSTEM] Auto speed: {labels.get(self.auto_battle_speed, '?')}")
+
+    def _auto_speed_down(self):
+        speeds = [40, 20, 10, 6, 3]
+        idx = speeds.index(self.auto_battle_speed) if self.auto_battle_speed in speeds else 2
+        if idx > 0:
+            self.auto_battle_speed = speeds[idx - 1]
+        labels = {3: "5x", 6: "3x", 10: "1x", 20: "0.5x", 40: "0.25x"}
+        self.btn_speed_lbl.text = labels.get(self.auto_battle_speed, "1x")
+        self._log(f"[SYSTEM] Auto speed: {labels.get(self.auto_battle_speed, '?')}")
 
     def _process_auto_battle(self):
         """Handle one tick of auto-battle logic."""
@@ -1286,9 +1330,9 @@ class BattleState(GameState):
             self.turn_banner_timer -= 1
             
         # Auto Battle Tick
-        if self.auto_battle and self.battle.combat_started:
+        if self.auto_battle and not self.auto_battle_paused and self.battle.combat_started:
             self.auto_timer += 1
-            if self.auto_timer > 10:  # Adjust speed here (frames per tick)
+            if self.auto_timer > self.auto_battle_speed:
                 self.auto_timer = 0
                 self._process_auto_battle()
 
@@ -1614,14 +1658,28 @@ class BattleState(GameState):
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
-            
+
             # Revert Movement if it happened
             if step.step_type == "move" and step.attacker:
                 step.attacker.grid_x = step.old_x
                 step.attacker.grid_y = step.old_y
                 step.attacker.movement_left += step.movement_ft
-            
+
             self._log(f"[SKIPPED] {step.description}")
+
+            # Try to suggest an alternative for action/spell steps (once per step)
+            is_already_alternative = getattr(step, '_is_alternative', False)
+            if step.step_type in ("spell", "attack", "multiattack") and not is_already_alternative:
+                alt = self.battle.ai.suggest_alternative(step.attacker, self.battle, step)
+                if alt:
+                    alt._is_alternative = True  # Prevent infinite re-suggestion
+                    steps[self.pending_step_idx] = alt
+                    self._log(f"[AI ALTERNATIVE] {alt.description}")
+                    self._prepare_step_outcomes()
+                    return  # Don't advance - show the alternative for review
+                else:
+                    self._log("[AI] No alternative available.")
+
             self.pending_step_idx += 1
             self._prepare_step_outcomes()
         if self.pending_step_idx >= len(steps):
@@ -1638,6 +1696,20 @@ class BattleState(GameState):
             self._log(f"[AUTO-CONFIRM] {step.description}")
         self.pending_plan = None
         self._log("[AI] All steps approved.")
+
+    def _cancel_ai_plan(self):
+        """Cancel remaining AI plan and let DM take over manually."""
+        if not self.pending_plan:
+            return
+        # Revert any movement from already-executed steps this won't undo confirmed
+        # steps (those are in undo stack), just cancel remaining unconfirmed steps
+        steps = self.pending_plan.steps
+        remaining = len(steps) - self.pending_step_idx
+        self.pending_plan = None
+        self.pending_step_idx = 0
+        self.current_step_outcomes = {}
+        self.current_step_rolls = {}
+        self._log(f"[AI] Plan cancelled ({remaining} step(s) remaining). Take over manually.")
 
     def _resolve_target_outcome(self, step, target, outcome):
         """Apply effects based on user choice."""
@@ -3083,6 +3155,7 @@ class BattleState(GameState):
                         self.btn_confirm.handle_event(event)
                         self.btn_deny.handle_event(event)
                         self.btn_approve_all.handle_event(event)
+                        self.btn_cancel_ai.handle_event(event)
                     continue
 
                 # Pending Aura Trigger
@@ -3288,6 +3361,10 @@ class BattleState(GameState):
                 self.btn_weather.handle_event(event)
                 self.btn_undo.handle_event(event)
                 self.btn_auto.handle_event(event)
+                if self.auto_battle:
+                    self.btn_pause.handle_event(event)
+                    self.btn_speed_down.handle_event(event)
+                    self.btn_speed_up.handle_event(event)
                 self.btn_advisor.handle_event(event)
                 self.btn_maps.handle_event(event)
                 self.btn_save_map.handle_event(event)
@@ -3766,6 +3843,12 @@ class BattleState(GameState):
     def _draw_grid_buttons(self, screen, mp):
         for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_add_entity):
             b.draw(screen, mp)
+        # Auto battle controls (pause + speed) - only visible when auto battle is active
+        if self.auto_battle:
+            self.btn_pause.draw(screen, mp)
+            self.btn_speed_down.draw(screen, mp)
+            self.btn_speed_lbl.draw(screen, mp)
+            self.btn_speed_up.draw(screen, mp)
         # Terrain mode indicator
         if self.terrain_mode:
             tc = COLORS["warning"]
@@ -4882,10 +4965,12 @@ class BattleState(GameState):
         self.btn_deny.rect.topleft    = (bx + bw//2 + 10,  by + bh - 55)
         self.btn_deny.text = "SKIP STEP"
         
-        self.btn_approve_all.rect.topleft = (bx + bw//2 - 65, by + bh - 100)
+        self.btn_approve_all.rect.topleft = (bx + bw//2 - 150, by + bh - 100)
+        self.btn_cancel_ai.rect.topleft  = (bx + bw//2 + 20,  by + bh - 100)
         self.btn_confirm.draw(screen, mp)
         self.btn_deny.draw(screen, mp)
         self.btn_approve_all.draw(screen, mp)
+        self.btn_cancel_ai.draw(screen, mp)
 
     # --- Reaction / Opportunity Attack Modal ---
     def _draw_reaction_modal(self, screen, mp):
@@ -4966,7 +5051,7 @@ class BattleState(GameState):
                 # Roll attack
                 from engine.dice import roll_attack, roll_dice_critical, roll_dice
                 adv = reactor.has_attack_advantage(mover)
-                dis = reactor.has_attack_disadvantage(mover)
+                dis = reactor.has_attack_disadvantage(mover, battle=self.battle)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(melee_action.attack_bonus, adv, dis)
                 
                 hit = total >= mover.stats.armor_class and not is_fumble
