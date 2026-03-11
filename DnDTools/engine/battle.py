@@ -750,29 +750,104 @@ class BattleSystem:
         return best_bonus
 
     def has_line_of_sight(self, e1: Entity, e2: Entity) -> bool:
-        """Check if e1 can see e2. Considers terrain LOS blocking, darkness, invisibility."""
-        # Invisible target: can't see unless truesight/special
+        """Check if e1 can see e2. Considers terrain LOS blocking, darkness, invisibility.
+
+        5e 2014 rules:
+        - Heavily obscured (darkness, heavy fog): can't see → no LOS
+        - Darkvision: treats darkness as dim light (lightly obscured) within range
+        - Devil's Sight / Truesight: see normally in magical darkness
+        - Blindsight: see without relying on sight at all
+        """
+        # Blindsight always works within range (ignore visibility entirely)
+        bs_range = e1.get_blindsight_range()
+        if bs_range > 0:
+            dist_ft = self.get_distance(e1, e2) * 5
+            if dist_ft <= bs_range:
+                # Blindsight ignores invisible, darkness, everything
+                # Still blocked by full cover (terrain LOS blocking)
+                x1, y1 = int(e1.grid_x), int(e1.grid_y)
+                x2, y2 = int(e2.grid_x), int(e2.grid_y)
+                if check_los_blocked(self.terrain, x1, y1, x2, y2):
+                    if not (e1.is_flying and e1.elevation >= 15):
+                        return False
+                return True
+
+        # Invisible target: can't see unless truesight
         if e2.has_condition("Invisible") and not e1.has_feature("truesight"):
-            if not e1.has_feature("blindsight"):
-                return False
+            return False
 
         x1, y1 = int(e1.grid_x), int(e1.grid_y)
         x2, y2 = int(e2.grid_x), int(e2.grid_y)
 
-        # Check terrain LOS blocking
+        # Check terrain LOS blocking (walls, full cover)
         if check_los_blocked(self.terrain, x1, y1, x2, y2):
-            # Flying entities at high elevation can see over some walls
             if e1.is_flying and e1.elevation >= 15:
                 return True  # Can see over most walls from high altitude
             return False
 
-        # Darkness check: target in magical darkness
+        # Darkness check: target in darkness terrain (heavily obscured)
         t_at_target = self.get_terrain_at(x2, y2)
         if t_at_target and t_at_target.terrain_type == "darkness":
-            if not e1.has_feature("devil_sight") and not e1.has_feature("truesight"):
-                return False
+            # Devil's Sight / Truesight see through magical darkness
+            if e1.has_feature("devil_sight") or e1.has_feature("truesight"):
+                return True
+            # Darkvision: treats darkness as dim light within range → can see (with disadvantage)
+            dv_range = e1.get_darkvision_range()
+            if dv_range > 0:
+                dist_ft = self.get_distance(e1, e2) * 5
+                if dist_ft <= dv_range:
+                    return True  # Can see but effectively lightly obscured → disadvantage applied elsewhere
+            return False  # No special sight: heavily obscured = can't see
+
+        # Heavy fog also blocks LOS (already handled via blocks_los in terrain)
 
         return True
+
+    def get_target_obscurement(self, attacker: Entity, target: Entity) -> str:
+        """Determine visibility obscurement level from attacker to target.
+
+        Returns:
+          "none"    - clear vision, no penalty
+          "light"   - lightly obscured (dim light, light fog) → disadvantage on Perception
+                      In 5e 2014 this gives disadvantage on attack rolls (effectively Blinded)
+          "heavy"   - heavily obscured → can't see (handled by LOS check, shouldn't reach here)
+        """
+        x2, y2 = int(target.grid_x), int(target.grid_y)
+        t = self.get_terrain_at(x2, y2)
+
+        # Devil's Sight / Truesight: see normally in all darkness
+        if attacker.has_feature("devil_sight") or attacker.has_feature("truesight"):
+            return "none"
+
+        # Blindsight: no visual penalties
+        bs_range = attacker.get_blindsight_range()
+        if bs_range > 0:
+            dist_ft = self.get_distance(attacker, target) * 5
+            if dist_ft <= bs_range:
+                return "none"
+
+        if t:
+            # Darkness: if darkvision can reach, treated as dim light (lightly obscured)
+            if t.terrain_type == "darkness":
+                dv_range = attacker.get_darkvision_range()
+                dist_ft = self.get_distance(attacker, target) * 5
+                if dv_range > 0 and dist_ft <= dv_range:
+                    return "light"  # Darkvision treats darkness as dim light
+                return "heavy"  # Shouldn't get here if LOS blocks, but safety
+
+            # Dim light: lightly obscured (disadvantage on Perception-based sight)
+            if t.terrain_type == "dim_light":
+                dv_range = attacker.get_darkvision_range()
+                dist_ft = self.get_distance(attacker, target) * 5
+                if dv_range > 0 and dist_ft <= dv_range:
+                    return "none"  # Darkvision: dim light → normal light
+                return "light"
+
+            # Light fog: lightly obscured
+            if t.terrain_type == "fog_light":
+                return "light"
+
+        return "none"
 
     def is_passable(self, x: float, y: float, exclude: Entity = None) -> bool:
         """Returns True if cell is both unoccupied by entities and traversable terrain.

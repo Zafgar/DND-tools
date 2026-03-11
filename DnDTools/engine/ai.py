@@ -1454,6 +1454,66 @@ class TacticalAI:
         # Fallback: Dash toward nearest enemy
         return self._try_dash_action(entity, enemies, allies, battle)
 
+    def suggest_alternative(self, entity, battle, skipped_step) -> Optional[ActionStep]:
+        """Suggest an alternative action after DM skips a step.
+
+        Temporarily refunds resources consumed by the skipped step, then
+        re-evaluates all options excluding the skipped action/spell.
+        Returns a single ActionStep or None.
+        """
+        # Refund resources consumed by the skipped step
+        if skipped_step.slot_used and skipped_step.slot_used > 0:
+            entity.restore_spell_slot(skipped_step.slot_used)
+        if skipped_step.step_type in ("attack", "multiattack", "spell") and skipped_step.attacker:
+            entity.action_used = False
+
+        excluded_name = skipped_step.action_name or (skipped_step.spell.name if skipped_step.spell else "")
+
+        enemies = [e for e in battle.entities if e.hp > 0 and e.is_player != entity.is_player]
+        allies  = [a for a in battle.entities if a.hp > 0 and a.is_player == entity.is_player and a != entity]
+
+        # Re-run candidate evaluation (same as _decide_action but excluding the skipped action)
+        pref = self._get_combat_preference(entity)
+        candidates = []
+
+        if entity.has_spell_slot(1) or entity.stats.cantrips:
+            aoe_step = self._try_aoe_spell(entity, enemies, allies, battle)
+            if aoe_step and aoe_step.action_name != excluded_name:
+                aoe_score = aoe_step.damage * max(len(aoe_step.targets), 1) * 0.7
+                candidates.append((aoe_score, aoe_step))
+
+        if entity.has_spell_slot(1):
+            debuff_step = self._try_debuff_spell(entity, enemies, allies, battle)
+            if debuff_step and debuff_step.action_name != excluded_name:
+                debuff_score = self._score_debuff_value(debuff_step, entity, enemies)
+                candidates.append((debuff_score, debuff_step))
+
+        if entity.stats.spells_known or entity.stats.cantrips:
+            spell_step = self._try_damage_spell(entity, enemies, battle)
+            if spell_step and spell_step.action_name != excluded_name:
+                spell_score = spell_step.damage * 0.65
+                candidates.append((spell_score, spell_step))
+
+        multi = next((a for a in entity.stats.actions if a.is_multiattack), None)
+        if multi and multi.name != excluded_name:
+            steps = self._execute_multiattack(entity, multi, enemies, allies, battle)
+            if steps:
+                total_dmg = sum(s.damage for s in steps if s.is_hit)
+                # Return first step of multiattack as alternative
+                candidates.append((total_dmg * 0.8, steps[0]))
+
+        if not multi:
+            single = self._evaluate_best_single_attack(entity, enemies, allies, battle)
+            if single:
+                sa_score, sa_steps = single
+                if sa_steps and sa_steps[0].action_name != excluded_name:
+                    candidates.append((sa_score, sa_steps[0]))
+
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return candidates[0][1]
+        return None
+
     def _evaluate_grapple_shove(self, entity, enemies, allies, battle):
         """Deterministic grapple/shove evaluation.
 
@@ -1576,7 +1636,7 @@ class TacticalAI:
                 dist = battle.get_distance(entity, target)
                 is_ranged = best_action.range > 10
                 adv = entity.has_attack_advantage(target, is_ranged, dist)
-                dis = entity.has_attack_disadvantage(target, is_ranged)
+                dis = entity.has_attack_disadvantage(target, is_ranged, battle=battle)
 
                 dmg_str = f"{best_action.damage_dice}+{best_action.damage_bonus}" if best_action.damage_bonus else best_action.damage_dice
                 base_dmg = average_damage(dmg_str)
@@ -2288,7 +2348,7 @@ class TacticalAI:
                     # Attack Roll
                     hit_chance = (21 + atk_bonus - target.stats.armor_class) / 20.0
                     adv = entity.has_attack_advantage(target, is_ranged=True)
-                    dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened)
+                    dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
                     if adv and not dis: hit_chance = 1 - (1-hit_chance)**2
                     if dis and not adv: hit_chance = hit_chance**2
                     hit_chance = max(0.05, min(0.95, hit_chance))
@@ -2331,7 +2391,7 @@ class TacticalAI:
                 if enemies_adj: is_threatened = True
 
                 adv = entity.has_attack_advantage(target, is_ranged=True)
-                dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened)
+                dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
                 is_hit = total >= target.stats.armor_class and not is_fumble
                 dmg = roll_dice_critical(effective_dice) if is_crit else roll_dice(effective_dice)
@@ -2613,7 +2673,7 @@ class TacticalAI:
         long_range = getattr(action, "long_range", 0) or 0
         dis = entity.has_attack_disadvantage(target, is_ranged, is_threatened=is_threatened,
                                              distance_ft=dist_ft, normal_range=normal_range,
-                                             long_range=long_range)
+                                             long_range=long_range, battle=battle)
         allies_adj = [a for a in battle.get_allies_of(entity) if battle.is_adjacent(a, target)]
         if allies_adj:
             if entity.has_feature("pack_tactics"):
@@ -3153,7 +3213,7 @@ class TacticalAI:
         desc_parts = []
         for i in range(2):
             adv = entity.has_attack_advantage(target, is_ranged=False)
-            dis = entity.has_attack_disadvantage(target, is_ranged=False)
+            dis = entity.has_attack_disadvantage(target, is_ranged=False, battle=battle)
             total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
             is_hit = total >= target.stats.armor_class and not is_fumble
 
