@@ -988,6 +988,7 @@ class BattleState(GameState):
         self.auto_battle_paused = False  # Pause without fully stopping
         self.auto_timer = 0         # Timer for auto-play ticks
         self.auto_battle_speed = 10 # Frames per tick (lower = faster). Options: 3, 6, 10, 20, 40
+        self.auto_battle_mode = "full"  # "full" = AI plays everyone, "npc" = AI plays NPCs only
         self.log_filter_mode = "all" # "all", "selected", "damage", "healing", "conditions", "rolls"
 
         # Direct HP input mode (type "-17" Enter to apply damage)
@@ -1153,6 +1154,7 @@ class BattleState(GameState):
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
+        self.btn_auto_mode = Button(530, SCREEN_HEIGHT-65, 50, 35, "FULL",    self._toggle_auto_mode,     color=COLORS["accent"])
         self.btn_pause   = Button(454, SCREEN_HEIGHT-28, 72, 24, "PAUSE",     self._toggle_pause_auto,    color=COLORS["panel"])
         self.btn_speed_down = Button(530, SCREEN_HEIGHT-28, 24, 24, "-",       self._auto_speed_down,      color=COLORS["panel"])
         self.btn_speed_lbl  = Button(554, SCREEN_HEIGHT-28, 36, 24, "1x",      lambda: None,               color=COLORS["text_dim"])
@@ -1210,13 +1212,27 @@ class BattleState(GameState):
             self.btn_auto.text = "STOP"
             self.btn_pause.color = COLORS["warning"]
             self.btn_pause.text = "PAUSE"
-            self._log("[SYSTEM] Auto-Battle STARTED.")
+            mode_label = "FULL (Players+NPCs)" if self.auto_battle_mode == "full" else "NPC Only"
+            self._log(f"[SYSTEM] Auto-Battle STARTED – Mode: {mode_label}")
         else:
             self.btn_auto.color = COLORS["panel"]
             self.btn_auto.text = "AUTO"
             self.btn_pause.color = COLORS["panel"]
             self.btn_pause.text = "PAUSE"
             self._log("[SYSTEM] Auto-Battle STOPPED.")
+
+    def _toggle_auto_mode(self):
+        """Toggle between 'full' (AI plays everyone) and 'npc' (AI plays NPCs only)."""
+        if self.auto_battle_mode == "full":
+            self.auto_battle_mode = "npc"
+            self.btn_auto_mode.text = "NPC"
+            self.btn_auto_mode.color = COLORS["panel"]
+            self._log("[SYSTEM] Auto mode: NPC only (players manual).")
+        else:
+            self.auto_battle_mode = "full"
+            self.btn_auto_mode.text = "FULL"
+            self.btn_auto_mode.color = COLORS["accent"]
+            self._log("[SYSTEM] Auto mode: FULL (AI plays everyone).")
 
     def _toggle_pause_auto(self):
         if not self.auto_battle:
@@ -1264,41 +1280,44 @@ class BattleState(GameState):
         # 2. Handle Reactions (smart AI decisions)
         if self.reaction_pending:
             if self.reaction_type == "counterspell":
-                # AI evaluates whether counterspelling is worthwhile
                 reactor = self.reaction_pending[0]
                 ctx = self.reaction_context or {}
                 spell_level = ctx.get("level", 1)
-                # Counterspell if the spell is level 3+ or reactor has plenty of slots
                 should_counter = spell_level >= 3 or reactor.has_spell_slot(4)
                 self._resolve_reaction(should_counter)
             else:
-                # OA: always take opportunity attacks
                 self._resolve_reaction(True)
             return
 
-        # 3. Handle Pending Plan (Execute steps)
+        # 3. Handle Pending Saves modal (auto-roll in auto battle)
+        if self.save_modal_open and self.pending_saves:
+            self._auto_resolve_pending_saves()
+            return
+
+        # 4. Handle Pending Plan (Execute steps)
         if self.pending_plan:
             self._confirm_step()
             return
 
-        # 4. Decide Next Action
+        # 5. Decide Next Action
         try:
             curr = self.battle.get_current_entity()
         except ValueError:
             self.auto_battle = False
             return
-        
+
+        # Check if this entity should be AI-controlled
+        if curr.is_player and self.auto_battle_mode == "npc":
+            # NPC-only mode: skip player turns, let DM handle
+            return
+
         # If current entity has done nothing yet, try to generate AI plan
-        # (Even for players in auto mode)
         if not curr.action_used and not curr.is_incapacitated():
-            # Try to generate a plan
             self._do_ai_turn(force_auto=True)
-            
-            # If no plan was generated (e.g. skipped/no targets), end turn
+
             if not self.pending_plan:
                 self._do_next_turn()
         else:
-            # Turn done, next
             self._do_next_turn()
 
     # ------------------------------------------------------------------ #
@@ -1458,18 +1477,25 @@ class BattleState(GameState):
             self.battle.commit_legendary_action(leg_ent)
             return
 
-        # 2. Check for End-of-Turn Saves for current player (Manual Mode)
+        # 2. Check for End-of-Turn Saves
         try:
             curr = self.battle.get_current_entity()
-            if curr.is_player and not self.auto_battle and curr.hp > 0:
+            if curr.hp > 0:
                 saves = []
                 for cond, meta in curr.condition_metadata.items():
                     if meta.get("save") and meta.get("dc"):
                         saves.append((curr, cond, meta["save"], meta["dc"]))
                 if saves:
-                    self.pending_saves = saves
-                    self.save_modal_open = True
-                    return
+                    if self.auto_battle:
+                        # Auto-roll all saves immediately
+                        self.pending_saves = saves
+                        self._auto_resolve_pending_saves()
+                        return
+                    elif curr.is_player:
+                        # Manual mode: show save modal for players
+                        self.pending_saves = saves
+                        self.save_modal_open = True
+                        return
         except ValueError:
             pass
 
@@ -1485,15 +1511,20 @@ class BattleState(GameState):
             return
 
         self.selected_entity = curr
+        # Determine if player is AI-controlled
+        player_ai = curr.is_player and self.auto_battle and self.auto_battle_mode == "full"
         # If player, open action panel hint and show condition reminder
         if curr.is_player:
-            self._log(f"[PLAYER TURN] {curr.name} – log their action with 'LOG PLAYER ACTION'")
+            if player_ai:
+                self._log(f"[AI PLAYER] {curr.name}'s turn (AI-controlled)")
+            else:
+                self._log(f"[PLAYER TURN] {curr.name} – log their action with 'LOG PLAYER ACTION'")
             if curr.conditions or curr.concentrating_on:
                 self.condition_reminder = curr
             # DM Advisor: generate suggestion for this player's turn
-            if self.show_advisor_panel:
+            if self.show_advisor_panel and not player_ai:
                 self.dm_suggestion_cache = self.battle.get_dm_suggestion(curr)
-                self.dm_rating_cache = None  # Clear previous rating
+                self.dm_rating_cache = None
         else:
             self.dm_suggestion_cache = None
             self.dm_rating_cache = None
@@ -1505,7 +1536,10 @@ class BattleState(GameState):
         self._update_win_probability()
 
         # Turn Banner
-        self.turn_banner_text = f"{curr.name}'s Turn"
+        if player_ai:
+            self.turn_banner_text = f"{curr.name}'s Turn  [AI]"
+        else:
+            self.turn_banner_text = f"{curr.name}'s Turn"
         self.turn_banner_timer = 120 # 2 seconds
 
         # Check auras
@@ -3376,6 +3410,7 @@ class BattleState(GameState):
                 self.btn_weather.handle_event(event)
                 self.btn_undo.handle_event(event)
                 self.btn_auto.handle_event(event)
+                self.btn_auto_mode.handle_event(event)
                 if self.auto_battle:
                     self.btn_pause.handle_event(event)
                     self.btn_speed_down.handle_event(event)
@@ -3471,14 +3506,17 @@ class BattleState(GameState):
                 alpha = int(255 * (self.turn_banner_timer / 30))
             
             # Draw centered banner
-            txt = fonts.title.render(self.turn_banner_text, True, (255, 255, 255))
+            is_ai_player = "[AI]" in self.turn_banner_text
+            banner_color = (120, 180, 255) if is_ai_player else (255, 255, 255)
+            txt = fonts.title.render(self.turn_banner_text, True, banner_color)
             txt.set_alpha(alpha)
-            
-            # Background strip
+
+            # Background strip - blue tint for AI player
             bg_h = 80
             bg_y = SCREEN_HEIGHT // 2 - bg_h // 2 - 100
             s = pygame.Surface((GRID_W, bg_h), pygame.SRCALPHA)
-            s.fill((0, 0, 0, int(180 * (alpha/255))))
+            bg_color = (20, 40, 80, int(180 * (alpha/255))) if is_ai_player else (0, 0, 0, int(180 * (alpha/255)))
+            s.fill(bg_color)
             screen.blit(s, (0, bg_y))
             screen.blit(txt, (GRID_W//2 - txt.get_width()//2, bg_y + bg_h//2 - txt.get_height()//2))
 
@@ -3858,6 +3896,8 @@ class BattleState(GameState):
     def _draw_grid_buttons(self, screen, mp):
         for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_add_entity):
             b.draw(screen, mp)
+        # Auto mode button always visible next to AUTO
+        self.btn_auto_mode.draw(screen, mp)
         # Auto battle controls (pause + speed) - only visible when auto battle is active
         if self.auto_battle:
             self.btn_pause.draw(screen, mp)
@@ -5288,6 +5328,22 @@ class BattleState(GameState):
             self.ui_click_zones.append((r_succ, lambda idx=i: self._resolve_manual_save(idx, True)))
 
             y += 50
+
+    def _auto_resolve_pending_saves(self):
+        """Auto-roll all pending end-of-turn saves (used in auto battle)."""
+        while self.pending_saves:
+            entity, cond, ability, dc = self.pending_saves.pop(0)
+            bonus = entity.get_save_bonus(ability)
+            raw = random.randint(1, 20)
+            total = raw + bonus
+            success = total >= dc
+            if success:
+                entity.remove_condition(cond)
+                self._log(f"[SAVE] {entity.name} saves vs {cond} ({raw}+{bonus}={total} vs DC {dc}) – removed!")
+            else:
+                self._log(f"[SAVE] {entity.name} fails vs {cond} ({raw}+{bonus}={total} vs DC {dc})")
+        self.save_modal_open = False
+        self._complete_next_turn(skip_saves=False)
 
     def _resolve_manual_save(self, index, success):
         if index >= len(self.pending_saves): return

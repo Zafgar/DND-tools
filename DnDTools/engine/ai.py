@@ -1497,6 +1497,12 @@ class TacticalAI:
                 sa_score, sa_steps = single_steps
                 candidates.append((sa_score, "single_attack", sa_steps))
 
+        # --- Heal wounded ally (not emergency - tactical healing) ---
+        heal_ally_step = self._try_heal_wounded_ally(entity, allies, battle)
+        if heal_ally_step:
+            # Score based on ally HP deficit and danger
+            candidates.append((heal_ally_step[0], "heal_ally", heal_ally_step[1]))
+
         # === PICK BEST OPTION ===
         if candidates:
             candidates.sort(key=lambda x: x[0], reverse=True)
@@ -1923,6 +1929,56 @@ class TacticalAI:
                     attacker=entity, target=target, spell=spell, slot_used=slot,
                     action_name=spell.name, damage=healed, damage_type="healing"
                 )
+        return None
+
+    def _try_heal_wounded_ally(self, entity, allies, battle):
+        """Evaluate healing a wounded (but alive) ally as a tactical option.
+
+        Returns (score, [ActionStep]) or None.
+        Only triggers when an ally is below 40% HP and healing is available.
+        Competes with offensive options via the scoring system.
+        """
+        wounded = [a for a in allies if 0 < a.hp < a.max_hp * 0.4 and not a.is_summon]
+        if not wounded:
+            return None
+
+        # Find best healing spell (action-type)
+        healing_spells = [s for s in entity.stats.spells_known
+                          if s.heals and s.action_type == "action" and entity.can_cast_spell(s)]
+        if not healing_spells:
+            return None
+
+        # Pick most wounded ally that's in range
+        wounded.sort(key=lambda a: a.hp / max(a.max_hp, 1))
+
+        for target in wounded:
+            for spell in healing_spells:
+                dist_ft = battle.get_distance(entity, target) * 5
+                if dist_ft > spell.range:
+                    continue
+                if spell.range > 5 and not battle.has_line_of_sight(entity, target):
+                    continue
+
+                slot = spell.level
+                # Calculate expected healing
+                heal_amount = roll_dice(spell.heals)
+                hp_deficit = target.max_hp - target.hp
+                effective_heal = min(heal_amount, hp_deficit)
+
+                # Score: more valuable when ally is close to death
+                hp_pct = target.hp / max(target.max_hp, 1)
+                urgency = (1.0 - hp_pct) * 30  # 0-30 bonus based on how low they are
+                # Healers (cleric/druid/bard) get extra healing score
+                score = effective_heal * 0.5 + urgency
+
+                entity.use_spell_slot(slot)
+                step = ActionStep(
+                    step_type="spell",
+                    description=f"{entity.name} casts {spell.name} on {target.name}, healing {heal_amount} HP.",
+                    attacker=entity, target=target, spell=spell, slot_used=slot,
+                    action_name=spell.name, damage=heal_amount, damage_type="healing"
+                )
+                return (score, [step])
         return None
 
     def _try_heal_action(self, entity):
