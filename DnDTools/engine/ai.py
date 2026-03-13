@@ -503,7 +503,7 @@ class TacticalAI:
             return None
 
         # 3. Attempt Hide (Stealth Check vs Passive Perception)
-        stealth_roll = roll_dice("1d20") + entity.get_skill_bonus("Stealth") + entity.get_modifier("Dexterity")
+        stealth_roll = roll_dice("1d20") + entity.get_skill_bonus("Stealth")
         # Estimate Passive Perception (10 + bonus)
         pp = 10 + target.get_skill_bonus("Perception")
 
@@ -771,10 +771,11 @@ class TacticalAI:
                         entity.start_flying()
                         entity.elevation = max(entity.elevation + 10, 10)
                 # Fly to cross gaps: if no path to target exists without flying
-                if not entity.is_flying and target:
+                fly_target = self._pick_target(entity, enemies, battle)
+                if not entity.is_flying and fly_target:
                     normal_path = self._find_path(
                         (int(entity.grid_x), int(entity.grid_y)),
-                        (int(target.grid_x), int(target.grid_y)),
+                        (int(fly_target.grid_x), int(fly_target.grid_y)),
                         battle, entity, allow_jump=False)
                     if normal_path is None:
                         # Can't walk there - fly if possible
@@ -2038,13 +2039,14 @@ class TacticalAI:
             return None
 
         threat = threats[0]
-        entity.movement_left += entity.stats.speed
+        entity.is_disengaging = True
         move_step = self._move_away(entity, threat, battle)
 
         if move_step:
             move_step.description = f"{entity.name} Disengages (Action) and retreats."
             move_step.step_type = "move"
             return move_step
+        entity.is_disengaging = False
         return None
 
     def _try_dodge_action(self, entity, enemies, battle):
@@ -2757,7 +2759,7 @@ class TacticalAI:
 
         # --- TCoE: Monk Hand of Harm (Way of Mercy) ---
         if (entity.has_feature("hand_of_harm") and step.is_hit and first_attack
-                and entity.ki_points_left > 0 and not is_ranged):
+                and entity.ki_points_left > 0 and step.action and step.action.range <= 5):
             hoh_dice = "1d6"
             wis_mod = entity.get_modifier("wisdom")
             hoh_dmg = roll_dice(hoh_dice) + max(0, wis_mod)
@@ -3028,7 +3030,8 @@ class TacticalAI:
                         # PHB: off-hand doesn't add ability mod to damage
                         # unless Two-Weapon Fighting style
                         if not has_twf_style:
-                            step.damage_bonus = 0
+                            ability_mod = max(entity.get_modifier("strength"), entity.get_modifier("dexterity"))
+                            step.damage = max(0, step.damage - ability_mod)
                         self._apply_class_attack_bonuses(entity, step, target, allies, battle, first_attack=False)
                         entity.bonus_action_used = True
                         return [step]
@@ -3072,12 +3075,13 @@ class TacticalAI:
         if entity.has_feature("nimble_escape"):
             threats = [e for e in enemies if battle.is_adjacent(entity, e)]
             if threats:
-                entity.movement_left += entity.stats.speed
+                entity.is_disengaging = True
                 move_step = self._move_away(entity, threats[0], battle)
                 if move_step:
                     entity.bonus_action_used = True
                     move_step.description = f"{entity.name} uses Nimble Escape to Disengage & Retreat."
                     return [move_step]
+                entity.is_disengaging = False
 
         # --- 7. Hunter's Mark / Hex (if not already cast pre-combat) ---
         if not leveled_spell_cast:
@@ -3286,6 +3290,7 @@ class TacticalAI:
 
         # Find spawn position adjacent to target
         spawn_x, spawn_y = target.grid_x, target.grid_y
+        found_spawn = False
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx == 0 and dy == 0:
@@ -3293,7 +3298,10 @@ class TacticalAI:
                 nx, ny = target.grid_x + dx, target.grid_y + dy
                 if battle.is_passable(nx, ny, exclude=entity):
                     spawn_x, spawn_y = nx, ny
+                    found_spawn = True
                     break
+            if found_spawn:
+                break
 
         entity.use_spell_slot(2)
         entity.bonus_action_used = True
@@ -3353,7 +3361,8 @@ class TacticalAI:
                     not target.has_condition("Stunned")):
                 entity.ki_points_left -= 1
                 # Will be resolved as a condition in battle system
-                desc_parts[-1] += " [Stunning Strike DC 16 CON]"
+                stun_dc = 8 + entity.stats.proficiency_bonus + entity.get_modifier("wisdom")
+                desc_parts[-1] += f" [Stunning Strike DC {stun_dc} CON]"
 
         desc = (f"{entity.name} Flurry of Blows (1 ki): " + ", ".join(desc_parts))
 
