@@ -236,12 +236,12 @@ class BattleSystem:
         if current_removed:
             self.turn_index -= 1
 
-        # Advance turn
+        # Advance turn — use a flag to ensure round increments exactly once per wrap
         self.turn_index += 1
+        new_round = False
         if self.turn_index >= len(self.entities):
             self.turn_index = 0
-            self.round += 1
-            self.log(f"=== ROUND {self.round} ===")
+            new_round = True
 
         # Find next valid entity (Alive OR Dying Player OR Lair)
         start_index = self.turn_index
@@ -250,18 +250,21 @@ class BattleSystem:
             is_alive = ent.hp > 0
             # Players roll death saves, so they get a turn even if 0 HP (unless dead-dead or stable)
             is_dying_player = ent.is_player and ent.hp <= 0 and ent.death_save_failures < 3 and not ent.is_stable
-            
+
             should_act = ent.acts_on_initiative
             if (is_alive or is_dying_player or ent.is_lair) and should_act:
                 break
-            
+
             self.turn_index = (self.turn_index + 1) % len(self.entities)
             if self.turn_index == 0:
-                self.round += 1
-                self.log(f"=== ROUND {self.round} ===")
-            
+                new_round = True
+
             if self.turn_index == start_index:
                 break # Everyone dead/skipped
+
+        if new_round:
+            self.round += 1
+            self.log(f"=== ROUND {self.round} ===")
 
         current = self.get_current_entity()
 
@@ -300,7 +303,7 @@ class BattleSystem:
 
         # Champion Fighter: Survivor feature (regen if below half HP)
         if current.hp > 0 and current.has_feature("survivor"):
-            if current.hp < current.max_hp // 2:
+            if current.hp <= current.max_hp // 2:
                 regen_amount = 5 + current.get_modifier("Constitution")
                 old_hp = current.hp
                 current.heal(regen_amount)
@@ -1050,7 +1053,7 @@ class BattleSystem:
 
     def check_battle_over(self) -> Optional[str]:
         players_alive = any(e.is_player and e.hp > 0 for e in self.entities)
-        enemies_alive = any(not e.is_player and e.hp > 0 for e in self.entities)
+        enemies_alive = any(not e.is_player and e.hp > 0 and not e.is_lair and not e.is_summon for e in self.entities)
         if not players_alive:
             return "enemies"
         if not enemies_alive:
@@ -1098,6 +1101,7 @@ class BattleSystem:
             "entities": [],
             "terrain": [t.to_dict() for t in self.terrain],
             "weather": self.weather,
+            "lair_enabled": self.lair_enabled,
         }
         for e in self.entities:
             ent_data = {
@@ -1318,6 +1322,7 @@ class BattleSystem:
         sys_obj.weather = data.get("weather", "Clear")
         sys_obj.pending_reactions = []
         sys_obj.legendary_queue = []
+        sys_obj.lair_enabled = data.get("lair_enabled", False)
 
         hero_map = {h.name: h for h in heroes}
 
@@ -1334,15 +1339,19 @@ class BattleSystem:
                             stats = copy.deepcopy(h)
                             break
             else:
-                try:
-                    stats = library.get_monster(base_name)
-                except ValueError:
-                    # Strip number suffix (e.g. "Goblin 2" → "Goblin")
-                    stripped = base_name.rsplit(" ", 1)[0]
+                if ent_data.get("is_lair"):
+                    from data.models import CreatureStats as CS
+                    stats = CS(name="Lair Action", hit_points=1, speed=0, challenge_rating=0)
+                else:
                     try:
-                        stats = library.get_monster(stripped)
+                        stats = library.get_monster(base_name)
                     except ValueError:
-                        pass
+                        # Strip number suffix (e.g. "Goblin 2" → "Goblin")
+                        stripped = base_name.rsplit(" ", 1)[0]
+                        try:
+                            stats = library.get_monster(stripped)
+                        except ValueError:
+                            pass
 
             if stats is None:
                 log_callback(f"[LOAD] Could not find stats for '{base_name}', skipping.")
@@ -1396,40 +1405,42 @@ class BattleSystem:
 
             sys_obj.entities.append(e)
 
-        # Link lair owners
-        for i, ent_data in enumerate(data["entities"]):
+        # Build name→entity lookup for linking (safe even if entities were skipped)
+        entity_by_name = {e.name: e for e in sys_obj.entities}
+
+        # Link lair owners, summon owners, marked targets, grapple, and condition sources
+        for ent_data in data["entities"]:
+            ent = entity_by_name.get(ent_data["name"])
+            if ent is None:
+                continue
+
             owner_name = ent_data.get("lair_owner_name")
             if owner_name:
-                owner = next((x for x in sys_obj.entities if x.name == owner_name), None)
-                sys_obj.entities[i].lair_owner = owner
+                ent.lair_owner = entity_by_name.get(owner_name)
 
-        # Link summon owners and marked targets
-        for i, ent_data in enumerate(data["entities"]):
             summon_owner_name = ent_data.get("summon_owner_name")
             if summon_owner_name:
-                owner = next((x for x in sys_obj.entities if x.name == summon_owner_name), None)
-                sys_obj.entities[i].summon_owner = owner
+                ent.summon_owner = entity_by_name.get(summon_owner_name)
+
             marked_name = ent_data.get("marked_target_name")
             if marked_name:
-                marked = next((x for x in sys_obj.entities if x.name == marked_name), None)
-                sys_obj.entities[i].marked_target = marked
+                ent.marked_target = entity_by_name.get(marked_name)
 
-        # Link grapple relationships
-        for i, ent_data in enumerate(data["entities"]):
             grappled_by_name = ent_data.get("grappled_by_name")
             if grappled_by_name:
-                grappler = next((x for x in sys_obj.entities if x.name == grappled_by_name), None)
+                grappler = entity_by_name.get(grappled_by_name)
                 if grappler:
-                    sys_obj.entities[i].grappled_by = grappler
+                    ent.grappled_by = grappler
+
             for gname in ent_data.get("grappling_names", []):
-                target = next((x for x in sys_obj.entities if x.name == gname), None)
+                target = entity_by_name.get(gname)
                 if target:
-                    sys_obj.entities[i].grappling.append(target)
-            # Link condition sources (Frightened/Charmed)
+                    ent.grappling.append(target)
+
             for cond, source_name in ent_data.get("condition_sources", {}).items():
-                source = next((x for x in sys_obj.entities if x.name == source_name), None)
+                source = entity_by_name.get(source_name)
                 if source:
-                    sys_obj.entities[i].condition_sources[cond] = source
+                    ent.condition_sources[cond] = source
 
         sys_obj.turn_index = min(sys_obj.turn_index, max(0, len(sys_obj.entities) - 1))
         sys_obj.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
