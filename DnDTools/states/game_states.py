@@ -1625,6 +1625,14 @@ class BattleState(GameState):
                         if total >= step.save_dc:
                             self.current_step_outcomes[t] = "save"
                         else:
+                            # Check Legendary Resistance for NPC targets
+                            if t.legendary_resistances_left > 0:
+                                from engine.rules import _should_use_legendary_resistance
+                                cond = step.applies_condition or (step.spell.applies_condition if step.spell else "")
+                                dmg_dice = step.spell.damage_dice if step.spell else ""
+                                if _should_use_legendary_resistance(t, cond, dmg_dice):
+                                    self.current_step_outcomes[t] = "legendary"
+                                    continue
                             self.current_step_outcomes[t] = "fail"
                     else:
                         self.current_step_outcomes[t] = "fail"

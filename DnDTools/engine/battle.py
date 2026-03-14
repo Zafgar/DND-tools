@@ -470,7 +470,8 @@ class BattleSystem:
             ability = meta.get("save")
             dc = meta.get("dc")
             if ability and dc:
-                success, total, msg = make_saving_throw(entity, ability, dc, self)
+                success, total, msg = make_saving_throw(entity, ability, dc, self,
+                                                        applies_condition=cond)
                 if success:
                     entity.remove_condition(cond)
                     self.log(f"[SAVE] {msg} -> no longer {cond}!")
@@ -1182,6 +1183,7 @@ class BattleSystem:
                 "is_stable": e.is_stable,
                 "is_lair": e.is_lair,
                 "lair_owner_name": e.lair_owner.name if e.lair_owner else None,
+                "last_lair_action": e.last_lair_action,
                 "active_effects": copy.deepcopy(e.active_effects),
                 "notes": e.notes,
                 "rage_active": e.rage_active,
@@ -1288,6 +1290,7 @@ class BattleSystem:
             e.death_save_failures = ent_data["death_save_failures"]
             e.is_stable = ent_data["is_stable"]
             e.is_lair = ent_data.get("is_lair", False)
+            e.last_lair_action = ent_data.get("last_lair_action", "")
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
             e.is_surprised = ent_data.get("is_surprised", False)
@@ -1429,6 +1432,7 @@ class BattleSystem:
             e.death_save_failures = ent_data["death_save_failures"]
             e.is_stable = ent_data["is_stable"]
             e.is_lair = ent_data.get("is_lair", False)
+            e.last_lair_action = ent_data.get("last_lair_action", "")
             e.active_effects = ent_data.get("active_effects", {})
             e.notes = ent_data.get("notes", "")
             e.is_surprised = ent_data.get("is_surprised", False)

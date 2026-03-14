@@ -355,6 +355,46 @@ def use_legendary_resistance(entity: "Entity") -> str:
             f"{remaining} remaining)")
 
 
+# Conditions that are severe enough to always warrant LR usage
+_LR_ALWAYS_USE_CONDITIONS = {
+    "Stunned", "Paralyzed", "Petrified", "Banished", "Unconscious",
+    "Dominated", "Incapacitated", "Polymorphed",
+}
+# Conditions worth using LR if the creature has 2+ remaining
+_LR_MODERATE_CONDITIONS = {
+    "Frightened", "Charmed", "Blinded", "Restrained", "Prone",
+    "Deafened", "Poisoned", "Grappled", "Slowed",
+}
+
+
+def _should_use_legendary_resistance(entity, applies_condition: str, damage_dice: str) -> bool:
+    """Strategic LR decision. Always use for save-or-suck, conserve for minor effects."""
+    lr_left = entity.legendary_resistances_left
+
+    # Severe conditions: always use LR
+    if applies_condition in _LR_ALWAYS_USE_CONDITIONS:
+        return True
+
+    # Moderate conditions: use if 2+ LR left
+    if applies_condition in _LR_MODERATE_CONDITIONS:
+        return lr_left >= 2
+
+    # Any other named condition: use if 3+ LR left
+    if applies_condition:
+        return lr_left >= 3
+
+    # Damage-only save (no condition): only use LR if damage would be
+    # lethal or near-lethal (> 40% of remaining HP)
+    if damage_dice:
+        from engine.dice import average_damage
+        avg = average_damage(damage_dice)
+        if avg >= entity.hp * 0.4:
+            return True
+
+    # Minor effect with no condition and low damage: conserve LR
+    return False
+
+
 # ============================================================
 # LAIR ACTIONS (MM p.11)
 # ============================================================
@@ -464,7 +504,9 @@ def resolve_advantage_disadvantage(has_advantage: bool, has_disadvantage: bool) 
 def make_saving_throw(entity: "Entity", ability: str, dc: int,
                       battle: "BattleSystem" = None,
                       advantage: bool = False,
-                      disadvantage: bool = False) -> Tuple[bool, int, str]:
+                      disadvantage: bool = False,
+                      applies_condition: str = "",
+                      damage_dice: str = "") -> Tuple[bool, int, str]:
     """
     Make a saving throw for an entity.
 
@@ -534,10 +576,14 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
     total = roll + bonus
     success = total >= dc
 
-    # Legendary Resistance on failure
+    # Legendary Resistance on failure (MM p.11: creature CHOOSES to succeed)
+    # Strategic usage: save LR for dangerous effects, don't burn on minor damage
     if not success and can_use_legendary_resistance(entity):
-        msg = use_legendary_resistance(entity)
-        return True, total, msg
+        should_use_lr = _should_use_legendary_resistance(
+            entity, applies_condition, damage_dice)
+        if should_use_lr:
+            msg = use_legendary_resistance(entity)
+            return True, total, msg
 
     status = "SUCCESS" if success else "FAIL"
     adv_str = f" ({roll_type})" if roll_type != "normal" else ""
