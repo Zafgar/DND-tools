@@ -1422,6 +1422,15 @@ class BattleState(GameState):
         if len(self.logs) > 200:
             self.logs.pop(0)
 
+    def _cleanup_dropped_spell_terrain(self):
+        """Check all entities for pending spell terrain cleanup from broken concentration."""
+        for ent in self.battle.entities:
+            info = getattr(ent, '_dropped_spell_terrain', None)
+            if info:
+                caster_name, spell_name = info
+                self.battle.remove_spell_terrain(caster_name, spell_name)
+                ent._dropped_spell_terrain = None
+
     def _spawn_damage_text(self, entity, amount, is_heal=False, damage_type=""):
         color = COLORS["success"] if is_heal else COLORS["danger"]
         prefix = "+" if is_heal else "-"
@@ -1679,6 +1688,14 @@ class BattleState(GameState):
                 for t, outcome in self.current_step_outcomes.items():
                     self._resolve_target_outcome(step, t, outcome)
 
+            # Spawn spell terrain if the spell creates persistent effects
+            if step.spell and step.spell.creates_terrain and step.aoe_center and step.attacker:
+                self.battle.spawn_spell_terrain(step.spell, step.attacker,
+                                                step.aoe_center[0], step.aoe_center[1])
+
+            # Clean up terrain from any broken concentration (damage, incapacitation, etc.)
+            self._cleanup_dropped_spell_terrain()
+
             self.pending_step_idx += 1
             self._prepare_step_outcomes()
 
@@ -1727,6 +1744,11 @@ class BattleState(GameState):
             targets = step.targets if step.targets else ([step.target] if step.target else [])
             for t in targets:
                 self._resolve_target_outcome(step, t, "hit" if step.step_type=="attack" else "fail")
+            # Spawn spell terrain
+            if step.spell and step.spell.creates_terrain and step.aoe_center and step.attacker:
+                self.battle.spawn_spell_terrain(step.spell, step.attacker,
+                                                step.aoe_center[0], step.aoe_center[1])
+            self._cleanup_dropped_spell_terrain()
             self._log(f"[AUTO-CONFIRM] {step.description}")
         self.pending_plan = None
         self._log("[AI] All steps approved.")
@@ -2328,7 +2350,7 @@ class BattleState(GameState):
             (f"Toggle Restrained",lambda: self._toggle_condition("Restrained")),
             (f"Init +1", lambda: self._modify_init(1)),
             (f"Init -1", lambda: self._modify_init(-1)),
-            (f"Drop Concentration", lambda: entity.drop_concentration() or self._log(f"{entity.name} drops concentration.")),
+            (f"Drop Concentration", lambda: (entity.drop_concentration(), self._cleanup_dropped_spell_terrain(), self._log(f"{entity.name} drops concentration."))),
             (f"Add Effect...", lambda: self._open_effect_modal(entity)),
             (f"Edit Notes...", lambda: self._open_notes_modal(entity)),
             (f"SET AI TARGET", lambda: self._set_ai_forced_target(entity)),
@@ -3721,6 +3743,7 @@ class BattleState(GameState):
     # --- Terrain tiles ---
     def _draw_terrain(self, screen):
         gsz = self.battle.grid_size
+        ticks = pygame.time.get_ticks()
         for t in self.battle.terrain:
             rx, ry = self._grid_to_screen(t.grid_x, t.grid_y)
             rw = t.width * gsz
@@ -3728,19 +3751,34 @@ class BattleState(GameState):
             # Filled tile
             s = pygame.Surface((rw, rh), pygame.SRCALPHA)
             r, g, b = t.color
-            s.fill((r, g, b, 200))
+
+            # Animated VFX for spell terrain
+            if t.is_spell_terrain:
+                self._draw_spell_terrain_vfx(s, t, rw, rh, ticks)
+            else:
+                s.fill((r, g, b, 200))
+
             screen.blit(s, (rx, ry))
             # Border color: brighter for elevated, darker for lowered
-            border_color = tuple(min(255, c+40) for c in t.color)
-            if t.elevation > 0:
+            if t.is_spell_terrain:
+                # Pulsing border for spell terrain
+                pulse = int(20 * math.sin(ticks * 0.004 + hash(t.spell_name) * 0.1))
+                border_color = tuple(min(255, max(0, c + 60 + pulse)) for c in t.color)
+            elif t.elevation > 0:
                 border_color = (200, 200, 255)  # blue-ish for elevated
             elif t.elevation < 0:
                 border_color = (100, 50, 50)    # dark red for pits/chasms
+            else:
+                border_color = tuple(min(255, c+40) for c in t.color)
             pygame.draw.rect(screen, border_color, (rx, ry, rw, rh), 2)
             # Label (top-left)
             lbl_text = t.label[:8]
             lbl = fonts.tiny.render(lbl_text, True, (255, 255, 255))
             screen.blit(lbl, (rx + 2, ry + 2))
+            # Spell owner indicator for spell terrain
+            if t.is_spell_terrain and t.spell_owner:
+                owner_txt = fonts.tiny.render(t.spell_owner[:6], True, (200, 200, 255))
+                screen.blit(owner_txt, (rx + 2, ry + 12))
             # Elevation indicator (top-right)
             if t.elevation != 0:
                 elev_color = (180, 200, 255) if t.elevation > 0 else (255, 150, 150)
@@ -3760,6 +3798,138 @@ class BattleState(GameState):
             if t.blocks_los and not t.is_door:
                 los_mark = fonts.tiny.render("LOS", True, (255, 80, 80))
                 screen.blit(los_mark, (rx + rw - los_mark.get_width() - 2, ry + rh - 14))
+
+    def _draw_spell_terrain_vfx(self, surface, terrain, rw, rh, ticks):
+        """Draw animated VFX for spell-created terrain tiles."""
+        tt = terrain.terrain_type
+        r, g, b = terrain.color
+        t_sec = ticks * 0.001  # seconds
+
+        if tt == "darkness":
+            # Deep pulsing darkness
+            pulse = int(15 * math.sin(t_sec * 2.0 + terrain.grid_x * 0.5))
+            surface.fill((max(0, r + pulse), max(0, g + pulse), max(0, b + pulse), 220))
+            # Dark swirl particles
+            for i in range(3):
+                px = int((rw * 0.5) + math.sin(t_sec * 1.5 + i * 2.1) * rw * 0.3)
+                py = int((rh * 0.5) + math.cos(t_sec * 1.2 + i * 1.7) * rh * 0.3)
+                sz = 3 + int(2 * math.sin(t_sec * 2 + i))
+                pygame.draw.circle(surface, (20, 10, 30, 150), (px, py), sz)
+
+        elif tt == "fog_cloud":
+            # Drifting translucent fog
+            alpha = 140 + int(30 * math.sin(t_sec * 0.8 + terrain.grid_y * 0.3))
+            surface.fill((r, g, b, alpha))
+            # Fog wisps
+            for i in range(2):
+                wx = int((t_sec * 8 + i * 20 + terrain.grid_x * 10) % rw)
+                wy = int(rh * 0.3 + i * rh * 0.3)
+                pygame.draw.ellipse(surface, (220, 220, 230, 60),
+                                    (wx - 8, wy - 3, 16, 6))
+
+        elif tt == "wall_fire":
+            # Flickering fire
+            flicker = int(40 * math.sin(t_sec * 8 + terrain.grid_x * 2.0))
+            surface.fill((min(255, r + flicker), max(0, g - 10 + flicker // 2), 0, 200))
+            # Fire particles
+            for i in range(4):
+                px = int(rw * (0.2 + 0.6 * ((i + t_sec * 3) % 1.0)))
+                py = int(rh * (0.8 - 0.6 * ((i * 0.3 + t_sec * 2) % 1.0)))
+                sz = 2 + int(2 * math.sin(t_sec * 5 + i * 1.5))
+                pygame.draw.circle(surface, (255, 200, 50, 180), (px, py), sz)
+
+        elif tt == "wall_thorns":
+            # Thorny green-brown
+            pulse = int(10 * math.sin(t_sec * 1.5 + terrain.grid_x))
+            surface.fill((r + pulse, g + pulse, b, 200))
+            # Thorn spikes
+            for i in range(3):
+                bx = int(rw * (0.2 + i * 0.3))
+                by = int(rh * 0.5 + math.sin(t_sec + i) * rh * 0.2)
+                pygame.draw.line(surface, (80, 60, 20, 200),
+                                 (bx, by), (bx + 4, by - 6), 2)
+
+        elif tt == "spike_growth":
+            # Shimmering green spikes
+            pulse = int(15 * math.sin(t_sec * 2.5 + terrain.grid_x * 0.7))
+            surface.fill((r, g + pulse, b, 180))
+            # Spike glints
+            for i in range(2):
+                sx = int(rw * (0.3 + i * 0.4))
+                sy = int(rh * (0.3 + math.sin(t_sec * 3 + i * 2) * 0.2))
+                pygame.draw.circle(surface, (200, 255, 150, 160), (sx, sy), 2)
+
+        elif tt == "spirit_guardians":
+            # Orbiting golden light
+            surface.fill((r, g, b, 140))
+            for i in range(3):
+                angle = t_sec * 2.0 + i * 2.094
+                px = int(rw * 0.5 + math.cos(angle) * rw * 0.3)
+                py = int(rh * 0.5 + math.sin(angle) * rh * 0.3)
+                pygame.draw.circle(surface, (255, 255, 180, 200), (px, py), 3)
+
+        elif tt == "moonbeam":
+            # Silvery light beam with shimmer
+            shimmer = int(30 * math.sin(t_sec * 3.0))
+            surface.fill((min(255, r + shimmer), min(255, g + shimmer), 255, 160))
+            # Light rays
+            cx, cy = rw // 2, rh // 2
+            for i in range(4):
+                angle = t_sec * 1.5 + i * 1.57
+                ex = int(cx + math.cos(angle) * rw * 0.4)
+                ey = int(cy + math.sin(angle) * rh * 0.4)
+                pygame.draw.line(surface, (240, 240, 255, 100), (cx, cy), (ex, ey), 1)
+
+        elif tt == "web":
+            # Sticky web pattern
+            surface.fill((r, g, b, 160))
+            # Web strands
+            cx, cy = rw // 2, rh // 2
+            for i in range(6):
+                angle = i * 1.047
+                ex = int(cx + math.cos(angle) * rw * 0.45)
+                ey = int(cy + math.sin(angle) * rh * 0.45)
+                pygame.draw.line(surface, (230, 230, 230, 120), (cx, cy), (ex, ey), 1)
+
+        elif tt in ("cloudkill", "stinking_cloud"):
+            # Toxic drifting cloud
+            alpha = 150 + int(25 * math.sin(t_sec * 1.2 + terrain.grid_x * 0.4))
+            surface.fill((r, g, b, alpha))
+            for i in range(2):
+                px = int((t_sec * 6 + i * 15 + terrain.grid_x * 8) % rw)
+                py = int(rh * 0.4 + i * rh * 0.2)
+                pygame.draw.ellipse(surface, (min(255, r + 40), min(255, g + 20), b, 80),
+                                    (px - 6, py - 3, 12, 6))
+
+        elif tt == "sleet_storm":
+            # Icy sleet particles
+            alpha = 160 + int(20 * math.sin(t_sec * 1.8))
+            surface.fill((r, g, b, alpha))
+            for i in range(3):
+                sx = int((t_sec * 12 + i * 11 + terrain.grid_x * 7) % rw)
+                sy = int((t_sec * 8 + i * 9 + terrain.grid_y * 5) % rh)
+                pygame.draw.circle(surface, (220, 230, 255, 140), (sx, sy), 2)
+
+        elif tt == "entangle":
+            # Writhing vines
+            pulse = int(10 * math.sin(t_sec * 1.0 + terrain.grid_x * 0.8))
+            surface.fill((r + pulse, g + pulse, b, 190))
+            for i in range(2):
+                vx = int(rw * (0.3 + i * 0.4))
+                vy = int(rh * 0.5 + math.sin(t_sec * 1.5 + i * 2.5) * rh * 0.25)
+                pygame.draw.circle(surface, (30, 80, 20, 160), (vx, vy), 3)
+
+        elif tt == "silence":
+            # Subtle shimmer indicating silence zone
+            alpha = 120 + int(20 * math.sin(t_sec * 0.6))
+            surface.fill((r, g, b, alpha))
+            # Muted symbol
+            cx, cy = rw // 2, rh // 2
+            pygame.draw.circle(surface, (100, 100, 140, 80), (cx, cy), min(rw, rh) // 3, 1)
+
+        else:
+            # Fallback for unknown spell terrain
+            surface.fill((r, g, b, 200))
 
     # --- Weather Effects ---
     def _draw_weather(self, screen):

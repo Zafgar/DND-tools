@@ -112,9 +112,33 @@ TERRAIN_TYPES = {
                   "blocks_los": True},
     "spirit_guardians":{"color": (200, 200, 100), "passable": True, "difficult": True,
                   "hazard_damage": "3d8", "damage_type": "radiant", "label": "Spirit Guard.", "icon": "SG"},
+    "spike_growth":{"color": (80, 120, 40), "passable": True, "difficult": True,
+                  "hazard_damage": "2d4", "damage_type": "piercing", "label": "Spike Growth", "icon": "SG",
+                  "description": "2d4 piercing per 5ft moved through. Difficult terrain."},
+    "entangle":  {"color": (50, 110, 30),  "passable": True, "difficult": True,
+                  "label": "Entangle", "icon": "EN",
+                  "description": "Restrained (STR save). Difficult terrain."},
+    "sleet_storm":{"color": (180, 200, 220), "passable": True, "difficult": True,
+                  "label": "Sleet Storm", "icon": "SS", "blocks_los": True,
+                  "description": "Heavily obscured. Difficult terrain. DEX save or prone."},
+    "stinking_cloud":{"color": (140, 160, 50), "passable": True,
+                  "label": "Stinking Cloud", "icon": "SC", "blocks_los": True,
+                  "description": "Heavily obscured. CON save or Poisoned."},
+    "cloudkill": {"color": (80, 140, 30),  "passable": True,
+                  "hazard_damage": "5d8", "damage_type": "poison", "label": "Cloudkill", "icon": "CK",
+                  "blocks_los": True,
+                  "description": "Heavily obscured. 5d8 poison (CON save half)."},
+    "moonbeam":  {"color": (200, 220, 255), "passable": True,
+                  "hazard_damage": "2d10", "damage_type": "radiant", "label": "Moonbeam", "icon": "MB",
+                  "description": "2d10 radiant (CON save half). Shapechanger disadv."},
+    "silence":   {"color": (60, 60, 80),   "passable": True, "label": "Silence", "icon": "SI",
+                  "description": "No sound. Prevents verbal (V) component spells."},
     # --- Darkness / Light ---
     "darkness":  {"color": (10, 10, 15),   "passable": True, "label": "Darkness",
                   "icon": "dk", "blocks_los": True},
+    "fog_cloud": {"color": (190, 190, 200), "passable": True, "label": "Fog Cloud",
+                  "icon": "FC", "blocks_los": True,
+                  "description": "Heavily obscured area."},
     "dim_light": {"color": (40, 40, 50),   "passable": True, "label": "Dim Light",
                   "icon": "dl", "lightly_obscured": True},
     # --- Magical terrain ---
@@ -217,6 +241,10 @@ class TerrainObject:
     name: str = ""
     elevation: int = -1    # elevation in feet (-1 = use type default)
     door_open: bool = False  # for door types: current open/closed state
+    # Spell terrain ownership (for auto-removal on concentration drop)
+    spell_owner: str = ""    # caster entity name
+    spell_name: str = ""     # spell that created this terrain
+    is_spell_terrain: bool = False  # True if created by a spell
 
     def __post_init__(self):
         if not self.name:
@@ -341,6 +369,10 @@ class TerrainObject:
         }
         if self.is_door:
             d["door_open"] = self.door_open
+        if self.is_spell_terrain:
+            d["spell_owner"] = self.spell_owner
+            d["spell_name"] = self.spell_name
+            d["is_spell_terrain"] = True
         return d
 
     @staticmethod
@@ -354,6 +386,9 @@ class TerrainObject:
             name=d.get("name", ""),
             elevation=d.get("elevation", -1),
             door_open=d.get("door_open", False),
+            spell_owner=d.get("spell_owner", ""),
+            spell_name=d.get("spell_name", ""),
+            is_spell_terrain=d.get("is_spell_terrain", False),
         )
 
 

@@ -1469,6 +1469,12 @@ class TacticalAI:
                 debuff_score = self._score_debuff_value(debuff_step, entity, enemies)
                 candidates.append((debuff_score, "debuff", [debuff_step]))
 
+        # --- Terrain-creating spell (non-damage: Darkness, Fog Cloud, Silence) ---
+        if entity.has_spell_slot(1):
+            terrain_step = self._try_terrain_spell(entity, enemies, allies, battle)
+            if terrain_step:
+                candidates.append((terrain_step[0], "terrain_spell", terrain_step[1]))
+
         # --- Damage spell / cantrip ---
         if entity.stats.spells_known or entity.stats.cantrips:
             spell_step = self._try_damage_spell(entity, enemies, battle)
@@ -2406,6 +2412,100 @@ class TacticalAI:
                 damage=roll_dice(_get_spell_damage_dice(best_spell, entity)) if best_spell.damage_dice else 0,
                 damage_type=best_spell.damage_type if best_spell.damage_dice else "",
             )
+        return None
+
+    def _try_terrain_spell(self, entity, enemies, allies, battle):
+        """Try casting a non-damage terrain spell (Darkness, Fog Cloud, Silence).
+
+        Returns (score, [ActionStep]) or None.
+        Damaging terrain spells (Wall of Fire, Spike Growth) are handled by _try_aoe_spell.
+        """
+        terrain_spells = [s for s in entity.stats.spells_known
+                          if s.creates_terrain and not s.damage_dice and not s.applies_condition
+                          and s.level > 0 and entity.has_spell_slot(s.level)]
+
+        if not terrain_spells:
+            return None
+
+        # Don't replace good concentration
+        if entity.concentrating_on:
+            return None
+
+        best_score = 0
+        best_step = None
+
+        for spell in terrain_spells:
+            # Find best cluster of enemies to cover
+            result = self._best_aoe_cluster(
+                entity, enemies, allies, battle,
+                spell.aoe_radius, shape=spell.aoe_shape,
+                avoid_allies=True, damage_type="")
+            if not result:
+                continue
+
+            clusters, (cx, cy) = result
+            enemies_hit = len([t for t in clusters if t in enemies])
+            allies_hit = len([t for t in clusters if t in allies])
+
+            if enemies_hit == 0:
+                continue
+
+            # Score based on tactical value
+            score = 0
+            if spell.creates_terrain == "darkness":
+                # Darkness is useful for ranged enemies (blocks their LOS)
+                # Check if entity has Devil's Sight or Blindsight
+                has_darkvision_immunity = (entity.has_feature("devils_sight") or
+                                           entity.has_feature("blindsight") or
+                                           entity.has_feature("truesight"))
+                if has_darkvision_immunity:
+                    score = enemies_hit * 25  # Very valuable with Devil's Sight
+                else:
+                    score = enemies_hit * 8   # Risky without immunity
+
+            elif spell.creates_terrain == "fog_cloud":
+                # Fog blocks LOS - useful to break ranged enemy advantage
+                pref = self._get_combat_preference(entity)
+                if pref == "melee":
+                    score = enemies_hit * 12  # Melee benefits from fog vs ranged enemies
+                else:
+                    score = enemies_hit * 5   # Ranged doesn't want fog as much
+
+            elif spell.creates_terrain == "silence":
+                # Silence is very valuable vs spellcasters
+                for t in clusters:
+                    if t in enemies and t.stats.spells_known:
+                        score += 30  # Huge value vs casters
+                    elif t in enemies:
+                        score += 5
+
+            else:
+                score = enemies_hit * 10  # Generic terrain spell
+
+            # Penalty for hitting allies
+            score -= allies_hit * 20
+
+            # Scale by spell level cost
+            score -= spell.level * 3
+
+            if score > best_score:
+                best_score = score
+                slot = spell.level
+                dc = entity.stats.spell_save_dc or (8 + entity.stats.proficiency_bonus +
+                      entity.get_modifier(entity.stats.spellcasting_ability))
+                entity.use_spell_slot(slot)
+                entity.start_concentration(spell)
+                best_step = ActionStep(
+                    step_type="spell",
+                    description=f"{entity.name} casts {spell.name} (slot {slot}).",
+                    attacker=entity, targets=clusters, spell=spell, slot_used=slot,
+                    damage=0, damage_type="",
+                    action_name=spell.name, aoe_center=(cx, cy),
+                    save_dc=dc,
+                )
+
+        if best_step:
+            return (best_score, [best_step])
         return None
 
     def _try_damage_spell(self, entity, enemies, battle):

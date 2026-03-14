@@ -311,6 +311,7 @@ def _import_spell(data: dict) -> SpellInfo:
         summon_duration_rounds=data.get("summon_duration_rounds", 10),
         bonus_damage_dice=data.get("bonus_damage_dice", ""),
         bonus_damage_type=data.get("bonus_damage_type", ""),
+        creates_terrain=data.get("creates_terrain", ""),
     )
 
 
