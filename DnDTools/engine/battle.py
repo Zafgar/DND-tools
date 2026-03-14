@@ -544,6 +544,7 @@ class BattleSystem:
             self.log(f"  [CONCENTRATION] {spell.name} expires next round!")
         elif remaining <= 0:
             self.log(f"  [CONCENTRATION] {spell.name} duration expired!")
+            self.remove_spell_terrain(entity.name, spell.name)
             entity.drop_concentration()
             entity.concentration_rounds_left = None
 
@@ -936,6 +937,56 @@ class BattleSystem:
 
     def remove_terrain_at(self, gx: int, gy: int):
         self.terrain = [t for t in self.terrain if not t.occupies(gx, gy)]
+
+    def spawn_spell_terrain(self, spell, caster, center_x, center_y):
+        """Create persistent terrain tiles for a spell's area of effect."""
+        import math
+        terrain_type = spell.creates_terrain
+        if not terrain_type:
+            return
+        radius_sq = spell.aoe_radius / 5.0  # convert feet to grid squares
+        tiles_created = 0
+        for dx in range(int(-radius_sq), int(radius_sq) + 1):
+            for dy in range(int(-radius_sq), int(radius_sq) + 1):
+                gx = int(center_x) + dx
+                gy = int(center_y) + dy
+                # Shape filtering
+                if spell.aoe_shape in ("sphere", "cylinder"):
+                    if math.hypot(dx, dy) > radius_sq:
+                        continue
+                elif spell.aoe_shape == "cube":
+                    if abs(dx) > radius_sq or abs(dy) > radius_sq:
+                        continue
+                elif spell.aoe_shape == "line":
+                    # Walls: thin strip along longest axis
+                    if abs(dy) > 0 and abs(dx) > 0:
+                        continue
+                    if abs(dx) + abs(dy) > radius_sq:
+                        continue
+                # Don't overwrite non-spell terrain (walls, doors, etc.)
+                existing = self.get_terrain_at(gx, gy)
+                if existing and not existing.is_spell_terrain:
+                    continue
+                t = TerrainObject(
+                    terrain_type=terrain_type,
+                    grid_x=gx, grid_y=gy,
+                    spell_owner=caster.name,
+                    spell_name=spell.name,
+                    is_spell_terrain=True,
+                )
+                self.add_terrain(t)
+                tiles_created += 1
+        if tiles_created > 0:
+            self.log(f"  [TERRAIN] {caster.name}'s {spell.name} creates {tiles_created} tiles of {terrain_type}.")
+
+    def remove_spell_terrain(self, caster_name: str, spell_name: str):
+        """Remove all terrain tiles created by a specific spell from a specific caster."""
+        before = len(self.terrain)
+        self.terrain = [t for t in self.terrain
+                        if not (t.is_spell_terrain and t.spell_owner == caster_name and t.spell_name == spell_name)]
+        removed = before - len(self.terrain)
+        if removed > 0:
+            self.log(f"  [TERRAIN] {spell_name} terrain fades ({removed} tiles removed).")
 
     def toggle_door_at(self, gx: int, gy: int) -> bool:
         """Toggle a door at the given position. Returns True if toggled."""

@@ -51,6 +51,8 @@ class SpellInfo:
     # Bonus damage on weapon hits (e.g. Hunter's Mark 1d6)
     bonus_damage_dice: str = ""
     bonus_damage_type: str = ""
+    # Terrain creation: spawns persistent terrain on the battlefield
+    creates_terrain: str = ""         # terrain_type key from TERRAIN_TYPES (e.g. "darkness", "spike_growth")
     # Innate spellcasting: cast without using spell slots
     innate: bool = False              # True = innate (doesn't consume slot)
     innate_uses_per_day: int = -1     # -1 = at will, >0 = X/day

@@ -499,6 +499,9 @@ class Entity:
         self.concentration_rounds_left = None
         if dropped and dropped.name in ("Hunter's Mark", "Hex"):
             self.marked_target = None
+        # Store for terrain cleanup by battle system
+        if dropped and dropped.creates_terrain:
+            self._dropped_spell_terrain = (self.name, dropped.name)
         return dropped
 
     # ------------------------------------------------------------------ #

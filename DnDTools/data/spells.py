@@ -73,7 +73,13 @@ _spells = {
                               description="Weapon attacks deal +1d4 radiant"),
     
     "Entangle": SpellInfo("Entangle", level=1, action_type="action", range=90, aoe_radius=20, aoe_shape="cube",
-                          save_ability="Strength", applies_condition="Restrained", concentration=True, duration="1 minute", targets="aoe"),
+                          save_ability="Strength", applies_condition="Restrained", concentration=True, duration="1 minute", targets="aoe",
+                          creates_terrain="entangle"),
+
+    "Fog Cloud": SpellInfo("Fog Cloud", level=1, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
+                           targets="aoe", concentration=True, duration="1 hour",
+                           creates_terrain="fog_cloud",
+                           description="Heavily obscured area. Blocks line of sight."),
     
     "Guiding Bolt": SpellInfo("Guiding Bolt", level=1, action_type="action", range=120, targets="single",
                               damage_dice="4d6", damage_type="radiant", description="Next attack vs target has Adv",
@@ -139,6 +145,11 @@ _spells = {
     # --- LEVEL 2 ---
     "Blindness/Deafness": SpellInfo("Blindness/Deafness", level=2, action_type="action", range=30, targets="single",
                                     save_ability="Constitution", applies_condition="Blinded", duration="1 minute"),
+
+    "Darkness": SpellInfo("Darkness", level=2, action_type="action", range=60, aoe_radius=15, aoe_shape="sphere",
+                          targets="aoe", concentration=True, duration="10 minutes",
+                          creates_terrain="darkness",
+                          description="Magical darkness. Heavily obscured. Blocks darkvision."),
     
     "Hold Person": SpellInfo("Hold Person", level=2, action_type="action", range=60, targets="single",
                              save_ability="Wisdom", applies_condition="Paralyzed", concentration=True, duration="1 minute"),
@@ -157,7 +168,18 @@ _spells = {
     
     "Shatter": SpellInfo("Shatter", level=2, action_type="action", range=60, aoe_radius=10, aoe_shape="sphere",
                          damage_dice="3d8", damage_type="thunder", save_ability="Constitution", half_on_save=True, targets="aoe"),
-    
+
+    "Silence": SpellInfo("Silence", level=2, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
+                         targets="aoe", concentration=True, duration="10 minutes", ritual=True,
+                         creates_terrain="silence",
+                         description="No sound. Prevents spells with verbal (V) components."),
+
+    "Spike Growth": SpellInfo("Spike Growth", level=2, action_type="action", range=150, aoe_radius=20, aoe_shape="sphere",
+                              damage_dice="2d4", damage_type="piercing", targets="aoe",
+                              concentration=True, duration="10 minutes",
+                              creates_terrain="spike_growth",
+                              description="Difficult terrain. 2d4 piercing per 5ft moved through."),
+
     "Spiritual Weapon": SpellInfo("Spiritual Weapon", level=2, action_type="bonus", range=60, targets="single",
                                   damage_dice="1d8+4", damage_type="force", duration="1 minute",
                                   description="Summon spectral weapon. Bonus action melee spell attack each turn.",
@@ -166,7 +188,8 @@ _spells = {
                                   summon_attack_bonus=0, summon_duration_rounds=10),
     
     "Web": SpellInfo("Web", level=2, action_type="action", range=60, aoe_radius=20, aoe_shape="cube",
-                     save_ability="Dexterity", applies_condition="Restrained", concentration=True, duration="1 hour", targets="aoe"),
+                     save_ability="Dexterity", applies_condition="Restrained", concentration=True, duration="1 hour", targets="aoe",
+                     creates_terrain="web"),
 
     "Heat Metal": SpellInfo("Heat Metal", level=2, action_type="action", range=60, targets="single",
                             damage_dice="2d8", damage_type="fire", concentration=True, duration="1 minute",
@@ -174,7 +197,8 @@ _spells = {
 
     "Moonbeam": SpellInfo("Moonbeam", level=2, action_type="action", range=120, aoe_radius=5, aoe_shape="cylinder",
                           damage_dice="2d10", damage_type="radiant", save_ability="Constitution", half_on_save=True,
-                          targets="aoe", concentration=True, duration="1 minute"),
+                          targets="aoe", concentration=True, duration="1 minute",
+                          creates_terrain="moonbeam"),
 
     "Silence": SpellInfo("Silence", level=2, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
                          targets="aoe", concentration=True, duration="10 minutes", ritual=True,
@@ -220,9 +244,22 @@ _spells = {
     "Revivify": SpellInfo("Revivify", level=3, action_type="action", range=0, targets="single",
                           description="Return dead to life with 1 HP (within 1 min)"),
     
+    "Sleet Storm": SpellInfo("Sleet Storm", level=3, action_type="action", range=150, aoe_radius=40, aoe_shape="sphere",
+                            targets="aoe", save_ability="Dexterity", applies_condition="Prone",
+                            concentration=True, duration="1 minute",
+                            creates_terrain="sleet_storm",
+                            description="Difficult terrain. Heavily obscured. DEX save or fall prone."),
+
     "Spirit Guardians": SpellInfo("Spirit Guardians", level=3, action_type="action", range=0, aoe_radius=15, aoe_shape="sphere",
                                   damage_dice="3d8", damage_type="radiant", save_ability="Wisdom", half_on_save=True, targets="aoe",
-                                  concentration=True, duration="10 minutes"),
+                                  concentration=True, duration="10 minutes",
+                                  creates_terrain="spirit_guardians"),
+
+    "Stinking Cloud": SpellInfo("Stinking Cloud", level=3, action_type="action", range=90, aoe_radius=20, aoe_shape="sphere",
+                                targets="aoe", save_ability="Constitution", applies_condition="Poisoned",
+                                concentration=True, duration="1 minute",
+                                creates_terrain="stinking_cloud",
+                                description="Heavily obscured. CON save or spend action retching (Poisoned)."),
     
     "Vampiric Touch": SpellInfo("Vampiric Touch", level=3, action_type="action", range=5, targets="single",
                                 damage_dice="3d6", damage_type="necrotic", concentration=True, duration="1 minute",
@@ -248,12 +285,14 @@ _spells = {
     
     "Wall of Fire": SpellInfo("Wall of Fire", level=4, action_type="action", range=120, aoe_radius=60, aoe_shape="line",
                               damage_dice="5d8", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe",
-                              concentration=True, duration="1 minute"),
+                              concentration=True, duration="1 minute",
+                              creates_terrain="wall_fire"),
 
     # --- LEVEL 5 ---
     "Cloudkill": SpellInfo("Cloudkill", level=5, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
                            damage_dice="5d8", damage_type="poison", save_ability="Constitution", half_on_save=True, targets="aoe",
-                           concentration=True, duration="10 minutes"),
+                           concentration=True, duration="10 minutes",
+                           creates_terrain="cloudkill"),
     
     "Cone of Cold": SpellInfo("Cone of Cold", level=5, action_type="action", range=60, aoe_radius=60, aoe_shape="cone",
                               damage_dice="8d8", damage_type="cold", save_ability="Constitution", half_on_save=True, targets="aoe"),
@@ -279,6 +318,12 @@ _spells = {
     "Sunbeam": SpellInfo("Sunbeam", level=6, action_type="action", range=0, aoe_radius=60, aoe_shape="line",
                          damage_dice="6d8", damage_type="radiant", save_ability="Constitution", half_on_save=True, targets="aoe",
                          concentration=True, duration="1 minute", applies_condition="Blinded"),
+
+    "Wall of Thorns": SpellInfo("Wall of Thorns", level=6, action_type="action", range=120, aoe_radius=60, aoe_shape="line",
+                                damage_dice="7d8", damage_type="piercing", save_ability="Dexterity", half_on_save=True,
+                                targets="aoe", concentration=True, duration="10 minutes",
+                                creates_terrain="wall_thorns",
+                                description="Thorny wall. 7d8 piercing on enter/through (DEX save). Difficult terrain."),
 
     # --- LEVEL 7 ---
     "Finger of Death": SpellInfo("Finger of Death", level=7, action_type="action", range=60, targets="single",
