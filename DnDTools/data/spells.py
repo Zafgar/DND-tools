@@ -200,10 +200,6 @@ _spells = {
                           targets="aoe", concentration=True, duration="1 minute",
                           creates_terrain="moonbeam"),
 
-    "Silence": SpellInfo("Silence", level=2, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
-                         targets="aoe", concentration=True, duration="10 minutes", ritual=True,
-                         description="No sound in area. Prevents verbal spellcasting."),
-
     "Mirror Image": SpellInfo("Mirror Image", level=2, action_type="action", range=0, targets="self",
                               duration="1 minute", description="3 illusory duplicates. AC 10+DEX. Destroyed on hit."),
 

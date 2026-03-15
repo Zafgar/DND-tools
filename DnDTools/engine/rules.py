@@ -559,6 +559,22 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
         if not entity.has_condition("Blinded") and not entity.is_incapacitated():
             advantage = True
 
+    # Fey Ancestry (Elf/Half-Elf): advantage on saves vs being Charmed
+    if any(rt.mechanic == "fey_ancestry" for rt in entity.stats.racial_traits):
+        if applies_condition and applies_condition.lower() in ("charmed",):
+            advantage = True
+
+    # Brave (Halfling): advantage on saves vs being Frightened
+    if any(rt.mechanic == "brave" for rt in entity.stats.racial_traits):
+        if applies_condition and applies_condition.lower() in ("frightened",):
+            advantage = True
+
+    # Dwarven Resilience / Stout Resilience: advantage on saves vs Poison
+    if any(rt.mechanic in ("dwarven_resilience", "stout_resilience")
+           for rt in entity.stats.racial_traits):
+        if applies_condition and applies_condition.lower() in ("poisoned",):
+            advantage = True
+
     # Resolve advantage/disadvantage
     roll_type = resolve_advantage_disadvantage(advantage, disadvantage)
 

@@ -126,8 +126,21 @@ class TacticalAI:
         return battle.has_line_of_sight(entity, target)
 
     def _get_visible_enemies(self, entity, enemies, battle) -> list:
-        """Filter enemies to only those the entity can see."""
-        return [e for e in enemies if e.hp > 0 and self._can_see_target(entity, e, battle)]
+        """Filter enemies to only those the entity can see.
+        Also excludes charmer if entity is Charmed (PHB p.290)."""
+        result = []
+        for e in enemies:
+            if e.hp <= 0:
+                continue
+            if not self._can_see_target(entity, e, battle):
+                continue
+            # PHB p.290: Charmed creature can't attack the charmer
+            if entity.has_condition("Charmed"):
+                charm_source = entity.condition_sources.get("Charmed")
+                if charm_source is e:
+                    continue
+            result.append(e)
+        return result
 
     def _can_ranged_attack(self, entity, target, battle, range_ft: float = 0) -> bool:
         """Check if a ranged attack/spell is valid: LOS + range."""
