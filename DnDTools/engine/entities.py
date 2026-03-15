@@ -331,16 +331,20 @@ class Entity:
                     else:
                         is_resistant = True
 
-        if is_resistant:
+        is_vulnerable = dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]
+
+        # PHB p.197: If resistance AND vulnerability apply, they cancel out
+        if is_resistant and is_vulnerable:
+            pass  # No modification
+        elif is_resistant:
             amount = amount // 2
+        elif is_vulnerable:
+            amount = amount * 2
 
         # Heavy Armor Master: reduce nonmagical B/P/S by 3 while in heavy armor
         if self.has_feature("heavy_armor_master") and not is_magical:
             if dtype_lower in ("bludgeoning", "piercing", "slashing"):
                 amount = max(0, amount - 3)
-
-        if dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]:
-            amount = amount * 2
 
         # Reset stability if taking damage
         if amount > 0:
