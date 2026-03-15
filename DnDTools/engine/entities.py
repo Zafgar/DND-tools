@@ -105,6 +105,7 @@ class Entity:
         self.savage_attacker_used: bool = False
 
         # Class resource tracking
+        self.reckless_attack_active: bool = False  # PHB p.48: gives advantage on melee STR attacks, enemies get advantage against us
         self.rage_active: bool = False
         self.rage_rounds: int = 0         # Rounds since rage started (max 10 = 1 min)
         self.rage_damage_taken: bool = False  # Did we take damage this round?
@@ -797,8 +798,9 @@ class Entity:
                 pass  # Alert: unseen attackers don't gain advantage
             else:
                 return True
-        # Reckless Attack (Barbarian) - melee STR attacks
-        if self.rage_active and self.has_feature("reckless_attack") and not is_ranged:
+        # Reckless Attack (Barbarian, PHB p.48) - melee STR attacks
+        # Reckless Attack is independent of Rage; it can be used any time
+        if self.reckless_attack_active and not is_ranged:
             return True
         if target:
             if target.has_condition("Paralyzed") or target.has_condition("Unconscious"):
@@ -810,6 +812,9 @@ class Entity:
             if target.has_condition("Prone") and not is_ranged:
                 return True
             if target.has_condition("Guiding Bolt"):
+                return True
+            # PHB p.48: Reckless Attack - enemies have advantage on attacks against you
+            if target.reckless_attack_active and not is_ranged:
                 return True
         return False
 
@@ -954,6 +959,7 @@ class Entity:
         self.savage_attacker_used = False
         self.is_dodging = False
         self.is_disengaging = False
+        self.reckless_attack_active = False  # PHB p.48: Reckless Attack lasts until next turn
 
     def reset_legendary_actions(self):
         self.legendary_actions_left = self.stats.legendary_action_count

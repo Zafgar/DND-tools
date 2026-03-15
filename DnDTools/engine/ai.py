@@ -230,6 +230,25 @@ class TacticalAI:
                 plan.steps.append(pre_buff_step)
                 entity.bonus_action_used = True
 
+        # Barbarian: Reckless Attack (PHB p.48) - decide before attacks
+        # Gives advantage on melee STR attacks but enemies get advantage against you
+        if entity.has_feature("reckless_attack") and not entity.reckless_attack_active:
+            # Use reckless when: adjacent enemy and we benefit from advantage
+            closest_enemy = min(enemies, key=lambda e: battle.get_distance(entity, e) if e.hp > 0 else 999)
+            if closest_enemy.hp > 0 and battle.get_distance(entity, closest_enemy) * 5 <= entity.movement_left + 5:
+                # Cost-benefit: advantage is worth it if we're a damage dealer or raging
+                # Don't use if too many enemies are in melee (too costly)
+                threats = [e for e in enemies if battle.is_adjacent(entity, e) and e.hp > 0]
+                # Use reckless if: raging (resistance offsets cost), or fewer than 3 threats
+                should_reckless = entity.rage_active or len(threats) <= 2
+                if should_reckless:
+                    entity.reckless_attack_active = True
+                    plan.steps.append(ActionStep(
+                        step_type="wait",
+                        description=f"{entity.name} attacks recklessly! (Advantage on STR melee, enemies get advantage)",
+                        attacker=entity, action_name="Reckless Attack",
+                    ))
+
         if not entity.bonus_action_used and entity.has_feature("cunning_action"):
             # Rogue: Hide for advantage on first attack
             hide_step = self._try_cunning_hide(entity, enemies, battle)
@@ -3104,6 +3123,21 @@ class TacticalAI:
                         description=f"{entity.name} uses Patient Defense (Dodge, 1 Ki).",
                         attacker=entity, target=entity, action_name="Patient Defense",
                     )]
+                # Step of the Wind: Disengage or Dash as bonus action (1 ki)
+                # Use when ranged-threatened or need to close distance
+                if entity.has_feature("step_of_the_wind"):
+                    # Disengage if we're a ranged monk surrounded
+                    if threats and self._get_combat_preference(entity) == "ranged":
+                        entity.ki_points_left -= 1
+                        entity.is_disengaging = True
+                        entity.movement_left += entity.stats.speed  # Dash component
+                        entity.bonus_action_used = True
+                        return [ActionStep(
+                            step_type="bonus_attack",
+                            description=f"{entity.name} uses Step of the Wind (Disengage + Dash, 1 Ki).",
+                            attacker=entity, target=entity, action_name="Step of the Wind",
+                        )]
+
                 # Otherwise Flurry of Blows for offense
                 target = self._pick_target(entity, enemies, battle)
                 if target and battle.is_adjacent(entity, target):

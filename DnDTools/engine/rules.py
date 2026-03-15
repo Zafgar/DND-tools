@@ -506,7 +506,8 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
                       advantage: bool = False,
                       disadvantage: bool = False,
                       applies_condition: str = "",
-                      damage_dice: str = "") -> Tuple[bool, int, str]:
+                      damage_dice: str = "",
+                      damage_type: str = "") -> Tuple[bool, int, str]:
     """
     Make a saving throw for an entity.
 
@@ -554,6 +555,10 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
         if ability_lower in ("intelligence", "wisdom", "charisma", "int", "wis", "cha"):
             advantage = True
 
+    # PHB p.291: Exhaustion level 3+ gives disadvantage on attack rolls AND saving throws
+    if entity.exhaustion >= 3:
+        disadvantage = True
+
     # Danger Sense (Barbarian): advantage on DEX saves you can see
     if entity.has_feature("danger_sense") and ability_lower in ("dexterity", "dex"):
         if not entity.has_condition("Blinded") and not entity.is_incapacitated():
@@ -569,10 +574,15 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
         if applies_condition and applies_condition.lower() in ("frightened",):
             advantage = True
 
-    # Dwarven Resilience / Stout Resilience: advantage on saves vs Poison
+    # Dwarven Resilience / Stout Resilience (PHB p.20/p.28):
+    # Advantage on saves against poison (both the Poisoned condition AND poison damage)
     if any(rt.mechanic in ("dwarven_resilience", "stout_resilience")
            for rt in entity.stats.racial_traits):
-        if applies_condition and applies_condition.lower() in ("poisoned",):
+        is_poison_related = (
+            (applies_condition and applies_condition.lower() == "poisoned")
+            or (damage_type and damage_type.lower() == "poison")
+        )
+        if is_poison_related:
             advantage = True
 
     # Resolve advantage/disadvantage

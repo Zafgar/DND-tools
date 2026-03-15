@@ -434,15 +434,19 @@ class BattleSystem:
                     self.log(f"[GRAPPLE] {target.name} broke free from {grappler.name} (out of reach).")
 
     def get_total_save_bonus(self, entity: Entity, ability: str) -> int:
-        """Get save bonus including auras (e.g. Paladin)."""
+        """Get save bonus including auras (e.g. Paladin).
+        PHB p.85: Aura of Protection applies to the paladin AND allies within range."""
         bonus = entity.get_save_bonus(ability)
-        # Paladin Aura of Protection check
-        for ally in self.get_allies_of(entity):
-            if ally.hp > 0 and not ally.is_incapacitated():
-                aura = ally.get_feature("aura_of_protection")
-                if aura and self.get_distance(entity, ally) * 5 <= (aura.aura_radius or 10):
-                    bonus += max(1, ally.get_modifier("Charisma"))
-                    break # Bonuses don't stack
+        # Paladin Aura of Protection: check self AND allies
+        # The paladin benefits from their own aura (PHB p.85)
+        aura_sources = [entity] + self.get_allies_of(entity)
+        for source in aura_sources:
+            if source.hp > 0 and not source.is_incapacitated():
+                aura = source.get_feature("aura_of_protection")
+                if aura:
+                    if source == entity or self.get_distance(entity, source) * 5 <= (aura.aura_radius or 10):
+                        bonus += max(1, source.get_modifier("Charisma"))
+                        break  # Bonuses don't stack from multiple paladins
         return bonus
 
     def handle_end_of_turn_saves(self, entity: Entity):
@@ -455,6 +459,13 @@ class BattleSystem:
             if fear_source and fear_source.hp <= 0:
                 entity.remove_condition("Frightened")
                 self.log(f"[STATUS] {entity.name} is no longer Frightened (source defeated)")
+
+        # PHB p.290: Charmed ends if charmer is dead/incapacitated
+        if entity.has_condition("Charmed"):
+            charm_source = entity.get_condition_source("Charmed")
+            if charm_source and (charm_source.hp <= 0 or charm_source.is_incapacitated()):
+                entity.remove_condition("Charmed")
+                self.log(f"[STATUS] {entity.name} is no longer Charmed (source defeated)")
 
         # Check if grappler is incapacitated or dead -> remove Grappled
         if entity.has_condition("Grappled") and entity.grappled_by:
