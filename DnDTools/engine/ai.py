@@ -306,6 +306,10 @@ class TacticalAI:
         best_score = -1.0
 
         for action in lair_actions:
+            # MM: Can't reuse the same lair action two rounds in a row
+            if action.name == entity.last_lair_action and len(lair_actions) > 1:
+                continue
+
             # Check if recharge needed
             if entity.get_feature_by_name(action.name):
                 if not entity.can_use_feature(action.name):
@@ -356,6 +360,8 @@ class TacticalAI:
                             best_step = step
 
         if best_step:
+            # Track which lair action was used (MM: can't repeat next round)
+            entity.last_lair_action = best_step.action_name or (best_step.action.name if best_step.action else "")
             # Consume usage if applicable
             if best_step.action and entity.get_feature_by_name(best_step.action.name):
                 entity.use_feature(best_step.action.name)

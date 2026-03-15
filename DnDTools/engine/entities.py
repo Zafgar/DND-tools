@@ -14,6 +14,7 @@ class Entity:
         self.is_player = is_player
         self.is_lair = False
         self.lair_owner = None  # Reference to the entity that owns this lair action
+        self.last_lair_action: str = ""  # MM: can't reuse same lair action two rounds in a row
         self.team = ""  # Team name for multi-team combat (e.g. "Blue", "Red", "Green", "Gold")
 
         # Dynamic HP
