@@ -38,6 +38,7 @@ from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from states.game_states import MenuState, BattleState, EncounterSetupState
 from states.hero_creator import HeroCreatorState
 from states.combat_roster import CombatRosterState
+from states.campaign_manager import CampaignManagerState
 
 # --- FLASK SERVER SETUP ---
 app = Flask(__name__)
@@ -82,6 +83,7 @@ class GameManager:
             "SETUP": EncounterSetupState(self),
             "HERO_CREATOR": HeroCreatorState(self),
             "COMBAT_ROSTER": CombatRosterState(self),
+            "CAMPAIGN": None,
             "BATTLE": None,
         }
         self.current_state = self.states["MENU"]
@@ -90,12 +92,15 @@ class GameManager:
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
 
-    def change_state(self, state_name: str):
+    def change_state(self, state_name: str, **kwargs):
         # Recreate certain states fresh each time
         if state_name == "HERO_CREATOR":
             self.states["HERO_CREATOR"] = HeroCreatorState(self)
         elif state_name == "COMBAT_ROSTER":
             self.states["COMBAT_ROSTER"] = CombatRosterState(self)
+        elif state_name == "CAMPAIGN":
+            campaign = kwargs.get("campaign")
+            self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
 

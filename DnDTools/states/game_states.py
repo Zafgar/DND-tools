@@ -20,6 +20,7 @@ from data.conditions import CONDITIONS
 from engine.battle_report import generate_battle_report, format_report_text, save_report, save_report_text
 from engine.win_probability import assess_encounter_danger
 from data.hero_import import import_heroes_from_file, export_heroes_to_file
+from data.campaign import Campaign, load_campaign, list_campaigns, CAMPAIGNS_DIR, _timestamp
 
 SAVES_DIR = os.path.join(os.path.dirname(__file__), "..", "saves")
 
@@ -287,23 +288,27 @@ class MenuState(GameState):
         self.buttons = [
             Button(cx-bw//2, start_y,              bw, bh, "New Encounter",
                    lambda: manager.change_state("SETUP")),
-            Button(cx-bw//2, start_y + (bh+gap),   bw, bh, "Combat Roster",
+            Button(cx-bw//2, start_y + (bh+gap),   bw, bh, "Campaign Manager",
+                   lambda: self._open_campaign_picker(),
+                   color=COLORS["legendary"]),
+            Button(cx-bw//2, start_y + (bh+gap)*2, bw, bh, "Combat Roster",
                    lambda: manager.change_state("COMBAT_ROSTER"),
                    color=COLORS["success"]),
-            Button(cx-bw//2, start_y + (bh+gap)*2, bw, bh, "Hero Creator",
+            Button(cx-bw//2, start_y + (bh+gap)*3, bw, bh, "Hero Creator",
                    lambda: manager.change_state("HERO_CREATOR"),
                    color=COLORS["player"]),
-            Button(cx-bw//2, start_y + (bh+gap)*3, bw, bh, "Load Scenario",
+            Button(cx-bw//2, start_y + (bh+gap)*4, bw, bh, "Load Scenario",
                    lambda: self._open_load_modal(),
                    color=COLORS["panel_light"], style="outline"),
-            Button(cx-bw//2, start_y + (bh+gap)*4, bw, bh, "Import from TaleSpire",
+            Button(cx-bw//2, start_y + (bh+gap)*5, bw, bh, "Import from TaleSpire",
                    lambda: self._import_from_talespire(),
                    color=COLORS["accent_dim"], style="outline"),
-            Button(cx-bw//2, start_y + (bh+gap)*5, bw, bh, "Exit",
+            Button(cx-bw//2, start_y + (bh+gap)*6, bw, bh, "Exit",
                    lambda: manager.quit(),
                    color=COLORS["danger_dim"]),
         ]
         self.scenario_modal = None
+        self.campaign_modal = None  # Campaign picker modal
         self._bg_particles = []
         for _ in range(40):
             self._bg_particles.append([
@@ -334,8 +339,32 @@ class MenuState(GameState):
         except Exception as ex:
             print(f"Load error: {ex}")
 
+    # ---- Campaign Management ----
+
+    def _open_campaign_picker(self):
+        """Open campaign picker: list existing campaigns or create new one."""
+        self.campaign_modal = CampaignPickerModal(self._on_campaign_selected)
+
+    def _on_campaign_selected(self, result):
+        """Called when a campaign is selected or 'new' is chosen."""
+        self.campaign_modal = None
+        if result is None:
+            return
+        if result == "__new__":
+            campaign = Campaign(name="New Campaign", created=_timestamp())
+            self.manager.change_state("CAMPAIGN", campaign=campaign)
+        elif isinstance(result, str) and os.path.exists(result):
+            try:
+                campaign = load_campaign(result)
+                self.manager.change_state("CAMPAIGN", campaign=campaign)
+            except Exception as ex:
+                print(f"Campaign load error: {ex}")
+
     def handle_events(self, events):
         for e in events:
+            if self.campaign_modal:
+                self.campaign_modal.handle_event(e)
+                continue
             if self.scenario_modal:
                 self.scenario_modal.handle_event(e)
                 continue
@@ -387,6 +416,94 @@ class MenuState(GameState):
 
         if self.scenario_modal:
             self.scenario_modal.draw(screen, mp)
+        if self.campaign_modal:
+            self.campaign_modal.draw(screen, mp)
+
+
+# ============================================================
+# Campaign Picker Modal
+# ============================================================
+class CampaignPickerModal:
+    """Modal for selecting an existing campaign or creating a new one."""
+    def __init__(self, callback):
+        self.callback = callback
+        self.w, self.h = 600, 500
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+        self.scroll_y = 0
+        self.selected_file = None
+
+        # Load campaign list
+        self.files = list_campaigns()
+
+        self.btn_new = Button(self.x + 20, self.y + self.h - 60, 150, 45,
+                              "NEW CAMPAIGN", lambda: callback("__new__"), color=COLORS["success"])
+        self.btn_load = Button(self.x + self.w - 170, self.y + self.h - 60, 150, 45,
+                               "LOAD", self._load, color=COLORS["accent"])
+        self.btn_cancel = Button(self.x + 190, self.y + self.h - 60, 120, 45,
+                                 "CANCEL", lambda: callback(None), color=COLORS["danger"])
+
+    def _load(self):
+        if self.selected_file:
+            filepath = os.path.join(CAMPAIGNS_DIR, self.selected_file)
+            self.callback(filepath)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.callback(None)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            mx, my = event.pos
+            list_rect = pygame.Rect(self.x + 20, self.y + 60, self.w - 40, self.h - 140)
+            if list_rect.collidepoint(mx, my):
+                rel_y = my - (self.y + 60) - self.scroll_y
+                idx = int(rel_y // 35)
+                if 0 <= idx < len(self.files):
+                    self.selected_file = self.files[idx]
+            if event.button == 4:
+                self.scroll_y = min(0, self.scroll_y + 20)
+            if event.button == 5:
+                self.scroll_y = max(-(len(self.files) * 35 - (self.h - 140)), self.scroll_y - 20)
+
+        self.btn_new.handle_event(event)
+        self.btn_load.handle_event(event)
+        self.btn_cancel.handle_event(event)
+
+    def draw(self, screen, mp):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 180))
+        screen.blit(ov, (0, 0))
+
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h), 2, border_radius=10)
+
+        t = fonts.header.render("Campaign Manager", True, COLORS["legendary"])
+        screen.blit(t, (self.x + 20, self.y + 15))
+
+        list_rect = pygame.Rect(self.x + 20, self.y + 60, self.w - 40, self.h - 140)
+        pygame.draw.rect(screen, (20, 22, 25), list_rect)
+        pygame.draw.rect(screen, COLORS["border"], list_rect, 1)
+
+        if not self.files:
+            hint = fonts.body.render("No campaigns yet. Click 'New Campaign' to start.", True, COLORS["text_dim"])
+            screen.blit(hint, (self.x + 40, self.y + 100))
+        else:
+            screen.set_clip(list_rect)
+            fy = self.y + 60 + self.scroll_y
+            for f in self.files:
+                col = COLORS["text_main"]
+                if f == self.selected_file:
+                    pygame.draw.rect(screen, COLORS["accent"], (self.x + 22, fy, self.w - 44, 32))
+                    col = (255, 255, 255)
+                name = f.replace(".json", "")
+                txt = fonts.body.render(name, True, col)
+                screen.blit(txt, (self.x + 30, fy + 5))
+                fy += 35
+            screen.set_clip(None)
+
+        self.btn_new.draw(screen, mp)
+        self.btn_load.draw(screen, mp)
+        self.btn_cancel.draw(screen, mp)
 
 
 # ============================================================
