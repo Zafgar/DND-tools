@@ -9,8 +9,11 @@ import os
 import copy
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect
-from data.models import CreatureStats, AbilityScores, Action, SpellInfo, Feature, RacialTrait
+from data.models import CreatureStats, AbilityScores, Action, SpellInfo, Feature, RacialTrait, Item
 from data.class_features import get_class_features, BARBARIAN_RAGE_COUNT
+from data.equipment import (get_item, get_all_weapons, get_all_armor, get_all_shields,
+                            get_all_wondrous, get_all_consumables, ALL_ITEMS_DB,
+                            WEAPON_DB, ARMOR_DB, SHIELD_DB, WONDROUS_DB, CONSUMABLE_DB)
 from data.racial_traits import (get_racial_traits, RACE_TRAITS_MAP, get_racial_asi, RACE_ASI,
                                 ALL_RACES, RACE_SPEED as RACIAL_SPEED_TABLE, get_race_size)
 from data.heroes import hero_list
@@ -905,8 +908,17 @@ class HeroCreatorState(GameState):
         # Equipment choices
         self.weapon_choice = 0
         self.armor_choice = 0
+        # Equipment inventory (Item objects)
+        self.inventory: list = []       # List of Item objects
+        self.equipment_scroll = 0
+        self.equipment_category = "weapons"  # weapons, armor, shields, wondrous, consumables
+        self.equipment_shop_open = False  # True when browsing items to add
+        self.shop_scroll = 0
+        # Multiclass support
+        self.multiclass_levels: dict = {}  # {"Wizard": 3} - secondary classes with levels
+        self.multiclass_adding = False     # True when choosing a class to add
         # Right panel tab system
-        self.right_tab = "features"  # features, feats, spells, skills
+        self.right_tab = "features"  # features, feats, spells, skills, equipment, multiclass
         # Edit existing hero
         self.editing_hero_name = None
         self.hero_browser_open = False
@@ -1003,9 +1015,10 @@ class HeroCreatorState(GameState):
 
         # Right panel tab buttons
         self.right_tab_buttons = {}
-        tab_names = [("features", "Features"), ("feats", "Feats"), ("spells", "Spells"), ("skills", "Skills")]
+        tab_names = [("features", "Features"), ("feats", "Feats"), ("spells", "Spells"),
+                     ("skills", "Skills"), ("equipment", "Equipment"), ("multiclass", "Multiclass")]
         tab_x = 1030
-        tab_w = 870 // 4
+        tab_w = 870 // len(tab_names)
         for i, (key, label) in enumerate(tab_names):
             self.right_tab_buttons[key] = Button(
                 tab_x + i * tab_w, 70, tab_w, 30, label,
@@ -1373,6 +1386,12 @@ class HeroCreatorState(GameState):
         # Load skills
         self.skill_proficiencies = set(hero.skills.keys()) if hero.skills else set()
 
+        # Load equipment inventory
+        self.inventory = copy.deepcopy(hero.items) if hero.items else []
+
+        # Load multiclass
+        self.multiclass_levels = dict(hero.multiclass) if hero.multiclass else {}
+
         self.hero_browser_open = False
         self.status_message = f"Editing '{hero.name}'"
         self.status_timer = 120
@@ -1619,12 +1638,111 @@ class HeroCreatorState(GameState):
             bardic_count = max(1, cha_mod)
 
         # Determine CR approximation from level
-        cr = max(0.5, level / 2.0)
+        total_level = level + sum(self.multiclass_levels.values())
+        cr = max(0.5, total_level / 2.0)
 
         # Build unarmored flag
         is_unarmored = char_class in ("Barbarian", "Monk")
 
         size = get_race_size(race)
+
+        # Multiclass: merge features from secondary classes
+        mc_features = []
+        mc_save_profs = set(SAVING_THROW_PROF.get(char_class, ()))
+        for mc_class, mc_level in self.multiclass_levels.items():
+            mc_feats = get_class_features(mc_class, mc_level, "")
+            mc_features.extend(mc_feats)
+            # Multiclass resource pools
+            if mc_class == "Monk" and mc_level >= 2:
+                ki_points += mc_level
+            if mc_class == "Sorcerer" and mc_level >= 2:
+                sorcery_points += mc_level
+            if mc_class == "Paladin":
+                lay_on_hands_pool += 5 * mc_level
+            if mc_class == "Barbarian":
+                rage_count += BARBARIAN_RAGE_COUNT.get(mc_level, 0)
+            if mc_class == "Bard" and not bardic_dice:
+                bardic_dice = BARD_INSPIRATION_DIE.get(mc_level, "1d6")
+                cha_mod_mc = calc_modifier(abilities.charisma)
+                bardic_count = max(1, cha_mod_mc)
+        features = features + mc_features
+
+        # Multiclass spell slots (override if multiclassed)
+        if self.multiclass_levels:
+            mc_slots = self._get_multiclass_spell_slots()
+            if mc_slots:
+                spell_slots = mc_slots
+
+        # Equipment items (deep copy)
+        import copy as _copy
+        inventory_items = _copy.deepcopy(self.inventory)
+
+        # Calculate AC from equipment if equipped armor exists
+        equipped_armor = None
+        equipped_shield = None
+        for item in inventory_items:
+            if item.equipped and item.item_type == "armor" and item.base_ac > 0:
+                equipped_armor = item
+            if item.equipped and item.armor_category == "shield":
+                equipped_shield = item
+
+        if equipped_armor:
+            dex_mod = calc_modifier(abilities.dexterity)
+            ac = equipped_armor.base_ac + equipped_armor.ac_bonus
+            if equipped_armor.max_dex_bonus == -1:
+                ac += dex_mod
+            elif equipped_armor.max_dex_bonus > 0:
+                ac += min(dex_mod, equipped_armor.max_dex_bonus)
+            if equipped_shield:
+                ac += equipped_shield.ac_bonus
+            # Non-armor AC bonuses (rings, cloaks)
+            for item in inventory_items:
+                if item.equipped and item.item_type not in ("armor", "shield"):
+                    if item.requires_attunement and not item.attuned:
+                        continue
+                    ac += item.ac_bonus
+            is_unarmored = False
+
+        # Build weapon Actions from equipped weapons
+        for item in inventory_items:
+            if item.equipped and item.item_type == "weapon" and item.weapon_damage_dice:
+                # Determine attack stat
+                atk_mod = calc_modifier(abilities.strength)
+                if "finesse" in item.weapon_properties:
+                    dex_mod = calc_modifier(abilities.dexterity)
+                    atk_mod = max(atk_mod, dex_mod)
+                if "ranged" in item.weapon_category:
+                    atk_mod = calc_modifier(abilities.dexterity)
+                atk_bonus = atk_mod + prof + item.weapon_bonus
+                dmg_bonus = atk_mod + item.weapon_bonus
+                rng = item.weapon_range
+                reach = item.weapon_range if item.weapon_range <= 10 else 5
+                if "reach" in item.weapon_properties:
+                    reach = 10
+                    rng = 10
+                if item.weapon_long_range > 0:
+                    rng = item.weapon_range  # Use short range as default
+
+                action = Action(
+                    name=item.name,
+                    description=item.description or f"{item.weapon_damage_dice}+{dmg_bonus} {item.weapon_damage_type}",
+                    attack_bonus=atk_bonus,
+                    damage_dice=item.weapon_damage_dice,
+                    damage_bonus=dmg_bonus,
+                    damage_type=item.weapon_damage_type,
+                    range=rng,
+                    reach=reach,
+                    action_type="action",
+                    properties=item.weapon_properties,
+                    long_range=item.weapon_long_range,
+                )
+                actions.append(action)
+
+                # Extra damage from magical weapons (Flame Tongue etc.)
+                if item.extra_damage_dice:
+                    # The AI handles extra damage through the weapon bonus system
+                    # We encode it in the action description for visibility
+                    action.description += f" +{item.extra_damage_dice} {item.extra_damage_type}"
 
         hero = CreatureStats(
             name=name,
@@ -1642,7 +1760,7 @@ class HeroCreatorState(GameState):
             proficiency_bonus=prof,
             challenge_rating=cr,
             character_class=char_class,
-            character_level=level,
+            character_level=total_level,
             race=race,
             subclass=subclass,
             actions=actions,
@@ -1661,6 +1779,8 @@ class HeroCreatorState(GameState):
             bardic_inspiration_dice=bardic_dice,
             bardic_inspiration_count=bardic_count,
             base_ac_unarmored=is_unarmored,
+            items=inventory_items,
+            multiclass=dict(self.multiclass_levels),
         )
         return hero
 
@@ -1715,7 +1835,7 @@ class HeroCreatorState(GameState):
             for btn in self.right_tab_buttons.values():
                 btn.handle_event(event)
 
-            # Right panel content clicks (feats, spells, skills)
+            # Right panel content clicks (feats, spells, skills, equipment, multiclass)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if mouse_pos[0] > 1030:
                     if self.right_tab == "feats":
@@ -1724,6 +1844,10 @@ class HeroCreatorState(GameState):
                         self._handle_spell_clicks(mouse_pos)
                     elif self.right_tab == "skills":
                         self._handle_skill_clicks(mouse_pos)
+                    elif self.right_tab == "equipment":
+                        self._handle_equipment_clicks(mouse_pos)
+                    elif self.right_tab == "multiclass":
+                        self._handle_multiclass_clicks(mouse_pos)
 
             # Hero browser clicks
             if self.hero_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1741,6 +1865,11 @@ class HeroCreatorState(GameState):
                         self.feat_scroll = max(0, self.feat_scroll - event.y * 20)
                     elif self.right_tab == "spells":
                         self.spell_scroll = max(0, self.spell_scroll - event.y * 20)
+                    elif self.right_tab == "equipment":
+                        if self.equipment_shop_open:
+                            self.shop_scroll = max(0, self.shop_scroll - event.y * 20)
+                        else:
+                            self.equipment_scroll = max(0, self.equipment_scroll - event.y * 20)
                 # Hero browser scroll
                 if self.hero_browser_open and 400 <= mouse_pos[0] <= 1520:
                     self.hero_browser_scroll = max(0, self.hero_browser_scroll - event.y * 25)
@@ -1767,6 +1896,11 @@ class HeroCreatorState(GameState):
                             self.feat_scroll += 20
                         elif self.right_tab == "spells":
                             self.spell_scroll += 20
+                        elif self.right_tab == "equipment":
+                            if self.equipment_shop_open:
+                                self.shop_scroll += 20
+                            else:
+                                self.equipment_scroll += 20
 
     def _handle_ability_clicks(self, mouse_pos):
         """Check if an ability +/- button or ASI choice was clicked."""
@@ -1858,8 +1992,9 @@ class HeroCreatorState(GameState):
 
     def _handle_hero_browser_click(self, mouse_pos):
         """Handle clicks in the hero browser overlay."""
+        bx, by, bw, bh = 400, 80, 1120, SCREEN_HEIGHT - 160
         # Close button area
-        close_rect = pygame.Rect(1480, 95, 30, 30)
+        close_rect = pygame.Rect(bx + bw - 40, by + 8, 30, 30)
         if close_rect.collidepoint(mouse_pos):
             self.hero_browser_open = False
             return
@@ -1871,14 +2006,37 @@ class HeroCreatorState(GameState):
             all_heroes = [h for h in all_heroes if search in h.name.lower() or
                           search in h.character_class.lower() or search in h.race.lower()]
         row_h = 40
+        hdr_y = by + 45
         for i, hero in enumerate(all_heroes):
-            fy = 140 + i * row_h - self.hero_browser_scroll
-            if fy < 130 or fy > SCREEN_HEIGHT - 200:
+            fy = hdr_y + 28 + i * row_h - self.hero_browser_scroll
+            if fy < hdr_y + 25 or fy > by + bh - 20:
                 continue
-            item_rect = pygame.Rect(420, fy, 1080, row_h - 2)
+            # Delete button
+            del_rect = pygame.Rect(bx + bw - 100, fy + 4, 60, 28)
+            if del_rect.collidepoint(mouse_pos):
+                self._delete_hero(hero)
+                return
+            # Click to edit
+            item_rect = pygame.Rect(bx + 10, fy, bw - 120, row_h - 2)
             if item_rect.collidepoint(mouse_pos):
                 self._load_hero_into_editor(hero)
                 return
+
+    def _delete_hero(self, hero):
+        """Delete a hero from roster and disk."""
+        # Remove from hero_list
+        hero_list[:] = [h for h in hero_list if h.name != hero.name]
+        # Remove from saved_heroes
+        self.saved_heroes[:] = [h for h in self.saved_heroes if h.name != hero.name]
+        # Remove from disk
+        roster_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
+        safe_name = "".join(c if c.isalnum() or c in (" ", "-", "_") else "" for c in hero.name).strip()
+        filepath = os.path.join(roster_dir, f"{safe_name}.json")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        self.status_message = f"Deleted '{hero.name}'"
+        self.status_timer = 120
+        self.status_color = COLORS["danger"]
 
     def update(self):
         if self.status_timer > 0:
@@ -2212,9 +2370,9 @@ class HeroCreatorState(GameState):
             btn.draw(screen, mouse_pos)
 
         # Draw active tab indicator
-        tab_keys = ["features", "feats", "spells", "skills"]
+        tab_keys = ["features", "feats", "spells", "skills", "equipment", "multiclass"]
         active_idx = tab_keys.index(self.right_tab) if self.right_tab in tab_keys else 0
-        tab_w = right_w // 4
+        tab_w = right_w // len(tab_keys)
         indicator_rect = pygame.Rect(right_x + active_idx * tab_w, 100, tab_w, 3)
         pygame.draw.rect(screen, COLORS["accent"], indicator_rect)
 
@@ -2227,6 +2385,10 @@ class HeroCreatorState(GameState):
             self._draw_spells_tab(screen, mouse_pos)
         elif self.right_tab == "skills":
             self._draw_skills_tab(screen, mouse_pos)
+        elif self.right_tab == "equipment":
+            self._draw_equipment_tab(screen, mouse_pos)
+        elif self.right_tab == "multiclass":
+            self._draw_multiclass_tab(screen, mouse_pos)
 
     def _draw_features_tab(self, screen, mouse_pos):
         """Draw class features and racial traits."""
@@ -2632,7 +2794,7 @@ class HeroCreatorState(GameState):
         # Column headers
         hdr_y = by + 45
         headers = [("Name", bx + 20), ("Race", bx + 300), ("Class", bx + 500),
-                   ("Level", bx + 700), ("HP", bx + 800), ("AC", bx + 880)]
+                   ("Level", bx + 680), ("HP", bx + 760), ("AC", bx + 830), ("", bx + 900)]
         for htext, hx in headers:
             hs = fonts.small_bold.render(htext, True, COLORS["text_muted"])
             screen.blit(hs, (hx, hdr_y))
@@ -2675,13 +2837,22 @@ class HeroCreatorState(GameState):
             screen.blit(cs, (bx + 500, fy + 8))
 
             ls = fonts.body_bold.render(str(hero.character_level), True, COLORS["accent"])
-            screen.blit(ls, (bx + 720, fy + 8))
+            screen.blit(ls, (bx + 700, fy + 8))
 
             hs = fonts.body_bold.render(str(hero.hit_points), True, COLORS["hp_full"])
-            screen.blit(hs, (bx + 810, fy + 8))
+            screen.blit(hs, (bx + 770, fy + 8))
 
             acs = fonts.body_bold.render(str(hero.armor_class), True, COLORS["accent"])
-            screen.blit(acs, (bx + 890, fy + 8))
+            screen.blit(acs, (bx + 840, fy + 8))
+
+            # Delete button
+            del_rect = pygame.Rect(bx + bw - 100, fy + 4, 60, 28)
+            del_hov = del_rect.collidepoint(mouse_pos)
+            pygame.draw.rect(screen, COLORS["danger"] if del_hov else COLORS["danger_dim"],
+                             del_rect, border_radius=3)
+            del_txt = fonts.small_bold.render("DEL", True, COLORS["text_bright"])
+            screen.blit(del_txt, (del_rect.centerx - del_txt.get_width() // 2,
+                                  del_rect.centery - del_txt.get_height() // 2))
 
         screen.set_clip(None)
 
@@ -2890,6 +3061,12 @@ class HeroCreatorState(GameState):
         sum_surf = fonts.body_bold.render(summary, True, COLORS["text_main"])
         screen.blit(sum_surf, (220, bar_y + 17))
 
+        # Multiclass summary in bottom bar
+        if self.multiclass_levels:
+            mc_str = " / ".join(f"{cls} {lv}" for cls, lv in self.multiclass_levels.items())
+            mc_surf = fonts.small_font.render(f"Multiclass: {mc_str}", True, COLORS["warning"])
+            screen.blit(mc_surf, (220, bar_y + 38))
+
         # Buttons
         self.btn_back.draw(screen, mouse_pos)
         self.btn_load.draw(screen, mouse_pos)
@@ -2897,3 +3074,496 @@ class HeroCreatorState(GameState):
         self.btn_save.draw(screen, mouse_pos)
         self.btn_save_disk.draw(screen, mouse_pos)
         self.btn_export.draw(screen, mouse_pos)
+
+    # ============================================================
+    # Equipment Tab
+    # ============================================================
+
+    def _get_shop_items(self):
+        """Get items available in the current shop category."""
+        if self.equipment_category == "weapons":
+            return get_all_weapons()
+        elif self.equipment_category == "armor":
+            return get_all_armor()
+        elif self.equipment_category == "shields":
+            return get_all_shields()
+        elif self.equipment_category == "wondrous":
+            return get_all_wondrous()
+        elif self.equipment_category == "consumables":
+            return get_all_consumables()
+        return []
+
+    def _add_item_to_inventory(self, item_name):
+        """Add an item from the database to the inventory."""
+        item = get_item(item_name)
+        if item:
+            self.inventory.append(item)
+
+    def _remove_item_from_inventory(self, index):
+        """Remove an item from inventory by index."""
+        if 0 <= index < len(self.inventory):
+            self.inventory.pop(index)
+
+    def _toggle_equip_item(self, index):
+        """Toggle equip/unequip for an inventory item."""
+        if 0 <= index < len(self.inventory):
+            item = self.inventory[index]
+            if item.equipped:
+                item.equipped = False
+                item.attuned = False
+            else:
+                # Unequip existing item in same slot
+                slot = item.slot
+                if slot:
+                    for other in self.inventory:
+                        if other is not item and other.equipped and other.slot == slot:
+                            other.equipped = False
+                            other.attuned = False
+                item.equipped = True
+                if item.requires_attunement:
+                    # Check attunement limit (3 max)
+                    attuned_count = sum(1 for i in self.inventory if i.attuned)
+                    if attuned_count < 3:
+                        item.attuned = True
+
+    def _draw_equipment_tab(self, screen, mouse_pos):
+        """Draw equipment inventory and shop."""
+        rx, rw = 1030, 870
+
+        if self.equipment_shop_open:
+            self._draw_equipment_shop(screen, mouse_pos)
+            return
+
+        # --- Equipped Items Panel ---
+        panel = Panel(rx, 103, rw, 350, title="EQUIPPED ITEMS")
+        panel.draw(screen)
+
+        equipped = [(i, item) for i, item in enumerate(self.inventory) if item.equipped]
+        cy = 133
+        row_h = 32
+        clip = pygame.Rect(rx + 5, 133, rw - 10, 310)
+        screen.set_clip(clip)
+        for idx, (inv_idx, item) in enumerate(equipped):
+            fy = cy + idx * row_h - self.equipment_scroll
+            if fy < 120 or fy > 440:
+                continue
+            # Slot label
+            slot_str = (item.slot or item.item_type).replace("_", " ").title()
+            slot_surf = fonts.small_bold.render(f"[{slot_str}]", True, COLORS["text_dim"])
+            screen.blit(slot_surf, (rx + 10, fy + 2))
+            # Item name with rarity color
+            rarity_colors = {"common": COLORS["text_main"], "uncommon": COLORS["success"],
+                             "rare": COLORS["accent"], "very_rare": COLORS["spell"],
+                             "legendary": COLORS["warning"], "artifact": COLORS["danger"]}
+            color = rarity_colors.get(item.rarity, COLORS["text_main"])
+            name_surf = fonts.body_bold.render(item.name, True, color)
+            screen.blit(name_surf, (rx + 100, fy + 1))
+            # Key stat
+            stat_str = ""
+            if item.item_type == "weapon":
+                bonus_str = f"+{item.weapon_bonus}" if item.weapon_bonus else ""
+                stat_str = f"{item.weapon_damage_dice}{bonus_str} {item.weapon_damage_type}"
+            elif item.item_type in ("armor", "shield"):
+                stat_str = f"AC {item.base_ac + item.ac_bonus}" if item.base_ac else f"+{item.ac_bonus} AC"
+            elif item.ac_bonus:
+                stat_str = f"+{item.ac_bonus} AC"
+            if stat_str:
+                stat_surf = fonts.small_font.render(stat_str, True, COLORS["text_dim"])
+                screen.blit(stat_surf, (rx + rw - 160, fy + 4))
+            # Attunement indicator
+            if item.requires_attunement:
+                att_str = "A" if item.attuned else "a"
+                att_color = COLORS["accent"] if item.attuned else COLORS["text_muted"]
+                att_surf = fonts.small_bold.render(att_str, True, att_color)
+                screen.blit(att_surf, (rx + rw - 30, fy + 3))
+        screen.set_clip(None)
+
+        if not equipped:
+            empty_surf = fonts.body_font.render("No items equipped. Add items below.", True, COLORS["text_muted"])
+            screen.blit(empty_surf, (rx + 20, 180))
+
+        # --- Inventory Panel ---
+        inv_panel = Panel(rx, 460, rw, 320, title="INVENTORY")
+        inv_panel.draw(screen)
+
+        cy = 492
+        clip = pygame.Rect(rx + 5, 490, rw - 10, 260)
+        screen.set_clip(clip)
+        for idx, item in enumerate(self.inventory):
+            fy = cy + idx * row_h - self.equipment_scroll
+            if fy < 480 or fy > 760:
+                continue
+            # Equip status
+            eq_str = "[E]" if item.equipped else "[ ]"
+            eq_color = COLORS["success"] if item.equipped else COLORS["text_muted"]
+            eq_surf = fonts.small_bold.render(eq_str, True, eq_color)
+            screen.blit(eq_surf, (rx + 10, fy + 2))
+            # Name
+            rarity_colors = {"common": COLORS["text_main"], "uncommon": COLORS["success"],
+                             "rare": COLORS["accent"], "very_rare": COLORS["spell"],
+                             "legendary": COLORS["warning"], "artifact": COLORS["danger"]}
+            color = rarity_colors.get(item.rarity, COLORS["text_main"])
+            name_surf = fonts.body_font.render(item.name, True, color)
+            screen.blit(name_surf, (rx + 45, fy + 2))
+            # Type
+            type_surf = fonts.small_font.render(item.item_type.title(), True, COLORS["text_dim"])
+            screen.blit(type_surf, (rx + rw - 180, fy + 4))
+            # Remove button [X]
+            x_surf = fonts.small_bold.render("[X]", True, COLORS["danger"])
+            screen.blit(x_surf, (rx + rw - 40, fy + 2))
+        screen.set_clip(None)
+
+        # ADD ITEM button
+        add_rect = pygame.Rect(rx + 10, 785, rw - 20, 34)
+        pygame.draw.rect(screen, COLORS["accent"], add_rect, border_radius=4)
+        add_txt = fonts.body_bold.render("+ ADD ITEM FROM DATABASE", True, COLORS["text_bright"])
+        screen.blit(add_txt, (rx + rw // 2 - add_txt.get_width() // 2, 790))
+
+        # Attunement counter
+        attuned_count = sum(1 for i in self.inventory if i.attuned)
+        att_surf = fonts.small_font.render(f"Attunement: {attuned_count}/3", True,
+                                           COLORS["warning"] if attuned_count >= 3 else COLORS["text_dim"])
+        screen.blit(att_surf, (rx + rw - 120, 463))
+
+    def _draw_equipment_shop(self, screen, mouse_pos):
+        """Draw the item shop overlay for adding items."""
+        rx, rw = 1030, 870
+
+        panel = Panel(rx, 103, rw, 700, title="ADD EQUIPMENT")
+        panel.draw(screen)
+
+        # Category tabs
+        categories = [("weapons", "Weapons"), ("armor", "Armor"), ("shields", "Shields"),
+                      ("wondrous", "Wondrous"), ("consumables", "Potions")]
+        cat_w = rw // len(categories)
+        for i, (key, label) in enumerate(categories):
+            cx = rx + i * cat_w
+            color = COLORS["accent"] if self.equipment_category == key else COLORS["panel"]
+            pygame.draw.rect(screen, color, (cx, 133, cat_w, 28), border_radius=3)
+            lbl = fonts.small_bold.render(label, True, COLORS["text_bright"] if self.equipment_category == key else COLORS["text_dim"])
+            screen.blit(lbl, (cx + cat_w // 2 - lbl.get_width() // 2, 136))
+
+        # Item list
+        items = self._get_shop_items()
+        cy = 170
+        row_h = 30
+        clip = pygame.Rect(rx + 5, 168, rw - 10, 590)
+        screen.set_clip(clip)
+        for i, name in enumerate(items):
+            fy = cy + i * row_h - self.shop_scroll
+            if fy < 160 or fy > 760:
+                continue
+            item = ALL_ITEMS_DB.get(name)
+            # Hover highlight
+            item_rect = pygame.Rect(rx + 5, fy, rw - 10, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, COLORS["panel"], item_rect, border_radius=3)
+            # Name with rarity
+            rarity_colors = {"common": COLORS["text_main"], "uncommon": COLORS["success"],
+                             "rare": COLORS["accent"], "very_rare": COLORS["spell"],
+                             "legendary": COLORS["warning"]}
+            rarity = item.rarity if item else "common"
+            color = rarity_colors.get(rarity, COLORS["text_main"])
+            name_surf = fonts.body_font.render(name, True, color)
+            screen.blit(name_surf, (rx + 15, fy + 3))
+            # Key stat
+            if item:
+                stat = ""
+                if item.item_type == "weapon":
+                    stat = f"{item.weapon_damage_dice} {item.weapon_damage_type}"
+                    if item.weapon_bonus:
+                        stat = f"+{item.weapon_bonus} {stat}"
+                elif item.item_type in ("armor",):
+                    stat = f"AC {item.base_ac}"
+                    if item.ac_bonus:
+                        stat += f" +{item.ac_bonus}"
+                elif item.item_type == "shield":
+                    stat = f"+{item.ac_bonus} AC"
+                elif item.heals:
+                    stat = f"Heals {item.heals}"
+                elif item.ac_bonus:
+                    stat = f"+{item.ac_bonus} AC"
+                if stat:
+                    stat_surf = fonts.small_font.render(stat, True, COLORS["text_dim"])
+                    screen.blit(stat_surf, (rx + rw - 200, fy + 5))
+                # Attune marker
+                if item.requires_attunement:
+                    att_surf = fonts.small_font.render("(A)", True, COLORS["warning"])
+                    screen.blit(att_surf, (rx + rw - 50, fy + 5))
+        screen.set_clip(None)
+
+        # Close button
+        close_rect = pygame.Rect(rx + rw - 140, 103, 130, 28)
+        pygame.draw.rect(screen, COLORS["danger"], close_rect, border_radius=4)
+        close_txt = fonts.small_bold.render("CLOSE SHOP", True, COLORS["text_bright"])
+        screen.blit(close_txt, (rx + rw - 140 + 65 - close_txt.get_width() // 2, 107))
+
+    def _handle_equipment_clicks(self, mouse_pos):
+        """Handle clicks in the equipment tab."""
+        rx, rw = 1030, 870
+
+        if self.equipment_shop_open:
+            # Close button
+            close_rect = pygame.Rect(rx + rw - 140, 103, 130, 28)
+            if close_rect.collidepoint(mouse_pos):
+                self.equipment_shop_open = False
+                return
+
+            # Category tabs
+            categories = ["weapons", "armor", "shields", "wondrous", "consumables"]
+            cat_w = rw // len(categories)
+            for i, key in enumerate(categories):
+                tab_rect = pygame.Rect(rx + i * cat_w, 133, cat_w, 28)
+                if tab_rect.collidepoint(mouse_pos):
+                    self.equipment_category = key
+                    self.shop_scroll = 0
+                    return
+
+            # Item selection
+            items = self._get_shop_items()
+            cy = 170
+            row_h = 30
+            for i, name in enumerate(items):
+                fy = cy + i * row_h - self.shop_scroll
+                if fy < 160 or fy > 760:
+                    continue
+                item_rect = pygame.Rect(rx + 5, fy, rw - 10, row_h - 2)
+                if item_rect.collidepoint(mouse_pos):
+                    self._add_item_to_inventory(name)
+                    self.equipment_shop_open = False
+                    return
+            return
+
+        # ADD ITEM button
+        add_rect = pygame.Rect(rx + 10, 785, rw - 20, 34)
+        if add_rect.collidepoint(mouse_pos):
+            self.equipment_shop_open = True
+            self.shop_scroll = 0
+            return
+
+        # Inventory item clicks
+        cy = 492
+        row_h = 32
+        for idx, item in enumerate(self.inventory):
+            fy = cy + idx * row_h - self.equipment_scroll
+            if fy < 480 or fy > 760:
+                continue
+            # Remove button [X]
+            x_rect = pygame.Rect(rx + rw - 50, fy, 40, row_h - 2)
+            if x_rect.collidepoint(mouse_pos):
+                self._remove_item_from_inventory(idx)
+                return
+            # Equip toggle (click anywhere else on the row)
+            item_rect = pygame.Rect(rx + 5, fy, rw - 60, row_h - 2)
+            if item_rect.collidepoint(mouse_pos):
+                self._toggle_equip_item(idx)
+                return
+
+    # ============================================================
+    # Multiclass Tab
+    # ============================================================
+
+    def _get_total_level(self):
+        """Get total character level (primary + multiclass)."""
+        return self.char_level + sum(self.multiclass_levels.values())
+
+    def _add_multiclass(self, class_name):
+        """Add a new multiclass or increment an existing one."""
+        if class_name == self.char_class:
+            return  # Can't multiclass into primary class
+        total = self._get_total_level()
+        if total >= 20:
+            return  # Can't exceed level 20
+        if class_name in self.multiclass_levels:
+            self.multiclass_levels[class_name] += 1
+        else:
+            self.multiclass_levels[class_name] = 1
+
+    def _remove_multiclass_level(self, class_name):
+        """Remove a level from a multiclass."""
+        if class_name in self.multiclass_levels:
+            self.multiclass_levels[class_name] -= 1
+            if self.multiclass_levels[class_name] <= 0:
+                del self.multiclass_levels[class_name]
+
+    def _get_multiclass_spell_slots(self):
+        """Calculate combined spell slots for multiclass (PHB p.165)."""
+        caster_level = 0
+        # Full casters: Wizard, Cleric, Druid, Bard, Sorcerer = level
+        # Half casters: Paladin, Ranger = level / 2
+        # Third casters: Eldritch Knight (Fighter), Arcane Trickster (Rogue) = level / 3
+        classes = {self.char_class: self.char_level}
+        classes.update(self.multiclass_levels)
+
+        for cls, lv in classes.items():
+            if cls in FULL_CASTERS:
+                caster_level += lv
+            elif cls in HALF_CASTERS:
+                caster_level += lv // 2
+            elif cls == "Warlock":
+                pass  # Warlock pact magic is separate
+            elif cls == "Fighter":
+                if self.char_subclass == "Eldritch Knight" and cls == self.char_class:
+                    caster_level += lv // 3
+            elif cls == "Rogue":
+                if self.char_subclass == "Arcane Trickster" and cls == self.char_class:
+                    caster_level += lv // 3
+
+        if caster_level <= 0:
+            return {}
+
+        # Use the multiclass spell slot table (same as full caster table)
+        slot_list = FULL_CASTER_SLOTS.get(min(20, caster_level), [])
+        slots = {}
+        for i, count in enumerate(slot_list):
+            slots[SLOT_LEVEL_NAMES[i]] = count
+        return slots
+
+    def _draw_multiclass_tab(self, screen, mouse_pos):
+        """Draw multiclass management tab."""
+        rx, rw = 1030, 870
+
+        # Primary class panel
+        panel = Panel(rx, 103, rw, 200, title="CLASS LEVELS")
+        panel.draw(screen)
+
+        cy = 135
+        total_level = self._get_total_level()
+
+        # Primary class
+        prim_surf = fonts.body_bold.render(
+            f"{self.char_class} (Primary)", True, COLORS["text_bright"])
+        screen.blit(prim_surf, (rx + 15, cy))
+        lv_surf = fonts.header_font.render(str(self.char_level), True, COLORS["accent"])
+        screen.blit(lv_surf, (rx + rw - 80, cy - 3))
+
+        # Level +/- for primary
+        minus_rect = pygame.Rect(rx + rw - 120, cy, 28, 28)
+        plus_rect = pygame.Rect(rx + rw - 40, cy, 28, 28)
+        pygame.draw.rect(screen, COLORS["danger"], minus_rect, border_radius=3)
+        pygame.draw.rect(screen, COLORS["success"], plus_rect, border_radius=3)
+        m_txt = fonts.body_bold.render("-", True, COLORS["text_bright"])
+        p_txt = fonts.body_bold.render("+", True, COLORS["text_bright"])
+        screen.blit(m_txt, (minus_rect.centerx - m_txt.get_width() // 2, minus_rect.centery - m_txt.get_height() // 2))
+        screen.blit(p_txt, (plus_rect.centerx - p_txt.get_width() // 2, plus_rect.centery - p_txt.get_height() // 2))
+        cy += 36
+
+        # Multiclass entries
+        for cls, lv in list(self.multiclass_levels.items()):
+            cls_surf = fonts.body_bold.render(cls, True, COLORS["text_main"])
+            screen.blit(cls_surf, (rx + 15, cy))
+            lv_s = fonts.header_font.render(str(lv), True, COLORS["warning"])
+            screen.blit(lv_s, (rx + rw - 80, cy - 3))
+
+            minus_rect = pygame.Rect(rx + rw - 120, cy, 28, 28)
+            plus_rect = pygame.Rect(rx + rw - 40, cy, 28, 28)
+            pygame.draw.rect(screen, COLORS["danger"], minus_rect, border_radius=3)
+            pygame.draw.rect(screen, COLORS["success"], plus_rect, border_radius=3)
+            screen.blit(m_txt, (minus_rect.centerx - m_txt.get_width() // 2, minus_rect.centery - m_txt.get_height() // 2))
+            screen.blit(p_txt, (plus_rect.centerx - p_txt.get_width() // 2, plus_rect.centery - p_txt.get_height() // 2))
+            cy += 36
+
+        # Total level
+        total_surf = fonts.body_bold.render(f"Total Level: {total_level}/20", True,
+                                            COLORS["danger"] if total_level > 20 else COLORS["accent"])
+        screen.blit(total_surf, (rx + 15, cy + 5))
+
+        # --- Add Multiclass Panel ---
+        add_panel = Panel(rx, 310, rw, 240, title="ADD MULTICLASS")
+        add_panel.draw(screen)
+
+        cy = 343
+        col_w = rw // 3
+        for i, cls in enumerate(CLASS_LIST):
+            if cls == self.char_class:
+                continue  # Can't multiclass into primary
+            row = i // 3
+            col = i % 3
+            bx = rx + 10 + col * (col_w - 3)
+            by = cy + row * 34
+            btn_rect = pygame.Rect(bx, by, col_w - 10, 30)
+
+            is_hover = btn_rect.collidepoint(mouse_pos)
+            already_has = cls in self.multiclass_levels
+            btn_color = COLORS["warning"] if already_has else (COLORS["panel_header"] if is_hover else COLORS["panel"])
+            pygame.draw.rect(screen, btn_color, btn_rect, border_radius=4)
+            if is_hover or already_has:
+                pygame.draw.rect(screen, COLORS["accent"], btn_rect, 1, border_radius=4)
+            cls_txt = fonts.small_bold.render(cls, True, COLORS["text_bright"] if already_has else COLORS["text_main"])
+            screen.blit(cls_txt, (bx + (col_w - 10) // 2 - cls_txt.get_width() // 2,
+                                  by + 15 - cls_txt.get_height() // 2))
+
+        # --- Multiclass Spell Slots ---
+        if self.multiclass_levels:
+            mc_slots = self._get_multiclass_spell_slots()
+            if mc_slots:
+                slot_panel = Panel(rx, 560, rw, 120, title="MULTICLASS SPELL SLOTS")
+                slot_panel.draw(screen)
+                sy = 590
+                slot_str = "  ".join(f"{k}: {v}" for k, v in mc_slots.items())
+                slot_surf = fonts.body_font.render(slot_str, True, COLORS["spell"])
+                screen.blit(slot_surf, (rx + 15, sy))
+
+        # --- Multiclass Features Preview ---
+        feat_y = 690
+        feat_panel = Panel(rx, feat_y, rw, 100, title="MULTICLASS FEATURES")
+        feat_panel.draw(screen)
+        fy = feat_y + 33
+        for cls, lv in self.multiclass_levels.items():
+            features = get_class_features(cls, lv, "")
+            feat_names = [f.name for f in features[:4]]
+            if feat_names:
+                txt = f"{cls} {lv}: {', '.join(feat_names)}"
+                if len(features) > 4:
+                    txt += f" (+{len(features)-4} more)"
+                f_surf = fonts.small_font.render(txt[:100], True, COLORS["text_dim"])
+                screen.blit(f_surf, (rx + 15, fy))
+                fy += 20
+
+    def _handle_multiclass_clicks(self, mouse_pos):
+        """Handle clicks in the multiclass tab."""
+        rx, rw = 1030, 870
+        total_level = self._get_total_level()
+
+        # Primary class level +/-
+        cy = 135
+        minus_rect = pygame.Rect(rx + rw - 120, cy, 28, 28)
+        plus_rect = pygame.Rect(rx + rw - 40, cy, 28, 28)
+        if minus_rect.collidepoint(mouse_pos):
+            if self.char_level > 1:
+                self.char_level -= 1
+            return
+        if plus_rect.collidepoint(mouse_pos):
+            if self._get_total_level() < 20:
+                self.char_level += 1
+            return
+        cy += 36
+
+        # Multiclass entry level +/-
+        for cls in list(self.multiclass_levels.keys()):
+            lv = self.multiclass_levels.get(cls, 0)
+            minus_rect = pygame.Rect(rx + rw - 120, cy, 28, 28)
+            plus_rect = pygame.Rect(rx + rw - 40, cy, 28, 28)
+            if minus_rect.collidepoint(mouse_pos):
+                self._remove_multiclass_level(cls)
+                return
+            if plus_rect.collidepoint(mouse_pos):
+                if self._get_total_level() < 20:
+                    self.multiclass_levels[cls] = lv + 1
+                return
+            cy += 36
+
+        # Add multiclass class buttons
+        cy = 343
+        col_w = rw // 3
+        for i, cls in enumerate(CLASS_LIST):
+            if cls == self.char_class:
+                continue
+            row = i // 3
+            col = i % 3
+            bx = rx + 10 + col * (col_w - 3)
+            by = cy + row * 34
+            btn_rect = pygame.Rect(bx, by, col_w - 10, 30)
+            if btn_rect.collidepoint(mouse_pos):
+                self._add_multiclass(cls)
+                return

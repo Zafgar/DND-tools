@@ -190,17 +190,166 @@ class Entity:
         if "gargantuan" in s: return 4
         return 1
 
+    # ---- Equipment Helpers ----
+
+    def get_equipped_items(self) -> list:
+        """Get all currently equipped items."""
+        return [i for i in self.items if i.equipped]
+
+    def get_equipped_in_slot(self, slot: str):
+        """Get item equipped in a specific slot, or None."""
+        for i in self.items:
+            if i.equipped and i.slot == slot:
+                return i
+        return None
+
+    def get_equipped_armor(self):
+        """Get equipped armor item, or None."""
+        return self.get_equipped_in_slot("armor")
+
+    def get_equipped_shield(self):
+        """Get equipped shield, or None."""
+        return self.get_equipped_in_slot("off_hand") if any(
+            i.equipped and i.armor_category == "shield" for i in self.items) else None
+
+    def get_equipped_weapon(self, slot="main_hand"):
+        """Get equipped weapon in slot, or None."""
+        for i in self.items:
+            if i.equipped and i.slot == slot and i.item_type == "weapon":
+                return i
+        return None
+
+    def get_equipment_stat_bonus(self, ability: str) -> int:
+        """Get stat bonus/override from equipped items (e.g. Gauntlets of Ogre Power)."""
+        override = None
+        flat_bonus = 0
+        for item in self.items:
+            if not item.equipped or (item.requires_attunement and not item.attuned):
+                continue
+            val = item.stat_bonuses.get(ability, 0)
+            if val > 0:
+                # Values >= 19 are stat overrides (set-to); lower values are additive
+                if val >= 19:
+                    override = max(override, val) if override else val
+                else:
+                    flat_bonus += val
+        return override if override else flat_bonus
+
+    def get_effective_ability(self, ability: str) -> int:
+        """Get ability score after equipment bonuses/overrides."""
+        base = getattr(self.stats.abilities, ability.lower(), 10)
+        equipment_val = self.get_equipment_stat_bonus(ability.lower())
+        if equipment_val and equipment_val >= 19:
+            # Stat override (e.g. Belt of Giant Strength sets STR to 21)
+            return max(base, equipment_val)
+        return base + (equipment_val or 0)
+
+    def get_equipment_save_bonus(self) -> int:
+        """Get save bonus from equipped items (e.g. Cloak of Protection +1 all saves)."""
+        bonus = 0
+        for item in self.items:
+            if not item.equipped or (item.requires_attunement and not item.attuned):
+                continue
+            bonus += item.save_bonuses.get("all", 0)
+        return bonus
+
+    def get_equipment_ac_bonus(self) -> int:
+        """Get AC bonus from non-armor equipped items (rings, cloaks, etc.)."""
+        bonus = 0
+        for item in self.items:
+            if not item.equipped or (item.requires_attunement and not item.attuned):
+                continue
+            if item.item_type not in ("armor", "shield"):
+                bonus += item.ac_bonus
+        return bonus
+
+    def get_equipment_resistances(self) -> list:
+        """Get damage resistances from equipped items."""
+        resistances = []
+        for item in self.items:
+            if not item.equipped or (item.requires_attunement and not item.attuned):
+                continue
+            resistances.extend(item.damage_resistances)
+        return resistances
+
+    def get_equipment_speed_bonus(self) -> int:
+        """Get speed bonus from equipped items."""
+        bonus = 0
+        for item in self.items:
+            if not item.equipped or (item.requires_attunement and not item.attuned):
+                continue
+            if item.speed_bonus == 99:  # Double speed (Boots of Speed)
+                return 99
+            bonus += item.speed_bonus
+        return bonus
+
+    def equip_item(self, item: Item) -> bool:
+        """Equip an item, unequipping any item in the same slot."""
+        if item not in self.items:
+            return False
+        slot = item.slot
+        if not slot:
+            # Auto-assign slot
+            if item.item_type == "weapon":
+                slot = "main_hand"
+            elif item.item_type == "armor":
+                slot = "armor"
+            elif item.item_type == "shield":
+                slot = "off_hand"
+            else:
+                slot = item.item_type  # wondrous uses its own slot
+            item.slot = slot
+        # Unequip existing item in that slot
+        for other in self.items:
+            if other is not item and other.equipped and other.slot == slot:
+                other.equipped = False
+        item.equipped = True
+        if item.requires_attunement:
+            item.attuned = True
+        return True
+
+    def unequip_item(self, item: Item):
+        """Unequip an item."""
+        item.equipped = False
+        item.attuned = False
+
     @property
     def armor_class(self) -> int:
-        """Calculate dynamic AC including active effects."""
-        ac = self.stats.armor_class
+        """Calculate dynamic AC from equipment + active effects (PHB p.14, p.144-146)."""
+        # Check if we have equipped armor
+        armor = self.get_equipped_armor()
+        shield = self.get_equipped_shield()
+        dex_mod = (self.get_effective_ability("dexterity") - 10) // 2
+
+        if armor and armor.base_ac > 0:
+            # Armor-based AC
+            ac = armor.base_ac + armor.ac_bonus
+            if armor.max_dex_bonus == -1:  # Light armor: full DEX
+                ac += dex_mod
+            elif armor.max_dex_bonus > 0:  # Medium armor: capped DEX
+                ac += min(dex_mod, armor.max_dex_bonus)
+            # Heavy armor: no DEX (max_dex_bonus == 0)
+        elif self.stats.base_ac_unarmored:
+            # Unarmored defense (Barbarian/Monk) - use base stats AC
+            ac = self.stats.armor_class
+        else:
+            # No armor: 10 + DEX (or creature base AC if higher, for monsters)
+            ac = max(10 + dex_mod, self.stats.armor_class)
+
+        # Shield bonus
+        if shield:
+            ac += shield.ac_bonus
+
+        # Equipment AC bonuses (rings, cloaks, etc.)
+        ac += self.get_equipment_ac_bonus()
+
+        # Active spell effects
         if "Haste" in self.active_effects:
             ac += 2
         if "Shield" in self.active_effects:
             ac += 5
         if "Shield of Faith" in self.active_effects:
             ac += 2
-        # Defensive Duelist: reaction adds proficiency to AC (tracked as effect)
         if "Defensive Duelist" in self.active_effects:
             ac += self.stats.proficiency_bonus
         return ac
@@ -322,7 +471,9 @@ class Entity:
                 is_resistant = True
         
         if not is_resistant:
-            for r in self.stats.damage_resistances:
+            # Check native resistances + equipment resistances
+            all_resistances = list(self.stats.damage_resistances) + self.get_equipment_resistances()
+            for r in all_resistances:
                 r_lower = r.lower()
                 if dtype_lower in r_lower:
                     # Check for non-magical condition
@@ -656,10 +807,13 @@ class Entity:
 
     def get_modifier(self, ability: str) -> int:
         if not ability: return 0
-        return self.stats.abilities.get_mod(ability)
+        effective = self.get_effective_ability(ability)
+        return (effective - 10) // 2
 
     def get_save_bonus(self, ability: str) -> int:
         base = self.stats.saving_throws.get(ability, self.get_modifier(ability))
+        # Equipment save bonuses (Cloak of Protection, Ring of Protection, etc.)
+        base += self.get_equipment_save_bonus()
         # Bless: +1d4 to saves
         if "Bless" in self.active_effects:
             base += random.randint(1, 4)

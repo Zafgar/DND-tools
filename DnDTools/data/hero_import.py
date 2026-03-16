@@ -60,6 +60,7 @@ def export_hero(hero: CreatureStats) -> dict:
         "bardic_inspiration_dice": hero.bardic_inspiration_dice,
         "bardic_inspiration_count": hero.bardic_inspiration_count,
         "base_ac_unarmored": hero.base_ac_unarmored,
+        "multiclass": hero.multiclass,
         # Spellcasting
         "spellcasting_ability": hero.spellcasting_ability,
         "spell_save_dc": hero.spell_save_dc,
@@ -172,7 +173,7 @@ def _export_racial_trait(trait: RacialTrait) -> dict:
 
 
 def _export_item(item: Item) -> dict:
-    return {
+    d = {
         "name": item.name,
         "item_type": item.item_type,
         "uses": item.uses,
@@ -181,7 +182,43 @@ def _export_item(item: Item) -> dict:
         "damage_dice": item.damage_dice,
         "applies_condition": item.applies_condition,
         "buff": item.buff,
+        # Equipment fields
+        "equipped": item.equipped,
+        "slot": item.slot,
+        "requires_attunement": item.requires_attunement,
+        "attuned": item.attuned,
+        "rarity": item.rarity,
+        # Armor
+        "base_ac": item.base_ac,
+        "ac_bonus": item.ac_bonus,
+        "max_dex_bonus": item.max_dex_bonus,
+        "armor_category": item.armor_category,
+        "stealth_disadvantage": item.stealth_disadvantage,
+        "strength_required": item.strength_required,
+        # Weapon
+        "weapon_damage_dice": item.weapon_damage_dice,
+        "weapon_damage_type": item.weapon_damage_type,
+        "weapon_properties": item.weapon_properties,
+        "weapon_range": item.weapon_range,
+        "weapon_long_range": item.weapon_long_range,
+        "weapon_bonus": item.weapon_bonus,
+        "weapon_category": item.weapon_category,
+        # Magic effects
+        "stat_bonuses": item.stat_bonuses,
+        "save_bonuses": item.save_bonuses,
+        "skill_bonuses": item.skill_bonuses,
+        "damage_resistances": item.damage_resistances,
+        "damage_immunities": item.damage_immunities,
+        "condition_immunities": item.condition_immunities,
+        "extra_damage_dice": item.extra_damage_dice,
+        "extra_damage_type": item.extra_damage_type,
+        "charges": item.charges,
+        "max_charges": item.max_charges,
+        "spell_granted": item.spell_granted,
+        "speed_bonus": item.speed_bonus,
+        "is_magical": item.is_magical,
     }
+    return d
 
 
 # ------------------------------------------------------------------ #
@@ -238,6 +275,7 @@ def import_hero(data: dict) -> CreatureStats:
         bardic_inspiration_dice=data.get("bardic_inspiration_dice", ""),
         bardic_inspiration_count=data.get("bardic_inspiration_count", 0),
         base_ac_unarmored=data.get("base_ac_unarmored", False),
+        multiclass=data.get("multiclass", {}),
         spellcasting_ability=data.get("spellcasting_ability", ""),
         spell_save_dc=data.get("spell_save_dc", 0),
         spell_attack_bonus=data.get("spell_attack_bonus", 0),
@@ -353,12 +391,47 @@ def _import_item(data: dict) -> Item:
     return Item(
         name=data.get("name", "Item"),
         item_type=data.get("item_type", "potion"),
-        uses=data.get("uses", 1),
+        uses=data.get("uses", -1 if data.get("item_type", "potion") in ("weapon", "armor", "shield", "wondrous") else 1),
         description=data.get("description", ""),
         heals=data.get("heals", ""),
         damage_dice=data.get("damage_dice", ""),
         applies_condition=data.get("applies_condition", ""),
         buff=data.get("buff", ""),
+        # Equipment fields
+        equipped=data.get("equipped", False),
+        slot=data.get("slot", ""),
+        requires_attunement=data.get("requires_attunement", False),
+        attuned=data.get("attuned", False),
+        rarity=data.get("rarity", "common"),
+        # Armor
+        base_ac=data.get("base_ac", 0),
+        ac_bonus=data.get("ac_bonus", 0),
+        max_dex_bonus=data.get("max_dex_bonus", -1),
+        armor_category=data.get("armor_category", ""),
+        stealth_disadvantage=data.get("stealth_disadvantage", False),
+        strength_required=data.get("strength_required", 0),
+        # Weapon
+        weapon_damage_dice=data.get("weapon_damage_dice", ""),
+        weapon_damage_type=data.get("weapon_damage_type", ""),
+        weapon_properties=data.get("weapon_properties", []),
+        weapon_range=data.get("weapon_range", 5),
+        weapon_long_range=data.get("weapon_long_range", 0),
+        weapon_bonus=data.get("weapon_bonus", 0),
+        weapon_category=data.get("weapon_category", ""),
+        # Magic effects
+        stat_bonuses=data.get("stat_bonuses", {}),
+        save_bonuses=data.get("save_bonuses", {}),
+        skill_bonuses=data.get("skill_bonuses", {}),
+        damage_resistances=data.get("damage_resistances", []),
+        damage_immunities=data.get("damage_immunities", []),
+        condition_immunities=data.get("condition_immunities", []),
+        extra_damage_dice=data.get("extra_damage_dice", ""),
+        extra_damage_type=data.get("extra_damage_type", ""),
+        charges=data.get("charges", 0),
+        max_charges=data.get("max_charges", 0),
+        spell_granted=data.get("spell_granted", ""),
+        speed_bonus=data.get("speed_bonus", 0),
+        is_magical=data.get("is_magical", False),
     )
 
 
