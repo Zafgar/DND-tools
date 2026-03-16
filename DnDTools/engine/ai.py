@@ -2049,6 +2049,15 @@ class TacticalAI:
                     attacker=entity, target=entity, action_name=item.name,
                     damage=healed, damage_type="healing"
                 )
+            elif item.heals and item.uses == -1 and item.item_type == "potion":
+                # Unlimited use potions (rare, but handle gracefully)
+                healed = roll_dice(item.heals)
+                return ActionStep(
+                    step_type="bonus_attack",
+                    description=f"{entity.name} uses {item.name}, healing {healed} HP.",
+                    attacker=entity, target=entity, action_name=item.name,
+                    damage=healed, damage_type="healing"
+                )
         return None
 
     def _try_second_wind(self, entity):
@@ -3032,11 +3041,35 @@ class TacticalAI:
             entity.remove_condition("Invisible")
             desc += " [Revealed]"
 
+        # Equipment: Add extra damage from magic weapons (Flame Tongue, Frost Brand, etc.)
+        equipped_weapon = None
+        for item in entity.items:
+            if item.equipped and item.item_type == "weapon" and item.name == action.name:
+                equipped_weapon = item
+                break
+        # Also check by matching weapon properties to action
+        if not equipped_weapon:
+            for item in entity.items:
+                if item.equipped and item.item_type == "weapon" and item.weapon_damage_dice:
+                    if item.weapon_damage_dice in action.damage_dice:
+                        equipped_weapon = item
+                        break
+
+        if equipped_weapon and equipped_weapon.extra_damage_dice and is_hit:
+            extra = roll_dice(equipped_weapon.extra_damage_dice)
+            if is_crit:
+                extra += roll_dice(equipped_weapon.extra_damage_dice)
+            dmg += extra
+            desc += f" +{extra} {equipped_weapon.extra_damage_type}"
+
         # Determine if magical
         is_magical = False
         if entity.has_feature("magic_weapons") or entity.has_feature("ki_empowered_strikes"):
             is_magical = True
         if entity.is_summon:
+            is_magical = True
+        # Check if equipped weapon is magical
+        if equipped_weapon and equipped_weapon.is_magical:
             is_magical = True
 
         return ActionStep(

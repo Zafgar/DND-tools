@@ -152,13 +152,52 @@ class SummonTemplate:
 @dataclass
 class Item:
     name: str
-    item_type: str = "potion"         # potion, scroll, wand, weapon, misc
-    uses: int = 1
+    item_type: str = "potion"         # weapon, armor, shield, potion, scroll, wand,
+                                      # wondrous, ring, amulet, cloak, boots, gloves,
+                                      # belt, helm, misc
+    uses: int = -1                    # -1 = unlimited (equipment), >0 = consumable
     description: str = ""
     heals: str = ""
     damage_dice: str = ""
     applies_condition: str = ""
     buff: str = ""                    # e.g. "resistance:fire"
+    # Equipment fields (PHB Ch.5)
+    equipped: bool = False            # True = currently worn/wielded
+    slot: str = ""                    # "main_hand", "off_hand", "armor", "shield",
+                                      # "helm", "cloak", "amulet", "ring1", "ring2",
+                                      # "gloves", "boots", "belt"
+    requires_attunement: bool = False
+    attuned: bool = False
+    rarity: str = "common"            # common, uncommon, rare, very_rare, legendary, artifact
+    # Armor fields
+    base_ac: int = 0                  # Base AC for armor (e.g. 14 for scale mail)
+    ac_bonus: int = 0                 # +X bonus (magic armor/shield, Ring of Protection)
+    max_dex_bonus: int = -1           # -1 = unlimited, 0 = no DEX, 2 = medium armor
+    armor_category: str = ""          # "light", "medium", "heavy", "shield"
+    stealth_disadvantage: bool = False
+    strength_required: int = 0        # Min STR for heavy armor (PHB p.145)
+    # Weapon fields
+    weapon_damage_dice: str = ""      # e.g. "1d8" for longsword
+    weapon_damage_type: str = ""      # slashing, piercing, bludgeoning
+    weapon_properties: List[str] = field(default_factory=list)  # finesse, light, heavy, etc.
+    weapon_range: int = 5             # Normal range in feet
+    weapon_long_range: int = 0        # Long range (thrown/ranged)
+    weapon_bonus: int = 0             # +X magic weapon bonus (to hit AND damage)
+    weapon_category: str = ""         # "simple_melee", "martial_melee", "simple_ranged", "martial_ranged"
+    # Magic item effects
+    stat_bonuses: Dict[str, int] = field(default_factory=dict)  # e.g. {"strength": 19} for Gauntlets
+    save_bonuses: Dict[str, int] = field(default_factory=dict)  # e.g. {"all": 1} for Cloak of Protection
+    skill_bonuses: Dict[str, int] = field(default_factory=dict) # e.g. {"Perception": 5} for Eyes of the Eagle
+    damage_resistances: List[str] = field(default_factory=list)  # resistances granted
+    damage_immunities: List[str] = field(default_factory=list)   # immunities granted
+    condition_immunities: List[str] = field(default_factory=list) # e.g. ["Frightened"]
+    extra_damage_dice: str = ""       # e.g. "1d6" for Flame Tongue
+    extra_damage_type: str = ""       # e.g. "fire" for Flame Tongue
+    charges: int = 0                  # Magic item charges (wands, staves)
+    max_charges: int = 0
+    spell_granted: str = ""           # Spell the item can cast
+    speed_bonus: int = 0              # e.g. +10 for Boots of Speed
+    is_magical: bool = False          # True = overcomes nonmagical resistance
 
 @dataclass
 class CreatureStats:
@@ -203,9 +242,11 @@ class CreatureStats:
     features: List[Feature] = field(default_factory=list)
     legendary_action_count: int = 0
     legendary_resistance_count: int = 0
-    # Items
-    items: List[Item] = field(default_factory=list)
+    # Items & Equipment
+    items: List[Item] = field(default_factory=list)      # All items (inventory)
     # Hero-specific fields
+    # Multiclass support
+    multiclass: Dict[str, int] = field(default_factory=dict)  # e.g. {"Fighter": 5, "Wizard": 3}
     character_class: str = ""         # "Fighter", "Wizard", "Barbarian", etc.
     character_level: int = 0          # 0 = NPC/monster
     race: str = ""                    # "Human", "Elf", "Dwarf", etc.
