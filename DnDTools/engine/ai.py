@@ -9,7 +9,7 @@ import random
 import heapq
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
-from data.models import Action, SpellInfo
+from data.models import Action, SpellInfo, Item
 from engine.dice import roll_attack, roll_dice, roll_dice_critical, average_damage, scale_cantrip_dice
 
 if TYPE_CHECKING:
@@ -274,6 +274,12 @@ class TacticalAI:
             if aoe_action_step:
                 plan.steps.append(aoe_action_step)
                 entity.action_used = True
+
+        # ===== PHASE 3.5: BUFF POTION (before attacks, if valuable) =====
+        if not entity.action_used:
+            buff_step = self._try_use_buff_potion(entity, enemies, battle)
+            if buff_step:
+                plan.steps.append(buff_step)
 
         # ===== PHASE 4: MAIN ACTION =====
         action_steps = self._decide_action(entity, enemies, allies, battle)
@@ -974,7 +980,10 @@ class TacticalAI:
         for spell in entity.stats.spells_known:
             if spell.heals and spell.range <= 5 and entity.has_spell_slot(spell.level):
                 return True
-        # Potions?
+        # Healing potions count as self-heal
+        for item in entity.items:
+            if item.item_type == "potion" and item.heals and (item.uses > 0 or item.uses == -1):
+                return True
         return False
 
     def _seek_cover_position(self, entity, target, enemies, battle):
@@ -2039,26 +2048,244 @@ class TacticalAI:
                         slot_used=slot, action_name=spell.name,
                         damage=healed, damage_type="healing"
                     )
+        # Pick best healing potion (don't waste high-tier potions on small wounds)
+        hp_deficit = entity.max_hp - entity.hp
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+        best_potion = None
+        best_avg = 0
         for item in entity.items:
-            if item.heals and item.uses > 0:
+            if not item.heals or item.item_type != "potion":
+                continue
+            if item.uses <= 0 and item.uses != -1:
+                continue
+            avg = average_damage(item.heals)
+            # Don't waste supreme potion on small wounds unless desperate
+            if avg > hp_deficit * 2.5 and hp_pct > 0.25:
+                continue
+            if avg > best_avg:
+                best_avg = avg
+                best_potion = item
+
+        if best_potion:
+            if best_potion.uses > 0:
+                best_potion.uses -= 1
+            healed = roll_dice(best_potion.heals)
+            return ActionStep(
+                step_type="spell",
+                description=f"{entity.name} drinks {best_potion.name}, healing {healed} HP.",
+                attacker=entity, target=entity, action_name=best_potion.name,
+                damage=healed, damage_type="healing"
+            )
+        return None
+
+    def _try_use_buff_potion(self, entity, enemies, battle):
+        """Use a buff potion (resistance, speed, strength) pre-combat or when tactically smart.
+        Returns an ActionStep or None. Consumes the item.
+        Uses action (RAW: potions are an action to drink).
+        """
+        if entity.action_used:
+            return None
+
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+
+        for item in entity.items:
+            if item.item_type != "potion" or item.uses <= 0 or not item.buff:
+                continue
+
+            buff = item.buff
+            use = False
+
+            # Potion of Speed (Haste) - high value, use when multiple enemies
+            if buff == "haste" and len([e for e in enemies if e.hp > 0]) >= 2:
+                use = True
+
+            # Resistance potions - use if facing matching damage type
+            elif buff.startswith("resistance:"):
+                dmg_type = buff.split(":")[1]
+                # Check if any enemy deals this damage type
+                for enemy in enemies:
+                    if enemy.hp <= 0:
+                        continue
+                    for a in enemy.stats.actions:
+                        if a.damage_type == dmg_type:
+                            use = True
+                            break
+                    if use:
+                        break
+                    for s in enemy.stats.spells_known + enemy.stats.cantrips:
+                        if s.damage_type == dmg_type:
+                            use = True
+                            break
+                    if use:
+                        break
+
+            # Strength potions - melee fighters when STR < potion value
+            elif buff.startswith("strength:"):
+                new_str = int(buff.split(":")[1])
+                if (entity.stats.abilities.strength < new_str
+                        and self._get_combat_preference(entity) == "melee"):
+                    use = True
+
+            # Temp HP potions
+            elif buff.startswith("temp_hp:") and hp_pct < 0.8:
+                use = True
+
+            # Invisibility - use when low HP and ranged fighter
+            elif buff == "invisible" and hp_pct < 0.4:
+                use = True
+
+            if use:
                 item.uses -= 1
-                healed = roll_dice(item.heals)
+                desc = f"{entity.name} drinks {item.name}."
+
+                # Apply buff effects
+                if buff == "haste":
+                    entity.active_effects["Haste"] = 10
+                    desc += " [Hasted!]"
+                elif buff.startswith("resistance:"):
+                    dmg_type = buff.split(":")[1]
+                    entity.active_effects[f"Potion Resistance ({dmg_type})"] = 100
+                    if dmg_type not in entity.stats.damage_resistances:
+                        entity.stats.damage_resistances.append(dmg_type)
+                    desc += f" [Resistance to {dmg_type}]"
+                elif buff.startswith("strength:"):
+                    new_str = int(buff.split(":")[1])
+                    entity.stats.abilities.strength = new_str
+                    desc += f" [STR → {new_str}]"
+                elif buff.startswith("temp_hp:"):
+                    thp = int(buff.split(":")[1])
+                    entity.temp_hp = max(entity.temp_hp, thp)
+                    desc += f" [+{thp} temp HP]"
+                elif buff == "invisible":
+                    entity.add_condition("Invisible")
+                    entity.active_effects["Potion Invisibility"] = 100
+                    desc += " [Invisible]"
+                elif buff.startswith("fly:"):
+                    fly_speed = int(buff.split(":")[1])
+                    entity.stats.fly_speed = max(entity.stats.fly_speed, fly_speed)
+                    entity.active_effects["Potion Flying"] = 100
+                    desc += f" [Fly {fly_speed} ft]"
+
+                entity.action_used = True
                 return ActionStep(
-                    step_type="bonus_attack",
-                    description=f"{entity.name} uses {item.name}, healing {healed} HP.",
-                    attacker=entity, target=entity, action_name=item.name,
-                    damage=healed, damage_type="healing"
-                )
-            elif item.heals and item.uses == -1 and item.item_type == "potion":
-                # Unlimited use potions (rare, but handle gracefully)
-                healed = roll_dice(item.heals)
-                return ActionStep(
-                    step_type="bonus_attack",
-                    description=f"{entity.name} uses {item.name}, healing {healed} HP.",
-                    attacker=entity, target=entity, action_name=item.name,
-                    damage=healed, damage_type="healing"
+                    step_type="spell",
+                    description=desc,
+                    attacker=entity, target=entity,
+                    action_name=item.name,
                 )
         return None
+
+    def _try_use_offensive_item(self, entity, target, battle):
+        """Use an offensive consumable item (alchemist's fire, holy water, acid, etc).
+        Returns an ActionStep or None.
+        """
+        if entity.action_used or not target or target.hp <= 0:
+            return None
+
+        best_item = None
+        best_score = 0
+
+        for item in entity.items:
+            if item.uses <= 0 and item.uses != -1:
+                continue
+            if not item.damage_dice or item.item_type in ("weapon", "armor", "shield"):
+                continue
+            if item.heals:
+                continue  # Healing items handled elsewhere
+
+            score = 0
+            avg = average_damage(item.damage_dice)
+
+            # Holy Water: bonus vs undead/fiend
+            if "holy water" in item.name.lower():
+                if target.stats.creature_type.lower() in ("undead", "fiend"):
+                    score = avg * 2  # Extra valuable vs undead/fiend
+                else:
+                    continue  # Don't waste on others
+
+            # Alchemist's Fire: ongoing damage
+            elif "alchemist" in item.name.lower():
+                score = avg * 2  # Ongoing damage value
+
+            # Acid
+            elif "acid" in item.name.lower():
+                score = avg
+
+            # Necklace of Fireballs
+            elif "fireball" in item.name.lower():
+                nearby = [e for e in battle.get_enemies_of(entity)
+                          if e.hp > 0 and battle.get_distance(target, e) * 5 <= 20]
+                score = avg * max(1, len(nearby))
+
+            # Generic damage items
+            else:
+                score = avg
+
+            if score > best_score:
+                best_score = score
+                best_item = item
+
+        if not best_item or best_score < 5:
+            return None
+
+        if best_item.uses > 0:
+            best_item.uses -= 1
+
+        dmg = roll_dice(best_item.damage_dice)
+        entity.action_used = True
+        return ActionStep(
+            step_type="attack",
+            description=f"{entity.name} uses {best_item.name} on {target.name} for {dmg} damage.",
+            attacker=entity, target=target,
+            action_name=best_item.name,
+            damage=dmg, damage_type=best_item.description.split()[-1] if best_item.damage_dice else "fire",
+            is_hit=True,
+        )
+
+    def _try_use_healing_potion_bonus(self, entity):
+        """Use a healing potion as a bonus action (common house rule / variant).
+        Only used when entity has no better bonus action and is hurt.
+        Returns an ActionStep or None.
+        """
+        if entity.bonus_action_used:
+            return None
+
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+        if hp_pct > 0.5:
+            return None
+
+        # Find best healing potion for the situation
+        best_potion = None
+        best_heal = 0
+        hp_deficit = entity.max_hp - entity.hp
+
+        for item in entity.items:
+            if item.item_type != "potion" or item.uses <= 0:
+                continue
+            if not item.heals:
+                continue
+
+            avg_heal = average_damage(item.heals)
+            # Don't waste supreme potion on small wounds
+            if avg_heal > hp_deficit * 2 and hp_pct > 0.3:
+                continue
+            if avg_heal > best_heal:
+                best_heal = avg_heal
+                best_potion = item
+
+        if not best_potion:
+            return None
+
+        best_potion.uses -= 1
+        healed = roll_dice(best_potion.heals)
+        entity.bonus_action_used = True
+        return ActionStep(
+            step_type="bonus_attack",
+            description=f"{entity.name} drinks {best_potion.name}, healing {healed} HP.",
+            attacker=entity, target=entity,
+            action_name=best_potion.name,
+            damage=healed, damage_type="healing",
+        )
 
     def _try_second_wind(self, entity):
         """Fighter's Second Wind: bonus action heal."""
@@ -3343,6 +3570,11 @@ class TacticalAI:
                             attacker=entity, target=entity, spell=spell,
                             slot_used=spell.level, action_name=spell.name,
                         )]
+
+        # --- 12. Healing Potion as Bonus Action (variant rule, common in play) ---
+        potion_step = self._try_use_healing_potion_bonus(entity)
+        if potion_step:
+            return [potion_step]
 
         return []
 

@@ -1,6 +1,7 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature, SpellInfo, Item, RacialTrait
 from data.spells import get_spell
 from data.racial_traits import get_racial_traits
+from data.items import get_item, get_hero_items
 
 # ============================================================================
 # D&D 5e 2014 Pre-built Heroes (Level 10)
@@ -1170,3 +1171,15 @@ hero_list = [
         challenge_rating=10.0, proficiency_bonus=6,
     ),
 ]
+
+
+# ============================================================================
+# Auto-assign items to all pre-built heroes based on class and level
+# ============================================================================
+def _assign_hero_items():
+    """Give each hero appropriate items for their class and level tier."""
+    for hero in hero_list:
+        if hero.character_class and hero.character_level > 0 and not hero.items:
+            hero.items = get_hero_items(hero.character_class, hero.character_level)
+
+_assign_hero_items()
