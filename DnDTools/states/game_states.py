@@ -1608,31 +1608,23 @@ class BattleState(GameState):
                 else:
                     # Auto mode or NPC target: Engine rolls automatically
                     if step.save_ability:
-                        bonus = t.get_save_bonus(step.save_ability)
-                        
-                        # Paladin Aura of Protection check
-                        if self.battle:
-                            for ally in self.battle.get_allies_of(t):
-                                if ally.hp > 0 and not ally.is_incapacitated():
-                                    aura = ally.get_feature("aura_of_protection")
-                                    if aura and self.battle.get_distance(t, ally) * 5 <= (aura.aura_radius or 10):
-                                        bonus += max(1, ally.get_modifier("Charisma"))
-                                        break
-                        
-                        raw = random.randint(1, 20)
-                        total = raw + bonus
-                        self.current_step_rolls[t] = f"{raw}+{bonus}={total}"
-                        if total >= step.save_dc:
+                        # Use make_saving_throw for comprehensive rules (Magic Resistance,
+                        # racial traits, Danger Sense, exhaustion, Paladin Aura, etc.)
+                        from engine.rules import make_saving_throw
+                        cond = step.applies_condition or (step.spell.applies_condition if step.spell else "")
+                        dmg_dice = step.spell.damage_dice if step.spell else ""
+                        dmg_type = step.damage_type or (step.spell.damage_type if step.spell else "")
+                        success, total, msg = make_saving_throw(
+                            t, step.save_ability, step.save_dc, self.battle,
+                            applies_condition=cond, damage_dice=dmg_dice,
+                            damage_type=dmg_type)
+                        self.current_step_rolls[t] = msg.split(": ", 1)[-1] if ": " in msg else msg
+                        if success:
+                            # Check if Legendary Resistance was used (already consumed by make_saving_throw)
+                            if "Legendary Resistance" in msg:
+                                self._log(f"[LEGENDARY] {msg}")
                             self.current_step_outcomes[t] = "save"
                         else:
-                            # Check Legendary Resistance for NPC targets
-                            if t.legendary_resistances_left > 0:
-                                from engine.rules import _should_use_legendary_resistance
-                                cond = step.applies_condition or (step.spell.applies_condition if step.spell else "")
-                                dmg_dice = step.spell.damage_dice if step.spell else ""
-                                if _should_use_legendary_resistance(t, cond, dmg_dice):
-                                    self.current_step_outcomes[t] = "legendary"
-                                    continue
                             self.current_step_outcomes[t] = "fail"
                     else:
                         self.current_step_outcomes[t] = "fail"
@@ -1919,9 +1911,16 @@ class BattleState(GameState):
                     self._log(f"[REACTION] {target.name} uses Uncanny Dodge! Damage halved.")
                     self._spawn_damage_text(target, "Dodge!", is_heal=True)
 
+                # PHB p.170: Evasion (Fail) - half damage instead of full
+                # Must apply BEFORE take_damage so it actually reduces damage dealt
+                evasion_on_fail = False
+                if outcome == "fail" and step.save_ability == "Dexterity" and target.has_feature("evasion"):
+                    dmg = dmg // 2
+                    evasion_on_fail = True
+
                 old_hp = target.hp
                 dealt, broke = target.take_damage(dmg, step.damage_type, is_magical=step.is_magical)
-                
+
                 # --- AI REACTION CHECK (Hellish Rebuke) ---
                 if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
                     rebuke = next((s for s in target.stats.spells_known if s.name == "Hellish Rebuke"), None)
@@ -1967,10 +1966,8 @@ class BattleState(GameState):
                             break
 
                 if outcome == "fail":
-                    # Evasion (Fail): Half damage instead of full
-                    if step.save_ability == "Dexterity" and target.has_feature("evasion"):
-                        dealt = dealt // 2
-                        self._log(f"  [EVASION] {target.name} fails save but takes half damage.")
+                    if evasion_on_fail:
+                        self._log(f"  [EVASION] {target.name} fails save but takes half damage (Evasion).")
 
                     roll_str = self.current_step_rolls.get(target, "")
                     roll_msg = f" (Rolled {roll_str} vs DC {step.save_dc})" if roll_str else ""
