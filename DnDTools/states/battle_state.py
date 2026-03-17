@@ -161,6 +161,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.pending_step_idx: int = 0
         self.current_step_outcomes = {} # target -> "hit"/"miss"/"save"/"fail"
         self.current_step_rolls = {}    # target -> "15+5=20" (for saves)
+        self._pre_plan_state = None     # Saved entity state before AI planning
 
         # Player action panel state
         self.player_action_mode = False
@@ -753,6 +754,16 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.pending_plan and self.pending_plan.entity == curr:
             self._log("AI plan already pending – confirm or skip each step.")
             return
+        # Save entity state before AI planning (planning mutates flags)
+        self._pre_plan_state = {
+            "action_used": curr.action_used,
+            "bonus_action_used": curr.bonus_action_used,
+            "reaction_used": curr.reaction_used,
+            "movement_left": curr.movement_left,
+            "grid_x": curr.grid_x,
+            "grid_y": curr.grid_y,
+            "reckless_attack_active": curr.reckless_attack_active,
+        }
         plan = self.battle.compute_ai_turn(curr)
         if plan.skipped:
             self._log(f"[AI] {curr.name}: {plan.skip_reason}")
@@ -931,10 +942,21 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         """Cancel remaining AI plan and let DM take over manually."""
         if not self.pending_plan:
             return
-        # Revert any movement from already-executed steps this won't undo confirmed
-        # steps (those are in undo stack), just cancel remaining unconfirmed steps
+        entity = self.pending_plan.entity
         steps = self.pending_plan.steps
         remaining = len(steps) - self.pending_step_idx
+
+        # Restore entity action economy flags so DM can use them manually
+        if hasattr(self, '_pre_plan_state') and self._pre_plan_state and entity:
+            entity.action_used = self._pre_plan_state.get("action_used", False)
+            entity.bonus_action_used = self._pre_plan_state.get("bonus_action_used", False)
+            entity.reaction_used = self._pre_plan_state.get("reaction_used", False)
+            entity.movement_left = self._pre_plan_state.get("movement_left", entity.get_speed())
+            entity.grid_x = self._pre_plan_state.get("grid_x", entity.grid_x)
+            entity.grid_y = self._pre_plan_state.get("grid_y", entity.grid_y)
+            entity.reckless_attack_active = self._pre_plan_state.get("reckless_attack_active", False)
+            self._pre_plan_state = None
+
         self.pending_plan = None
         self.pending_step_idx = 0
         self.current_step_outcomes = {}

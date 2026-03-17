@@ -535,7 +535,7 @@ PREMADE_MAPS = {
             {"terrain_type": "wall", "grid_x": 2, "grid_y": 13}, {"terrain_type": "wall", "grid_x": 17, "grid_y": 13},
             {"terrain_type": "wall", "grid_x": 3, "grid_y": 14}, {"terrain_type": "wall", "grid_x": 16, "grid_y": 14},
             # Corner walls
-            {"terrain_type": "wall", "grid_x": 0, "grid_y": y} for y in range(4, 12)],
+            *[{"terrain_type": "wall", "grid_x": 0, "grid_y": y} for y in range(4, 12)],
             *[{"terrain_type": "wall", "grid_x": 19, "grid_y": y} for y in range(4, 12)],
             # Gate entrances (with portcullises for monster release)
             {"terrain_type": "portcullis", "grid_x": 9, "grid_y": 0},

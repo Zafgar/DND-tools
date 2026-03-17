@@ -182,6 +182,10 @@ class CampaignManagerState:
         self.tooltip_pos = (0, 0)
         self.shop_suggestions = []  # Cached suggestions
 
+        # NPC location picker
+        self._npc_location_picker_open = False
+        self._npc_stat_link_mode = False
+
         # Input state
         self.input_active = ""  # Which input field is active
         self.input_text = ""
@@ -618,6 +622,9 @@ class CampaignManagerState:
                     elif event.unicode.isprintable():
                         self.shop_item_search += event.unicode
                     continue
+                if event.key == pygame.K_ESCAPE and getattr(self, '_npc_location_picker_open', False):
+                    self._npc_location_picker_open = False
+                    continue
                 if self.input_active:
                     self._handle_input_key(event)
                     continue
@@ -949,10 +956,50 @@ class CampaignManagerState:
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
                 npc.backstory = self.input_text
+        elif self.input_active == "npc_gender":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.gender = self.input_text
+        elif self.input_active == "npc_age":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.age = self.input_text
         elif self.input_active == "npc_notes":
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
                 npc.notes = self.input_text
+        elif self.input_active == "npc_gold":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                try:
+                    npc.gold = float(self.input_text)
+                except ValueError:
+                    pass
+        elif self.input_active == "npc_add_item":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc and self.input_text.strip():
+                npc.inventory_items.append(self.input_text.strip())
+        elif self.input_active == "npc_add_tag":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc and self.input_text.strip():
+                npc.tags.append(self.input_text.strip())
+        elif self.input_active == "npc_add_relationship":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc and self.input_text.strip():
+                npc.relationships.append(NPCRelationship(
+                    hero_name=self.input_text.strip(),
+                    attitude="neutral",
+                    notes=""
+                ))
+        elif self.input_active and self.input_active.startswith("npc_rel_notes_"):
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                try:
+                    ri = int(self.input_active.split("_")[-1])
+                    if 0 <= ri < len(npc.relationships):
+                        npc.relationships[ri].notes = self.input_text
+                except (ValueError, IndexError):
+                    pass
         elif self.input_active == "shop_name":
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
@@ -1051,6 +1098,10 @@ class CampaignManagerState:
         # Monster picker overlay
         if self.monster_picker_open:
             self._draw_monster_picker(screen, mp)
+
+        # NPC location picker overlay
+        if getattr(self, '_npc_location_picker_open', False):
+            self._draw_npc_location_picker(screen, mp)
 
         # Bottom buttons
         if self.active_tab == 0:
@@ -1944,6 +1995,7 @@ class CampaignManagerState:
         if not npc:
             return
         y = 70
+        panel_w = SCREEN_WIDTH - start_x - 30
 
         # Name (editable)
         hdr = fonts.header.render(npc.name, True, COLORS["accent"])
@@ -1953,11 +2005,20 @@ class CampaignManagerState:
             self.input_active = "npc_name"
             self.input_text = npc.name
             self.modal = ("edit_field", "npc_name")
+
+        # Alive/Active badges next to name
+        badge_x = start_x + hdr.get_width() + 15
+        if not npc.alive:
+            dead_badge = fonts.tiny.render("DEAD", True, COLORS["danger"])
+            pygame.draw.rect(screen, COLORS["danger"], (badge_x, y + 4, dead_badge.get_width() + 8, 18), border_radius=8)
+            screen.blit(dead_badge, (badge_x + 4, y + 5))
         y += 32
 
-        # Quick info fields
+        # Quick info fields (with age & gender added)
         fields = [
             ("Race", npc.race, "npc_race"),
+            ("Gender", npc.gender, "npc_gender"),
+            ("Age", npc.age, "npc_age"),
             ("Occupation", npc.occupation, "npc_occupation"),
             ("Appearance", npc.appearance, "npc_appearance"),
             ("Personality", npc.personality, "npc_personality"),
@@ -1966,7 +2027,7 @@ class CampaignManagerState:
         for label, value, field_key in fields:
             fl = fonts.small_bold.render(f"{label}:", True, COLORS["text_dim"])
             screen.blit(fl, (start_x, y))
-            field_rect = pygame.Rect(start_x + 95, y - 2, SCREEN_WIDTH - start_x - 130, 22)
+            field_rect = pygame.Rect(start_x + 95, y - 2, panel_w - 95, 22)
             pygame.draw.rect(screen, COLORS["input_bg"], field_rect, border_radius=3)
             text = value or f"(set {label.lower()})"
             col = COLORS["text_main"] if value else COLORS["text_muted"]
@@ -2001,16 +2062,36 @@ class CampaignManagerState:
             ax += aw + 4
         y += 28
 
-        # Location
+        # Location with MOVE button
         loc = self.world.locations.get(npc.location_id)
         loc_label = fonts.small_bold.render("Location:", True, COLORS["text_dim"])
         screen.blit(loc_label, (start_x, y))
         loc_name = loc.name if loc else "(none)"
         lt = fonts.small.render(loc_name, True, COLORS["accent"] if loc else COLORS["text_muted"])
         screen.blit(lt, (start_x + 75, y))
+        # Move button
+        move_x = start_x + 75 + lt.get_width() + 10
+        move_btn = pygame.Rect(move_x, y - 2, 60, 20)
+        is_move_hover = move_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if is_move_hover else COLORS["panel"], move_btn, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], move_btn, 1, border_radius=3)
+        mvt = fonts.tiny.render("Move", True, COLORS["accent"])
+        screen.blit(mvt, (move_btn.x + 15, move_btn.y + 3))
+        if is_move_hover and pygame.mouse.get_pressed()[0]:
+            self._npc_location_picker_open = True
+        # Unlink button (remove from location)
+        if npc.location_id:
+            unlink_btn = pygame.Rect(move_btn.right + 5, y - 2, 20, 20)
+            is_unlink_hover = unlink_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger_hover"] if is_unlink_hover else COLORS["panel"],
+                             unlink_btn, border_radius=3)
+            xt = fonts.tiny.render("X", True, COLORS["danger"])
+            screen.blit(xt, (unlink_btn.x + 5, unlink_btn.y + 3))
+            if is_unlink_hover and pygame.mouse.get_pressed()[0]:
+                move_npc(self.world, npc.id, "")
         y += 22
 
-        # Stat source
+        # Stat source with preview
         ss_label = fonts.small_bold.render("Stats:", True, COLORS["text_dim"])
         screen.blit(ss_label, (start_x, y))
         ss_text = npc.stat_source or "(no stat sheet linked)"
@@ -2032,6 +2113,71 @@ class CampaignManagerState:
             self.monster_picker_open = True
             self.monster_search = ""
             self._npc_stat_link_mode = True
+        # Clear stat link
+        if npc.stat_source:
+            clr_btn = pygame.Rect(m_btn.right + 5, y - 2, 50, 20)
+            is_clr_hover = clr_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger_hover"] if is_clr_hover else COLORS["panel"],
+                             clr_btn, border_radius=3)
+            clrt = fonts.tiny.render("Clear", True, COLORS["danger"])
+            screen.blit(clrt, (clr_btn.x + 8, clr_btn.y + 3))
+            if is_clr_hover and pygame.mouse.get_pressed()[0]:
+                npc.stat_source = ""
+                npc.custom_stats = {}
+        y += 22
+
+        # Stat preview (show key stats if linked)
+        if npc.stat_source:
+            stats = self._get_npc_stats(npc)
+            if stats:
+                preview_items = [
+                    f"HP:{stats.hp}",
+                    f"AC:{stats.ac}",
+                    f"CR:{stats.cr}",
+                ]
+                if hasattr(stats, 'abilities') and stats.abilities:
+                    preview_items.append(
+                        f"STR:{stats.abilities.strength} DEX:{stats.abilities.dexterity} "
+                        f"CON:{stats.abilities.constitution}"
+                    )
+                prev_text = "  ".join(preview_items)
+                pt = fonts.tiny.render(prev_text, True, COLORS["text_dim"])
+                screen.blit(pt, (start_x + 50, y))
+                y += 16
+        y += 3
+
+        # Gold & Inventory section
+        gold_label = fonts.small_bold.render("Gold:", True, COLORS["text_dim"])
+        screen.blit(gold_label, (start_x, y))
+        gold_rect = pygame.Rect(start_x + 45, y - 2, 80, 22)
+        pygame.draw.rect(screen, COLORS["input_bg"], gold_rect, border_radius=3)
+        gt = fonts.small.render(f"{npc.gold:.0f} gp", True, COLORS["legendary"])
+        screen.blit(gt, (gold_rect.x + 4, y))
+        if gold_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "npc_gold"
+            self.input_text = str(int(npc.gold))
+            self.modal = ("edit_field", "npc_gold")
+
+        # Personal items (non-shop inventory)
+        inv_label = fonts.small_bold.render("Items:", True, COLORS["text_dim"])
+        screen.blit(inv_label, (start_x + 140, y))
+        inv_text = ", ".join(npc.inventory_items[:5]) if npc.inventory_items else "(none)"
+        if len(npc.inventory_items) > 5:
+            inv_text += f" +{len(npc.inventory_items)-5} more"
+        it = fonts.tiny.render(inv_text[:50], True,
+                               COLORS["text_main"] if npc.inventory_items else COLORS["text_muted"])
+        screen.blit(it, (start_x + 185, y + 2))
+        # Add item button
+        add_item_btn = pygame.Rect(start_x + 185 + it.get_width() + 5, y - 2, 20, 20)
+        is_add_hover = add_item_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_add_hover else COLORS["panel"],
+                         add_item_btn, border_radius=3)
+        pt = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(pt, (add_item_btn.x + 5, add_item_btn.y + 3))
+        if is_add_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "npc_add_item"
+            self.input_text = ""
+            self.modal = ("edit_field", "npc_add_item")
         y += 25
 
         # Shopkeeper toggle
@@ -2053,12 +2199,85 @@ class CampaignManagerState:
             self._draw_npc_shop_info(screen, mp, npc, start_x, y)
             y += 200  # Reserve space
 
-        # Notes
+        # ---- Relationships panel ----
         y += 5
+        rel_label = fonts.small_bold.render("Relationships:", True, COLORS["text_dim"])
+        screen.blit(rel_label, (start_x, y))
+        # Add relationship button
+        add_rel_btn = pygame.Rect(start_x + 110, y - 2, 20, 20)
+        is_addrel_hover = add_rel_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_addrel_hover else COLORS["panel"],
+                         add_rel_btn, border_radius=3)
+        art = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(art, (add_rel_btn.x + 5, add_rel_btn.y + 3))
+        if is_addrel_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "npc_add_relationship"
+            self.input_text = ""
+            self.modal = ("edit_field", "npc_add_relationship")
+        y += 20
+        rel_att_cols = {"friendly": COLORS["success"], "neutral": COLORS["text_dim"],
+                        "unfriendly": COLORS["warning"], "hostile": COLORS["danger"]}
+
+        if npc.relationships:
+            for ri, rel in enumerate(npc.relationships):
+                # Hero name
+                rn = fonts.tiny.render(f"{rel.hero_name}:", True, COLORS["text_main"])
+                screen.blit(rn, (start_x + 10, y))
+                # Attitude chips
+                rx = start_x + 10 + rn.get_width() + 8
+                for ratt in ["friendly", "neutral", "unfriendly", "hostile"]:
+                    is_active = rel.attitude == ratt
+                    raw = fonts.tiny.size(ratt[0].upper())[0] + 8
+                    rar = pygame.Rect(rx, y, raw, 16)
+                    rbg = rel_att_cols.get(ratt, COLORS["panel"]) if is_active else COLORS["panel"]
+                    if rar.collidepoint(mp):
+                        rbg = COLORS["hover"]
+                        if pygame.mouse.get_pressed()[0]:
+                            rel.attitude = ratt
+                    pygame.draw.rect(screen, rbg, rar, border_radius=6)
+                    rat = fonts.tiny.render(ratt[0].upper(), True,
+                                            COLORS["text_bright"] if is_active else COLORS["text_muted"])
+                    screen.blit(rat, (rx + 3, y + 1))
+                    rx += raw + 2
+                # Relationship notes (clickable)
+                rx += 5
+                rn_text = rel.notes[:30] if rel.notes else "(notes)"
+                rnc = COLORS["text_dim"] if rel.notes else COLORS["text_muted"]
+                rnt = fonts.tiny.render(rn_text, True, rnc)
+                rn_rect = pygame.Rect(rx, y, rnt.get_width() + 10, 16)
+                screen.blit(rnt, (rx, y + 1))
+                if rn_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                    self.input_active = f"npc_rel_notes_{ri}"
+                    self.input_text = rel.notes
+                    self.modal = ("edit_field", f"npc_rel_notes_{ri}")
+                # Delete relationship
+                del_rx = rn_rect.right + 5
+                del_rr = pygame.Rect(del_rx, y, 14, 16)
+                if del_rr.collidepoint(mp):
+                    drt = fonts.tiny.render("x", True, COLORS["danger"])
+                    screen.blit(drt, (del_rx + 2, y + 1))
+                    if pygame.mouse.get_pressed()[0]:
+                        npc.relationships.pop(ri)
+                        break
+                # Click hero name to navigate to that NPC
+                hero_npc = self._find_npc_by_name(rel.hero_name)
+                if hero_npc:
+                    link_rect = pygame.Rect(start_x + 10, y, rn.get_width(), 16)
+                    if link_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                        self.selected_npc_id = hero_npc.id
+                        return
+                y += 18
+        else:
+            empty_t = fonts.tiny.render("(no relationships — click + to add)", True, COLORS["text_muted"])
+            screen.blit(empty_t, (start_x + 10, y))
+            y += 18
+
+        # Notes
+        y += 8
         notes_label = fonts.small_bold.render("DM Notes:", True, COLORS["text_dim"])
         screen.blit(notes_label, (start_x, y))
         y += 18
-        note_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, 45)
+        note_rect = pygame.Rect(start_x, y, panel_w, 45)
         pygame.draw.rect(screen, COLORS["input_bg"], note_rect, border_radius=4)
         pygame.draw.rect(screen, COLORS["border"], note_rect, 1, border_radius=4)
         note_text = npc.notes or "(Click to add notes)"
@@ -2070,8 +2289,38 @@ class CampaignManagerState:
             self.input_text = npc.notes
             self.modal = ("edit_field", "npc_notes")
 
+        # Tags
+        tag_y = note_rect.bottom + 8
+        tag_label = fonts.small_bold.render("Tags:", True, COLORS["text_dim"])
+        screen.blit(tag_label, (start_x, tag_y))
+        tx = start_x + 45
+        for ti, tag in enumerate(npc.tags):
+            tw = fonts.tiny.size(tag)[0] + 16
+            tr = pygame.Rect(tx, tag_y, tw, 18)
+            is_tag_hover = tr.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["hover"] if is_tag_hover else COLORS["panel"],
+                             tr, border_radius=8)
+            tt = fonts.tiny.render(tag, True, COLORS["accent"])
+            screen.blit(tt, (tx + 4, tag_y + 2))
+            # X to remove tag
+            if is_tag_hover and pygame.mouse.get_pressed()[0]:
+                npc.tags.pop(ti)
+                break
+            tx += tw + 4
+        # Add tag button
+        add_tag_btn = pygame.Rect(tx, tag_y, 20, 18)
+        is_at_hover = add_tag_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_at_hover else COLORS["panel"],
+                         add_tag_btn, border_radius=8)
+        att = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(att, (add_tag_btn.x + 5, tag_y + 2))
+        if is_at_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "npc_add_tag"
+            self.input_text = ""
+            self.modal = ("edit_field", "npc_add_tag")
+
         # Delete NPC button
-        del_y = note_rect.bottom + 10
+        del_y = tag_y + 28
         del_rect = pygame.Rect(start_x, del_y, 120, 28)
         is_del_hover = del_rect.collidepoint(mp)
         pygame.draw.rect(screen, COLORS["danger_hover"] if is_del_hover else COLORS["danger"],
@@ -2080,6 +2329,22 @@ class CampaignManagerState:
         screen.blit(dlt, (start_x + 10, del_y + 5))
         if is_del_hover and pygame.mouse.get_pressed()[0]:
             self._delete_world_npc(npc.id)
+
+    def _get_npc_stats(self, npc):
+        """Get CreatureStats for an NPC from stat_source."""
+        if not npc.stat_source:
+            return None
+        if npc.stat_source.startswith("monster:"):
+            monster_name = npc.stat_source[len("monster:"):]
+            return library.get(monster_name)
+        return None
+
+    def _find_npc_by_name(self, name):
+        """Find an NPC by name (for relationship navigation)."""
+        for npc in self.world.npcs.values():
+            if npc.name.lower() == name.lower():
+                return npc
+        return None
 
     def _draw_npc_shop_info(self, screen, mp, npc, start_x, y):
         """Draw inline shop info for a shopkeeper NPC."""
@@ -2559,6 +2824,53 @@ class CampaignManagerState:
         screen.blit(cx, (close_rect.x + 15, close_rect.y + 3))
         if close_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
             self.monster_picker_open = False
+
+    # ---- NPC Location Picker ----
+
+    def _draw_npc_location_picker(self, screen, mp):
+        """Draw a location picker overlay for moving an NPC."""
+        panel_x = SCREEN_WIDTH - 310
+        panel_rect = pygame.Rect(panel_x, 55, 305, SCREEN_HEIGHT - 120)
+        pygame.draw.rect(screen, COLORS["panel_dark"], panel_rect)
+        pygame.draw.rect(screen, COLORS["border_light"], panel_rect, 2)
+
+        ht = fonts.header.render("Move NPC to...", True, COLORS["accent"])
+        screen.blit(ht, (panel_x + 10, 60))
+
+        # Close button
+        close_rect = pygame.Rect(panel_x + 250, 60, 40, 25)
+        if close_rect.collidepoint(mp):
+            pygame.draw.rect(screen, COLORS["danger"], close_rect, border_radius=3)
+        cx = fonts.small.render("X", True, COLORS["text_bright"])
+        screen.blit(cx, (close_rect.x + 15, close_rect.y + 3))
+        if close_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self._npc_location_picker_open = False
+
+        # Location list (flat, sorted by path)
+        y = 95
+        for loc_id, loc in sorted(self.world.locations.items(), key=lambda x: x[1].name):
+            if y > SCREEN_HEIGHT - 130:
+                break
+            path = get_location_path(self.world, loc_id)
+            path_str = " > ".join(path) if path else loc.name
+            item_rect = pygame.Rect(panel_x + 10, y, 270, 28)
+            is_hover = item_rect.collidepoint(mp)
+            bg = COLORS["hover"] if is_hover else COLORS["panel"]
+            pygame.draw.rect(screen, bg, item_rect, border_radius=3)
+            icon = {"country": "C", "region": "R", "city": "Ci", "district": "D",
+                    "building": "B", "room": "Rm", "wilderness": "W"}.get(loc.location_type, "?")
+            it = fonts.tiny.render(f"[{icon}] {path_str}", True, COLORS["text_bright"])
+            screen.blit(it, (item_rect.x + 5, item_rect.y + 6))
+            if is_hover and pygame.mouse.get_pressed()[0]:
+                npc = self.world.npcs.get(self.selected_npc_id)
+                if npc:
+                    move_npc(self.world, npc.id, loc_id)
+                self._npc_location_picker_open = False
+            y += 32
+
+    def _handle_npc_location_picker_click(self, mp):
+        """Handle clicks in NPC location picker (consumed by draw for simplicity)."""
+        pass
 
     # ---- Modal Drawing ----
 
