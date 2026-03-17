@@ -14,9 +14,9 @@ from states.menu_state import MenuState
 # Encounter setup
 from states.encounter_setup import EncounterSetupState
 
-# Battle (the largest module)
-from states.battle_state import (
-    BattleState, FloatingText, ImpactFlash, WeatherParticle,
+# Battle (split into renderer + events + logic for MVC separation)
+from states.battle_state import BattleState, FloatingText, ImpactFlash, WeatherParticle
+from states.battle_constants import (
     PANEL_W, TOP_BAR_H, GRID_W, TABS,
     DAMAGE_TYPE_COLORS, CONDITION_BADGES,
 )
