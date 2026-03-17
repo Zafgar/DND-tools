@@ -5232,6 +5232,21 @@ class BattleState(GameState):
             self.auto_battle = False
             winner_str = "PLAYERS WIN!" if result == "players" else "ENEMIES WIN!"
             self._log(f"=== COMBAT OVER: {winner_str} ===")
+            # Sync battle results back to campaign (if launched from campaign)
+            self._sync_to_campaign()
+
+    def _sync_to_campaign(self):
+        """Sync battle results (HP, conditions, slots) back to the active campaign."""
+        try:
+            from engine.campaign_bridge import sync_battle_results_to_campaign, get_campaign_from_manager
+            from data.campaign import save_campaign
+            campaign = get_campaign_from_manager(self.manager)
+            if campaign:
+                sync_battle_results_to_campaign(campaign, self.battle.entities)
+                save_campaign(campaign)
+                self._log("[CAMPAIGN] Party state synced back to campaign (HP, conditions, slots).")
+        except Exception as ex:
+            self._log(f"[CAMPAIGN] Sync error: {ex}")
 
     def _save_battle_report(self):
         """Save the battle report to file."""
