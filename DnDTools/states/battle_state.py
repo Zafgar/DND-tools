@@ -169,6 +169,7 @@ class BattleState(GameState):
         self.active_tooltip = None  # For drawing tooltips on top of everything
         self.pending_move = None    # (entity, x, y) for delayed movement (OA)
         self.undo_stack = []        # Stack of full state dicts
+        self.redo_stack = []        # Stack of undone states for redo
         self.ts_last_update = 0     # Timestamp of last TaleSpire update
         self.auto_battle = False    # Auto-play toggle
         self.auto_battle_paused = False  # Pause without fully stopping
@@ -631,19 +632,35 @@ class BattleState(GameState):
         """Save current state to undo stack."""
         state = self.battle.get_state_dict()
         self.undo_stack.append(state)
-        if len(self.undo_stack) > 20:
+        if len(self.undo_stack) > 50:
             self.undo_stack.pop(0)
+        # New action clears redo stack
+        self.redo_stack.clear()
 
     def _undo_last_action(self):
         if not self.undo_stack:
             self._log("[UNDO] Nothing to undo.")
             return
+        # Save current state for redo before restoring
+        self.redo_stack.append(self.battle.get_state_dict())
         state = self.undo_stack.pop()
         self.battle.restore_state(state)
         self.selected_entity = None
         self.pending_plan = None
         self.condition_reminder = None
         self._log("[UNDO] Reverted to previous state.")
+
+    def _redo_action(self):
+        if not self.redo_stack:
+            self._log("[REDO] Nothing to redo.")
+            return
+        self.undo_stack.append(self.battle.get_state_dict())
+        state = self.redo_stack.pop()
+        self.battle.restore_state(state)
+        self.selected_entity = None
+        self.pending_plan = None
+        self.condition_reminder = None
+        self._log("[REDO] Re-applied action.")
 
     # ------------------------------------------------------------------ #
     # Turn management                                                      #
@@ -743,20 +760,30 @@ class BattleState(GameState):
             self.aura_triggers = auras
             self._open_next_aura_modal()
 
-        # Autosave every 5 turns
+        # Autosave every 3 turns
         self.autosave_turn_counter += 1
-        if self.autosave_turn_counter >= 5:
+        if self.autosave_turn_counter >= 3:
             self.autosave_turn_counter = 0
             self._perform_autosave()
 
     def _perform_autosave(self):
-        """Autosave current battle state."""
+        """Autosave current battle state and sync to campaign."""
         try:
             if not os.path.exists(SAVES_DIR):
                 os.makedirs(SAVES_DIR)
             filepath = os.path.join(SAVES_DIR, "_autosave.json")
             self.battle.save_state(filepath)
             self._log("[AUTOSAVE] Battle state saved.")
+            # Also sync mid-battle state to campaign for crash recovery
+            try:
+                from engine.campaign_bridge import sync_battle_results_to_campaign, get_campaign_from_manager
+                from data.campaign import save_campaign
+                campaign = get_campaign_from_manager(self.manager)
+                if campaign:
+                    sync_battle_results_to_campaign(campaign, self.battle.entities)
+                    save_campaign(campaign)
+            except Exception:
+                pass  # Campaign sync during autosave is best-effort
         except Exception as ex:
             self._log(f"[ERROR] Autosave failed: {ex}")
 
@@ -2236,6 +2263,11 @@ class BattleState(GameState):
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_z:
                     if not self.terrain_mode:
                         self._undo_last_action()
+
+                # Redo (Y or Ctrl+Y or Ctrl+Shift+Z) - only when not in terrain mode
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_y:
+                    if not self.terrain_mode:
+                        self._redo_action()
 
                 # Hotkeys (only when no modals are open)
                 if event.type == pygame.KEYDOWN and not self.terrain_mode:
