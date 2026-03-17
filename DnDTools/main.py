@@ -2,6 +2,7 @@ import sys
 import os
 import threading
 import logging
+import queue
 
 # --- LOGGING SETUP (Moved to top to catch startup errors) ---
 # Force log file to be in the same directory as the script
@@ -49,18 +50,21 @@ log.setLevel(logging.ERROR)
 
 game_instance = None  # Global reference to access GameManager from Flask route
 
+# Thread-safe queue for passing data from Flask to the main game loop
+_update_queue = queue.Queue()
+
 @app.route('/update_minis', methods=['POST'])
 def update_minis():
     if not game_instance:
         return jsonify({"status": "error", "message": "Game not running"}), 503
-    
+
     data = request.json
     if not data:
         return jsonify({"status": "error", "message": "No data"}), 400
 
-    # Pass data to the game engine (thread-safe enough for simple position updates)
-    game_instance.handle_external_update(data)
-    
+    # Enqueue data for the main thread to process safely
+    _update_queue.put(data)
+
     return jsonify({"status": "success"})
 
 def run_server():
@@ -104,14 +108,21 @@ class GameManager:
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
 
+    def _process_external_updates(self):
+        """Process all queued external updates on the main thread (thread-safe)."""
+        while not _update_queue.empty():
+            try:
+                minis_data = _update_queue.get_nowait()
+                if isinstance(self.current_state, BattleState):
+                    self.current_state.update_external_positions(minis_data)
+                elif isinstance(self.current_state, EncounterSetupState):
+                    self.current_state.update_external_data(minis_data)
+            except queue.Empty:
+                break
+
     def handle_external_update(self, minis_data):
-        """Called by Flask thread when new mini positions arrive."""
-        # Only update if we are currently in a battle
-        if isinstance(self.current_state, BattleState):
-            self.current_state.update_external_positions(minis_data)
-        # Allow Setup state to receive data for import
-        elif isinstance(self.current_state, EncounterSetupState):
-            self.current_state.update_external_data(minis_data)
+        """Legacy method – still works but data is now queued."""
+        _update_queue.put(minis_data)
 
     def quit(self):
         self.running = False
@@ -124,6 +135,8 @@ class GameManager:
                 for event in events:
                     if event.type == pygame.QUIT:
                         self.running = False
+                # Process any external updates from Flask thread (thread-safe)
+                self._process_external_updates()
                 self.current_state.handle_events(events)
                 self.current_state.update()
                 self.current_state.draw(self.screen)
