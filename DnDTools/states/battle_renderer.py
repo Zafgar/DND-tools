@@ -4,6 +4,8 @@ Extracted from battle_state.py for UI/Logic separation (MVC).
 """
 import pygame
 import math
+import os
+import re
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT, CREATURE_TYPE_COLORS, CREATURE_ICONS, SIZE_RADIUS
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect, Tooltip
 from data.conditions import CONDITIONS
