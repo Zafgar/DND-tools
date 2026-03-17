@@ -93,6 +93,8 @@ class Campaign:
     areas: List[CampaignArea] = field(default_factory=list)
     # Campaign-level notes
     notes: List[CampaignNote] = field(default_factory=list)
+    # World reference (world.py World object saved inline)
+    world_data: dict = field(default_factory=dict)  # Serialized World for persistence
     # Settings
     settings: Dict = field(default_factory=lambda: {
         "variant_healing_potions": True,   # Potions as bonus action
@@ -203,6 +205,7 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "encounters": [_serialize_encounter(e) for e in campaign.encounters],
         "areas": [_serialize_area(a) for a in campaign.areas],
         "notes": [_serialize_note(n) for n in campaign.notes],
+        "world_data": campaign.world_data,
         "settings": campaign.settings,
     }
 
@@ -229,6 +232,7 @@ def load_campaign(filepath: str) -> Campaign:
         encounters=[_deserialize_encounter(e) for e in data.get("encounters", [])],
         areas=[_deserialize_area(a) for a in data.get("areas", [])],
         notes=[_deserialize_note(n) for n in data.get("notes", [])],
+        world_data=data.get("world_data", {}),
         settings=data.get("settings", {}),
     )
 

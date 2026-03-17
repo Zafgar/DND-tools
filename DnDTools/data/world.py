@@ -96,6 +96,9 @@ class NPC:
     # Inventory / Shop
     is_shopkeeper: bool = False
     shop_name: str = ""               # Shop name if shopkeeper
+    shop_type: str = ""               # Key from shop_catalog.SHOP_TYPES (e.g. "blacksmith")
+    price_modifier: str = "normal"    # Price tier: very_cheap, cheap, normal, expensive, very_expensive, ripoff
+    target_party_level: int = 5       # What level party this shop caters to
     shop_items: List[ShopItem] = field(default_factory=list)
     inventory_items: List[str] = field(default_factory=list)  # Non-shop personal items
     gold: float = 0.0
@@ -189,6 +192,8 @@ def _serialize_npc(npc: NPC) -> dict:
         "custom_stats": npc.custom_stats,
         "relationships": [_serialize_relationship(r) for r in npc.relationships],
         "is_shopkeeper": npc.is_shopkeeper, "shop_name": npc.shop_name,
+        "shop_type": npc.shop_type, "price_modifier": npc.price_modifier,
+        "target_party_level": npc.target_party_level,
         "shop_items": [_serialize_shop_item(si) for si in npc.shop_items],
         "inventory_items": npc.inventory_items, "gold": npc.gold,
         "alive": npc.alive, "active": npc.active,
@@ -208,6 +213,9 @@ def _deserialize_npc(d: dict) -> NPC:
         relationships=[_deserialize_relationship(r) for r in d.get("relationships", [])],
         is_shopkeeper=d.get("is_shopkeeper", False),
         shop_name=d.get("shop_name", ""),
+        shop_type=d.get("shop_type", ""),
+        price_modifier=d.get("price_modifier", "normal"),
+        target_party_level=d.get("target_party_level", 5),
         shop_items=[_deserialize_shop_item(si) for si in d.get("shop_items", [])],
         inventory_items=d.get("inventory_items", []),
         gold=d.get("gold", 0),
@@ -413,3 +421,43 @@ def delete_npc(world: World, npc_id: str):
     if loc and npc_id in loc.npc_ids:
         loc.npc_ids.remove(npc_id)
     del world.npcs[npc_id]
+
+
+# ============================================================================
+# SHOP HELPERS
+# ============================================================================
+
+def populate_shop(npc: NPC, party_level: int = 0):
+    """Auto-populate a shopkeeper's inventory from shop_catalog."""
+    from data.shop_catalog import generate_shop_inventory, get_item_price, apply_price_modifier
+    if not npc.is_shopkeeper or not npc.shop_type:
+        return
+    level = party_level or npc.target_party_level
+    items = generate_shop_inventory(npc.shop_type, level, npc.price_modifier)
+    npc.shop_items = []
+    for entry in items:
+        npc.shop_items.append(ShopItem(
+            item_name=entry["name"],
+            base_price_gp=entry["base_price"],
+            current_price_gp=entry["adjusted_price"],
+            quantity=-1,
+        ))
+
+
+def get_shop_suggestions(npc: NPC, count: int = 5) -> list:
+    """Get suggested items to add to this shopkeeper's inventory."""
+    from data.shop_catalog import suggest_items_for_shop
+    if not npc.shop_type:
+        return []
+    return suggest_items_for_shop(npc.shop_type, npc.target_party_level, count)
+
+
+def get_shopkeepers(world: World) -> List[NPC]:
+    """Get all active shopkeeper NPCs."""
+    return [npc for npc in world.npcs.values() if npc.is_shopkeeper and npc.active]
+
+
+def get_shopkeepers_at_location(world: World, location_id: str) -> List[NPC]:
+    """Get shopkeeper NPCs at a specific location."""
+    return [npc for npc in world.npcs.values()
+            if npc.is_shopkeeper and npc.active and npc.location_id == location_id]
