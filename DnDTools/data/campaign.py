@@ -1,17 +1,15 @@
 """
 Campaign Management System - Data model and persistence.
 Campaigns hold a party of heroes, encounters, areas, notes, and settings.
-JSON-based save/load for full campaign state.
+JSON-based save/load using the generic serialization system.
 """
 import json
 import os
-import copy
 import time
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 from data.models import CreatureStats, Item
-from data.hero_import import export_hero, import_hero_from_file
-from data.items import get_item
+from data.serialization import serialize, deserialize
 
 
 CAMPAIGNS_DIR = os.path.join(os.path.dirname(__file__), "..", "campaigns")
@@ -108,79 +106,8 @@ def _timestamp():
 
 
 # ============================================================================
-# SERIALIZATION
+# SERIALIZATION (now uses generic serialize/deserialize)
 # ============================================================================
-
-def _serialize_note(note: CampaignNote) -> dict:
-    return {"text": note.text, "timestamp": note.timestamp, "category": note.category}
-
-def _deserialize_note(d: dict) -> CampaignNote:
-    return CampaignNote(text=d.get("text", ""), timestamp=d.get("timestamp", ""),
-                        category=d.get("category", "general"))
-
-def _serialize_slot(slot: EncounterSlot) -> dict:
-    return {
-        "creature_name": slot.creature_name, "count": slot.count,
-        "side": slot.side, "is_hero": slot.is_hero, "notes": slot.notes,
-    }
-
-def _deserialize_slot(d: dict) -> EncounterSlot:
-    return EncounterSlot(**{k: d[k] for k in d if k in EncounterSlot.__dataclass_fields__})
-
-def _serialize_encounter(enc: CampaignEncounter) -> dict:
-    return {
-        "name": enc.name, "description": enc.description, "area_name": enc.area_name,
-        "slots": [_serialize_slot(s) for s in enc.slots],
-        "loot_items": enc.loot_items, "notes": enc.notes,
-        "completed": enc.completed, "difficulty_hint": enc.difficulty_hint,
-    }
-
-def _deserialize_encounter(d: dict) -> CampaignEncounter:
-    return CampaignEncounter(
-        name=d.get("name", ""), description=d.get("description", ""),
-        area_name=d.get("area_name", ""),
-        slots=[_deserialize_slot(s) for s in d.get("slots", [])],
-        loot_items=d.get("loot_items", []), notes=d.get("notes", ""),
-        completed=d.get("completed", False), difficulty_hint=d.get("difficulty_hint", ""),
-    )
-
-def _serialize_area(area: CampaignArea) -> dict:
-    return {
-        "name": area.name, "description": area.description,
-        "environment": area.environment, "lighting": area.lighting,
-        "notes": area.notes, "encounter_names": area.encounter_names,
-    }
-
-def _deserialize_area(d: dict) -> CampaignArea:
-    return CampaignArea(
-        name=d.get("name", ""), description=d.get("description", ""),
-        environment=d.get("environment", "outdoor"), lighting=d.get("lighting", "bright"),
-        notes=d.get("notes", ""), encounter_names=d.get("encounter_names", []),
-    )
-
-def _serialize_member(m: PartyMember) -> dict:
-    return {
-        "hero_data": m.hero_data, "notes": m.notes, "active": m.active,
-        "current_hp": m.current_hp, "temp_hp": m.temp_hp,
-        "conditions": m.conditions,
-        "spell_slots_used": m.spell_slots_used,
-        "feature_uses_used": m.feature_uses_used,
-        "exhaustion": m.exhaustion, "death_saves": m.death_saves,
-        "custom_items": m.custom_items,
-    }
-
-def _deserialize_member(d: dict) -> PartyMember:
-    return PartyMember(
-        hero_data=d.get("hero_data", {}), notes=d.get("notes", ""),
-        active=d.get("active", True), current_hp=d.get("current_hp", -1),
-        temp_hp=d.get("temp_hp", 0), conditions=d.get("conditions", []),
-        spell_slots_used=d.get("spell_slots_used", {}),
-        feature_uses_used=d.get("feature_uses_used", {}),
-        exhaustion=d.get("exhaustion", 0),
-        death_saves=d.get("death_saves", {"success": 0, "failure": 0}),
-        custom_items=d.get("custom_items", []),
-    )
-
 
 def save_campaign(campaign: Campaign, filepath: str = ""):
     """Save campaign to JSON file."""
@@ -198,13 +125,13 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "description": campaign.description,
         "created": campaign.created,
         "last_modified": campaign.last_modified,
-        "party": [_serialize_member(m) for m in campaign.party],
+        "party": [serialize(m) for m in campaign.party],
         "time_of_day": campaign.time_of_day,
         "current_area": campaign.current_area,
         "session_number": campaign.session_number,
-        "encounters": [_serialize_encounter(e) for e in campaign.encounters],
-        "areas": [_serialize_area(a) for a in campaign.areas],
-        "notes": [_serialize_note(n) for n in campaign.notes],
+        "encounters": [serialize(e) for e in campaign.encounters],
+        "areas": [serialize(a) for a in campaign.areas],
+        "notes": [serialize(n) for n in campaign.notes],
         "world_data": campaign.world_data,
         "settings": campaign.settings,
     }
@@ -225,13 +152,13 @@ def load_campaign(filepath: str) -> Campaign:
         description=data.get("description", ""),
         created=data.get("created", ""),
         last_modified=data.get("last_modified", ""),
-        party=[_deserialize_member(m) for m in data.get("party", [])],
+        party=[deserialize(PartyMember, m) for m in data.get("party", [])],
         time_of_day=data.get("time_of_day", "day"),
         current_area=data.get("current_area", ""),
         session_number=data.get("session_number", 1),
-        encounters=[_deserialize_encounter(e) for e in data.get("encounters", [])],
-        areas=[_deserialize_area(a) for a in data.get("areas", [])],
-        notes=[_deserialize_note(n) for n in data.get("notes", [])],
+        encounters=[deserialize(CampaignEncounter, e) for e in data.get("encounters", [])],
+        areas=[deserialize(CampaignArea, a) for a in data.get("areas", [])],
+        notes=[deserialize(CampaignNote, n) for n in data.get("notes", [])],
         world_data=data.get("world_data", {}),
         settings=data.get("settings", {}),
     )
