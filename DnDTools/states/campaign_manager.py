@@ -26,7 +26,7 @@ from data.campaign import (
     list_campaigns, CAMPAIGNS_DIR, _timestamp,
 )
 from data.world import (
-    World, Location, NPC, ShopItem, NPCRelationship,
+    World, Location, NPC, ShopItem, NPCRelationship, MapRoute,
     save_world, load_world, generate_id,
     add_location, add_npc, move_npc, delete_location, delete_npc,
     get_root_locations, get_children, get_location_path,
@@ -58,6 +58,16 @@ from data.travel import (
     MOUNTS, VEHICLES_LAND, VEHICLES_WATER, TRAVEL_PACE,
     PASSAGE_COSTS, TERRAIN_MODIFIERS, calculate_travel_time,
     format_travel_time, get_passage_cost,
+)
+from data.city_templates import (
+    CITY_TEMPLATES, get_city_template, get_city_templates_by_tier,
+    get_city_templates_by_type, apply_city_template,
+)
+from data.encounters import (
+    calculate_encounter_difficulty, get_xp_for_cr, get_party_thresholds,
+    CR_XP_TABLE, XP_THRESHOLDS, RANDOM_ENCOUNTERS,
+    roll_random_encounter, get_encounter_environments,
+    generate_loot, roll_magic_item, MAGIC_ITEM_TABLES,
 )
 
 
@@ -229,6 +239,13 @@ class CampaignManagerState:
         self._location_map_positions: dict = {}
         self._load_map_positions()
 
+        # Map background image and route mode
+        self._map_bg_surface = None  # pygame.Surface for custom map background
+        self._map_route_mode = False  # True = click two locations to create route
+        self._map_route_from = ""  # First location ID when creating a route
+        self._map_dragging_node = ""  # Location ID being dragged on map
+        self._load_map_background()
+
         # Input state
         self.input_active = ""  # Which input field is active
         self.input_text = ""
@@ -314,8 +331,7 @@ class CampaignManagerState:
         """Load or create World from campaign's world_data."""
         if self.campaign.world_data:
             try:
-                # Reconstruct World from serialized dict
-                from data.world import _deserialize_location, _deserialize_npc
+                from data.world import _deserialize_location, _deserialize_npc, _deserialize_route, MapRoute
                 wd = self.campaign.world_data
                 return World(
                     name=wd.get("name", self.campaign.name),
@@ -325,6 +341,9 @@ class CampaignManagerState:
                     locations={k: _deserialize_location(v) for k, v in wd.get("locations", {}).items()},
                     npcs={k: _deserialize_npc(v) for k, v in wd.get("npcs", {}).items()},
                     next_id=wd.get("next_id", 1),
+                    map_routes=[_deserialize_route(r) for r in wd.get("map_routes", [])],
+                    map_image_path=wd.get("map_image_path", ""),
+                    map_positions=wd.get("map_positions", {}),
                 )
             except Exception:
                 pass
@@ -332,8 +351,10 @@ class CampaignManagerState:
 
     def _serialize_world(self) -> dict:
         """Serialize World to dict for campaign save."""
-        from data.world import _serialize_location, _serialize_npc
+        from data.world import _serialize_location, _serialize_npc, _serialize_route
         w = self.world
+        # Sync map positions into world before saving
+        w.map_positions = dict(self._location_map_positions)
         return {
             "name": w.name,
             "description": w.description,
@@ -342,6 +363,9 @@ class CampaignManagerState:
             "locations": {k: _serialize_location(v) for k, v in w.locations.items()},
             "npcs": {k: _serialize_npc(v) for k, v in w.npcs.items()},
             "next_id": w.next_id,
+            "map_routes": [_serialize_route(r) for r in w.map_routes],
+            "map_image_path": w.map_image_path,
+            "map_positions": w.map_positions,
         }
 
     def _on_tab_change(self, idx):
@@ -506,6 +530,108 @@ class CampaignManagerState:
         except Exception:
             return None
 
+    # ---- Encounter Helpers ----
+
+    def _calc_encounter_difficulty(self, enc):
+        """Calculate difficulty for an encounter using DMG rules."""
+        if not enc.slots:
+            return None
+        # Get party levels
+        party_levels = []
+        for m in self.campaign.party:
+            if m.active:
+                party_levels.append(m.hero_data.get("character_level", 1))
+        if not party_levels:
+            party_levels = [1]
+
+        # Get monster CRs
+        monster_crs = []
+        for slot in enc.slots:
+            if slot.side == "ally":
+                continue
+            # Try to look up CR from library
+            cr_str = "0"
+            try:
+                stats = library.get_monster(slot.creature_name)
+                cr_val = getattr(stats, 'challenge_rating', 0)
+                if isinstance(cr_val, float):
+                    if cr_val == 0.125:
+                        cr_str = "1/8"
+                    elif cr_val == 0.25:
+                        cr_str = "1/4"
+                    elif cr_val == 0.5:
+                        cr_str = "1/2"
+                    else:
+                        cr_str = str(int(cr_val))
+                else:
+                    cr_str = str(cr_val)
+            except (ValueError, AttributeError):
+                pass
+            for _ in range(slot.count):
+                monster_crs.append(cr_str)
+
+        if not monster_crs:
+            return None
+        return calculate_encounter_difficulty(monster_crs, party_levels)
+
+    def _roll_encounter_loot(self, enc):
+        """Generate loot for an encounter and add to loot_items."""
+        # Determine CR range from encounter
+        max_cr = 0
+        for slot in enc.slots:
+            if slot.side == "ally":
+                continue
+            try:
+                stats = library.get_monster(slot.creature_name)
+                cr = getattr(stats, 'challenge_rating', 0)
+                if isinstance(cr, str):
+                    cr = float(cr) if '/' not in cr else eval(cr)
+                max_cr = max(max_cr, float(cr))
+            except (ValueError, AttributeError):
+                pass
+        if max_cr <= 4:
+            cr_range = "cr0-4"
+        elif max_cr <= 10:
+            cr_range = "cr5-10"
+        elif max_cr <= 16:
+            cr_range = "cr11-16"
+        else:
+            cr_range = "cr17+"
+
+        num_enemies = sum(s.count for s in enc.slots if s.side != "ally")
+        loot = generate_loot(cr_range, num_enemies, hoard=(num_enemies <= 3))
+        if loot["type"] == "hoard":
+            enc.loot_items.append(f"Hoard: {loot['coins']}")
+            if loot["gems_art_magic"] != "—":
+                enc.loot_items.append(f"  + {loot['gems_art_magic']}")
+        else:
+            for t in loot["treasures"]:
+                enc.loot_items.append(t)
+        self._status_msg = "Loot generated!"
+        self._status_timer = 90
+
+    def _roll_random_encounter(self, enc):
+        """Roll a random encounter from tables and add to encounter slots."""
+        # Determine environment and tier from current area
+        env = "road"
+        tier = "tier1"
+        if self.campaign.party:
+            max_lvl = max(m.hero_data.get("character_level", 1) for m in self.campaign.party if m.active)
+            tier = "tier2" if max_lvl >= 5 else "tier1"
+        # Check area environment
+        if enc.area_name:
+            for area in self.campaign.areas:
+                if area.name == enc.area_name:
+                    env_map = {"underground": "dungeon", "indoor": "urban", "outdoor": "forest"}
+                    env = env_map.get(area.environment, "road")
+                    break
+
+        result = roll_random_encounter(env, tier)
+        if result:
+            enc.notes = (enc.notes or "") + f"\nRandom ({env}/{tier}): {result['encounter']} — {result.get('notes', '')}"
+            self._status_msg = f"Random: {result['encounter']}"
+            self._status_timer = 120
+
     # ---- Area Management ----
 
     def _add_area(self):
@@ -572,15 +698,25 @@ class CampaignManagerState:
             self.scroll_y = 0
 
     def _load_map_positions(self):
-        """Load location map positions from campaign settings."""
-        if self.campaign.settings and "map_positions" in self.campaign.settings:
+        """Load location map positions from world data."""
+        if self.world.map_positions:
+            self._location_map_positions = {k: tuple(v) for k, v in self.world.map_positions.items()}
+        # Fallback: check legacy campaign settings
+        elif self.campaign.settings and "map_positions" in self.campaign.settings:
             self._location_map_positions = dict(self.campaign.settings["map_positions"])
 
     def _save_map_positions(self):
-        """Save location map positions to campaign settings."""
-        if not self.campaign.settings:
-            self.campaign.settings = {}
-        self.campaign.settings["map_positions"] = dict(self._location_map_positions)
+        """Save location map positions to world data."""
+        self.world.map_positions = {k: list(v) for k, v in self._location_map_positions.items()}
+
+    def _load_map_background(self):
+        """Load map background image if path is set."""
+        self._map_bg_surface = None
+        if self.world.map_image_path and os.path.isfile(self.world.map_image_path):
+            try:
+                self._map_bg_surface = pygame.image.load(self.world.map_image_path).convert()
+            except Exception:
+                self._map_bg_surface = None
 
     def _apply_template(self, template_type: str, template_key: str):
         """Apply a template to the current selected location."""
@@ -602,6 +738,16 @@ class CampaignManagerState:
                 if parent_id:
                     self.world_location_expanded.add(parent_id)
                 self._status_msg = f"Created shop: {template['name']}"
+                self._status_timer = 120
+        elif template_type == "city":
+            template = get_city_template(template_key)
+            if template:
+                result = apply_city_template(self.world, parent_id, template)
+                self.selected_location_id = result["location_id"]
+                if parent_id:
+                    self.world_location_expanded.add(parent_id)
+                self.world_location_expanded.add(result["location_id"])
+                self._status_msg = f"Created {template['settlement_type']}: {template['name']}"
                 self._status_timer = 120
 
     def _delete_world_location(self, loc_id):
@@ -692,14 +838,58 @@ class CampaignManagerState:
             for tb in self.time_buttons:
                 tb.handle_event(event)
 
-            # Scroll
+            # Scroll / Map zoom
             if event.type == pygame.MOUSEWHEEL:
-                if self.hero_picker_open and mp[0] > SCREEN_WIDTH - 300:
+                if self.active_tab == 4 and self.world_map_mode:
+                    grid_area = self._get_map_grid_area()
+                    if grid_area.collidepoint(mp):
+                        old_zoom = self.map_zoom
+                        self.map_zoom = max(0.2, min(5.0, self.map_zoom + event.y * 0.15))
+                        # Zoom toward cursor
+                        factor = self.map_zoom / old_zoom if old_zoom != 0 else 1
+                        cx = grid_area.x + grid_area.width / 2
+                        cy = grid_area.y + grid_area.height / 2
+                        self.map_offset_x = (self.map_offset_x + cx - mp[0]) * factor + mp[0] - cx
+                        self.map_offset_y = (self.map_offset_y + cy - mp[1]) * factor + mp[1] - cy
+                    else:
+                        self.scroll_y += event.y * 30
+                elif self.hero_picker_open and mp[0] > SCREEN_WIDTH - 300:
                     self.hero_picker_scroll += event.y * 30
                 elif self.monster_picker_open and mp[0] > SCREEN_WIDTH - 300:
                     self.monster_picker_scroll += event.y * 30
                 else:
                     self.scroll_y += event.y * 30
+
+            # Map pan (middle mouse) and node drag (left mouse)
+            if self.active_tab == 4 and self.world_map_mode:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
+                    # Middle click → start panning
+                    self.map_dragging = True
+                    self.map_drag_start = mp
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+                    self.map_dragging = False
+                elif event.type == pygame.MOUSEMOTION:
+                    if self.map_dragging:
+                        dx = mp[0] - self.map_drag_start[0]
+                        dy = mp[1] - self.map_drag_start[1]
+                        self.map_offset_x += dx
+                        self.map_offset_y += dy
+                        self.map_drag_start = mp
+                    elif self._map_dragging_node and pygame.mouse.get_pressed()[0]:
+                        # Drag location node
+                        grid_area = self._get_map_grid_area()
+                        pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+                        pct_x = max(1, min(99, pct_x))
+                        pct_y = max(1, min(99, pct_y))
+                        self._location_map_positions[self._map_dragging_node] = (pct_x, pct_y)
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if self._map_dragging_node:
+                        self._save_map_positions()
+                        self._map_dragging_node = ""
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    grid_area = self._get_map_grid_area()
+                    if grid_area.collidepoint(mp):
+                        self._handle_map_click(mp, grid_area)
 
             # Keyboard input
             if event.type == pygame.KEYDOWN:
@@ -734,6 +924,10 @@ class CampaignManagerState:
                         self.shop_item_search_active = False
                     elif event.unicode.isprintable():
                         self.shop_item_search += event.unicode
+                    continue
+                if event.key == pygame.K_ESCAPE and self._map_route_mode:
+                    self._map_route_mode = False
+                    self._map_route_from = ""
                     continue
                 if event.key == pygame.K_ESCAPE and getattr(self, '_npc_location_picker_open', False):
                     self._npc_location_picker_open = False
@@ -871,6 +1065,64 @@ class CampaignManagerState:
                 self.input_active = "note"
                 return
             y += 90
+
+    def _handle_map_click(self, mp, grid_area):
+        """Handle left-click on the map grid area."""
+        # Check if clicking on a location node
+        clicked_loc_id = ""
+        for loc_id, pos in self._location_map_positions.items():
+            loc = self.world.locations.get(loc_id)
+            if not loc:
+                continue
+            px, py = self._map_to_screen(pos[0], pos[1], grid_area)
+            size = max(3, int(self._get_loc_size(loc) * self.map_zoom))
+            hit_dist = size + 5
+            if abs(mp[0] - px) < hit_dist and abs(mp[1] - py) < hit_dist:
+                clicked_loc_id = loc_id
+                break
+
+        if self._map_route_mode:
+            # Route creation mode
+            if clicked_loc_id:
+                if not self._map_route_from:
+                    self._map_route_from = clicked_loc_id
+                elif clicked_loc_id != self._map_route_from:
+                    # Create route between the two locations
+                    self.world.map_routes.append(MapRoute(
+                        from_id=self._map_route_from,
+                        to_id=clicked_loc_id,
+                        route_type="road",
+                        label="",
+                    ))
+                    self._map_route_mode = False
+                    self._map_route_from = ""
+                    self._status_msg = "Route created"
+                    self._status_timer = 90
+            return
+
+        if clicked_loc_id:
+            if self.selected_location_id == clicked_loc_id:
+                # Double-select: switch to detail view
+                self.world_map_mode = False
+                self.world_view = "locations"
+                self.world_location_expanded.add(clicked_loc_id)
+            else:
+                self.selected_location_id = clicked_loc_id
+                self._map_dragging_node = clicked_loc_id
+        else:
+            # Clicked empty space
+            if self.map_placing_location:
+                # Place location at clicked position
+                pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+                pct_x = max(1, min(99, pct_x))
+                pct_y = max(1, min(99, pct_y))
+                self._location_map_positions[self.map_placing_location] = (pct_x, pct_y)
+                self._save_map_positions()
+                self.map_placing_location = ""
+            else:
+                self.selected_location_id = ""
+                self._map_route_mode = False
+                self._map_route_from = ""
 
     def _handle_world_click(self, mp):
         mx, my = mp
@@ -1127,6 +1379,28 @@ class CampaignManagerState:
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
                 npc.shop_name = self.input_text
+        elif self.input_active == "map_image_path":
+            self.world.map_image_path = self.input_text.strip()
+            self._load_map_background()
+        elif self.input_active == "location_color":
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                loc.map_color = self.input_text.strip()
+        elif self.input_active == "location_map_note":
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                loc.map_note = self.input_text.strip()
+        elif self.input_active == "location_population":
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                try:
+                    loc.population = int(self.input_text)
+                except ValueError:
+                    pass
+        elif self.input_active == "location_map_icon":
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                loc.map_icon = self.input_text.strip()[:4]
         self.input_active = ""
         self.modal = None
 
@@ -1670,6 +1944,58 @@ class CampaignManagerState:
             self._next_add_side = "ally"
 
         y += 50
+
+        # --- Encounter Difficulty Calculator ---
+        diff_info = self._calc_encounter_difficulty(enc)
+        if diff_info:
+            diff_colors = {
+                "trivial": COLORS["text_muted"], "easy": COLORS["success"],
+                "medium": COLORS["warning"], "hard": COLORS["danger"],
+                "deadly": (200, 30, 30),
+            }
+            dc = diff_colors.get(diff_info["difficulty"], COLORS["text_dim"])
+            Divider.draw(screen, start_x, y, 480)
+            y += 6
+            dl = fonts.small_bold.render("Encounter Difficulty:", True, COLORS["text_dim"])
+            screen.blit(dl, (start_x, y))
+            Badge.draw(screen, start_x + 155, y + 1, diff_info["difficulty"].upper(), dc, fonts.tiny)
+            y += 20
+            xp_line = (
+                f"XP: {diff_info['total_xp']:,} (adj: {diff_info['adjusted_xp']:,}, "
+                f"x{diff_info['multiplier']:.1f}) | Per player: {diff_info['xp_per_player']:,}"
+            )
+            xt = fonts.tiny.render(xp_line, True, COLORS["text_main"])
+            screen.blit(xt, (start_x, y))
+            y += 16
+            thresh = diff_info["thresholds"]
+            tl = fonts.tiny.render(
+                f"Thresholds — E:{thresh['easy']:,} M:{thresh['medium']:,} "
+                f"H:{thresh['hard']:,} D:{thresh['deadly']:,}",
+                True, COLORS["text_muted"])
+            screen.blit(tl, (start_x, y))
+            y += 22
+
+            # Loot generator buttons
+            loot_btn = pygame.Rect(start_x, y, 140, 26)
+            loot_hover = loot_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["legendary_dim"] if loot_hover else COLORS["panel_light"],
+                             loot_btn, border_radius=4)
+            pygame.draw.rect(screen, COLORS["legendary"], loot_btn, 1, border_radius=4)
+            lbt = fonts.small.render("Roll Loot", True, COLORS["legendary"])
+            screen.blit(lbt, (loot_btn.x + 30, loot_btn.y + 4))
+            if loot_hover and pygame.mouse.get_pressed()[0]:
+                self._roll_encounter_loot(enc)
+
+            rand_btn = pygame.Rect(start_x + 155, y, 180, 26)
+            rand_hover = rand_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["spell_dim"] if rand_hover else COLORS["panel_light"],
+                             rand_btn, border_radius=4)
+            pygame.draw.rect(screen, COLORS["spell"], rand_btn, 1, border_radius=4)
+            rbt = fonts.small.render("Random Encounter", True, COLORS["spell"])
+            screen.blit(rbt, (rand_btn.x + 20, rand_btn.y + 4))
+            if rand_hover and pygame.mouse.get_pressed()[0]:
+                self._roll_random_encounter(enc)
+            y += 35
 
         # Loot items
         lt = fonts.small_bold.render("Loot:", True, COLORS["text_dim"])
@@ -3057,184 +3383,543 @@ class CampaignManagerState:
     # WORLD MAP VIEW
     # ================================================================
 
-    def _draw_world_map(self, screen, mp):
-        """Draw a visual map of the world with clickable locations."""
+    _MAP_TYPE_COLORS = {
+        "country": (255, 200, 30), "region": (170, 90, 245),
+        "city": (88, 130, 230), "town": (88, 130, 230),
+        "village": (35, 160, 65), "building": (240, 180, 20),
+        "tavern": (255, 100, 30), "shop": (255, 200, 30),
+        "temple": (255, 240, 180), "dungeon": (210, 50, 60),
+        "castle": (180, 140, 100), "port": (100, 180, 255),
+        "wilderness": (35, 160, 65), "cave": (140, 142, 155),
+        "camp": (200, 160, 60), "ruins": (160, 120, 80),
+    }
+    _MAP_TYPE_SIZES = {
+        "country": 18, "region": 14, "city": 12, "town": 10,
+        "village": 8, "building": 6, "tavern": 7, "shop": 6,
+        "temple": 7, "dungeon": 8, "castle": 11, "port": 9,
+        "camp": 6, "ruins": 7, "wilderness": 6, "cave": 6,
+    }
+    _MAP_ROUTE_COLORS = {
+        "road": (180, 160, 120), "trail": (120, 110, 80),
+        "river": (60, 120, 200), "sea": (40, 80, 160),
+        "air": (160, 140, 220), "secret": (200, 50, 50),
+    }
+    _MAP_ROUTE_STYLES = {
+        "road": 3, "trail": 1, "river": 2, "sea": 2, "air": 1, "secret": 1,
+    }
+
+    def _hex_to_rgb(self, hex_str):
+        """Convert '#RRGGBB' or 'RRGGBB' to (r,g,b) tuple."""
+        h = hex_str.lstrip('#')
+        if len(h) != 6:
+            return None
+        try:
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except ValueError:
+            return None
+
+    def _get_map_grid_area(self):
+        """Get the main map drawing region."""
         map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
-        pygame.draw.rect(screen, COLORS["bg_dark"], map_area, border_radius=8)
-        pygame.draw.rect(screen, COLORS["border"], map_area, 1, border_radius=8)
+        return pygame.Rect(map_area.x + 10, map_area.y + 55,
+                           map_area.width - 20, map_area.height - 65)
 
-        # Map title
-        title = fonts.header.render(f"World Map: {self.world.name}", True, COLORS["accent"])
-        screen.blit(title, (map_area.x + 15, map_area.y + 8))
+    def _map_to_screen(self, pct_x, pct_y, grid_area):
+        """Convert percent-based map position to screen pixels with zoom/pan."""
+        cx = grid_area.x + grid_area.width / 2 + self.map_offset_x
+        cy = grid_area.y + grid_area.height / 2 + self.map_offset_y
+        sx = cx + (pct_x - 50) * grid_area.width / 100 * self.map_zoom
+        sy = cy + (pct_y - 50) * grid_area.height / 100 * self.map_zoom
+        return int(sx), int(sy)
 
-        # Instructions
-        hint = fonts.tiny.render(
-            "Click to select | Right-click to place on map | Scroll to zoom | Drag middle mouse to pan",
-            True, COLORS["text_muted"])
-        screen.blit(hint, (map_area.x + 15, map_area.y + 36))
+    def _screen_to_map(self, sx, sy, grid_area):
+        """Convert screen pixels to percent-based map position."""
+        cx = grid_area.x + grid_area.width / 2 + self.map_offset_x
+        cy = grid_area.y + grid_area.height / 2 + self.map_offset_y
+        pct_x = 50 + (sx - cx) / (grid_area.width / 100 * self.map_zoom)
+        pct_y = 50 + (sy - cy) / (grid_area.height / 100 * self.map_zoom)
+        return pct_x, pct_y
 
-        # Draw grid
-        grid_area = pygame.Rect(map_area.x + 10, map_area.y + 55,
-                                map_area.width - 20, map_area.height - 65)
-        pygame.draw.rect(screen, (20, 22, 30), grid_area, border_radius=4)
+    def _get_loc_color(self, loc):
+        """Get display color for a location (custom or type-based)."""
+        if loc.map_color:
+            c = self._hex_to_rgb(loc.map_color)
+            if c:
+                return c
+        return self._MAP_TYPE_COLORS.get(loc.location_type, COLORS["text_dim"])
 
-        # Grid lines
-        for gx in range(0, grid_area.width, 60):
-            pygame.draw.line(screen, (28, 30, 40),
-                             (grid_area.x + gx, grid_area.y),
-                             (grid_area.x + gx, grid_area.bottom), 1)
-        for gy in range(0, grid_area.height, 60):
-            pygame.draw.line(screen, (28, 30, 40),
-                             (grid_area.x, grid_area.y + gy),
-                             (grid_area.right, grid_area.y + gy), 1)
+    def _get_loc_size(self, loc):
+        """Get display size for a location (custom or type-based)."""
+        if loc.map_size > 0:
+            return loc.map_size
+        return self._MAP_TYPE_SIZES.get(loc.location_type, 6)
 
-        # Draw connections between parent-child locations
+    def _draw_world_map(self, screen, mp):
+        """Draw an interactive world map with zoom, pan, routes, tooltips."""
+        map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
+        grid_area = self._get_map_grid_area()
+
+        # Background image or default
+        if self._map_bg_surface and self.world.map_image_path:
+            # Scale image to fit grid with zoom
+            iw = int(grid_area.width * self.map_zoom)
+            ih = int(grid_area.height * self.map_zoom)
+            if iw > 0 and ih > 0:
+                scaled = pygame.transform.smoothscale(self._map_bg_surface, (iw, ih))
+                bx = grid_area.x + grid_area.width // 2 + self.map_offset_x - iw // 2
+                by = grid_area.y + grid_area.height // 2 + self.map_offset_y - ih // 2
+                screen.set_clip(grid_area)
+                screen.blit(scaled, (bx, by))
+                screen.set_clip(None)
+        else:
+            pygame.draw.rect(screen, (16, 18, 26), grid_area, border_radius=4)
+
+        # Grid lines (subtle)
+        screen.set_clip(grid_area)
+        grid_spacing = max(30, int(60 * self.map_zoom))
+        ox = int(self.map_offset_x) % grid_spacing
+        oy = int(self.map_offset_y) % grid_spacing
+        for gx in range(-grid_spacing, grid_area.width + grid_spacing, grid_spacing):
+            x = grid_area.x + gx + ox
+            if grid_area.x <= x <= grid_area.right:
+                pygame.draw.line(screen, (24, 26, 36), (x, grid_area.y), (x, grid_area.bottom), 1)
+        for gy in range(-grid_spacing, grid_area.height + grid_spacing, grid_spacing):
+            y = grid_area.y + gy + oy
+            if grid_area.y <= y <= grid_area.bottom:
+                pygame.draw.line(screen, (24, 26, 36), (grid_area.x, y), (grid_area.right, y), 1)
+
+        # --- Draw routes ---
+        for route in self.world.map_routes:
+            if route.from_id in self._location_map_positions and route.to_id in self._location_map_positions:
+                fp = self._location_map_positions[route.from_id]
+                tp = self._location_map_positions[route.to_id]
+                start = self._map_to_screen(fp[0], fp[1], grid_area)
+                end = self._map_to_screen(tp[0], tp[1], grid_area)
+                # Route color
+                if route.color:
+                    rc = self._hex_to_rgb(route.color) or self._MAP_ROUTE_COLORS.get(route.route_type, (120, 120, 120))
+                else:
+                    rc = self._MAP_ROUTE_COLORS.get(route.route_type, (120, 120, 120))
+                thickness = self._MAP_ROUTE_STYLES.get(route.route_type, 2)
+                # Dashed for trail/secret
+                if route.route_type in ("trail", "secret", "air"):
+                    self._draw_dashed_line(screen, rc, start, end, thickness, 8, 5)
+                else:
+                    pygame.draw.line(screen, rc, start, end, thickness)
+                # Route label
+                if route.label:
+                    mid = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
+                    rl = fonts.tiny.render(route.label, True, COLORS["text_main"])
+                    bg = pygame.Surface((rl.get_width() + 6, rl.get_height() + 2), pygame.SRCALPHA)
+                    bg.fill((0, 0, 0, 140))
+                    screen.blit(bg, (mid[0] - rl.get_width() // 2 - 3, mid[1] - rl.get_height() // 2 - 1))
+                    screen.blit(rl, (mid[0] - rl.get_width() // 2, mid[1] - rl.get_height() // 2))
+
+        # --- Draw parent-child connections (thin lines) ---
         for loc_id, loc in self.world.locations.items():
-            if loc.parent_id and loc.parent_id in self._location_map_positions:
-                if loc_id in self._location_map_positions:
-                    px, py = self._location_map_positions[loc.parent_id]
-                    cx, cy = self._location_map_positions[loc_id]
-                    start = (int(grid_area.x + px * grid_area.width / 100),
-                             int(grid_area.y + py * grid_area.height / 100))
-                    end = (int(grid_area.x + cx * grid_area.width / 100),
-                           int(grid_area.y + cy * grid_area.height / 100))
-                    pygame.draw.line(screen, COLORS["border_light"], start, end, 1)
+            if loc.parent_id and loc.parent_id in self._location_map_positions and loc_id in self._location_map_positions:
+                # Skip if there's already a route between them
+                has_route = any(
+                    (r.from_id == loc.parent_id and r.to_id == loc_id) or
+                    (r.from_id == loc_id and r.to_id == loc.parent_id)
+                    for r in self.world.map_routes
+                )
+                if not has_route:
+                    fp = self._location_map_positions[loc.parent_id]
+                    cp = self._location_map_positions[loc_id]
+                    start = self._map_to_screen(fp[0], fp[1], grid_area)
+                    end = self._map_to_screen(cp[0], cp[1], grid_area)
+                    pygame.draw.line(screen, (40, 44, 56), start, end, 1)
 
-        # Draw location nodes
-        type_colors = {
-            "country": COLORS["legendary"], "region": COLORS["spell"],
-            "city": COLORS["accent"], "town": COLORS["accent"],
-            "village": COLORS["success"], "building": COLORS["warning"],
-            "tavern": COLORS["fire"], "shop": COLORS["legendary"],
-            "temple": COLORS["radiant"], "dungeon": COLORS["danger"],
-            "castle": (180, 140, 100), "port": COLORS["cold"],
-            "wilderness": COLORS["success"], "cave": COLORS["text_dim"],
-        }
-        type_sizes = {
-            "country": 18, "region": 14, "city": 12, "town": 10,
-            "village": 8, "building": 6, "tavern": 6, "shop": 6,
-            "temple": 7, "dungeon": 7, "castle": 10, "port": 9,
-        }
-
-        # Auto-layout for locations without positions
+        # Auto-layout unplaced locations
         roots = get_root_locations(self.world)
         self._auto_layout_locations(roots, grid_area)
 
+        # --- Draw location nodes ---
+        hovered_loc_id = ""
         for loc_id, loc in self.world.locations.items():
             pos = self._location_map_positions.get(loc_id)
             if not pos:
                 continue
+            px, py = self._map_to_screen(pos[0], pos[1], grid_area)
+            # Cull off-screen
+            if px < grid_area.x - 30 or px > grid_area.right + 30:
+                continue
+            if py < grid_area.y - 30 or py > grid_area.bottom + 30:
+                continue
 
-            px = int(grid_area.x + pos[0] * grid_area.width / 100)
-            py = int(grid_area.y + pos[1] * grid_area.height / 100)
-
-            color = type_colors.get(loc.location_type, COLORS["text_dim"])
-            size = type_sizes.get(loc.location_type, 6)
+            color = self._get_loc_color(loc)
+            size = max(3, int(self._get_loc_size(loc) * self.map_zoom))
             is_sel = loc_id == self.selected_location_id
-            is_hover = abs(mp[0] - px) < size + 5 and abs(mp[1] - py) < size + 5
+            hit_dist = size + 5
+            is_hover = abs(mp[0] - px) < hit_dist and abs(mp[1] - py) < hit_dist
 
-            # Glow for selected/hovered
+            if is_hover:
+                hovered_loc_id = loc_id
+
+            # Glow
             if is_sel or is_hover:
-                glow_surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surf, (*color, 60), (size * 2, size * 2), size * 2)
-                screen.blit(glow_surf, (px - size * 2, py - size * 2))
+                glow_r = size + 6
+                glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*color, 50), (glow_r, glow_r), glow_r)
+                screen.blit(glow_surf, (px - glow_r, py - glow_r))
 
-            # Draw node
-            pygame.draw.circle(screen, color, (px, py), size)
-            if is_sel:
-                pygame.draw.circle(screen, COLORS["text_bright"], (px, py), size + 2, 2)
+            # Node shape: circle for most, diamond for dungeon, square for building/castle
+            if loc.location_type in ("dungeon", "cave", "ruins"):
+                # Diamond
+                pts = [(px, py - size), (px + size, py), (px, py + size), (px - size, py)]
+                pygame.draw.polygon(screen, color, pts)
+                if is_sel:
+                    pygame.draw.polygon(screen, COLORS["text_bright"], pts, 2)
+            elif loc.location_type in ("castle", "building", "shop", "temple"):
+                # Rounded square
+                r = pygame.Rect(px - size, py - size, size * 2, size * 2)
+                pygame.draw.rect(screen, color, r, border_radius=3)
+                if is_sel:
+                    pygame.draw.rect(screen, COLORS["text_bright"], r, 2, border_radius=3)
+            else:
+                # Circle
+                pygame.draw.circle(screen, color, (px, py), size)
+                if is_sel:
+                    pygame.draw.circle(screen, COLORS["text_bright"], (px, py), size + 2, 2)
 
-            # Label
-            label = fonts.tiny.render(loc.name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
-            screen.blit(label, (px - label.get_width() // 2, py + size + 3))
+            # Custom icon or type abbreviation
+            icon = loc.map_icon or loc.location_type[:2].upper()
+            if size >= 6:
+                icon_font = fonts.tiny if size < 10 else fonts.small
+                it = icon_font.render(icon, True, (0, 0, 0))
+                screen.blit(it, (px - it.get_width() // 2, py - it.get_height() // 2))
 
-            # NPC count
-            npc_count = len([n for n in self.world.npcs.values()
-                             if n.location_id == loc_id and n.active])
+            # Name label below
+            label_font = fonts.small if is_sel else fonts.tiny
+            label = label_font.render(loc.name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
+            lx = px - label.get_width() // 2
+            ly = py + size + 3
+            # Label background for readability
+            lbg = pygame.Surface((label.get_width() + 4, label.get_height()), pygame.SRCALPHA)
+            lbg.fill((0, 0, 0, 120))
+            screen.blit(lbg, (lx - 2, ly))
+            screen.blit(label, (lx, ly))
+
+            # NPC count badge
+            npc_count = len([n for n in self.world.npcs.values() if n.location_id == loc_id and n.active])
             if npc_count > 0:
-                nc = fonts.tiny.render(f"{npc_count}", True, COLORS["player"])
-                screen.blit(nc, (px + size + 3, py - 5))
+                badge_text = str(npc_count)
+                bt = fonts.tiny.render(badge_text, True, COLORS["text_bright"])
+                bw = bt.get_width() + 6
+                bh = bt.get_height() + 2
+                br = pygame.Rect(px + size - 2, py - size - 2, bw, bh)
+                pygame.draw.rect(screen, COLORS["player"], br, border_radius=bh // 2)
+                screen.blit(bt, (br.x + 3, br.y + 1))
 
-            # Click handling
-            if is_hover and pygame.mouse.get_pressed()[0]:
-                if self.selected_location_id == loc_id:
-                    # Double-click: switch to location detail
-                    self.world_map_mode = False
-                    self.world_view = "locations"
-                else:
-                    self.selected_location_id = loc_id
+        screen.set_clip(None)  # End map clip
 
-        # Right-click: place selected location at mouse position
-        if (pygame.mouse.get_pressed()[2] and self.selected_location_id
-                and grid_area.collidepoint(mp)):
-            rx = (mp[0] - grid_area.x) / grid_area.width * 100
-            ry = (mp[1] - grid_area.y) / grid_area.height * 100
-            self._location_map_positions[self.selected_location_id] = (rx, ry)
-            self._save_map_positions()
+        # --- Outer frame ---
+        pygame.draw.rect(screen, COLORS["border"], map_area, 1, border_radius=8)
 
-        # Selected location info panel (right side overlay)
+        # --- Toolbar at top ---
+        tb_y = map_area.y + 5
+        title = fonts.body_bold.render(f"World Map: {self.world.name}", True, COLORS["accent"])
+        screen.blit(title, (map_area.x + 12, tb_y))
+
+        # Zoom display
+        zoom_text = fonts.small.render(f"Zoom: {self.map_zoom:.1f}x", True, COLORS["text_dim"])
+        screen.blit(zoom_text, (map_area.x + 12, tb_y + 22))
+
+        # Map mode toolbar buttons (drawn inline)
+        tool_x = map_area.x + 200
+        tool_btns = [
+            ("+ Route", "add_route"), ("Set Image", "set_image"),
+            ("Reset View", "reset_view"), ("Color", "set_color"),
+            ("Note", "set_note"),
+        ]
+        for btn_label, btn_action in tool_btns:
+            bw = fonts.small.size(btn_label)[0] + 14
+            btn_rect = pygame.Rect(tool_x, tb_y + 2, bw, 22)
+            bh = btn_rect.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["hover"] if bh else COLORS["panel"], btn_rect, border_radius=3)
+            pygame.draw.rect(screen, COLORS["border"], btn_rect, 1, border_radius=3)
+            bt = fonts.small.render(btn_label, True, COLORS["text_bright"] if bh else COLORS["text_dim"])
+            screen.blit(bt, (tool_x + 7, tb_y + 5))
+            if bh and pygame.mouse.get_pressed()[0]:
+                self._map_tool_action(btn_action)
+            tool_x += bw + 5
+
+        # Route mode indicator
+        if self._map_route_mode:
+            rm = fonts.small_bold.render("ROUTE MODE: Click two locations to connect", True, COLORS["warning"])
+            screen.blit(rm, (map_area.x + 12, tb_y + 40))
+
+        # --- Hover tooltip ---
+        if hovered_loc_id and not pygame.mouse.get_pressed()[0]:
+            self._draw_map_hover_tooltip(screen, mp, hovered_loc_id)
+
+        # --- Info panel for selected location ---
         if self.selected_location_id:
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
-                info_w = 320
-                info_rect = pygame.Rect(SCREEN_WIDTH - info_w - 30, 65, info_w, 300)
-                draw_gradient_rect(screen, info_rect, COLORS["panel"], COLORS["panel_dark"], 8)
-                pygame.draw.rect(screen, COLORS["border_light"], info_rect, 1, border_radius=8)
+                self._draw_map_info_panel(screen, mp, loc)
 
-                iy = info_rect.y + 10
-                nt = fonts.body_bold.render(loc.name, True, COLORS["accent"])
-                screen.blit(nt, (info_rect.x + 10, iy))
-                iy += 24
+    def _draw_dashed_line(self, screen, color, start, end, width, dash_len, gap_len):
+        """Draw a dashed line."""
+        import math
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1:
+            return
+        nx, ny = dx / length, dy / length
+        pos = 0
+        while pos < length:
+            seg_end = min(pos + dash_len, length)
+            sx = int(start[0] + nx * pos)
+            sy = int(start[1] + ny * pos)
+            ex = int(start[0] + nx * seg_end)
+            ey = int(start[1] + ny * seg_end)
+            pygame.draw.line(screen, color, (sx, sy), (ex, ey), width)
+            pos += dash_len + gap_len
 
-                Badge.draw(screen, info_rect.x + 10, iy, loc.location_type.upper(),
-                           type_colors.get(loc.location_type, COLORS["text_dim"]), fonts.tiny)
-                iy += 24
+    def _draw_map_hover_tooltip(self, screen, mp, loc_id):
+        """Draw a rich tooltip when hovering a location on the map."""
+        loc = self.world.locations.get(loc_id)
+        if not loc:
+            return
+        lines = [loc.name]
+        lines.append(f"Type: {loc.location_type}")
+        if loc.population:
+            lines.append(f"Population: {loc.population:,}")
+        if loc.map_note:
+            lines.append(f"Note: {loc.map_note}")
+        if loc.description:
+            desc = loc.description[:120]
+            if len(loc.description) > 120:
+                desc += "..."
+            lines.append(desc)
+        npcs = get_npcs_at_location(self.world, loc_id)
+        if npcs:
+            npc_names = ", ".join(n.name for n in npcs[:4])
+            if len(npcs) > 4:
+                npc_names += f" +{len(npcs)-4}"
+            lines.append(f"NPCs: {npc_names}")
+        children = get_children(self.world, loc_id)
+        if children:
+            child_names = ", ".join(c.name for c in children[:4])
+            if len(children) > 4:
+                child_names += f" +{len(children)-4}"
+            lines.append(f"Contains: {child_names}")
+        # Routes from this location
+        routes_from = [r for r in self.world.map_routes
+                       if r.from_id == loc_id or r.to_id == loc_id]
+        if routes_from:
+            route_strs = []
+            for r in routes_from[:3]:
+                other_id = r.to_id if r.from_id == loc_id else r.from_id
+                other = self.world.locations.get(other_id)
+                if other:
+                    info = f"{other.name} ({r.route_type}"
+                    if r.distance_miles:
+                        info += f", {r.distance_miles:.0f}mi"
+                    info += ")"
+                    route_strs.append(info)
+            if route_strs:
+                lines.append(f"Routes: {', '.join(route_strs)}")
 
-                # Description
-                if loc.description:
-                    desc_lines = self._wrap_text(loc.description, info_w - 20, fonts.small)
-                    for line in desc_lines[:4]:
-                        dt = fonts.small.render(line, True, COLORS["text_main"])
-                        screen.blit(dt, (info_rect.x + 10, iy))
-                        iy += 16
+        # Draw tooltip
+        max_w = 350
+        rendered = []
+        for line in lines:
+            wrapped = self._wrap_text(line, max_w - 16, fonts.small)
+            rendered.extend(wrapped)
 
-                # NPCs
-                iy += 8
-                npcs = get_npcs_at_location(self.world, loc.id)
-                if npcs:
-                    nl = fonts.small_bold.render(f"NPCs ({len(npcs)}):", True, COLORS["text_dim"])
-                    screen.blit(nl, (info_rect.x + 10, iy))
-                    iy += 18
-                    for npc in npcs[:5]:
-                        prefix = "[S] " if npc.is_shopkeeper else ""
-                        occ = f" — {npc.occupation}" if npc.occupation else ""
-                        nt = fonts.tiny.render(f"{prefix}{npc.name}{occ}", True, COLORS["text_main"])
-                        screen.blit(nt, (info_rect.x + 15, iy))
+        if not rendered:
+            return
+        line_h = 16
+        w = min(max_w, max(fonts.small.size(l)[0] for l in rendered) + 16)
+        h = len(rendered) * line_h + 12
+        tx = min(mp[0] + 15, SCREEN_WIDTH - w - 10)
+        ty = min(mp[1] + 15, SCREEN_HEIGHT - h - 10)
+
+        # Shadow + bg
+        shadow = pygame.Surface((w + 4, h + 4), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 150), (0, 0, w + 4, h + 4), border_radius=6)
+        screen.blit(shadow, (tx - 2, ty - 2))
+        pygame.draw.rect(screen, COLORS["panel_light"], (tx, ty, w, h), border_radius=5)
+        color = self._get_loc_color(loc)
+        pygame.draw.rect(screen, color, (tx, ty, 3, h), border_radius=2)
+        pygame.draw.rect(screen, COLORS["border_light"], (tx, ty, w, h), 1, border_radius=5)
+
+        for i, line in enumerate(rendered):
+            c = COLORS["text_bright"] if i == 0 else COLORS["text_main"]
+            ts = fonts.small.render(line, True, c)
+            screen.blit(ts, (tx + 8, ty + 6 + i * line_h))
+
+    def _draw_map_info_panel(self, screen, mp, loc):
+        """Draw detailed info panel for selected location on map."""
+        info_w = 330
+        info_h = min(500, SCREEN_HEIGHT - 140)
+        info_rect = pygame.Rect(SCREEN_WIDTH - info_w - 30, 70, info_w, info_h)
+        draw_gradient_rect(screen, info_rect, COLORS["panel"], COLORS["panel_dark"], 8)
+        pygame.draw.rect(screen, COLORS["border_light"], info_rect, 1, border_radius=8)
+
+        color = self._get_loc_color(loc)
+        pygame.draw.rect(screen, color, (info_rect.x, info_rect.y + 2, 4, info_rect.height - 4), border_radius=2)
+
+        iy = info_rect.y + 10
+        ix = info_rect.x + 12
+        pw = info_w - 24
+
+        # Name
+        nt = fonts.header.render(loc.name, True, COLORS["accent"])
+        screen.blit(nt, (ix, iy))
+        iy += 28
+
+        # Type + population
+        Badge.draw(screen, ix, iy, loc.location_type.upper(), color, fonts.tiny)
+        if loc.population:
+            pop_text = f"Pop: {loc.population:,}"
+            pt = fonts.tiny.render(pop_text, True, COLORS["text_dim"])
+            screen.blit(pt, (ix + 80, iy + 2))
+        iy += 22
+
+        # Map note
+        if loc.map_note:
+            note_lines = self._wrap_text(f"Note: {loc.map_note}", pw, fonts.small)
+            for line in note_lines[:3]:
+                nt = fonts.small.render(line, True, COLORS["warning"])
+                screen.blit(nt, (ix, iy))
+                iy += 16
+            iy += 4
+
+        # Description
+        if loc.description:
+            desc_lines = self._wrap_text(loc.description, pw, fonts.small)
+            for line in desc_lines[:4]:
+                dt = fonts.small.render(line, True, COLORS["text_main"])
+                screen.blit(dt, (ix, iy))
+                iy += 16
+            iy += 4
+
+        # Environment & lighting
+        if loc.environment or loc.lighting != "bright":
+            env_info = []
+            if loc.environment:
+                env_info.append(loc.environment)
+            if loc.lighting and loc.lighting != "bright":
+                env_info.append(f"Light: {loc.lighting}")
+            et = fonts.tiny.render(" | ".join(env_info), True, COLORS["text_dim"])
+            screen.blit(et, (ix, iy))
+            iy += 16
+
+        # NPCs
+        npcs = get_npcs_at_location(self.world, loc.id)
+        if npcs:
+            Divider.draw(screen, ix, iy, pw)
+            iy += 6
+            nl = fonts.small_bold.render(f"NPCs ({len(npcs)})", True, COLORS["player"])
+            screen.blit(nl, (ix, iy))
+            iy += 18
+            for npc in npcs[:8]:
+                prefix = "[S] " if npc.is_shopkeeper else ""
+                occ = f" — {npc.occupation}" if npc.occupation else ""
+                att_cols = {"friendly": COLORS["success"], "unfriendly": COLORS["warning"], "hostile": COLORS["danger"]}
+                att_col = att_cols.get(npc.attitude, COLORS["text_dim"])
+                nt = fonts.tiny.render(f"{prefix}{npc.name}{occ}", True, COLORS["text_main"])
+                screen.blit(nt, (ix + 4, iy))
+                pygame.draw.circle(screen, att_col, (ix + pw - 8, iy + 6), 4)
+                iy += 15
+                if iy > info_rect.bottom - 60:
+                    remaining = len(npcs) - npcs.index(npc) - 1
+                    if remaining > 0:
+                        mt = fonts.tiny.render(f"+{remaining} more...", True, COLORS["text_muted"])
+                        screen.blit(mt, (ix + 4, iy))
                         iy += 15
+                    break
 
-                # Children
-                children = get_children(self.world, loc.id)
-                if children:
-                    iy += 5
-                    cl = fonts.small_bold.render(f"Contains ({len(children)}):", True, COLORS["text_dim"])
-                    screen.blit(cl, (info_rect.x + 10, iy))
-                    iy += 18
-                    for child in children[:5]:
-                        ct = fonts.tiny.render(f"  {child.name} ({child.location_type})",
-                                               True, COLORS["text_main"])
-                        screen.blit(ct, (info_rect.x + 10, iy))
-                        iy += 15
+        # Children
+        children = get_children(self.world, loc.id)
+        if children and iy < info_rect.bottom - 50:
+            Divider.draw(screen, ix, iy, pw)
+            iy += 6
+            cl = fonts.small_bold.render(f"Locations ({len(children)})", True, COLORS["text_dim"])
+            screen.blit(cl, (ix, iy))
+            iy += 18
+            for child in children[:6]:
+                cc = self._get_loc_color(child)
+                pygame.draw.circle(screen, cc, (ix + 6, iy + 6), 4)
+                ct = fonts.tiny.render(f"  {child.name} ({child.location_type})", True, COLORS["text_main"])
+                screen.blit(ct, (ix + 12, iy))
+                iy += 15
+                if iy > info_rect.bottom - 30:
+                    break
+
+        # Routes from this location
+        routes = [r for r in self.world.map_routes if r.from_id == loc.id or r.to_id == loc.id]
+        if routes and iy < info_rect.bottom - 40:
+            Divider.draw(screen, ix, iy, pw)
+            iy += 6
+            rl = fonts.small_bold.render(f"Routes ({len(routes)})", True, COLORS["text_dim"])
+            screen.blit(rl, (ix, iy))
+            iy += 18
+            for route in routes[:4]:
+                other_id = route.to_id if route.from_id == loc.id else route.from_id
+                other = self.world.locations.get(other_id)
+                if other:
+                    rc = self._MAP_ROUTE_COLORS.get(route.route_type, (120, 120, 120))
+                    pygame.draw.circle(screen, rc, (ix + 6, iy + 6), 3)
+                    info = f"  {other.name} ({route.route_type}"
+                    if route.distance_miles:
+                        info += f", {route.distance_miles:.0f}mi"
+                    if route.label:
+                        info += f", {route.label}"
+                    info += ")"
+                    rt = fonts.tiny.render(info[:50], True, COLORS["text_main"])
+                    screen.blit(rt, (ix + 12, iy))
+                    iy += 15
+
+        # Edit hint
+        eh = fonts.tiny.render("Click again to open detail view", True, COLORS["text_muted"])
+        screen.blit(eh, (ix, info_rect.bottom - 20))
+
+    def _map_tool_action(self, action):
+        """Handle map toolbar button clicks."""
+        if action == "add_route":
+            self._map_route_mode = not getattr(self, '_map_route_mode', False)
+            self._map_route_from = ""
+        elif action == "set_image":
+            self.modal = ("edit_field", "map_image_path")
+            self.input_active = "map_image_path"
+            self.input_text = self.world.map_image_path
+        elif action == "reset_view":
+            self.map_offset_x = 0
+            self.map_offset_y = 0
+            self.map_zoom = 1.0
+        elif action == "set_color":
+            if self.selected_location_id:
+                loc = self.world.locations.get(self.selected_location_id)
+                if loc:
+                    self.modal = ("edit_field", "location_color")
+                    self.input_active = "location_color"
+                    self.input_text = loc.map_color
+        elif action == "set_note":
+            if self.selected_location_id:
+                loc = self.world.locations.get(self.selected_location_id)
+                if loc:
+                    self.modal = ("edit_field", "location_map_note")
+                    self.input_active = "location_map_note"
+                    self.input_text = loc.map_note
 
     def _auto_layout_locations(self, roots, grid_area):
         """Auto-assign positions to locations that don't have one yet."""
+        import math
         if not roots:
             return
-        # Only auto-layout for locations without positions
         unplaced = [loc for loc in roots if loc.id not in self._location_map_positions]
         if not unplaced:
+            # Still check children
+            for root in roots:
+                self._auto_layout_children(root)
             return
 
-        # Simple grid layout for root locations
         cols = max(1, min(5, len(unplaced)))
         for i, loc in enumerate(unplaced):
             row = i // cols
@@ -3242,27 +3927,36 @@ class CampaignManagerState:
             x = 10 + (col + 0.5) * (80 / cols)
             y = 10 + (row + 0.5) * 25
             self._location_map_positions[loc.id] = (x, y)
+            self._auto_layout_children(loc)
 
-            # Auto-layout children around parent
-            children = get_children(self.world, loc.id)
-            for j, child in enumerate(children):
-                if child.id not in self._location_map_positions:
-                    angle_offset = (j / max(len(children), 1)) * 30 - 15
-                    cx = x + angle_offset + (j % 3 - 1) * 8
-                    cy = y + 15 + (j // 3) * 10
-                    cx = max(2, min(98, cx))
-                    cy = max(2, min(98, cy))
-                    self._location_map_positions[child.id] = (cx, cy)
+        # Also handle placed roots' children
+        for root in roots:
+            if root not in unplaced:
+                self._auto_layout_children(root)
 
-                    # Sub-children
-                    sub_children = get_children(self.world, child.id)
-                    for k, sub in enumerate(sub_children):
-                        if sub.id not in self._location_map_positions:
-                            sx = cx + (k % 4 - 1.5) * 5
-                            sy = cy + 8 + (k // 4) * 5
-                            sx = max(2, min(98, sx))
-                            sy = max(2, min(98, sy))
-                            self._location_map_positions[sub.id] = (sx, sy)
+    def _auto_layout_children(self, parent_loc):
+        """Recursively auto-layout children around their parent."""
+        import math
+        pos = self._location_map_positions.get(parent_loc.id)
+        if not pos:
+            return
+        px, py = pos
+        children = get_children(self.world, parent_loc.id)
+        unplaced = [c for c in children if c.id not in self._location_map_positions]
+        n = len(unplaced)
+        if n > 0:
+            radius = 8 + n * 2
+            for j, child in enumerate(unplaced):
+                angle = (j / n) * 2 * math.pi - math.pi / 2
+                cx = px + math.cos(angle) * radius
+                cy = py + math.sin(angle) * radius * 0.6
+                cx = max(2, min(98, cx))
+                cy = max(2, min(98, cy))
+                self._location_map_positions[child.id] = (cx, cy)
+
+        # Recurse
+        for child in children:
+            self._auto_layout_children(child)
 
     @staticmethod
     def _wrap_text(text, max_width, font):
@@ -3296,8 +3990,8 @@ class CampaignManagerState:
         screen.blit(hdr, (30, y))
         y += 35
 
-        # Tab buttons for inn vs shop templates
-        tabs = [("Inn Templates", "inn_templates"), ("Shop Templates", "shop_templates")]
+        # Tab buttons for inn vs shop vs city templates
+        tabs = [("Inn Templates", "inn_templates"), ("Shop Templates", "shop_templates"), ("City Templates", "city_templates")]
         tx = 30
         for label, view_key in tabs:
             is_active = self.template_view == view_key
@@ -3335,6 +4029,8 @@ class CampaignManagerState:
             self._draw_inn_templates(screen, mp, y)
         elif self.template_view == "shop_templates":
             self._draw_shop_templates(screen, mp, y)
+        elif self.template_view == "city_templates":
+            self._draw_city_templates(screen, mp, y)
 
     def _draw_inn_templates(self, screen, mp, start_y):
         """Draw inn template cards."""
@@ -3486,6 +4182,85 @@ class CampaignManagerState:
                     screen.blit(pt, (card_rect.x + 14, card_rect.y + 65))
 
                 y += 90
+
+            y += 10
+
+    def _draw_city_templates(self, screen, mp, start_y):
+        """Draw city/settlement template cards."""
+        y = start_y + self.template_scroll
+        tier_labels = {
+            1: ("Tier 1 — Kylät (Levels 1-4)", COLORS["success"]),
+            2: ("Tier 2 — Kauppalat (Levels 5-10)", COLORS["accent"]),
+            3: ("Tier 3 — Kaupungit (Levels 11-16)", COLORS["spell"]),
+        }
+
+        for tier in [1, 2, 3]:
+            templates = get_city_templates_by_tier(tier)
+            if not templates:
+                continue
+
+            label, color = tier_labels[tier]
+            th = fonts.body_bold.render(f"--- {label} ---", True, color)
+            screen.blit(th, (30, y))
+            y += 25
+
+            for tkey, tdata in CITY_TEMPLATES.items():
+                if tdata["tier"] != tier:
+                    continue
+
+                card_rect = pygame.Rect(30, y, SCREEN_WIDTH - 60, 100)
+                is_hover = card_rect.collidepoint(mp)
+                bg = COLORS["hover"] if is_hover else COLORS["panel"]
+                pygame.draw.rect(screen, bg, card_rect, border_radius=6)
+                pygame.draw.rect(screen, color if is_hover else COLORS["border"],
+                                 card_rect, 1, border_radius=6)
+                pygame.draw.rect(screen, color, (card_rect.x + 2, card_rect.y + 2, 4, card_rect.height - 4))
+
+                # Name + type badge
+                nt = fonts.body_bold.render(tdata["name"], True, COLORS["text_bright"])
+                screen.blit(nt, (card_rect.x + 14, card_rect.y + 6))
+                Badge.draw(screen, card_rect.x + 14 + nt.get_width() + 10, card_rect.y + 8,
+                           tdata["settlement_type"].upper(), color, fonts.tiny)
+
+                # Population
+                pop = tdata.get("population", 0)
+                if pop:
+                    pt = fonts.tiny.render(f"Pop: {pop:,}", True, COLORS["text_muted"])
+                    screen.blit(pt, (card_rect.x + 14 + nt.get_width() + 90, card_rect.y + 10))
+
+                # Description
+                desc = tdata.get("description", "")[:160]
+                dt = fonts.small.render(desc, True, COLORS["text_dim"])
+                screen.blit(dt, (card_rect.x + 14, card_rect.y + 28))
+
+                # Info line
+                dist_count = len(tdata.get("districts", []))
+                npc_count = len(tdata.get("key_npcs", []))
+                hook_count = len(tdata.get("hooks", []))
+                info = f"Districts: {dist_count} | NPCs: {npc_count} | Hooks: {hook_count}"
+                it = fonts.tiny.render(info, True, COLORS["text_muted"])
+                screen.blit(it, (card_rect.x + 14, card_rect.y + 48))
+
+                # Special features preview
+                feats = tdata.get("special_features", [])[:2]
+                if feats:
+                    feat_y = card_rect.y + 65
+                    for feat in feats:
+                        ft = fonts.tiny.render(f"  * {feat[:90]}", True, COLORS["success"])
+                        screen.blit(ft, (card_rect.x + 14, feat_y))
+                        feat_y += 13
+
+                # Apply button
+                apply_rect = pygame.Rect(card_rect.right - 120, card_rect.y + 35, 110, 30)
+                apply_hover = apply_rect.collidepoint(mp)
+                pygame.draw.rect(screen, COLORS["success_hover"] if apply_hover else COLORS["success"],
+                                 apply_rect, border_radius=4)
+                at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
+                screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
+                if apply_hover and pygame.mouse.get_pressed()[0]:
+                    self._apply_template("city", tkey)
+
+                y += 105
 
             y += 10
 
