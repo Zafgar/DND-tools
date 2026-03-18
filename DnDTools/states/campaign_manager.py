@@ -40,6 +40,25 @@ from data.shop_catalog import (
     get_all_shop_types, SHOP_TYPES, PRICE_MODIFIERS,
     apply_price_modifier, ITEM_PRICES, ITEM_TOOLTIPS,
 )
+from data.services import (
+    LIFESTYLE_EXPENSES, INN_ROOM_PRICES, FOOD_AND_DRINK,
+    HIRELINGS, SPELLCASTING_SERVICES, MISC_SERVICES, PROPERTY_PRICES,
+    SERVICE_CATEGORIES, get_all_services, format_price,
+    get_services_for_location_type,
+)
+from data.inn_templates import (
+    INN_TEMPLATES, get_inn_template, get_inn_templates_by_tier,
+    get_all_inn_tiers, apply_inn_template,
+)
+from data.shop_templates import (
+    SHOP_TEMPLATES, get_shop_template, get_shop_templates_by_tier,
+    get_shop_templates_by_type, apply_shop_template,
+)
+from data.travel import (
+    MOUNTS, VEHICLES_LAND, VEHICLES_WATER, TRAVEL_PACE,
+    PASSAGE_COSTS, TERRAIN_MODIFIERS, calculate_travel_time,
+    format_travel_time, get_passage_cost,
+)
 
 
 # ============================================================================
@@ -186,6 +205,30 @@ class CampaignManagerState:
         self._npc_location_picker_open = False
         self._npc_stat_link_mode = False
 
+        # Template browser state
+        self.template_view = ""  # "", "inn_templates", "shop_templates"
+        self.template_tier_filter = ""  # Filter by tier
+        self.template_scroll = 0
+
+        # Services / Travel viewer
+        self.services_view = ""  # "", "services", "travel"
+        self.services_category = "food_drink"
+        self.services_scroll = 0
+        self.travel_distance = 24  # Default travel distance in miles
+
+        # World map view state
+        self.world_map_mode = False  # True = map view, False = tree view
+        self.map_offset_x = 0
+        self.map_offset_y = 0
+        self.map_zoom = 1.0
+        self.map_dragging = False
+        self.map_drag_start = (0, 0)
+        self.map_placing_location = ""  # location_id being placed on map
+
+        # Location positions on map (id -> (x, y) percentage)
+        self._location_map_positions: dict = {}
+        self._load_map_positions()
+
         # Input state
         self.input_active = ""  # Which input field is active
         self.input_text = ""
@@ -258,6 +301,14 @@ class CampaignManagerState:
                                            self._toggle_npc_view, color=COLORS["accent"])
         self.btn_world_shops_view = Button(500, SCREEN_HEIGHT - 60, 140, 45, "Shops",
                                             self._toggle_shops_view, color=COLORS["legendary"])
+        self.btn_world_map_view = Button(650, SCREEN_HEIGHT - 60, 120, 45, "Map",
+                                          self._toggle_map_view, color=COLORS["cold"])
+        self.btn_world_templates = Button(780, SCREEN_HEIGHT - 60, 140, 45, "Templates",
+                                           self._toggle_templates_view, color=COLORS["spell"])
+        self.btn_world_services = Button(930, SCREEN_HEIGHT - 60, 130, 45, "Services",
+                                          self._toggle_services_view, color=COLORS["success"])
+        self.btn_world_travel = Button(1070, SCREEN_HEIGHT - 60, 130, 45, "Travel",
+                                        self._toggle_travel_view, color=COLORS["warning"])
 
     def _load_world_from_campaign(self) -> World:
         """Load or create World from campaign's world_data."""
@@ -491,6 +542,68 @@ class CampaignManagerState:
         self.world_view = "shops" if self.world_view != "shops" else "locations"
         self.scroll_y = 0
 
+    def _toggle_map_view(self):
+        self.world_map_mode = not self.world_map_mode
+        if self.world_map_mode:
+            self.world_view = "locations"
+
+    def _toggle_templates_view(self):
+        if self.world_view == "templates":
+            self.world_view = "locations"
+        else:
+            self.world_view = "templates"
+            self.template_view = "inn_templates"
+            self.template_scroll = 0
+            self.scroll_y = 0
+
+    def _toggle_services_view(self):
+        if self.world_view == "services":
+            self.world_view = "locations"
+        else:
+            self.world_view = "services"
+            self.services_scroll = 0
+            self.scroll_y = 0
+
+    def _toggle_travel_view(self):
+        if self.world_view == "travel":
+            self.world_view = "locations"
+        else:
+            self.world_view = "travel"
+            self.scroll_y = 0
+
+    def _load_map_positions(self):
+        """Load location map positions from campaign settings."""
+        if self.campaign.settings and "map_positions" in self.campaign.settings:
+            self._location_map_positions = dict(self.campaign.settings["map_positions"])
+
+    def _save_map_positions(self):
+        """Save location map positions to campaign settings."""
+        if not self.campaign.settings:
+            self.campaign.settings = {}
+        self.campaign.settings["map_positions"] = dict(self._location_map_positions)
+
+    def _apply_template(self, template_type: str, template_key: str):
+        """Apply a template to the current selected location."""
+        parent_id = self.selected_location_id or ""
+        if template_type == "inn":
+            template = get_inn_template(template_key)
+            if template:
+                result = apply_inn_template(self.world, parent_id, template)
+                self.selected_location_id = result["location_id"]
+                if parent_id:
+                    self.world_location_expanded.add(parent_id)
+                self._status_msg = f"Created inn: {template['name']}"
+                self._status_timer = 120
+        elif template_type == "shop":
+            template = get_shop_template(template_key)
+            if template:
+                result = apply_shop_template(self.world, parent_id, template)
+                self.selected_location_id = result["location_id"]
+                if parent_id:
+                    self.world_location_expanded.add(parent_id)
+                self._status_msg = f"Created shop: {template['name']}"
+                self._status_timer = 120
+
     def _delete_world_location(self, loc_id):
         delete_location(self.world, loc_id)
         if self.selected_location_id == loc_id:
@@ -659,6 +772,10 @@ class CampaignManagerState:
                 self.btn_add_npc.handle_event(event)
                 self.btn_world_npcs_view.handle_event(event)
                 self.btn_world_shops_view.handle_event(event)
+                self.btn_world_map_view.handle_event(event)
+                self.btn_world_templates.handle_event(event)
+                self.btn_world_services.handle_event(event)
+                self.btn_world_travel.handle_event(event)
 
     def _handle_party_click(self, mp):
         mx, my = mp
@@ -772,6 +889,12 @@ class CampaignManagerState:
             self._handle_world_shops_click(mp)
         elif self.world_view == "shop_detail":
             self._handle_world_shop_detail_click(mp)
+        elif self.world_view == "templates":
+            self._handle_templates_click(mp)
+        elif self.world_view == "services":
+            self._handle_services_click(mp)
+        elif self.world_view == "travel":
+            self._handle_travel_click(mp)
 
     def _handle_world_locations_click(self, mp):
         mx, my = mp
@@ -1120,6 +1243,10 @@ class CampaignManagerState:
             self.btn_add_npc.draw(screen, mp)
             self.btn_world_npcs_view.draw(screen, mp)
             self.btn_world_shops_view.draw(screen, mp)
+            self.btn_world_map_view.draw(screen, mp)
+            self.btn_world_templates.draw(screen, mp)
+            self.btn_world_services.draw(screen, mp)
+            self.btn_world_travel.draw(screen, mp)
 
         # Modal overlay
         if self.modal:
@@ -1667,13 +1794,22 @@ class CampaignManagerState:
 
     def _draw_world_tab(self, screen, mp):
         if self.world_view == "locations":
-            self._draw_world_locations(screen, mp)
+            if self.world_map_mode:
+                self._draw_world_map(screen, mp)
+            else:
+                self._draw_world_locations(screen, mp)
         elif self.world_view == "npcs":
             self._draw_world_npcs(screen, mp)
         elif self.world_view == "shops":
             self._draw_world_shops(screen, mp)
         elif self.world_view == "shop_detail":
             self._draw_world_shop_detail(screen, mp)
+        elif self.world_view == "templates":
+            self._draw_templates_browser(screen, mp)
+        elif self.world_view == "services":
+            self._draw_services_viewer(screen, mp)
+        elif self.world_view == "travel":
+            self._draw_travel_viewer(screen, mp)
 
         # Draw tooltip if hovering an item
         if self.tooltip_item:
@@ -2916,3 +3052,793 @@ class CampaignManagerState:
             # Save / Cancel hints
             hints = fonts.small.render("Enter = Save  |  Escape = Cancel", True, COLORS["text_dim"])
             screen.blit(hints, (x + 20, y + h - 30))
+
+    # ================================================================
+    # WORLD MAP VIEW
+    # ================================================================
+
+    def _draw_world_map(self, screen, mp):
+        """Draw a visual map of the world with clickable locations."""
+        map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
+        pygame.draw.rect(screen, COLORS["bg_dark"], map_area, border_radius=8)
+        pygame.draw.rect(screen, COLORS["border"], map_area, 1, border_radius=8)
+
+        # Map title
+        title = fonts.header.render(f"World Map: {self.world.name}", True, COLORS["accent"])
+        screen.blit(title, (map_area.x + 15, map_area.y + 8))
+
+        # Instructions
+        hint = fonts.tiny.render(
+            "Click to select | Right-click to place on map | Scroll to zoom | Drag middle mouse to pan",
+            True, COLORS["text_muted"])
+        screen.blit(hint, (map_area.x + 15, map_area.y + 36))
+
+        # Draw grid
+        grid_area = pygame.Rect(map_area.x + 10, map_area.y + 55,
+                                map_area.width - 20, map_area.height - 65)
+        pygame.draw.rect(screen, (20, 22, 30), grid_area, border_radius=4)
+
+        # Grid lines
+        for gx in range(0, grid_area.width, 60):
+            pygame.draw.line(screen, (28, 30, 40),
+                             (grid_area.x + gx, grid_area.y),
+                             (grid_area.x + gx, grid_area.bottom), 1)
+        for gy in range(0, grid_area.height, 60):
+            pygame.draw.line(screen, (28, 30, 40),
+                             (grid_area.x, grid_area.y + gy),
+                             (grid_area.right, grid_area.y + gy), 1)
+
+        # Draw connections between parent-child locations
+        for loc_id, loc in self.world.locations.items():
+            if loc.parent_id and loc.parent_id in self._location_map_positions:
+                if loc_id in self._location_map_positions:
+                    px, py = self._location_map_positions[loc.parent_id]
+                    cx, cy = self._location_map_positions[loc_id]
+                    start = (int(grid_area.x + px * grid_area.width / 100),
+                             int(grid_area.y + py * grid_area.height / 100))
+                    end = (int(grid_area.x + cx * grid_area.width / 100),
+                           int(grid_area.y + cy * grid_area.height / 100))
+                    pygame.draw.line(screen, COLORS["border_light"], start, end, 1)
+
+        # Draw location nodes
+        type_colors = {
+            "country": COLORS["legendary"], "region": COLORS["spell"],
+            "city": COLORS["accent"], "town": COLORS["accent"],
+            "village": COLORS["success"], "building": COLORS["warning"],
+            "tavern": COLORS["fire"], "shop": COLORS["legendary"],
+            "temple": COLORS["radiant"], "dungeon": COLORS["danger"],
+            "castle": (180, 140, 100), "port": COLORS["cold"],
+            "wilderness": COLORS["success"], "cave": COLORS["text_dim"],
+        }
+        type_sizes = {
+            "country": 18, "region": 14, "city": 12, "town": 10,
+            "village": 8, "building": 6, "tavern": 6, "shop": 6,
+            "temple": 7, "dungeon": 7, "castle": 10, "port": 9,
+        }
+
+        # Auto-layout for locations without positions
+        roots = get_root_locations(self.world)
+        self._auto_layout_locations(roots, grid_area)
+
+        for loc_id, loc in self.world.locations.items():
+            pos = self._location_map_positions.get(loc_id)
+            if not pos:
+                continue
+
+            px = int(grid_area.x + pos[0] * grid_area.width / 100)
+            py = int(grid_area.y + pos[1] * grid_area.height / 100)
+
+            color = type_colors.get(loc.location_type, COLORS["text_dim"])
+            size = type_sizes.get(loc.location_type, 6)
+            is_sel = loc_id == self.selected_location_id
+            is_hover = abs(mp[0] - px) < size + 5 and abs(mp[1] - py) < size + 5
+
+            # Glow for selected/hovered
+            if is_sel or is_hover:
+                glow_surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (*color, 60), (size * 2, size * 2), size * 2)
+                screen.blit(glow_surf, (px - size * 2, py - size * 2))
+
+            # Draw node
+            pygame.draw.circle(screen, color, (px, py), size)
+            if is_sel:
+                pygame.draw.circle(screen, COLORS["text_bright"], (px, py), size + 2, 2)
+
+            # Label
+            label = fonts.tiny.render(loc.name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
+            screen.blit(label, (px - label.get_width() // 2, py + size + 3))
+
+            # NPC count
+            npc_count = len([n for n in self.world.npcs.values()
+                             if n.location_id == loc_id and n.active])
+            if npc_count > 0:
+                nc = fonts.tiny.render(f"{npc_count}", True, COLORS["player"])
+                screen.blit(nc, (px + size + 3, py - 5))
+
+            # Click handling
+            if is_hover and pygame.mouse.get_pressed()[0]:
+                if self.selected_location_id == loc_id:
+                    # Double-click: switch to location detail
+                    self.world_map_mode = False
+                    self.world_view = "locations"
+                else:
+                    self.selected_location_id = loc_id
+
+        # Right-click: place selected location at mouse position
+        if (pygame.mouse.get_pressed()[2] and self.selected_location_id
+                and grid_area.collidepoint(mp)):
+            rx = (mp[0] - grid_area.x) / grid_area.width * 100
+            ry = (mp[1] - grid_area.y) / grid_area.height * 100
+            self._location_map_positions[self.selected_location_id] = (rx, ry)
+            self._save_map_positions()
+
+        # Selected location info panel (right side overlay)
+        if self.selected_location_id:
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                info_w = 320
+                info_rect = pygame.Rect(SCREEN_WIDTH - info_w - 30, 65, info_w, 300)
+                draw_gradient_rect(screen, info_rect, COLORS["panel"], COLORS["panel_dark"], 8)
+                pygame.draw.rect(screen, COLORS["border_light"], info_rect, 1, border_radius=8)
+
+                iy = info_rect.y + 10
+                nt = fonts.body_bold.render(loc.name, True, COLORS["accent"])
+                screen.blit(nt, (info_rect.x + 10, iy))
+                iy += 24
+
+                Badge.draw(screen, info_rect.x + 10, iy, loc.location_type.upper(),
+                           type_colors.get(loc.location_type, COLORS["text_dim"]), fonts.tiny)
+                iy += 24
+
+                # Description
+                if loc.description:
+                    desc_lines = self._wrap_text(loc.description, info_w - 20, fonts.small)
+                    for line in desc_lines[:4]:
+                        dt = fonts.small.render(line, True, COLORS["text_main"])
+                        screen.blit(dt, (info_rect.x + 10, iy))
+                        iy += 16
+
+                # NPCs
+                iy += 8
+                npcs = get_npcs_at_location(self.world, loc.id)
+                if npcs:
+                    nl = fonts.small_bold.render(f"NPCs ({len(npcs)}):", True, COLORS["text_dim"])
+                    screen.blit(nl, (info_rect.x + 10, iy))
+                    iy += 18
+                    for npc in npcs[:5]:
+                        prefix = "[S] " if npc.is_shopkeeper else ""
+                        occ = f" — {npc.occupation}" if npc.occupation else ""
+                        nt = fonts.tiny.render(f"{prefix}{npc.name}{occ}", True, COLORS["text_main"])
+                        screen.blit(nt, (info_rect.x + 15, iy))
+                        iy += 15
+
+                # Children
+                children = get_children(self.world, loc.id)
+                if children:
+                    iy += 5
+                    cl = fonts.small_bold.render(f"Contains ({len(children)}):", True, COLORS["text_dim"])
+                    screen.blit(cl, (info_rect.x + 10, iy))
+                    iy += 18
+                    for child in children[:5]:
+                        ct = fonts.tiny.render(f"  {child.name} ({child.location_type})",
+                                               True, COLORS["text_main"])
+                        screen.blit(ct, (info_rect.x + 10, iy))
+                        iy += 15
+
+    def _auto_layout_locations(self, roots, grid_area):
+        """Auto-assign positions to locations that don't have one yet."""
+        if not roots:
+            return
+        # Only auto-layout for locations without positions
+        unplaced = [loc for loc in roots if loc.id not in self._location_map_positions]
+        if not unplaced:
+            return
+
+        # Simple grid layout for root locations
+        cols = max(1, min(5, len(unplaced)))
+        for i, loc in enumerate(unplaced):
+            row = i // cols
+            col = i % cols
+            x = 10 + (col + 0.5) * (80 / cols)
+            y = 10 + (row + 0.5) * 25
+            self._location_map_positions[loc.id] = (x, y)
+
+            # Auto-layout children around parent
+            children = get_children(self.world, loc.id)
+            for j, child in enumerate(children):
+                if child.id not in self._location_map_positions:
+                    angle_offset = (j / max(len(children), 1)) * 30 - 15
+                    cx = x + angle_offset + (j % 3 - 1) * 8
+                    cy = y + 15 + (j // 3) * 10
+                    cx = max(2, min(98, cx))
+                    cy = max(2, min(98, cy))
+                    self._location_map_positions[child.id] = (cx, cy)
+
+                    # Sub-children
+                    sub_children = get_children(self.world, child.id)
+                    for k, sub in enumerate(sub_children):
+                        if sub.id not in self._location_map_positions:
+                            sx = cx + (k % 4 - 1.5) * 5
+                            sy = cy + 8 + (k // 4) * 5
+                            sx = max(2, min(98, sx))
+                            sy = max(2, min(98, sy))
+                            self._location_map_positions[sub.id] = (sx, sy)
+
+    @staticmethod
+    def _wrap_text(text, max_width, font):
+        """Wrap text to fit within max_width pixels."""
+        words = text.split()
+        lines = []
+        current = ""
+        for word in words:
+            test = current + " " + word if current else word
+            if font.size(test)[0] <= max_width:
+                current = test
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
+
+    # ================================================================
+    # TEMPLATE BROWSER
+    # ================================================================
+
+    def _draw_templates_browser(self, screen, mp):
+        """Draw template browser with inn and shop templates."""
+        y = 70
+        mid = SCREEN_WIDTH // 2
+
+        # Header
+        hdr = fonts.header.render("Template Browser", True, COLORS["accent"])
+        screen.blit(hdr, (30, y))
+        y += 35
+
+        # Tab buttons for inn vs shop templates
+        tabs = [("Inn Templates", "inn_templates"), ("Shop Templates", "shop_templates")]
+        tx = 30
+        for label, view_key in tabs:
+            is_active = self.template_view == view_key
+            tw = fonts.body.size(label)[0] + 20
+            tab_rect = pygame.Rect(tx, y, tw, 28)
+            bg = COLORS["accent_dim"] if is_active else COLORS["panel"]
+            if tab_rect.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    self.template_view = view_key
+                    self.template_scroll = 0
+            pygame.draw.rect(screen, bg, tab_rect, border_radius=4)
+            if is_active:
+                pygame.draw.rect(screen, COLORS["accent"], tab_rect, 1, border_radius=4)
+            tt = fonts.body.render(label, True, COLORS["text_bright"] if is_active else COLORS["text_dim"])
+            screen.blit(tt, (tx + 10, y + 4))
+            tx += tw + 8
+        y += 38
+
+        # Current location context
+        if self.selected_location_id:
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                ctx = fonts.small.render(f"Parent: {loc.name} ({loc.location_type})", True, COLORS["text_dim"])
+                screen.blit(ctx, (30, y))
+                y += 20
+        else:
+            ctx = fonts.small.render("Select a location first to add templates as children (or adds to root)", True, COLORS["text_muted"])
+            screen.blit(ctx, (30, y))
+            y += 20
+
+        y += 5
+
+        if self.template_view == "inn_templates":
+            self._draw_inn_templates(screen, mp, y)
+        elif self.template_view == "shop_templates":
+            self._draw_shop_templates(screen, mp, y)
+
+    def _draw_inn_templates(self, screen, mp, start_y):
+        """Draw inn template cards."""
+        y = start_y + self.template_scroll
+        tiers = get_all_inn_tiers()
+        tier_labels = {
+            "squalid": ("Squalid", COLORS["danger"]),
+            "poor": ("Poor", COLORS["warning"]),
+            "modest": ("Modest", COLORS["text_main"]),
+            "comfortable": ("Comfortable", COLORS["success"]),
+            "wealthy": ("Wealthy", COLORS["legendary"]),
+            "aristocratic": ("Aristocratic", COLORS["spell"]),
+        }
+
+        for tier in tiers:
+            label, color = tier_labels.get(tier, (tier, COLORS["text_dim"]))
+            # Tier header
+            th = fonts.body_bold.render(f"--- {label} ---", True, color)
+            screen.blit(th, (30, y))
+            y += 25
+
+            templates = get_inn_templates_by_tier(tier)
+            for tkey, tdata in INN_TEMPLATES.items():
+                if tdata["tier"] != tier:
+                    continue
+
+                card_rect = pygame.Rect(30, y, SCREEN_WIDTH - 60, 90)
+                is_hover = card_rect.collidepoint(mp)
+                bg = COLORS["hover"] if is_hover else COLORS["panel"]
+                pygame.draw.rect(screen, bg, card_rect, border_radius=6)
+                pygame.draw.rect(screen, color if is_hover else COLORS["border"],
+                                 card_rect, 1, border_radius=6)
+
+                # Color strip
+                pygame.draw.rect(screen, color, (card_rect.x + 2, card_rect.y + 2, 4, card_rect.height - 4))
+
+                # Name
+                nt = fonts.body_bold.render(tdata["name"], True, COLORS["text_bright"])
+                screen.blit(nt, (card_rect.x + 14, card_rect.y + 6))
+
+                # Tier badge
+                Badge.draw(screen, card_rect.x + 14 + nt.get_width() + 10, card_rect.y + 8,
+                           tier.upper(), color, fonts.tiny)
+
+                # Description preview
+                desc = tdata.get("description", "")[:150]
+                dt = fonts.small.render(desc, True, COLORS["text_dim"])
+                screen.blit(dt, (card_rect.x + 14, card_rect.y + 28))
+
+                # Staff count, room count
+                staff_count = len(tdata.get("staff", []))
+                room_count = len(tdata.get("rooms", {}))
+                menu_count = len(tdata.get("menu", {}))
+                info = f"Staff: {staff_count} | Rooms: {room_count} | Menu: {menu_count}"
+                it = fonts.tiny.render(info, True, COLORS["text_muted"])
+                screen.blit(it, (card_rect.x + 14, card_rect.y + 48))
+
+                # Apply button
+                apply_rect = pygame.Rect(card_rect.right - 120, card_rect.y + 30, 110, 30)
+                apply_hover = apply_rect.collidepoint(mp)
+                pygame.draw.rect(screen, COLORS["success_hover"] if apply_hover else COLORS["success"],
+                                 apply_rect, border_radius=4)
+                at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
+                screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
+                if apply_hover and pygame.mouse.get_pressed()[0]:
+                    self._apply_template("inn", tkey)
+
+                # Special features preview
+                features = tdata.get("special_features", [])
+                if features:
+                    feat_y = card_rect.y + 64
+                    for feat in features[:2]:
+                        ft = fonts.tiny.render(f"  * {feat[:80]}", True, COLORS["success"])
+                        screen.blit(ft, (card_rect.x + 14, feat_y))
+                        feat_y += 13
+
+                y += 95
+
+            y += 10
+
+    def _draw_shop_templates(self, screen, mp, start_y):
+        """Draw shop template cards."""
+        y = start_y + self.template_scroll
+        tier_labels = {
+            1: ("Tier 1 (Levels 1-4)", COLORS["success"]),
+            2: ("Tier 2 (Levels 5-10)", COLORS["accent"]),
+            3: ("Tier 3 (Levels 11-16)", COLORS["spell"]),
+            4: ("Tier 4 (Levels 17-20)", COLORS["legendary"]),
+        }
+
+        for tier in [1, 2, 3, 4]:
+            templates = get_shop_templates_by_tier(tier)
+            if not templates:
+                continue
+
+            label, color = tier_labels[tier]
+            th = fonts.body_bold.render(f"--- {label} ---", True, color)
+            screen.blit(th, (30, y))
+            y += 25
+
+            for tkey, tdata in SHOP_TEMPLATES.items():
+                if tdata["tier"] != tier:
+                    continue
+
+                card_rect = pygame.Rect(30, y, SCREEN_WIDTH - 60, 85)
+                is_hover = card_rect.collidepoint(mp)
+                bg = COLORS["hover"] if is_hover else COLORS["panel"]
+                pygame.draw.rect(screen, bg, card_rect, border_radius=6)
+                pygame.draw.rect(screen, color if is_hover else COLORS["border"],
+                                 card_rect, 1, border_radius=6)
+
+                pygame.draw.rect(screen, color, (card_rect.x + 2, card_rect.y + 2, 4, card_rect.height - 4))
+
+                # Name + type
+                nt = fonts.body_bold.render(tdata["name"], True, COLORS["text_bright"])
+                screen.blit(nt, (card_rect.x + 14, card_rect.y + 6))
+                type_badge_x = card_rect.x + 14 + nt.get_width() + 10
+                Badge.draw(screen, type_badge_x, card_rect.y + 8,
+                           tdata["shop_type"].upper(), color, fonts.tiny)
+
+                # Description
+                desc = tdata.get("description", "")[:150]
+                dt = fonts.small.render(desc, True, COLORS["text_dim"])
+                screen.blit(dt, (card_rect.x + 14, card_rect.y + 28))
+
+                # Item count, staff count
+                item_count = len(tdata.get("inventory", []))
+                staff_count = len(tdata.get("staff", []))
+                info = f"Items: {item_count} | Staff: {staff_count} | Price: {tdata.get('price_modifier', 'normal')}"
+                it = fonts.tiny.render(info, True, COLORS["text_muted"])
+                screen.blit(it, (card_rect.x + 14, card_rect.y + 48))
+
+                # Apply button
+                apply_rect = pygame.Rect(card_rect.right - 120, card_rect.y + 25, 110, 30)
+                apply_hover = apply_rect.collidepoint(mp)
+                pygame.draw.rect(screen, COLORS["success_hover"] if apply_hover else COLORS["success"],
+                                 apply_rect, border_radius=4)
+                at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
+                screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
+                if apply_hover and pygame.mouse.get_pressed()[0]:
+                    self._apply_template("shop", tkey)
+
+                # Top items preview
+                items = tdata.get("inventory", [])[:3]
+                if items:
+                    item_strs = [f"{i['name']} ({format_price(i['price_gp'])})" for i in items]
+                    preview = "  Items: " + ", ".join(item_strs)
+                    pt = fonts.tiny.render(preview[:100], True, COLORS["legendary"])
+                    screen.blit(pt, (card_rect.x + 14, card_rect.y + 65))
+
+                y += 90
+
+            y += 10
+
+    def _handle_templates_click(self, mp):
+        """Handle clicks in template browser (most handled inline via draw)."""
+        pass  # Click handling is done in draw methods via get_pressed()
+
+    # ================================================================
+    # SERVICES VIEWER
+    # ================================================================
+
+    def _draw_services_viewer(self, screen, mp):
+        """Draw services and price list viewer."""
+        y = 70
+        mid = SCREEN_WIDTH // 2
+
+        hdr = fonts.header.render("Services & Price Lists", True, COLORS["accent"])
+        screen.blit(hdr, (30, y))
+        y += 35
+
+        # Category tabs
+        categories = list(SERVICE_CATEGORIES.items())
+        tx = 30
+        for cat_key, cat_label in categories:
+            is_active = self.services_category == cat_key
+            tw = fonts.small.size(cat_label)[0] + 14
+            tab_rect = pygame.Rect(tx, y, tw, 24)
+            bg = COLORS["accent_dim"] if is_active else COLORS["panel"]
+            if tab_rect.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    self.services_category = cat_key
+                    self.services_scroll = 0
+            pygame.draw.rect(screen, bg, tab_rect, border_radius=4)
+            if is_active:
+                pygame.draw.rect(screen, COLORS["accent"], tab_rect, 1, border_radius=4)
+            tt = fonts.small.render(cat_label, True, COLORS["text_bright"] if is_active else COLORS["text_dim"])
+            screen.blit(tt, (tx + 7, y + 4))
+            tx += tw + 4
+            if tx > SCREEN_WIDTH - 200:
+                tx = 30
+                y += 28
+        y += 32
+
+        # Service list
+        all_services = get_all_services()
+        services = all_services.get(self.services_category, {})
+
+        # Table header
+        pygame.draw.rect(screen, COLORS["panel_header"], (30, y, SCREEN_WIDTH - 60, 24), border_radius=3)
+        col_headers = [("Name", 30), ("Price", 350), ("Description", 500)]
+        for header_text, hx in col_headers:
+            ht = fonts.small_bold.render(header_text, True, COLORS["text_dim"])
+            screen.blit(ht, (hx, y + 4))
+        y += 28
+
+        row_y = y + self.services_scroll
+        for svc_key, svc_data in services.items():
+            if row_y < 60 or row_y > SCREEN_HEIGHT - 130:
+                row_y += 50
+                continue
+
+            row_rect = pygame.Rect(30, row_y, SCREEN_WIDTH - 60, 46)
+            is_hover = row_rect.collidepoint(mp)
+            bg = COLORS["hover"] if is_hover else (COLORS["panel"] if svc_key.find("_") % 2 == 0 else COLORS["panel_dark"])
+            pygame.draw.rect(screen, bg, row_rect, border_radius=3)
+
+            # Name
+            name = svc_data.get("name", svc_key)
+            nt = fonts.body.render(name, True, COLORS["text_bright"])
+            screen.blit(nt, (35, row_y + 3))
+
+            # Price
+            price = 0
+            for price_field in ["cost_gp", "cost_per_day_gp", "cost_per_night_gp",
+                                "cost_per_mile_gp", "cost_buy_gp", "cost_rent_per_month_gp"]:
+                if price_field in svc_data:
+                    price = svc_data[price_field]
+                    break
+            price_str = format_price(price)
+            # Add per-unit label
+            if "cost_per_day_gp" in svc_data:
+                price_str += " /day"
+            elif "cost_per_night_gp" in svc_data:
+                price_str += " /night"
+            elif "cost_per_mile_gp" in svc_data:
+                price_str += " /mile"
+            elif "cost_rent_per_month_gp" in svc_data:
+                price_str += " /month"
+            pt = fonts.body_bold.render(price_str, True, COLORS["legendary"])
+            screen.blit(pt, (350, row_y + 3))
+
+            # Description (wrapped)
+            desc = svc_data.get("description", "")
+            desc_lines = self._wrap_text(desc, SCREEN_WIDTH - 540, fonts.tiny)
+            for i, line in enumerate(desc_lines[:2]):
+                dt = fonts.tiny.render(line, True, COLORS["text_dim"])
+                screen.blit(dt, (500, row_y + 3 + i * 14))
+
+            # Quality/tier indicator if present
+            quality = svc_data.get("quality")
+            if quality is not None:
+                if isinstance(quality, str):
+                    Badge.draw(screen, row_rect.right - 80, row_y + 14, quality.upper(),
+                               COLORS["accent_dim"], fonts.tiny)
+                elif isinstance(quality, int):
+                    quality_names = ["Wretched", "Squalid", "Poor", "Modest", "Comfortable", "Wealthy", "Aristocratic"]
+                    if 0 <= quality < len(quality_names):
+                        Badge.draw(screen, row_rect.right - 100, row_y + 14,
+                                   quality_names[quality], COLORS["accent_dim"], fonts.tiny)
+
+            # Category if present
+            cat = svc_data.get("category")
+            if cat:
+                Badge.draw(screen, row_rect.right - 80, row_y + 28, cat.upper(),
+                           COLORS["spell"], fonts.tiny)
+
+            row_y += 50
+
+    def _handle_services_click(self, mp):
+        """Handle clicks in services viewer (handled inline via draw)."""
+        pass
+
+    # ================================================================
+    # TRAVEL VIEWER
+    # ================================================================
+
+    def _draw_travel_viewer(self, screen, mp):
+        """Draw travel calculator and mount/vehicle browser."""
+        y = 70
+
+        hdr = fonts.header.render("Travel & Transportation", True, COLORS["accent"])
+        screen.blit(hdr, (30, y))
+        y += 35
+
+        # Three columns: Mounts | Vehicles | Travel Calculator
+        col_w = (SCREEN_WIDTH - 80) // 3
+        col1_x = 30
+        col2_x = col1_x + col_w + 10
+        col3_x = col2_x + col_w + 10
+
+        # Column 1: Mounts
+        self._draw_travel_mounts(screen, mp, col1_x, y, col_w)
+
+        # Column 2: Vehicles
+        self._draw_travel_vehicles(screen, mp, col2_x, y, col_w)
+
+        # Column 3: Travel calculator + pace
+        self._draw_travel_calculator(screen, mp, col3_x, y, col_w)
+
+    def _draw_travel_mounts(self, screen, mp, x, start_y, w):
+        """Draw mount list."""
+        y = start_y
+        Panel(x, y, w, SCREEN_HEIGHT - start_y - 70, "Mounts & Animals").draw(screen)
+        y += 32
+
+        row_y = y + self.scroll_y
+        for mkey, mount in MOUNTS.items():
+            if row_y < start_y or row_y > SCREEN_HEIGHT - 130:
+                row_y += 70
+                continue
+
+            card = pygame.Rect(x + 5, row_y, w - 10, 65)
+            is_hover = card.collidepoint(mp)
+            bg = COLORS["hover"] if is_hover else COLORS["panel_dark"]
+            pygame.draw.rect(screen, bg, card, border_radius=4)
+
+            # Name
+            nt = fonts.small_bold.render(mount["name"], True, COLORS["text_bright"])
+            screen.blit(nt, (card.x + 6, card.y + 3))
+
+            # Category badge
+            cat_colors = {"common": COLORS["success"], "exotic": COLORS["spell"], "magical": COLORS["legendary"]}
+            Badge.draw(screen, card.x + 6 + nt.get_width() + 8, card.y + 4,
+                       mount.get("category", "").upper(),
+                       cat_colors.get(mount.get("category", ""), COLORS["text_dim"]), fonts.tiny)
+
+            # Prices
+            buy = format_price(mount["cost_buy_gp"]) if mount["cost_buy_gp"] else "N/A"
+            rent = format_price(mount.get("cost_rent_per_day_gp", 0)) + "/d" if mount.get("cost_rent_per_day_gp", 0) else ""
+            price_text = f"Buy: {buy}"
+            if rent:
+                price_text += f" | Rent: {rent}"
+            pt = fonts.tiny.render(price_text, True, COLORS["legendary"])
+            screen.blit(pt, (card.x + 6, card.y + 20))
+
+            # Stats
+            speed = f"Speed: {mount['speed_ft']} ft"
+            if mount.get("fly_speed_ft"):
+                speed += f" (Fly: {mount['fly_speed_ft']} ft)"
+            carry = f"Carry: {mount['carry_capacity_lb']} lb" if mount.get("carry_capacity_lb") else ""
+            stats_text = f"{speed} | {carry}" if carry else speed
+            st = fonts.tiny.render(stats_text, True, COLORS["text_dim"])
+            screen.blit(st, (card.x + 6, card.y + 35))
+
+            # Description preview
+            desc = mount.get("description", "")[:80]
+            dt = fonts.tiny.render(desc, True, COLORS["text_muted"])
+            screen.blit(dt, (card.x + 6, card.y + 49))
+
+            row_y += 70
+
+    def _draw_travel_vehicles(self, screen, mp, x, start_y, w):
+        """Draw vehicle lists (land + water)."""
+        y = start_y
+        Panel(x, y, w, SCREEN_HEIGHT - start_y - 70, "Vehicles (Land & Water)").draw(screen)
+        y += 32
+
+        row_y = y + self.scroll_y
+
+        # Land vehicles header
+        lh = fonts.small_bold.render("-- Land --", True, COLORS["warning"])
+        screen.blit(lh, (x + 10, row_y))
+        row_y += 18
+
+        for vkey, vehicle in VEHICLES_LAND.items():
+            if row_y < start_y or row_y > SCREEN_HEIGHT - 130:
+                row_y += 55
+                continue
+
+            card = pygame.Rect(x + 5, row_y, w - 10, 50)
+            is_hover = card.collidepoint(mp)
+            bg = COLORS["hover"] if is_hover else COLORS["panel_dark"]
+            pygame.draw.rect(screen, bg, card, border_radius=4)
+
+            nt = fonts.small_bold.render(vehicle["name"], True, COLORS["text_bright"])
+            screen.blit(nt, (card.x + 6, card.y + 3))
+
+            buy = format_price(vehicle["cost_buy_gp"])
+            rent = format_price(vehicle.get("cost_rent_per_day_gp", 0)) + "/d" if vehicle.get("cost_rent_per_day_gp") else ""
+            price_text = f"Buy: {buy}"
+            if rent:
+                price_text += f" | Rent: {rent}"
+            pt = fonts.tiny.render(price_text, True, COLORS["legendary"])
+            screen.blit(pt, (card.x + 6, card.y + 20))
+
+            info = f"Carry: {vehicle['carry_capacity_lb']} lb | Animals: {vehicle.get('animals_needed', '?')}"
+            it = fonts.tiny.render(info, True, COLORS["text_dim"])
+            screen.blit(it, (card.x + 6, card.y + 34))
+
+            row_y += 55
+
+        # Water vehicles header
+        row_y += 10
+        wh = fonts.small_bold.render("-- Water & Air --", True, COLORS["cold"])
+        screen.blit(wh, (x + 10, row_y))
+        row_y += 18
+
+        for vkey, vehicle in VEHICLES_WATER.items():
+            if row_y < start_y or row_y > SCREEN_HEIGHT - 130:
+                row_y += 55
+                continue
+
+            card = pygame.Rect(x + 5, row_y, w - 10, 50)
+            is_hover = card.collidepoint(mp)
+            bg = COLORS["hover"] if is_hover else COLORS["panel_dark"]
+            pygame.draw.rect(screen, bg, card, border_radius=4)
+
+            nt = fonts.small_bold.render(vehicle["name"], True, COLORS["text_bright"])
+            screen.blit(nt, (card.x + 6, card.y + 3))
+
+            buy = format_price(vehicle["cost_buy_gp"])
+            pt = fonts.tiny.render(f"Buy: {buy}", True, COLORS["legendary"])
+            screen.blit(pt, (card.x + 6, card.y + 20))
+
+            info_parts = [f"Speed: {vehicle['speed_mph']} mph"]
+            if vehicle.get("passengers"):
+                info_parts.append(f"Pass: {vehicle['passengers']}")
+            if vehicle.get("crew"):
+                info_parts.append(f"Crew: {vehicle['crew']}")
+            if vehicle.get("cargo_tons"):
+                info_parts.append(f"Cargo: {vehicle['cargo_tons']}t")
+            it = fonts.tiny.render(" | ".join(info_parts), True, COLORS["text_dim"])
+            screen.blit(it, (card.x + 6, card.y + 34))
+
+            row_y += 55
+
+    def _draw_travel_calculator(self, screen, mp, x, start_y, w):
+        """Draw travel pace calculator and passage costs."""
+        y = start_y
+        Panel(x, y, w, SCREEN_HEIGHT - start_y - 70, "Travel Calculator & Costs").draw(screen)
+        y += 35
+
+        # Travel Pace table
+        pace_label = fonts.small_bold.render("Travel Pace:", True, COLORS["text_dim"])
+        screen.blit(pace_label, (x + 10, y))
+        y += 20
+
+        for pkey, pace in TRAVEL_PACE.items():
+            card = pygame.Rect(x + 5, y, w - 10, 40)
+            pygame.draw.rect(screen, COLORS["panel_dark"], card, border_radius=3)
+
+            nt = fonts.small_bold.render(pace["name"], True, COLORS["text_bright"])
+            screen.blit(nt, (card.x + 8, card.y + 3))
+
+            stats = f"{pace['miles_per_hour']} mph | {pace['miles_per_day']} miles/day"
+            st = fonts.tiny.render(stats, True, COLORS["accent"])
+            screen.blit(st, (card.x + 8, card.y + 20))
+
+            et = fonts.tiny.render(pace["effect"], True, COLORS["text_dim"])
+            screen.blit(et, (card.x + w // 2, card.y + 20))
+
+            y += 44
+
+        # Terrain modifiers
+        y += 10
+        terrain_label = fonts.small_bold.render("Terrain Modifiers:", True, COLORS["text_dim"])
+        screen.blit(terrain_label, (x + 10, y))
+        y += 18
+
+        for tkey, terrain in TERRAIN_MODIFIERS.items():
+            if y > SCREEN_HEIGHT - 140:
+                break
+            row = pygame.Rect(x + 5, y, w - 10, 22)
+            pygame.draw.rect(screen, COLORS["panel_dark"], row, border_radius=2)
+
+            nt = fonts.tiny.render(terrain["name"], True, COLORS["text_bright"])
+            screen.blit(nt, (row.x + 6, row.y + 4))
+
+            mod = f"x{terrain['speed_modifier']:.2f}"
+            enc = f"Enc: {int(terrain['encounter_chance'] * 100)}%"
+            mt = fonts.tiny.render(f"{mod} | {enc}", True, COLORS["text_dim"])
+            screen.blit(mt, (row.x + w // 2, row.y + 4))
+
+            y += 24
+
+        # Passage costs
+        y += 10
+        if y < SCREEN_HEIGHT - 200:
+            pass_label = fonts.small_bold.render("Passage Costs:", True, COLORS["text_dim"])
+            screen.blit(pass_label, (x + 10, y))
+            y += 18
+
+            for pkey, passage in PASSAGE_COSTS.items():
+                if y > SCREEN_HEIGHT - 140:
+                    break
+                row = pygame.Rect(x + 5, y, w - 10, 35)
+                pygame.draw.rect(screen, COLORS["panel_dark"], row, border_radius=3)
+
+                nt = fonts.small.render(passage["name"], True, COLORS["text_bright"])
+                screen.blit(nt, (row.x + 6, row.y + 3))
+
+                if "cost_per_mile_gp" in passage:
+                    cost = format_price(passage["cost_per_mile_gp"]) + "/mile"
+                elif "cost_per_use_gp" in passage:
+                    cost = format_price(passage["cost_per_use_gp"]) + "/use"
+                else:
+                    cost = "?"
+                ct = fonts.tiny.render(cost, True, COLORS["legendary"])
+                screen.blit(ct, (row.x + 6, row.y + 20))
+
+                y += 38
+
+    def _handle_travel_click(self, mp):
+        """Handle clicks in travel viewer (handled inline)."""
+        pass
