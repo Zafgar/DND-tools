@@ -39,6 +39,12 @@ class Location:
     # Visual / gameplay
     environment: str = ""             # outdoor, indoor, underground, etc.
     lighting: str = "bright"          # bright, dim, darkness
+    # Map display
+    map_color: str = ""               # Custom hex color for map node (e.g. "#FF8800")
+    map_icon: str = ""                # Custom icon text (1-2 chars) for map
+    map_note: str = ""                # Hover note shown on map tooltip
+    population: int = 0               # Population size (for cities/towns)
+    map_size: int = 0                 # Custom node size on map (0 = auto)
 
 LOCATION_TYPES = [
     "country", "region", "city", "town", "village",
@@ -112,6 +118,19 @@ class NPC:
 # ============================================================================
 
 @dataclass
+class MapRoute:
+    """A travel route between two locations on the map."""
+    from_id: str = ""
+    to_id: str = ""
+    route_type: str = "road"          # road, trail, river, sea, air, secret
+    label: str = ""                   # Optional label (e.g. "3 days", "King's Road")
+    color: str = ""                   # Custom hex color (empty = auto from type)
+    distance_miles: float = 0.0       # Distance in miles
+    notes: str = ""                   # DM notes about this route
+    danger_level: str = "safe"        # safe, low, medium, high, deadly
+
+
+@dataclass
 class World:
     """Top-level world data — all locations and NPCs."""
     name: str = "New World"
@@ -121,6 +140,10 @@ class World:
     locations: Dict[str, Location] = field(default_factory=dict)  # id -> Location
     npcs: Dict[str, NPC] = field(default_factory=dict)            # id -> NPC
     next_id: int = 1                  # Auto-increment for IDs
+    # Map data
+    map_routes: List[MapRoute] = field(default_factory=list)
+    map_image_path: str = ""          # Path to custom background image
+    map_positions: Dict[str, list] = field(default_factory=dict)  # loc_id -> [x%, y%]
 
 
 def generate_id(world: World, prefix: str = "loc") -> str:
@@ -159,13 +182,25 @@ def _deserialize_shop_item(d: dict) -> ShopItem:
     )
 
 def _serialize_location(loc: Location) -> dict:
-    return {
+    d = {
         "id": loc.id, "name": loc.name, "location_type": loc.location_type,
         "description": loc.description, "notes": loc.notes,
         "parent_id": loc.parent_id, "children_ids": loc.children_ids,
         "npc_ids": loc.npc_ids, "tags": loc.tags,
         "environment": loc.environment, "lighting": loc.lighting,
     }
+    # Save map fields only if set (backwards compat)
+    if loc.map_color:
+        d["map_color"] = loc.map_color
+    if loc.map_icon:
+        d["map_icon"] = loc.map_icon
+    if loc.map_note:
+        d["map_note"] = loc.map_note
+    if loc.population:
+        d["population"] = loc.population
+    if loc.map_size:
+        d["map_size"] = loc.map_size
+    return d
 
 def _deserialize_location(d: dict) -> Location:
     return Location(
@@ -178,6 +213,11 @@ def _deserialize_location(d: dict) -> Location:
         tags=d.get("tags", []),
         environment=d.get("environment", ""),
         lighting=d.get("lighting", "bright"),
+        map_color=d.get("map_color", ""),
+        map_icon=d.get("map_icon", ""),
+        map_note=d.get("map_note", ""),
+        population=d.get("population", 0),
+        map_size=d.get("map_size", 0),
     )
 
 def _serialize_npc(npc: NPC) -> dict:
@@ -222,6 +262,21 @@ def _deserialize_npc(d: dict) -> NPC:
         alive=d.get("alive", True), active=d.get("active", True),
     )
 
+def _serialize_route(r: MapRoute) -> dict:
+    return {
+        "from_id": r.from_id, "to_id": r.to_id, "route_type": r.route_type,
+        "label": r.label, "color": r.color, "distance_miles": r.distance_miles,
+        "notes": r.notes, "danger_level": r.danger_level,
+    }
+
+def _deserialize_route(d: dict) -> MapRoute:
+    return MapRoute(
+        from_id=d.get("from_id", ""), to_id=d.get("to_id", ""),
+        route_type=d.get("route_type", "road"), label=d.get("label", ""),
+        color=d.get("color", ""), distance_miles=d.get("distance_miles", 0),
+        notes=d.get("notes", ""), danger_level=d.get("danger_level", "safe"),
+    )
+
 def save_world(world: World, filepath: str = ""):
     """Save world to JSON file."""
     if not filepath:
@@ -241,6 +296,9 @@ def save_world(world: World, filepath: str = ""):
         "locations": {k: _serialize_location(v) for k, v in world.locations.items()},
         "npcs": {k: _serialize_npc(v) for k, v in world.npcs.items()},
         "next_id": world.next_id,
+        "map_routes": [_serialize_route(r) for r in world.map_routes],
+        "map_image_path": world.map_image_path,
+        "map_positions": world.map_positions,
     }
 
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
@@ -262,6 +320,9 @@ def load_world(filepath: str) -> World:
         locations={k: _deserialize_location(v) for k, v in data.get("locations", {}).items()},
         npcs={k: _deserialize_npc(v) for k, v in data.get("npcs", {}).items()},
         next_id=data.get("next_id", 1),
+        map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
+        map_image_path=data.get("map_image_path", ""),
+        map_positions=data.get("map_positions", {}),
     )
 
 
