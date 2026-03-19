@@ -244,6 +244,7 @@ class CampaignManagerState:
         self._map_route_mode = False  # True = click two locations to create route
         self._map_route_from = ""  # First location ID when creating a route
         self._map_dragging_node = ""  # Location ID being dragged on map
+        self._click_cooldown = 0  # Frame-based cooldown to prevent draw-loop spam
         self._load_map_background()
 
         # Input state
@@ -889,7 +890,10 @@ class CampaignManagerState:
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     grid_area = self._get_map_grid_area()
                     if grid_area.collidepoint(mp):
-                        self._handle_map_click(mp, grid_area)
+                        try:
+                            self._handle_map_click(mp, grid_area)
+                        except Exception:
+                            pass
 
             # Keyboard input
             if event.type == pygame.KEYDOWN:
@@ -1134,7 +1138,8 @@ class CampaignManagerState:
             return
 
         if self.world_view == "locations":
-            self._handle_world_locations_click(mp)
+            if not self.world_map_mode:
+                self._handle_world_locations_click(mp)
         elif self.world_view == "npcs":
             self._handle_world_npcs_click(mp)
         elif self.world_view == "shops":
@@ -1419,6 +1424,8 @@ class CampaignManagerState:
     def update(self):
         if hasattr(self, '_status_timer') and self._status_timer > 0:
             self._status_timer -= 1
+        if self._click_cooldown > 0:
+            self._click_cooldown -= 1
         # Clear tooltip if not in world tab or mouse moved away
         if self.active_tab != 4:
             self.tooltip_item = ""
@@ -1983,8 +1990,9 @@ class CampaignManagerState:
             pygame.draw.rect(screen, COLORS["legendary"], loot_btn, 1, border_radius=4)
             lbt = fonts.small.render("Roll Loot", True, COLORS["legendary"])
             screen.blit(lbt, (loot_btn.x + 30, loot_btn.y + 4))
-            if loot_hover and pygame.mouse.get_pressed()[0]:
+            if loot_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                 self._roll_encounter_loot(enc)
+                self._click_cooldown = 15
 
             rand_btn = pygame.Rect(start_x + 155, y, 180, 26)
             rand_hover = rand_btn.collidepoint(mp)
@@ -1993,8 +2001,9 @@ class CampaignManagerState:
             pygame.draw.rect(screen, COLORS["spell"], rand_btn, 1, border_radius=4)
             rbt = fonts.small.render("Random Encounter", True, COLORS["spell"])
             screen.blit(rbt, (rand_btn.x + 20, rand_btn.y + 4))
-            if rand_hover and pygame.mouse.get_pressed()[0]:
+            if rand_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                 self._roll_random_encounter(enc)
+                self._click_cooldown = 15
             y += 35
 
         # Loot items
@@ -2121,7 +2130,15 @@ class CampaignManagerState:
     def _draw_world_tab(self, screen, mp):
         if self.world_view == "locations":
             if self.world_map_mode:
-                self._draw_world_map(screen, mp)
+                try:
+                    self._draw_world_map(screen, mp)
+                except Exception as e:
+                    screen.set_clip(None)
+                    # Fallback: show error instead of crashing
+                    err_msg = fonts.body.render(f"Map error: {e}", True, COLORS["danger"])
+                    screen.blit(err_msg, (30, 80))
+                    hint = fonts.small.render("Press Map button again to retry, or switch to tree view.", True, COLORS["text_dim"])
+                    screen.blit(hint, (30, 110))
             else:
                 self._draw_world_locations(screen, mp)
         elif self.world_view == "npcs":
@@ -3436,8 +3453,11 @@ class CampaignManagerState:
         """Convert screen pixels to percent-based map position."""
         cx = grid_area.x + grid_area.width / 2 + self.map_offset_x
         cy = grid_area.y + grid_area.height / 2 + self.map_offset_y
-        pct_x = 50 + (sx - cx) / (grid_area.width / 100 * self.map_zoom)
-        pct_y = 50 + (sy - cy) / (grid_area.height / 100 * self.map_zoom)
+        zoom = max(0.01, self.map_zoom)
+        denom_x = grid_area.width / 100 * zoom
+        denom_y = grid_area.height / 100 * zoom
+        pct_x = 50 + (sx - cx) / denom_x if denom_x != 0 else 50
+        pct_y = 50 + (sy - cy) / denom_y if denom_y != 0 else 50
         return pct_x, pct_y
 
     def _get_loc_color(self, loc):
@@ -3641,8 +3661,9 @@ class CampaignManagerState:
             pygame.draw.rect(screen, COLORS["border"], btn_rect, 1, border_radius=3)
             bt = fonts.small.render(btn_label, True, COLORS["text_bright"] if bh else COLORS["text_dim"])
             screen.blit(bt, (tool_x + 7, tb_y + 5))
-            if bh and pygame.mouse.get_pressed()[0]:
+            if bh and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                 self._map_tool_action(btn_action)
+                self._click_cooldown = 15
             tool_x += bw + 5
 
         # Route mode indicator
@@ -4095,8 +4116,9 @@ class CampaignManagerState:
                                  apply_rect, border_radius=4)
                 at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
                 screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
-                if apply_hover and pygame.mouse.get_pressed()[0]:
+                if apply_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                     self._apply_template("inn", tkey)
+                    self._click_cooldown = 20
 
                 # Special features preview
                 features = tdata.get("special_features", [])
@@ -4170,8 +4192,9 @@ class CampaignManagerState:
                                  apply_rect, border_radius=4)
                 at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
                 screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
-                if apply_hover and pygame.mouse.get_pressed()[0]:
+                if apply_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                     self._apply_template("shop", tkey)
+                    self._click_cooldown = 20
 
                 # Top items preview
                 items = tdata.get("inventory", [])[:3]
@@ -4257,8 +4280,9 @@ class CampaignManagerState:
                                  apply_rect, border_radius=4)
                 at = fonts.small_bold.render("+ Add", True, COLORS["text_bright"])
                 screen.blit(at, (apply_rect.x + 30, apply_rect.y + 6))
-                if apply_hover and pygame.mouse.get_pressed()[0]:
+                if apply_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                     self._apply_template("city", tkey)
+                    self._click_cooldown = 20
 
                 y += 105
 
