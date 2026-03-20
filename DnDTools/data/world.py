@@ -45,6 +45,14 @@ class Location:
     map_note: str = ""                # Hover note shown on map tooltip
     population: int = 0               # Population size (for cities/towns)
     map_size: int = 0                 # Custom node size on map (0 = auto)
+    # Extended info
+    government: str = ""              # Monarchy, council, anarchy, theocracy, etc.
+    dominant_races: str = ""          # Comma-separated races (e.g. "Human, Elf, Dwarf")
+    languages: str = ""               # Spoken languages
+    religion: str = ""                # Dominant faith/temple
+    wealth_level: str = ""            # squalid, poor, modest, comfortable, wealthy, aristocratic
+    defenses: str = ""                # Walls, guards, traps, etc.
+    known_for: str = ""               # What this place is famous for
 
 LOCATION_TYPES = [
     "country", "region", "city", "town", "village",
@@ -89,6 +97,9 @@ class NPC:
     personality: str = ""
     backstory: str = ""
     occupation: str = ""              # Innkeeper, blacksmith, guard, etc.
+    title: str = ""                   # Noble title, rank, etc. (e.g. "Captain", "Baron")
+    faction: str = ""                 # Guild, order, organization (e.g. "Thieves Guild", "City Guard")
+    alignment: str = ""               # D&D alignment (e.g. "Lawful Good", "Chaotic Neutral")
     attitude: str = "neutral"         # Overall default attitude
     notes: str = ""                   # DM notes
     tags: List[str] = field(default_factory=list)
@@ -111,6 +122,56 @@ class NPC:
     # Status
     alive: bool = True
     active: bool = True               # False = removed from play but kept in records
+
+
+# ============================================================================
+# QUESTS
+# ============================================================================
+
+@dataclass
+class QuestObjective:
+    """A single objective/milestone within a quest."""
+    description: str = ""
+    completed: bool = False
+    notes: str = ""                   # DM notes for this objective
+    target_npc_id: str = ""           # NPC involved (kill, talk to, escort, etc.)
+    target_location_id: str = ""      # Location involved (go to, explore, etc.)
+    target_item: str = ""             # Item involved (fetch, deliver, etc.)
+
+
+@dataclass
+class Quest:
+    """A quest/mission that can be tracked, linked to NPCs and locations."""
+    id: str = ""                      # Unique ID
+    name: str = "New Quest"
+    description: str = ""             # Full quest description
+    status: str = "active"            # not_started, active, completed, failed, on_hold
+    priority: str = "normal"          # low, normal, high, urgent
+    quest_type: str = "main"          # main, side, personal, faction, bounty
+    # Links
+    giver_npc_id: str = ""            # NPC who gave the quest
+    turn_in_npc_id: str = ""          # NPC to turn in to (if different)
+    location_ids: List[str] = field(default_factory=list)     # Related locations
+    npc_ids: List[str] = field(default_factory=list)          # Related NPCs
+    # Objectives
+    objectives: List[QuestObjective] = field(default_factory=list)
+    # Rewards
+    reward_xp: int = 0
+    reward_gold: float = 0.0
+    reward_items: List[str] = field(default_factory=list)     # Item names
+    reward_notes: str = ""            # Custom reward description
+    # Meta
+    notes: str = ""                   # DM notes
+    tags: List[str] = field(default_factory=list)
+    created: str = ""
+    completed_date: str = ""
+    session_given: int = 0            # Session number when quest was given
+    level_range: str = ""             # Recommended level range (e.g. "3-5")
+
+
+QUEST_STATUSES = ["not_started", "active", "completed", "failed", "on_hold"]
+QUEST_TYPES = ["main", "side", "personal", "faction", "bounty"]
+QUEST_PRIORITIES = ["low", "normal", "high", "urgent"]
 
 
 # ============================================================================
@@ -139,6 +200,7 @@ class World:
     last_modified: str = ""
     locations: Dict[str, Location] = field(default_factory=dict)  # id -> Location
     npcs: Dict[str, NPC] = field(default_factory=dict)            # id -> NPC
+    quests: Dict[str, Quest] = field(default_factory=dict)        # id -> Quest
     next_id: int = 1                  # Auto-increment for IDs
     # Map data
     map_routes: List[MapRoute] = field(default_factory=list)
@@ -200,6 +262,12 @@ def _serialize_location(loc: Location) -> dict:
         d["population"] = loc.population
     if loc.map_size:
         d["map_size"] = loc.map_size
+    # Extended info (only if set)
+    for field_name in ("government", "dominant_races", "languages", "religion",
+                       "wealth_level", "defenses", "known_for"):
+        val = getattr(loc, field_name, "")
+        if val:
+            d[field_name] = val
     return d
 
 def _deserialize_location(d: dict) -> Location:
@@ -218,6 +286,13 @@ def _deserialize_location(d: dict) -> Location:
         map_note=d.get("map_note", ""),
         population=d.get("population", 0),
         map_size=d.get("map_size", 0),
+        government=d.get("government", ""),
+        dominant_races=d.get("dominant_races", ""),
+        languages=d.get("languages", ""),
+        religion=d.get("religion", ""),
+        wealth_level=d.get("wealth_level", ""),
+        defenses=d.get("defenses", ""),
+        known_for=d.get("known_for", ""),
     )
 
 def _serialize_npc(npc: NPC) -> dict:
@@ -227,6 +302,7 @@ def _serialize_npc(npc: NPC) -> dict:
         "appearance": npc.appearance, "personality": npc.personality,
         "backstory": npc.backstory, "occupation": npc.occupation,
         "attitude": npc.attitude, "notes": npc.notes, "tags": npc.tags,
+        "title": npc.title, "faction": npc.faction, "alignment": npc.alignment,
         "location_id": npc.location_id,
         "stat_source": npc.stat_source,
         "custom_stats": npc.custom_stats,
@@ -245,7 +321,9 @@ def _deserialize_npc(d: dict) -> NPC:
         race=d.get("race", ""), gender=d.get("gender", ""),
         age=d.get("age", ""), appearance=d.get("appearance", ""),
         personality=d.get("personality", ""), backstory=d.get("backstory", ""),
-        occupation=d.get("occupation", ""), attitude=d.get("attitude", "neutral"),
+        occupation=d.get("occupation", ""),
+        title=d.get("title", ""), faction=d.get("faction", ""), alignment=d.get("alignment", ""),
+        attitude=d.get("attitude", "neutral"),
         notes=d.get("notes", ""), tags=d.get("tags", []),
         location_id=d.get("location_id", ""),
         stat_source=d.get("stat_source", ""),
@@ -277,6 +355,54 @@ def _deserialize_route(d: dict) -> MapRoute:
         notes=d.get("notes", ""), danger_level=d.get("danger_level", "safe"),
     )
 
+def _serialize_quest_objective(obj: QuestObjective) -> dict:
+    return {
+        "description": obj.description, "completed": obj.completed,
+        "notes": obj.notes, "target_npc_id": obj.target_npc_id,
+        "target_location_id": obj.target_location_id, "target_item": obj.target_item,
+    }
+
+def _deserialize_quest_objective(d: dict) -> QuestObjective:
+    return QuestObjective(
+        description=d.get("description", ""), completed=d.get("completed", False),
+        notes=d.get("notes", ""), target_npc_id=d.get("target_npc_id", ""),
+        target_location_id=d.get("target_location_id", ""),
+        target_item=d.get("target_item", ""),
+    )
+
+def _serialize_quest(q: Quest) -> dict:
+    return {
+        "id": q.id, "name": q.name, "description": q.description,
+        "status": q.status, "priority": q.priority, "quest_type": q.quest_type,
+        "giver_npc_id": q.giver_npc_id, "turn_in_npc_id": q.turn_in_npc_id,
+        "location_ids": q.location_ids, "npc_ids": q.npc_ids,
+        "objectives": [_serialize_quest_objective(o) for o in q.objectives],
+        "reward_xp": q.reward_xp, "reward_gold": q.reward_gold,
+        "reward_items": q.reward_items, "reward_notes": q.reward_notes,
+        "notes": q.notes, "tags": q.tags,
+        "created": q.created, "completed_date": q.completed_date,
+        "session_given": q.session_given, "level_range": q.level_range,
+    }
+
+def _deserialize_quest(d: dict) -> Quest:
+    return Quest(
+        id=d.get("id", ""), name=d.get("name", ""),
+        description=d.get("description", ""),
+        status=d.get("status", "active"), priority=d.get("priority", "normal"),
+        quest_type=d.get("quest_type", "main"),
+        giver_npc_id=d.get("giver_npc_id", ""),
+        turn_in_npc_id=d.get("turn_in_npc_id", ""),
+        location_ids=d.get("location_ids", []), npc_ids=d.get("npc_ids", []),
+        objectives=[_deserialize_quest_objective(o) for o in d.get("objectives", [])],
+        reward_xp=d.get("reward_xp", 0), reward_gold=d.get("reward_gold", 0),
+        reward_items=d.get("reward_items", []),
+        reward_notes=d.get("reward_notes", ""),
+        notes=d.get("notes", ""), tags=d.get("tags", []),
+        created=d.get("created", ""), completed_date=d.get("completed_date", ""),
+        session_given=d.get("session_given", 0), level_range=d.get("level_range", ""),
+    )
+
+
 def save_world(world: World, filepath: str = ""):
     """Save world to JSON file."""
     if not filepath:
@@ -295,6 +421,7 @@ def save_world(world: World, filepath: str = ""):
         "last_modified": world.last_modified,
         "locations": {k: _serialize_location(v) for k, v in world.locations.items()},
         "npcs": {k: _serialize_npc(v) for k, v in world.npcs.items()},
+        "quests": {k: _serialize_quest(v) for k, v in world.quests.items()},
         "next_id": world.next_id,
         "map_routes": [_serialize_route(r) for r in world.map_routes],
         "map_image_path": world.map_image_path,
@@ -319,6 +446,7 @@ def load_world(filepath: str) -> World:
         last_modified=data.get("last_modified", ""),
         locations={k: _deserialize_location(v) for k, v in data.get("locations", {}).items()},
         npcs={k: _deserialize_npc(v) for k, v in data.get("npcs", {}).items()},
+        quests={k: _deserialize_quest(v) for k, v in data.get("quests", {}).items()},
         next_id=data.get("next_id", 1),
         map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
         map_image_path=data.get("map_image_path", ""),
@@ -522,3 +650,50 @@ def get_shopkeepers_at_location(world: World, location_id: str) -> List[NPC]:
     """Get shopkeeper NPCs at a specific location."""
     return [npc for npc in world.npcs.values()
             if npc.is_shopkeeper and npc.active and npc.location_id == location_id]
+
+
+# ============================================================================
+# QUEST MANAGEMENT
+# ============================================================================
+
+def add_quest(world: World, name: str, **kwargs) -> Quest:
+    """Create and add a new quest to the world."""
+    qid = generate_id(world, "quest")
+    q = Quest(id=qid, name=name, created=_timestamp(), **kwargs)
+    world.quests[qid] = q
+    return q
+
+def delete_quest(world: World, quest_id: str):
+    """Delete a quest from the world."""
+    world.quests.pop(quest_id, None)
+
+def get_quests_by_status(world: World, status: str) -> List[Quest]:
+    """Get all quests with a given status."""
+    return [q for q in world.quests.values() if q.status == status]
+
+def get_quests_for_npc(world: World, npc_id: str) -> List[Quest]:
+    """Get all quests involving a specific NPC (as giver, turn-in, or related)."""
+    return [q for q in world.quests.values()
+            if q.giver_npc_id == npc_id or q.turn_in_npc_id == npc_id or npc_id in q.npc_ids]
+
+def get_quests_for_location(world: World, location_id: str) -> List[Quest]:
+    """Get all quests involving a specific location."""
+    return [q for q in world.quests.values() if location_id in q.location_ids]
+
+def search_quests(world: World, query: str) -> List[Quest]:
+    """Search quests by name, description, or tags."""
+    q = query.lower()
+    return [quest for quest in world.quests.values()
+            if q in quest.name.lower() or q in quest.description.lower()
+            or any(q in t.lower() for t in quest.tags)]
+
+def get_active_quests(world: World) -> List[Quest]:
+    """Get all active quests."""
+    return [q for q in world.quests.values() if q.status == "active"]
+
+def complete_quest(world: World, quest_id: str):
+    """Mark a quest as completed."""
+    q = world.quests.get(quest_id)
+    if q:
+        q.status = "completed"
+        q.completed_date = _timestamp()
