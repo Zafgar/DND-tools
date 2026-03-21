@@ -27,8 +27,11 @@ from data.campaign import (
 )
 from data.world import (
     World, Location, NPC, ShopItem, NPCRelationship, MapRoute,
+    Quest, QuestObjective, QUEST_STATUSES, QUEST_TYPES, QUEST_PRIORITIES,
     save_world, load_world, generate_id,
     add_location, add_npc, move_npc, delete_location, delete_npc,
+    add_quest, delete_quest, get_quests_by_status, get_quests_for_npc,
+    get_quests_for_location, get_active_quests, complete_quest, search_quests,
     get_root_locations, get_children, get_location_path,
     get_npcs_at_location, search_npcs, search_locations,
     populate_shop, get_shop_suggestions, get_shopkeepers,
@@ -226,6 +229,12 @@ class CampaignManagerState:
         self.services_scroll = 0
         self.travel_distance = 24  # Default travel distance in miles
 
+        # Quest viewer
+        self.selected_quest_id = ""
+        self.quest_filter = "active"  # all, active, completed, failed, not_started, on_hold
+        self.quest_search = ""
+        self.quest_search_active = False
+
         # World map view state
         self.world_map_mode = False  # True = map view, False = tree view
         self.map_offset_x = 0
@@ -317,22 +326,26 @@ class CampaignManagerState:
                                    self._add_world_npc, color=COLORS["player"])
         self.btn_world_npcs_view = Button(350, SCREEN_HEIGHT - 60, 140, 45, "All NPCs",
                                            self._toggle_npc_view, color=COLORS["accent"])
-        self.btn_world_shops_view = Button(500, SCREEN_HEIGHT - 60, 140, 45, "Shops",
+        self.btn_world_shops_view = Button(500, SCREEN_HEIGHT - 60, 100, 45, "Shops",
                                             self._toggle_shops_view, color=COLORS["legendary"])
-        self.btn_world_map_view = Button(650, SCREEN_HEIGHT - 60, 120, 45, "Map",
+        self.btn_world_map_view = Button(608, SCREEN_HEIGHT - 60, 80, 45, "Map",
                                           self._toggle_map_view, color=COLORS["cold"])
-        self.btn_world_templates = Button(780, SCREEN_HEIGHT - 60, 140, 45, "Templates",
+        self.btn_add_quest = Button(696, SCREEN_HEIGHT - 60, 95, 45, "+ Quest",
+                                      self._add_world_quest, color=COLORS["warning"])
+        self.btn_world_quests = Button(799, SCREEN_HEIGHT - 60, 95, 45, "Quests",
+                                        self._toggle_quests_view, color=COLORS["danger"])
+        self.btn_world_templates = Button(902, SCREEN_HEIGHT - 60, 100, 45, "Templates",
                                            self._toggle_templates_view, color=COLORS["spell"])
-        self.btn_world_services = Button(930, SCREEN_HEIGHT - 60, 130, 45, "Services",
+        self.btn_world_services = Button(1010, SCREEN_HEIGHT - 60, 100, 45, "Services",
                                           self._toggle_services_view, color=COLORS["success"])
-        self.btn_world_travel = Button(1070, SCREEN_HEIGHT - 60, 130, 45, "Travel",
+        self.btn_world_travel = Button(1118, SCREEN_HEIGHT - 60, 100, 45, "Travel",
                                         self._toggle_travel_view, color=COLORS["warning"])
 
     def _load_world_from_campaign(self) -> World:
         """Load or create World from campaign's world_data."""
         if self.campaign.world_data:
             try:
-                from data.world import _deserialize_location, _deserialize_npc, _deserialize_route, MapRoute
+                from data.world import _deserialize_location, _deserialize_npc, _deserialize_route, _deserialize_quest, MapRoute
                 wd = self.campaign.world_data
                 return World(
                     name=wd.get("name", self.campaign.name),
@@ -341,6 +354,7 @@ class CampaignManagerState:
                     last_modified=wd.get("last_modified", ""),
                     locations={k: _deserialize_location(v) for k, v in wd.get("locations", {}).items()},
                     npcs={k: _deserialize_npc(v) for k, v in wd.get("npcs", {}).items()},
+                    quests={k: _deserialize_quest(v) for k, v in wd.get("quests", {}).items()},
                     next_id=wd.get("next_id", 1),
                     map_routes=[_deserialize_route(r) for r in wd.get("map_routes", [])],
                     map_image_path=wd.get("map_image_path", ""),
@@ -352,7 +366,7 @@ class CampaignManagerState:
 
     def _serialize_world(self) -> dict:
         """Serialize World to dict for campaign save."""
-        from data.world import _serialize_location, _serialize_npc, _serialize_route
+        from data.world import _serialize_location, _serialize_npc, _serialize_route, _serialize_quest
         w = self.world
         # Sync map positions into world before saving
         w.map_positions = dict(self._location_map_positions)
@@ -363,6 +377,7 @@ class CampaignManagerState:
             "last_modified": w.last_modified,
             "locations": {k: _serialize_location(v) for k, v in w.locations.items()},
             "npcs": {k: _serialize_npc(v) for k, v in w.npcs.items()},
+            "quests": {k: _serialize_quest(v) for k, v in w.quests.items()},
             "next_id": w.next_id,
             "map_routes": [_serialize_route(r) for r in w.map_routes],
             "map_image_path": w.map_image_path,
@@ -698,6 +713,18 @@ class CampaignManagerState:
             self.world_view = "travel"
             self.scroll_y = 0
 
+    def _add_world_quest(self):
+        q = add_quest(self.world, f"Quest {self.world.next_id}")
+        self.selected_quest_id = q.id
+        self.world_view = "quests"
+
+    def _toggle_quests_view(self):
+        if self.world_view == "quests":
+            self.world_view = "locations"
+        else:
+            self.world_view = "quests"
+            self.scroll_y = 0
+
     def _load_map_positions(self):
         """Load location map positions from world data."""
         if self.world.map_positions:
@@ -929,6 +956,14 @@ class CampaignManagerState:
                     elif event.unicode.isprintable():
                         self.shop_item_search += event.unicode
                     continue
+                if self.quest_search_active:
+                    if event.key == pygame.K_BACKSPACE:
+                        self.quest_search = self.quest_search[:-1]
+                    elif event.key == pygame.K_ESCAPE:
+                        self.quest_search_active = False
+                    elif event.unicode.isprintable():
+                        self.quest_search += event.unicode
+                    continue
                 if event.key == pygame.K_ESCAPE and self._map_route_mode:
                     self._map_route_mode = False
                     self._map_route_from = ""
@@ -971,6 +1006,8 @@ class CampaignManagerState:
                 self.btn_world_npcs_view.handle_event(event)
                 self.btn_world_shops_view.handle_event(event)
                 self.btn_world_map_view.handle_event(event)
+                self.btn_add_quest.handle_event(event)
+                self.btn_world_quests.handle_event(event)
                 self.btn_world_templates.handle_event(event)
                 self.btn_world_services.handle_event(event)
                 self.btn_world_travel.handle_event(event)
@@ -1152,6 +1189,8 @@ class CampaignManagerState:
             self._handle_services_click(mp)
         elif self.world_view == "travel":
             self._handle_travel_click(mp)
+        elif self.world_view == "quests":
+            self._handle_quests_click(mp)
 
     def _handle_world_locations_click(self, mp):
         mx, my = mp
@@ -1406,6 +1445,36 @@ class CampaignManagerState:
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
                 loc.map_icon = self.input_text.strip()[:4]
+        elif self.input_active and self.input_active.startswith("quest_"):
+            q = self.world.quests.get(self.selected_quest_id)
+            if q:
+                field_map = {
+                    "quest_name": "name", "quest_description": "description",
+                    "quest_notes": "notes", "quest_reward_notes": "reward_notes",
+                    "quest_level_range": "level_range",
+                }
+                fname = field_map.get(self.input_active)
+                if fname:
+                    setattr(q, fname, self.input_text)
+                elif self.input_active == "quest_reward_xp":
+                    try:
+                        q.reward_xp = int(self.input_text)
+                    except ValueError:
+                        pass
+                elif self.input_active == "quest_reward_gold":
+                    try:
+                        q.reward_gold = float(self.input_text)
+                    except ValueError:
+                        pass
+                elif self.input_active == "quest_add_tag":
+                    if self.input_text.strip():
+                        q.tags.append(self.input_text.strip())
+                elif self.input_active == "quest_add_reward_item":
+                    if self.input_text.strip():
+                        q.reward_items.append(self.input_text.strip())
+                elif self.input_active == "quest_add_objective":
+                    if self.input_text.strip():
+                        q.objectives.append(QuestObjective(description=self.input_text.strip()))
         self.input_active = ""
         self.modal = None
 
@@ -1525,6 +1594,8 @@ class CampaignManagerState:
             self.btn_world_npcs_view.draw(screen, mp)
             self.btn_world_shops_view.draw(screen, mp)
             self.btn_world_map_view.draw(screen, mp)
+            self.btn_add_quest.draw(screen, mp)
+            self.btn_world_quests.draw(screen, mp)
             self.btn_world_templates.draw(screen, mp)
             self.btn_world_services.draw(screen, mp)
             self.btn_world_travel.draw(screen, mp)
@@ -2153,6 +2224,8 @@ class CampaignManagerState:
             self._draw_services_viewer(screen, mp)
         elif self.world_view == "travel":
             self._draw_travel_viewer(screen, mp)
+        elif self.world_view == "quests":
+            self._draw_quests_viewer(screen, mp)
 
         # Draw tooltip if hovering an item
         if self.tooltip_item:
@@ -4641,3 +4714,426 @@ class CampaignManagerState:
     def _handle_travel_click(self, mp):
         """Handle clicks in travel viewer (handled inline)."""
         pass
+
+    # ================================================================
+    # QUESTS VIEWER
+    # ================================================================
+
+    def _draw_quests_viewer(self, screen, mp):
+        """Draw quest list (left) and selected quest detail (right)."""
+        mid = SCREEN_WIDTH // 2
+
+        # Search bar
+        search_rect = pygame.Rect(20, 68, 300, 28)
+        pygame.draw.rect(screen, COLORS["input_bg"], search_rect, border_radius=3)
+        pygame.draw.rect(screen, COLORS["input_focus"] if self.quest_search_active else COLORS["border"],
+                         search_rect, 1, border_radius=3)
+        st = fonts.small.render(self.quest_search or "Search quests...", True,
+                                COLORS["text_main"] if self.quest_search else COLORS["text_muted"])
+        screen.blit(st, (search_rect.x + 5, search_rect.y + 5))
+
+        # Filter tabs
+        tx = 330
+        for filt in ["all", "active", "not_started", "completed", "failed", "on_hold"]:
+            is_act = self.quest_filter == filt
+            label = filt.replace("_", " ").title()
+            tw = fonts.tiny.size(label)[0] + 12
+            tab_rect = pygame.Rect(tx, 70, tw, 22)
+            bg = COLORS["accent_dim"] if is_act else COLORS["panel"]
+            if tab_rect.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    self.quest_filter = filt
+            pygame.draw.rect(screen, bg, tab_rect, border_radius=4)
+            if is_act:
+                pygame.draw.rect(screen, COLORS["accent"], tab_rect, 1, border_radius=4)
+            tt = fonts.tiny.render(label, True, COLORS["text_bright"] if is_act else COLORS["text_dim"])
+            screen.blit(tt, (tx + 6, 73))
+            tx += tw + 4
+
+        # Quest list
+        y = 105 + self.scroll_y
+        quests = list(self.world.quests.values())
+        if self.quest_search:
+            quests = search_quests(self.world, self.quest_search)
+        if self.quest_filter != "all":
+            quests = [q for q in quests if q.status == self.quest_filter]
+
+        status_cols = {
+            "active": COLORS["success"], "completed": COLORS["text_dim"],
+            "failed": COLORS["danger"], "not_started": COLORS["warning"],
+            "on_hold": COLORS["cold"],
+        }
+        priority_cols = {
+            "urgent": COLORS["danger"], "high": COLORS["warning"],
+            "normal": COLORS["text_dim"], "low": COLORS["cold"],
+        }
+
+        if not quests:
+            hint = fonts.body.render("No quests found. Click '+ Quest' to create one.", True, COLORS["text_muted"])
+            screen.blit(hint, (30, y))
+        else:
+            for quest in quests:
+                if y < 50 or y > SCREEN_HEIGHT - 130:
+                    y += 56
+                    continue
+                is_sel = quest.id == self.selected_quest_id
+                rect = pygame.Rect(20, y, mid - 40, 50)
+                bg = COLORS["selected"] if is_sel else COLORS["panel"]
+                if rect.collidepoint(mp):
+                    bg = COLORS["hover"]
+                pygame.draw.rect(screen, bg, rect, border_radius=5)
+                if is_sel:
+                    pygame.draw.rect(screen, COLORS["accent_dim"], rect, 1, border_radius=5)
+
+                # Quest name
+                nt = fonts.body.render(quest.name, True, COLORS["text_bright"])
+                screen.blit(nt, (rect.x + 8, y + 3))
+
+                # Status badge
+                scol = status_cols.get(quest.status, COLORS["text_dim"])
+                slabel = quest.status.replace("_", " ").upper()
+                Badge.draw(screen, rect.x + 8, y + 26, slabel, scol, fonts.tiny)
+
+                # Type badge
+                type_x = rect.x + 8 + fonts.tiny.size(slabel)[0] + 20
+                Badge.draw(screen, type_x, y + 26, quest.quest_type.upper(), COLORS["spell"], fonts.tiny)
+
+                # Priority indicator
+                pcol = priority_cols.get(quest.priority, COLORS["text_dim"])
+                if quest.priority in ("urgent", "high"):
+                    pt = fonts.tiny.render(quest.priority.upper(), True, pcol)
+                    screen.blit(pt, (rect.right - pt.get_width() - 10, y + 5))
+
+                # Objective progress
+                total_obj = len(quest.objectives)
+                done_obj = sum(1 for o in quest.objectives if o.completed)
+                if total_obj > 0:
+                    prog = f"{done_obj}/{total_obj}"
+                    prt = fonts.tiny.render(prog, True, COLORS["success"] if done_obj == total_obj else COLORS["text_dim"])
+                    screen.blit(prt, (rect.right - prt.get_width() - 10, y + 30))
+
+                y += 56
+
+        # Right panel: selected quest detail
+        if self.selected_quest_id:
+            self._draw_quest_detail(screen, mp, mid + 20)
+
+    def _draw_quest_detail(self, screen, mp, start_x):
+        """Draw detailed view of the selected quest."""
+        quest = self.world.quests.get(self.selected_quest_id)
+        if not quest:
+            return
+        y = 70
+        panel_w = SCREEN_WIDTH - start_x - 30
+
+        # Name (editable)
+        hdr = fonts.header.render(quest.name, True, COLORS["accent"])
+        screen.blit(hdr, (start_x, y))
+        name_rect = pygame.Rect(start_x, y, hdr.get_width() + 50, 28)
+        if name_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_name"
+            self.input_text = quest.name
+            self.modal = ("edit_field", "quest_name")
+        y += 32
+
+        # Status selector
+        sl = fonts.small_bold.render("Status:", True, COLORS["text_dim"])
+        screen.blit(sl, (start_x, y))
+        sx = start_x + 60
+        status_cols = {
+            "active": COLORS["success"], "completed": COLORS["text_dim"],
+            "failed": COLORS["danger"], "not_started": COLORS["warning"],
+            "on_hold": COLORS["cold"],
+        }
+        for st in QUEST_STATUSES:
+            is_act = quest.status == st
+            label = st.replace("_", " ").title()
+            sw = fonts.tiny.size(label)[0] + 12
+            sr = pygame.Rect(sx, y, sw, 20)
+            scol = status_cols.get(st, COLORS["panel"])
+            bg = scol if is_act else COLORS["panel"]
+            if sr.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    quest.status = st
+                    if st == "completed":
+                        from data.campaign import _timestamp
+                        quest.completed_date = _timestamp()
+            pygame.draw.rect(screen, bg, sr, border_radius=8)
+            stt = fonts.tiny.render(label, True, COLORS["text_bright"] if is_act else COLORS["text_dim"])
+            screen.blit(stt, (sx + 6, y + 3))
+            sx += sw + 4
+        y += 26
+
+        # Priority selector
+        pl = fonts.small_bold.render("Priority:", True, COLORS["text_dim"])
+        screen.blit(pl, (start_x, y))
+        px = start_x + 65
+        priority_cols = {
+            "urgent": COLORS["danger"], "high": COLORS["warning"],
+            "normal": COLORS["text_dim"], "low": COLORS["cold"],
+        }
+        for pr in QUEST_PRIORITIES:
+            is_act = quest.priority == pr
+            pw = fonts.tiny.size(pr.title())[0] + 12
+            prr = pygame.Rect(px, y, pw, 20)
+            pcol = priority_cols.get(pr, COLORS["panel"])
+            bg = pcol if is_act else COLORS["panel"]
+            if prr.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    quest.priority = pr
+            pygame.draw.rect(screen, bg, prr, border_radius=8)
+            ptt = fonts.tiny.render(pr.title(), True, COLORS["text_bright"] if is_act else COLORS["text_dim"])
+            screen.blit(ptt, (px + 6, y + 3))
+            px += pw + 4
+        y += 26
+
+        # Type selector
+        tl = fonts.small_bold.render("Type:", True, COLORS["text_dim"])
+        screen.blit(tl, (start_x, y))
+        tx = start_x + 50
+        for qt in QUEST_TYPES:
+            is_act = quest.quest_type == qt
+            tw = fonts.tiny.size(qt.title())[0] + 12
+            tr = pygame.Rect(tx, y, tw, 20)
+            bg = COLORS["accent_dim"] if is_act else COLORS["panel"]
+            if tr.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    quest.quest_type = qt
+            pygame.draw.rect(screen, bg, tr, border_radius=8)
+            ttt = fonts.tiny.render(qt.title(), True, COLORS["text_bright"] if is_act else COLORS["text_dim"])
+            screen.blit(ttt, (tx + 6, y + 3))
+            tx += tw + 4
+        y += 30
+
+        # Editable text fields
+        fields = [
+            ("Description", quest.description, "quest_description"),
+            ("Level Range", quest.level_range, "quest_level_range"),
+        ]
+        for label, value, field_key in fields:
+            fl = fonts.small_bold.render(f"{label}:", True, COLORS["text_dim"])
+            screen.blit(fl, (start_x, y))
+            field_rect = pygame.Rect(start_x + 100, y - 2, panel_w - 100, 22)
+            pygame.draw.rect(screen, COLORS["input_bg"], field_rect, border_radius=3)
+            text = value or f"(set {label.lower()})"
+            col = COLORS["text_main"] if value else COLORS["text_muted"]
+            ft = fonts.small.render(text[:80], True, col)
+            screen.blit(ft, (field_rect.x + 4, y))
+            if field_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                self.input_active = field_key
+                self.input_text = value
+                self.modal = ("edit_field", field_key)
+            y += 24
+
+        # Quest giver NPC
+        y += 4
+        gl = fonts.small_bold.render("Quest Giver:", True, COLORS["text_dim"])
+        screen.blit(gl, (start_x, y))
+        giver = self.world.npcs.get(quest.giver_npc_id)
+        giver_name = giver.name if giver else "(none)"
+        gt = fonts.small.render(giver_name, True, COLORS["accent"] if giver else COLORS["text_muted"])
+        screen.blit(gt, (start_x + 100, y))
+        # NPC picker - cycle through NPCs on click
+        pick_btn = pygame.Rect(start_x + 100 + gt.get_width() + 10, y - 2, 50, 20)
+        is_pick_hover = pick_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if is_pick_hover else COLORS["panel"], pick_btn, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], pick_btn, 1, border_radius=3)
+        pbt = fonts.tiny.render("Pick", True, COLORS["accent"])
+        screen.blit(pbt, (pick_btn.x + 12, pick_btn.y + 3))
+        if is_pick_hover and pygame.mouse.get_pressed()[0]:
+            npc_list = list(self.world.npcs.keys())
+            if npc_list:
+                cur_idx = npc_list.index(quest.giver_npc_id) if quest.giver_npc_id in npc_list else -1
+                quest.giver_npc_id = npc_list[(cur_idx + 1) % len(npc_list)]
+        # Clear
+        if quest.giver_npc_id:
+            clr = pygame.Rect(pick_btn.right + 5, y - 2, 20, 20)
+            is_clr = clr.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger_hover"] if is_clr else COLORS["panel"], clr, border_radius=3)
+            xt = fonts.tiny.render("X", True, COLORS["danger"])
+            screen.blit(xt, (clr.x + 5, clr.y + 3))
+            if is_clr and pygame.mouse.get_pressed()[0]:
+                quest.giver_npc_id = ""
+        y += 24
+
+        # Objectives
+        y += 4
+        ol = fonts.small_bold.render("Objectives:", True, COLORS["text_dim"])
+        screen.blit(ol, (start_x, y))
+        y += 20
+        for i, obj in enumerate(quest.objectives):
+            if y > SCREEN_HEIGHT - 160:
+                break
+            obj_rect = pygame.Rect(start_x, y, panel_w, 22)
+            # Checkbox
+            cb = pygame.Rect(start_x, y + 2, 16, 16)
+            pygame.draw.rect(screen, COLORS["success"] if obj.completed else COLORS["panel"], cb, border_radius=3)
+            pygame.draw.rect(screen, COLORS["border"], cb, 1, border_radius=3)
+            if obj.completed:
+                ct = fonts.tiny.render("v", True, COLORS["text_bright"])
+                screen.blit(ct, (cb.x + 3, cb.y + 1))
+            if cb.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                obj.completed = not obj.completed
+            # Description
+            col = COLORS["text_dim"] if obj.completed else COLORS["text_bright"]
+            ot = fonts.small.render(obj.description[:60], True, col)
+            screen.blit(ot, (start_x + 22, y + 2))
+            # Delete button
+            del_btn = pygame.Rect(start_x + panel_w - 20, y + 2, 16, 16)
+            is_del = del_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger_hover"] if is_del else COLORS["panel"], del_btn, border_radius=3)
+            dxt = fonts.tiny.render("X", True, COLORS["danger"])
+            screen.blit(dxt, (del_btn.x + 3, del_btn.y + 1))
+            if is_del and pygame.mouse.get_pressed()[0]:
+                quest.objectives.pop(i)
+            y += 24
+
+        # Add objective button
+        add_obj_btn = pygame.Rect(start_x, y, 120, 22)
+        is_add_hover = add_obj_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if is_add_hover else COLORS["panel"], add_obj_btn, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], add_obj_btn, 1, border_radius=3)
+        aot = fonts.tiny.render("+ Objective", True, COLORS["accent"])
+        screen.blit(aot, (add_obj_btn.x + 8, add_obj_btn.y + 4))
+        if is_add_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_add_objective"
+            self.input_text = ""
+            self.modal = ("edit_field", "quest_add_objective")
+        y += 28
+
+        # Rewards section
+        rl = fonts.small_bold.render("Rewards:", True, COLORS["text_dim"])
+        screen.blit(rl, (start_x, y))
+        y += 20
+
+        # XP
+        xpl = fonts.small.render(f"XP: {quest.reward_xp}", True, COLORS["text_bright"])
+        screen.blit(xpl, (start_x, y))
+        xp_rect = pygame.Rect(start_x, y - 2, xpl.get_width() + 20, 20)
+        if xp_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_reward_xp"
+            self.input_text = str(quest.reward_xp)
+            self.modal = ("edit_field", "quest_reward_xp")
+
+        # Gold
+        gl2 = fonts.small.render(f"Gold: {quest.reward_gold}", True, COLORS["legendary"])
+        screen.blit(gl2, (start_x + 120, y))
+        gold_rect = pygame.Rect(start_x + 120, y - 2, gl2.get_width() + 20, 20)
+        if gold_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_reward_gold"
+            self.input_text = str(quest.reward_gold)
+            self.modal = ("edit_field", "quest_reward_gold")
+        y += 22
+
+        # Reward items
+        for i, item in enumerate(quest.reward_items):
+            if y > SCREEN_HEIGHT - 140:
+                break
+            it = fonts.small.render(f"  - {item}", True, COLORS["text_main"])
+            screen.blit(it, (start_x, y))
+            # Delete item
+            del_btn = pygame.Rect(start_x + panel_w - 20, y, 16, 16)
+            is_del = del_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger_hover"] if is_del else COLORS["panel"], del_btn, border_radius=3)
+            dxt = fonts.tiny.render("X", True, COLORS["danger"])
+            screen.blit(dxt, (del_btn.x + 3, del_btn.y + 1))
+            if is_del and pygame.mouse.get_pressed()[0]:
+                quest.reward_items.pop(i)
+            y += 20
+
+        # Add reward item
+        add_ri_btn = pygame.Rect(start_x, y, 120, 22)
+        is_ri_hover = add_ri_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if is_ri_hover else COLORS["panel"], add_ri_btn, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], add_ri_btn, 1, border_radius=3)
+        rit = fonts.tiny.render("+ Item", True, COLORS["accent"])
+        screen.blit(rit, (add_ri_btn.x + 8, add_ri_btn.y + 4))
+        if is_ri_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_add_reward_item"
+            self.input_text = ""
+            self.modal = ("edit_field", "quest_add_reward_item")
+        y += 28
+
+        # Notes
+        nl = fonts.small_bold.render("Notes:", True, COLORS["text_dim"])
+        screen.blit(nl, (start_x, y))
+        notes_rect = pygame.Rect(start_x + 55, y - 2, panel_w - 55, 22)
+        pygame.draw.rect(screen, COLORS["input_bg"], notes_rect, border_radius=3)
+        notes_text = quest.notes or "(add notes)"
+        ncol = COLORS["text_main"] if quest.notes else COLORS["text_muted"]
+        ntt = fonts.small.render(notes_text[:80], True, ncol)
+        screen.blit(ntt, (notes_rect.x + 4, y))
+        if notes_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_notes"
+            self.input_text = quest.notes
+            self.modal = ("edit_field", "quest_notes")
+        y += 26
+
+        # Tags
+        tl2 = fonts.small_bold.render("Tags:", True, COLORS["text_dim"])
+        screen.blit(tl2, (start_x, y))
+        tag_x = start_x + 45
+        for i, tag in enumerate(quest.tags):
+            tw = fonts.tiny.size(tag)[0] + 18
+            tr = pygame.Rect(tag_x, y, tw, 20)
+            is_tag_hover = tr.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["hover"] if is_tag_hover else COLORS["accent_dim"], tr, border_radius=8)
+            tgt = fonts.tiny.render(tag, True, COLORS["text_bright"])
+            screen.blit(tgt, (tag_x + 5, y + 3))
+            # X to remove
+            xr = pygame.Rect(tag_x + tw - 14, y + 2, 12, 16)
+            xt2 = fonts.tiny.render("x", True, COLORS["danger"])
+            screen.blit(xt2, (xr.x + 2, xr.y))
+            if xr.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                quest.tags.pop(i)
+            tag_x += tw + 4
+        # Add tag
+        add_tag = pygame.Rect(tag_x, y, 50, 20)
+        is_at_hover = add_tag.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if is_at_hover else COLORS["panel"], add_tag, border_radius=8)
+        pygame.draw.rect(screen, COLORS["border"], add_tag, 1, border_radius=8)
+        att = fonts.tiny.render("+ tag", True, COLORS["accent"])
+        screen.blit(att, (add_tag.x + 8, add_tag.y + 3))
+        if is_at_hover and pygame.mouse.get_pressed()[0]:
+            self.input_active = "quest_add_tag"
+            self.input_text = ""
+            self.modal = ("edit_field", "quest_add_tag")
+        y += 28
+
+        # Delete quest button
+        del_q_btn = pygame.Rect(start_x, y + 10, 120, 28)
+        is_dq_hover = del_q_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["danger_hover"] if is_dq_hover else COLORS["danger"], del_q_btn, border_radius=5)
+        dqt = fonts.small_bold.render("Delete Quest", True, COLORS["text_bright"])
+        screen.blit(dqt, (del_q_btn.x + 8, del_q_btn.y + 5))
+        if is_dq_hover and pygame.mouse.get_pressed()[0]:
+            delete_quest(self.world, self.selected_quest_id)
+            self.selected_quest_id = ""
+
+    def _handle_quests_click(self, mp):
+        """Handle clicks in quests viewer."""
+        mx, my = mp
+        # Quest search box
+        search_rect = pygame.Rect(20, 68, 300, 28)
+        if search_rect.collidepoint(mp):
+            self.quest_search_active = True
+            return
+        self.quest_search_active = False
+
+        # Quest list
+        y = 105 + self.scroll_y
+        quests = list(self.world.quests.values())
+        if self.quest_search:
+            quests = search_quests(self.world, self.quest_search)
+        if self.quest_filter != "all":
+            quests = [q for q in quests if q.status == self.quest_filter]
+        for quest in quests:
+            rect = pygame.Rect(20, y, SCREEN_WIDTH // 2 - 40, 50)
+            if rect.collidepoint(mp):
+                self.selected_quest_id = quest.id
+                return
+            y += 56
