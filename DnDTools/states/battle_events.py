@@ -208,6 +208,17 @@ class BattleEventsMixin:
                 if event.type == pygame.KEYDOWN and not self.terrain_mode:
                     mods = pygame.key.get_mods()
 
+                    # Ctrl+S = Quick Save
+                    if event.key == pygame.K_s and mods & pygame.KMOD_CTRL:
+                        self._perform_autosave()
+                        continue
+
+                    # H = Toggle Help Overlay
+                    if event.key == pygame.K_h and not self.hp_input_active:
+                        self.help_overlay_open = getattr(self, 'help_overlay_open', False)
+                        self.help_overlay_open = not self.help_overlay_open
+                        continue
+
                     # Space = Next Turn (when combat started)
                     if event.key == pygame.K_SPACE and self.battle.combat_started:
                         if not self.roll_modal_open and not self.dmg_modal_open:

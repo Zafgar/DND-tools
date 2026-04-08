@@ -207,6 +207,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.terrain_favorites = ["wall", "rock", "tree", "door", "platform_10",
                                   "difficult", "water", "cover", "pillar", "fire"]
 
+        # Help Overlay
+        self.help_overlay_open = False
+
+        # Encounter Balance Indicator
+        self.encounter_danger_cache = None  # Cached danger assessment dict
+        self.encounter_danger_timer = 0     # Recalculate every N frames
+
         # Roll Result Modal
         self.roll_modal_open = False
         self.roll_modal_title = ""

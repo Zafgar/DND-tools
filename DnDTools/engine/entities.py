@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import random
 import copy
 import math
+from typing import Optional
 from settings import COLORS
 from data.models import CreatureStats, SpellInfo, Item
 
@@ -445,6 +448,31 @@ class Entity:
         self.is_wild_shaped = False
         self.wild_shape_name = ""
 
+    # ---- Multiclass Helpers ----
+
+    def get_class_level(self, class_name: str) -> int:
+        """Get level in a specific class. Checks multiclass dict first, falls back to character_class."""
+        if self.stats.multiclass:
+            return self.stats.multiclass.get(class_name, 0)
+        if self.stats.character_class == class_name:
+            return self.stats.character_level
+        return 0
+
+    @property
+    def is_multiclass(self) -> bool:
+        """True if the entity has levels in more than one class."""
+        return len(self.stats.multiclass) > 1
+
+    @property
+    def class_summary(self) -> str:
+        """Human-readable class string, e.g. 'Fighter 5 / Wizard 3'."""
+        if self.stats.multiclass:
+            parts = [f"{cls} {lvl}" for cls, lvl in self.stats.multiclass.items()]
+            return " / ".join(parts)
+        if self.stats.character_class:
+            return f"{self.stats.character_class} {self.stats.character_level}"
+        return ""
+
     def record_attack(self):
         """Record that this entity made an attack roll this turn (hit or miss)."""
         self.attacked_this_turn = True
@@ -582,9 +610,12 @@ class Entity:
 
         return amount, broke_conc
 
-    def heal(self, amount: int):
+    def heal(self, amount: int) -> int:
+        """Heal the entity by amount. Returns actual HP restored."""
         was_down = self.hp <= 0
+        old_hp = self.hp
         self.hp = min(self.max_hp, self.hp + amount)
+        healed = self.hp - old_hp
         # Regaining HP removes Unconscious (from death saves)
         if was_down and self.hp > 0:
             self.remove_condition("Unconscious")
@@ -592,6 +623,7 @@ class Entity:
             self.death_save_failures = 0
             self.is_stable = False
             self.death_save_history = []
+        return healed
 
     def add_temp_hp(self, amount: int):
         """Temp HP doesn't stack; take the higher value."""
