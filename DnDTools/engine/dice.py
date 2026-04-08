@@ -39,7 +39,7 @@ def roll_dice_critical(dice_str: str) -> int:
         total += int(modifier_str)
     return max(0, total)
 
-def roll_d20(advantage: bool = False, disadvantage: bool = False):
+def roll_d20(advantage: bool = False, disadvantage: bool = False) -> tuple[int, str]:
     """Roll 1d20, returning (result, roll_description)."""
     r1 = random.randint(1, 20)
     if advantage and not disadvantage:
@@ -50,7 +50,7 @@ def roll_d20(advantage: bool = False, disadvantage: bool = False):
         return min(r1, r2), f"({r1},{r2}) Dis"
     return r1, str(r1)
 
-def roll_attack(attack_bonus: int, advantage: bool = False, disadvantage: bool = False):
+def roll_attack(attack_bonus: int, advantage: bool = False, disadvantage: bool = False) -> tuple[int, int, bool, bool, str]:
     """Roll attack, returns (total, nat_roll, is_crit, is_fumble, roll_str)."""
     nat, roll_str = roll_d20(advantage, disadvantage)
     return nat + attack_bonus, nat, nat == 20, nat == 1, roll_str

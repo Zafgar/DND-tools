@@ -370,6 +370,14 @@ class BattleRendererMixin:
         
         self._draw_hover_info(screen, mp)
 
+        # Encounter Danger Indicator (top-right of grid area)
+        if self.battle.combat_started:
+            self._draw_encounter_balance(screen)
+
+        # Help Overlay
+        if getattr(self, 'help_overlay_open', False):
+            self._draw_help_overlay(screen)
+
         # Draw tooltip last so it's on top of everything
         if self.active_tooltip:
             self._draw_tooltip(screen)
@@ -2767,4 +2775,128 @@ class BattleRendererMixin:
             pg_txt = fonts.tiny.render(f"Page {current_page}/{total_pages} (scroll to browse)", True, COLORS["text_dim"])
             screen.blit(pg_txt, (bx + 10, by + bh - 25))
 
+    # ------------------------------------------------------------------ #
+    # Encounter Balance Indicator                                          #
+    # ------------------------------------------------------------------ #
+    def _draw_encounter_balance(self, screen):
+        """Draw a small encounter difficulty indicator in the top-right of the grid."""
+        # Recalculate every 120 frames (~2 seconds)
+        self.encounter_danger_timer = getattr(self, 'encounter_danger_timer', 0) + 1
+        if self.encounter_danger_cache is None or self.encounter_danger_timer >= 120:
+            self.encounter_danger_timer = 0
+            try:
+                self.encounter_danger_cache = self.battle.get_win_probability()
+            except Exception:
+                self.encounter_danger_cache = None
+
+        if not self.encounter_danger_cache:
+            return
+
+        data = self.encounter_danger_cache
+        win_pct = data.get("player_win_pct", 50)
+
+        # Color based on player advantage
+        if win_pct >= 70:
+            color = COLORS["success"]
+            label = "EASY"
+        elif win_pct >= 50:
+            color = COLORS["warning"]
+            label = "FAIR"
+        elif win_pct >= 30:
+            color = (240, 130, 40)
+            label = "HARD"
+        else:
+            color = COLORS["danger"]
+            label = "DEADLY"
+
+        # Draw compact indicator
+        from states.battle_constants import GRID_W, TOP_BAR_H
+        x = GRID_W - 130
+        y = TOP_BAR_H + 8
+
+        # Background pill
+        bg = pygame.Rect(x, y, 120, 28)
+        pygame.draw.rect(screen, COLORS["panel_dark"], bg, border_radius=14)
+        pygame.draw.rect(screen, color, bg, 1, border_radius=14)
+
+        # Win bar
+        bar_x = x + 8
+        bar_y = y + 6
+        bar_w = 60
+        bar_h = 8
+        pygame.draw.rect(screen, COLORS["hp_bg"], (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+        fill_w = int(bar_w * win_pct / 100)
+        if fill_w > 0:
+            pygame.draw.rect(screen, color, (bar_x, bar_y, fill_w, bar_h), border_radius=4)
+
+        # Label
+        txt = fonts.tiny.render(f"{label} {win_pct:.0f}%", True, color)
+        screen.blit(txt, (bar_x + bar_w + 6, y + 6))
+
+    # ------------------------------------------------------------------ #
+    # Help Overlay                                                         #
+    # ------------------------------------------------------------------ #
+    def _draw_help_overlay(self, screen):
+        """Draw semi-transparent help overlay showing all keyboard shortcuts."""
+        from states.battle_constants import GRID_W
+
+        # Semi-transparent background
+        overlay = pygame.Surface((GRID_W, screen.get_height()), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        screen.blit(overlay, (0, 0))
+
+        title = fonts.title.render("KEYBOARD SHORTCUTS", True, COLORS["accent"])
+        screen.blit(title, (GRID_W // 2 - title.get_width() // 2, 30))
+
+        shortcuts = [
+            ("COMBAT", [
+                ("Space", "Next Turn"),
+                ("N", "AI Turn (auto-play current)"),
+                ("Ctrl+S", "Quick Save"),
+                ("Ctrl+Z / Z", "Undo"),
+                ("Ctrl+Y / Y", "Redo"),
+            ]),
+            ("SELECTED ENTITY", [
+                ("P", "Toggle Prone"),
+                ("T", "Toggle Stunned"),
+                ("C", "Toggle Charmed"),
+                ("R", "Toggle Restrained"),
+                ("F", "Toggle Frightened"),
+                ("I", "Toggle Invisible"),
+                ("X", "Toggle Poisoned"),
+                ("B", "Toggle Blinded"),
+                ("-/+ then digits", "Apply damage/healing"),
+                ("Numpad 1-9", "Quick damage (1-9)"),
+                ("Numpad 0", "Quick heal 10"),
+            ]),
+            ("GRID & TERRAIN", [
+                ("Esc", "Cancel / Close menus"),
+                ("1/2/3/4", "Terrain tools (paint/move/rect/elev)"),
+                ("Tab", "Cycle terrain tool"),
+                ("Scroll", "Zoom / scroll"),
+            ]),
+            ("OTHER", [
+                ("H", "Toggle this help"),
+            ]),
+        ]
+
+        col_x = 60
+        y = 80
+        for section_name, keys in shortcuts:
+            header = fonts.header.render(section_name, True, COLORS["accent_hover"])
+            screen.blit(header, (col_x, y))
+            y += 28
+            for key, desc in keys:
+                key_surf = fonts.small.render(f"  {key}", True, COLORS["warning"])
+                desc_surf = fonts.small.render(f"  {desc}", True, COLORS["text_main"])
+                screen.blit(key_surf, (col_x, y))
+                screen.blit(desc_surf, (col_x + 180, y))
+                y += 22
+            y += 10
+            if y > screen.get_height() - 100:
+                col_x += 450
+                y = 80
+
+        hint = fonts.small.render("Press H to close", True, COLORS["text_dim"])
+        screen.blit(hint, (GRID_W // 2 - hint.get_width() // 2, screen.get_height() - 40))
 

@@ -1,121 +1,25 @@
-"""
-D&D 5e 2014 Tactical AI for NPCs and Auto-Battle Heroes.
-Computes an optimal TurnPlan for a given entity.
-Understands class mechanics: Rage, Sneak Attack, Divine Smite, Hunter's Mark,
-Stunning Strike, Flurry of Blows, Spiritual Weapon summons, etc.
-"""
+"""TacticalAI – the main AI class that computes optimal turns for D&D 5e entities."""
 import math
 import random
 import heapq
-from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 from data.models import Action, SpellInfo, Item
 from engine.dice import roll_attack, roll_dice, roll_dice_critical, average_damage, scale_cantrip_dice
+from engine.ai.models import ActionStep, TurnPlan
+from engine.ai.constants import (
+    KILL_POTENTIAL_BONUS, FOCUS_FIRE_WEIGHT, THREAT_DPR_WEIGHT,
+    SPELL_SLOT_THREAT, CONC_LEVEL_VALUE, CONC_AOE_BONUS,
+    CONC_CONDITION_BONUS, CONC_SUMMON_BONUS, HEALER_PRIORITY_BONUS,
+    DISTANCE_PENALTY_WEIGHT, AC_DIFFICULTY_WEIGHT, MARK_TARGET_BONUS,
+    GRAPPLE_SHOVE_COMBO_VALUE, DODGE_HP_THRESHOLD, DODGE_CRITICAL_THRESHOLD,
+    HEAL_MELEE_THRESHOLD, HEAL_RANGED_THRESHOLD, DISENGAGE_HP_LOW,
+)
+from engine.ai.utils import _get_effective_caster_level, _get_spell_damage_dice
 
 if TYPE_CHECKING:
     from engine.entities import Entity
     from engine.battle import BattleSystem
     from data.models import CreatureStats
-
-# ------------------------------------------------------------------ #
-# AI Scoring Constants                                                 #
-# ------------------------------------------------------------------ #
-# Target scoring weights
-KILL_POTENTIAL_BONUS = 50       # Bonus for killable targets
-FOCUS_FIRE_WEIGHT = 40          # Max bonus for nearly-dead targets
-THREAT_DPR_WEIGHT = 0.5         # Multiplier for enemy DPR contribution
-SPELL_SLOT_THREAT = 2           # Per remaining spell slot
-CONC_LEVEL_VALUE = 5            # Per spell level of concentration target
-CONC_AOE_BONUS = 15             # Bonus for AoE concentration spells
-CONC_CONDITION_BONUS = 10       # Bonus for debuff concentration spells
-CONC_SUMMON_BONUS = 10          # Bonus for summon concentration spells
-HEALER_PRIORITY_BONUS = 15      # Bonus for targeting healers
-DISTANCE_PENALTY_WEIGHT = 2     # Per square distance penalty
-AC_DIFFICULTY_WEIGHT = 0.5      # Per AC point above 12
-MARK_TARGET_BONUS = 25          # Bonus for Hunter's Mark/Hex targets
-
-# Grapple/shove scoring
-GRAPPLE_SHOVE_COMBO_VALUE = 40  # Value of the grapple+prone combo
-
-# Action scoring thresholds
-DODGE_HP_THRESHOLD = 0.40       # Below this HP%, consider Dodge action
-DODGE_CRITICAL_THRESHOLD = 0.25 # Below this HP%, Dodge with even 1 threat
-HEAL_MELEE_THRESHOLD = 0.30     # Below this HP%, melee fighters self-heal
-HEAL_RANGED_THRESHOLD = 0.35    # Below this HP%, ranged fighters self-heal
-DISENGAGE_HP_LOW = 0.20         # Melee fighters disengage below this HP%
-
-
-@dataclass
-class ActionStep:
-    """One step inside a full turn plan."""
-    step_type: str             # "attack","spell","bonus_attack","bonus_spell","move","wait","legendary","summon"
-    description: str = ""
-    attacker: Optional["Entity"] = None
-    target: Optional["Entity"] = None
-    targets: List["Entity"] = field(default_factory=list)
-    action_name: str = ""
-    action: Optional[Action] = None
-    spell: Optional[SpellInfo] = None
-    slot_used: int = 0
-    attack_roll: int = 0
-    attack_roll_str: str = ""
-    nat_roll: int = 0
-    is_crit: bool = False
-    is_hit: bool = False
-    damage: int = 0
-    damage_type: str = ""
-    save_dc: int = 0
-    save_ability: str = ""
-    applies_condition: str = ""
-    condition_dc: int = 0
-    new_x: float = 0.0
-    new_y: float = 0.0
-    movement_ft: float = 0.0
-    old_x: float = 0.0
-    old_y: float = 0.0
-    aoe_center: tuple = field(default_factory=tuple)
-    # Class mechanic extras
-    bonus_damage: int = 0            # Extra damage from Sneak Attack, Smite, etc.
-    bonus_damage_desc: str = ""      # "Sneak Attack 5d6", "Divine Smite 2d8", etc.
-    rage_bonus: int = 0              # Rage damage bonus applied
-    # Summon spawn info
-    summon_name: str = ""
-    summon_x: float = 0.0
-    summon_y: float = 0.0
-    summon_hp: int = 0
-    summon_ac: int = 10
-    summon_owner: Optional["Entity"] = None
-    summon_duration: int = 10
-    summon_spell: str = ""
-    summon_immediate_attack: bool = False  # If True, attacks immediately after spawn
-    counter_checked: bool = False
-    is_magical: bool = False
-    transform_stats: Optional["CreatureStats"] = None
-
-
-@dataclass
-class TurnPlan:
-    entity: Optional["Entity"] = None
-    steps: List[ActionStep] = field(default_factory=list)
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _get_effective_caster_level(entity) -> int:
-    """Get effective caster level for cantrip scaling.
-    Player heroes use character_level, monsters use CR (rounded up, min 1)."""
-    if entity.stats.character_level > 0:
-        return entity.stats.character_level
-    # Monsters: use CR as effective level for cantrip scaling
-    cr = entity.stats.challenge_rating
-    return max(1, int(cr)) if cr > 0 else 1
-
-
-def _get_spell_damage_dice(spell, entity) -> str:
-    """Get the effective damage dice for a spell, scaling cantrips by caster level."""
-    if spell.level == 0 and spell.damage_dice:
-        return scale_cantrip_dice(spell.damage_dice, _get_effective_caster_level(entity))
-    return spell.damage_dice
 
 
 class TacticalAI:

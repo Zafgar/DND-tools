@@ -5,7 +5,10 @@ hazards (fire/acid - damage on entry/start of turn), cover, chasms, bridges,
 elevation (height in feet), doors (open/close toggle), climbable surfaces,
 and line-of-sight blocking.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 # elevation_ft: default ground elevation for this type (in feet)
