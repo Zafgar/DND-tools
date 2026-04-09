@@ -12,7 +12,7 @@ from engine.entities import Entity
 from data.models import CreatureStats, AbilityScores
 from data.heroes import hero_list
 
-from states.battle_constants import PANEL_W, TOP_BAR_H, GRID_W
+from states.battle_constants import PANEL_W, TOP_BAR_H, GRID_W, TABS
 
 
 class BattleEventsMixin:

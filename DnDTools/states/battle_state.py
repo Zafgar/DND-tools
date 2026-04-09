@@ -636,11 +636,16 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     # ------------------------------------------------------------------ #
 
     def _do_start_combat(self):
-        self.battle.start_combat()
-        self._log("Combat started! Initiative rolled.")
-        # Refresh current entity since order changed
-        curr = self.battle.get_current_entity()
-        self._log(f"--- Round {self.battle.round}: {curr.name}'s turn ---")
+        if not self.battle.entities:
+            self._log("[ERROR] Cannot start combat with no entities!")
+            return
+        try:
+            self.battle.start_combat()
+            self._log("Combat started! Initiative rolled.")
+            curr = self.battle.get_current_entity()
+            self._log(f"--- Round {self.battle.round}: {curr.name}'s turn ---")
+        except ValueError as e:
+            self._log(f"[ERROR] Failed to start combat: {e}")
 
     def _do_next_turn(self):
         self._save_undo_snapshot()
