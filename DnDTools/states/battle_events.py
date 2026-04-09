@@ -2,6 +2,7 @@
 BattleEventsMixin – Event handling methods for BattleState.
 Extracted from battle_state.py for UI/Logic separation (MVC).
 """
+import math
 import pygame
 import re
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
@@ -500,33 +501,39 @@ class BattleEventsMixin:
                         if mx < GRID_W and my >= 0:
                             # Calculate grid position based on CENTER of the token (free placement)
                             gx, gy = self._screen_to_grid(mx - self.battle.grid_size / 2, raw_my - self.battle.grid_size / 2)
-                            
+
                             if not self.battle.is_occupied(gx, gy, exclude=self.dragging):
                                 old_x, old_y = self.dragging.grid_x, self.dragging.grid_y
-                                
-                                # Temporarily move to check OA
-                                self.dragging.grid_x = gx
-                                self.dragging.grid_y = gy
-                                oas = self.battle.check_opportunity_attacks(self.dragging, old_x, old_y)
-                                
-                                # Revert position for now
-                                self.dragging.grid_x = old_x
-                                self.dragging.grid_y = old_y
 
-                                if oas:
-                                    self.reaction_pending = oas
-                                    self.reaction_type = "oa"
-                                    self.pending_move = (self.dragging, gx, gy)
-                                    self._log(f"[REACTION] Movement triggered {len(oas)} opportunity attack(s)!")
-                                else:
-                                    # No OA, commit move
+                                if not self.battle.combat_started:
+                                    # Deployment phase: free placement, no OA checks
                                     self.dragging.grid_x = gx
                                     self.dragging.grid_y = gy
-                                    # Save full state for Undo
-                                    self._save_undo_snapshot()
-                                    
-                                    dist_ft = math.hypot(gx - old_x, gy - old_y) * 5
-                                    self._log(f"[MOVE] {self.dragging.name} moved {dist_ft:.0f} ft.")
+                                    self._log(f"[DEPLOY] {self.dragging.name} placed at ({gx:.0f}, {gy:.0f}).")
+                                else:
+                                    # Combat: check opportunity attacks
+                                    self.dragging.grid_x = gx
+                                    self.dragging.grid_y = gy
+                                    oas = self.battle.check_opportunity_attacks(self.dragging, old_x, old_y)
+
+                                    # Revert position for now
+                                    self.dragging.grid_x = old_x
+                                    self.dragging.grid_y = old_y
+
+                                    if oas:
+                                        self.reaction_pending = oas
+                                        self.reaction_type = "oa"
+                                        self.pending_move = (self.dragging, gx, gy)
+                                        self._log(f"[REACTION] Movement triggered {len(oas)} opportunity attack(s)!")
+                                    else:
+                                        # No OA, commit move
+                                        self.dragging.grid_x = gx
+                                        self.dragging.grid_y = gy
+                                        # Save full state for Undo
+                                        self._save_undo_snapshot()
+
+                                        dist_ft = math.hypot(gx - old_x, gy - old_y) * 5
+                                        self._log(f"[MOVE] {self.dragging.name} moved {dist_ft:.0f} ft.")
                             else:
                                 self._log("Cannot move: space occupied.")
                         self.dragging = None
@@ -639,6 +646,7 @@ class BattleEventsMixin:
                 import traceback
                 print(f"Event error: {ex}")
                 traceback.print_exc()
+                self._log(f"[ERROR] {ex}")
 
     def _handle_add_entity_event(self, event):
         """Handle events for the add entity modal."""

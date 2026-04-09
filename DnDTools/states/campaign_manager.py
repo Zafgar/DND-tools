@@ -253,6 +253,8 @@ class CampaignManagerState:
 
         # Map background image and route mode
         self._map_bg_surface = None  # pygame.Surface for custom map background
+        self._map_bg_scaled_cache = None  # Cached scaled version
+        self._map_bg_cache_key = None     # (width, height) key for cache invalidation
         self._map_route_mode = False  # True = click two locations to create route
         self._map_route_from = ""  # First location ID when creating a route
         self._map_dragging_node = ""  # Location ID being dragged on map
@@ -280,6 +282,8 @@ class CampaignManagerState:
         self.monster_picker_scroll = 0
         self.monster_search = ""
         self.monster_search_active = False
+        self.monster_picker_expanded_cr = None    # Which CR category is expanded (None = all collapsed)
+        self.monster_picker_expanded_type = None  # Which type subcategory is expanded
 
         # Cached hero stats (rebuilt from hero_data when needed)
         self._hero_stats_cache: dict = {}
@@ -746,11 +750,22 @@ class CampaignManagerState:
         self.world.map_positions = {k: list(v) for k, v in self._location_map_positions.items()}
 
     def _load_map_background(self):
-        """Load map background image if path is set."""
+        """Load map background image if path is set. Large images are downscaled for performance."""
         self._map_bg_surface = None
+        self._map_bg_scaled_cache = None
+        self._map_bg_cache_key = None
         if self.world.map_image_path and os.path.isfile(self.world.map_image_path):
             try:
-                self._map_bg_surface = pygame.image.load(self.world.map_image_path).convert()
+                raw = pygame.image.load(self.world.map_image_path).convert()
+                # Cap loaded image to max 4096 on longest side for memory/performance
+                max_dim = 4096
+                w, h = raw.get_size()
+                if w > max_dim or h > max_dim:
+                    scale = max_dim / max(w, h)
+                    new_w = int(w * scale)
+                    new_h = int(h * scale)
+                    raw = pygame.transform.smoothscale(raw, (new_w, new_h))
+                self._map_bg_surface = raw
             except Exception:
                 self._map_bg_surface = None
 
@@ -1052,32 +1067,102 @@ class CampaignManagerState:
     def _handle_monster_picker_click(self, mp):
         """Handle clicks in the monster picker overlay (shared across tabs)."""
         mx, my = mp
-        if not (self.monster_picker_open and mx > SCREEN_WIDTH - 300):
+        panel_x = SCREEN_WIDTH - 310
+        if not (self.monster_picker_open and mx > panel_x):
             return False
-        if pygame.Rect(SCREEN_WIDTH - 290, 60, 270, 28).collidepoint(mp):
+
+        # Close button
+        close_rect = pygame.Rect(panel_x + 250, 60, 40, 25)
+        if close_rect.collidepoint(mp):
+            self.monster_picker_open = False
+            return True
+
+        # Search box
+        search_rect = pygame.Rect(panel_x + 10, 90, 270, 28)
+        if search_rect.collidepoint(mp):
             self.monster_search_active = True
             return True
         self.monster_search_active = False
-        y = 95 + self.monster_picker_scroll
+
         all_monsters = library.get_all_monsters()
-        for m in all_monsters:
-            if self.monster_search and self.monster_search.lower() not in m.name.lower():
-                continue
-            if pygame.Rect(SCREEN_WIDTH - 290, y, 270, 32).collidepoint(mp):
-                # Check if linking NPC stat source
-                if getattr(self, '_npc_stat_link_mode', False):
-                    npc = self.world.npcs.get(self.selected_npc_id)
-                    if npc:
-                        npc.stat_source = f"monster:{m.name}"
-                    self._npc_stat_link_mode = False
-                    self.monster_picker_open = False
+        y = 125 + self.monster_picker_scroll
+
+        if self.monster_search:
+            # Flat filtered list
+            for m in all_monsters:
+                if self.monster_search.lower() not in m.name.lower():
+                    continue
+                item_rect = pygame.Rect(panel_x + 10, y, 270, 26)
+                if item_rect.collidepoint(mp):
+                    if getattr(self, '_npc_stat_link_mode', False):
+                        npc = self.world.npcs.get(self.selected_npc_id)
+                        if npc:
+                            npc.stat_source = f"monster:{m.name}"
+                        self._npc_stat_link_mode = False
+                        self.monster_picker_open = False
+                        return True
+                    side = getattr(self, '_next_add_side', 'enemy')
+                    self._add_monster_to_encounter(m.name, side=side)
+                    self._next_add_side = "enemy"
                     return True
-                side = getattr(self, '_next_add_side', 'enemy')
-                self._add_monster_to_encounter(m.name, side=side)
-                self._next_add_side = "enemy"
-                self.monster_picker_open = False
-                return True
-            y += 35
+                y += 30
+        else:
+            # CR -> type -> monsters structure
+            from collections import OrderedDict
+            cr_groups = OrderedDict()
+            for m in all_monsters:
+                cr = m.challenge_rating
+                if cr not in cr_groups:
+                    cr_groups[cr] = {}
+                ctype = m.creature_type or "Unknown"
+                if ctype not in cr_groups[cr]:
+                    cr_groups[cr][ctype] = []
+                cr_groups[cr][ctype].append(m)
+
+            for cr, type_groups in cr_groups.items():
+                is_cr_expanded = self.monster_picker_expanded_cr == cr
+
+                # CR header click
+                cr_rect = pygame.Rect(panel_x + 5, y, 280, 26)
+                if cr_rect.collidepoint(mp):
+                    if is_cr_expanded:
+                        self.monster_picker_expanded_cr = None
+                        self.monster_picker_expanded_type = None
+                    else:
+                        self.monster_picker_expanded_cr = cr
+                        self.monster_picker_expanded_type = None
+                    return True
+                y += 30
+
+                if is_cr_expanded:
+                    for ctype, monsters in sorted(type_groups.items()):
+                        is_type_expanded = self.monster_picker_expanded_type == (cr, ctype)
+
+                        type_rect = pygame.Rect(panel_x + 18, y, 260, 24)
+                        if type_rect.collidepoint(mp):
+                            if is_type_expanded:
+                                self.monster_picker_expanded_type = None
+                            else:
+                                self.monster_picker_expanded_type = (cr, ctype)
+                            return True
+                        y += 28
+
+                        if is_type_expanded:
+                            for m in monsters:
+                                item_rect = pygame.Rect(panel_x + 30, y, 248, 24)
+                                if item_rect.collidepoint(mp):
+                                    if getattr(self, '_npc_stat_link_mode', False):
+                                        npc = self.world.npcs.get(self.selected_npc_id)
+                                        if npc:
+                                            npc.stat_source = f"monster:{m.name}"
+                                        self._npc_stat_link_mode = False
+                                        self.monster_picker_open = False
+                                        return True
+                                    side = getattr(self, '_next_add_side', 'enemy')
+                                    self._add_monster_to_encounter(m.name, side=side)
+                                    self._next_add_side = "enemy"
+                                    return True
+                                y += 26
         return True
 
     def _handle_encounter_click(self, mp):
@@ -1347,12 +1432,33 @@ class CampaignManagerState:
                     return
                 sug_y += 28
 
+    # Fields that support multiline text input (Enter adds newline instead of saving)
+    _MULTILINE_FIELDS = {
+        "npc_backstory", "npc_notes", "npc_personality",
+        "location_desc", "location_notes", "pin_description",
+        "pin_notes", "quest_description", "quest_notes",
+        "quest_reward_notes", "member_note", "note",
+    }
+
     def _handle_input_key(self, event):
         if event.key == pygame.K_ESCAPE:
-            self.input_active = ""
+            # For multiline fields, Escape saves (since Enter adds newlines)
+            if self.input_active in self._MULTILINE_FIELDS or (
+                    self.input_active and self.input_active.startswith(("npc_rel_notes_", "hero_rel_desc_"))):
+                self._apply_input()
+            else:
+                self.input_active = ""
+                self.modal = None
             return
         if event.key == pygame.K_RETURN:
-            self._apply_input()
+            # For multiline fields, Enter adds newline; Ctrl+Enter or Escape saves
+            is_multiline = self.input_active in self._MULTILINE_FIELDS or (
+                self.input_active and self.input_active.startswith(("npc_rel_notes_", "hero_rel_desc_")))
+            mods = pygame.key.get_mods()
+            if is_multiline and not (mods & pygame.KMOD_CTRL):
+                self.input_text += "\n"
+            else:
+                self._apply_input()
             return
         if event.key == pygame.K_BACKSPACE:
             self.input_text = self.input_text[:-1]
@@ -3572,7 +3678,7 @@ class CampaignManagerState:
             self.hero_picker_open = False
 
     def _draw_monster_picker(self, screen, mp):
-        """Draw monster selection overlay on the right side."""
+        """Draw monster selection overlay with CR categories and type subcategories."""
         panel_x = SCREEN_WIDTH - 310
         panel_rect = pygame.Rect(panel_x, 55, 305, SCREEN_HEIGHT - 120)
         pygame.draw.rect(screen, COLORS["panel_dark"], panel_rect)
@@ -3590,33 +3696,96 @@ class CampaignManagerState:
                                 COLORS["text_main"] if self.monster_search else COLORS["text_muted"])
         screen.blit(st, (search_rect.x + 5, search_rect.y + 5))
 
-        # Monster list
-        y = 125 + self.monster_picker_scroll
-        all_monsters = library.get_all_monsters()
-        for m in all_monsters:
-            if self.monster_search and self.monster_search.lower() not in m.name.lower():
-                continue
-            if y < 55 or y > SCREEN_HEIGHT - 130:
-                y += 35
-                continue
-            item_rect = pygame.Rect(panel_x + 10, y, 270, 30)
-            is_hover = item_rect.collidepoint(mp)
-            bg = COLORS["hover"] if is_hover else COLORS["panel"]
-            pygame.draw.rect(screen, bg, item_rect, border_radius=3)
-
-            cr_str = f"CR {m.challenge_rating:.3g}" if m.challenge_rating % 1 != 0 else f"CR {int(m.challenge_rating)}"
-            lt = fonts.small.render(f"{m.name} ({cr_str})", True, COLORS["text_bright"])
-            screen.blit(lt, (item_rect.x + 8, item_rect.y + 6))
-            y += 35
-
         # Close button
         close_rect = pygame.Rect(panel_x + 250, 60, 40, 25)
         if close_rect.collidepoint(mp):
             pygame.draw.rect(screen, COLORS["danger"], close_rect, border_radius=3)
-        cx = fonts.small.render("X", True, COLORS["text_bright"])
-        screen.blit(cx, (close_rect.x + 15, close_rect.y + 3))
-        if close_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
-            self.monster_picker_open = False
+        cx_text = fonts.small.render("X", True, COLORS["text_bright"])
+        screen.blit(cx_text, (close_rect.x + 15, close_rect.y + 3))
+
+        # Build CR -> type -> monsters structure
+        all_monsters = library.get_all_monsters()
+        clip_rect = pygame.Rect(panel_x, 125, 305, SCREEN_HEIGHT - 190)
+        screen.set_clip(clip_rect)
+
+        y = 125 + self.monster_picker_scroll
+
+        if self.monster_search:
+            # When searching, show flat filtered list
+            for m in all_monsters:
+                if self.monster_search.lower() not in m.name.lower():
+                    continue
+                if y > SCREEN_HEIGHT - 130:
+                    y += 30
+                    continue
+                if y >= 115:
+                    item_rect = pygame.Rect(panel_x + 10, y, 270, 26)
+                    is_hover = item_rect.collidepoint(mp)
+                    bg = COLORS["hover"] if is_hover else COLORS["panel"]
+                    pygame.draw.rect(screen, bg, item_rect, border_radius=3)
+                    cr_str = f"CR {m.challenge_rating:.3g}" if m.challenge_rating % 1 != 0 else f"CR {int(m.challenge_rating)}"
+                    type_short = m.creature_type[:3].upper()
+                    lt = fonts.small.render(f"{m.name} ({cr_str}) [{type_short}]", True, COLORS["text_bright"])
+                    screen.blit(lt, (item_rect.x + 8, item_rect.y + 5))
+                y += 30
+        else:
+            # Group by CR, then by creature type
+            from collections import OrderedDict
+            cr_groups = OrderedDict()
+            for m in all_monsters:
+                cr = m.challenge_rating
+                if cr not in cr_groups:
+                    cr_groups[cr] = {}
+                ctype = m.creature_type or "Unknown"
+                if ctype not in cr_groups[cr]:
+                    cr_groups[cr][ctype] = []
+                cr_groups[cr][ctype].append(m)
+
+            for cr, type_groups in cr_groups.items():
+                cr_str = f"CR {cr:.3g}" if cr % 1 != 0 else f"CR {int(cr)}"
+                total = sum(len(v) for v in type_groups.values())
+                is_cr_expanded = self.monster_picker_expanded_cr == cr
+
+                # CR header row
+                if y >= 115:
+                    cr_rect = pygame.Rect(panel_x + 5, y, 280, 26)
+                    is_hover = cr_rect.collidepoint(mp)
+                    header_bg = COLORS["accent"] if is_cr_expanded else (COLORS["hover"] if is_hover else (35, 38, 48))
+                    pygame.draw.rect(screen, header_bg, cr_rect, border_radius=4)
+                    arrow = "v" if is_cr_expanded else ">"
+                    cr_label = fonts.small_bold.render(f"{arrow} {cr_str}  ({total} creatures)", True,
+                                                       (255, 255, 255) if is_cr_expanded else COLORS["text_bright"])
+                    screen.blit(cr_label, (cr_rect.x + 8, cr_rect.y + 5))
+                y += 30
+
+                if is_cr_expanded:
+                    # Show type subcategories
+                    for ctype, monsters in sorted(type_groups.items()):
+                        is_type_expanded = self.monster_picker_expanded_type == (cr, ctype)
+
+                        if y >= 115:
+                            type_rect = pygame.Rect(panel_x + 18, y, 260, 24)
+                            is_hover = type_rect.collidepoint(mp)
+                            type_bg = (50, 55, 70) if is_type_expanded else (COLORS["hover"] if is_hover else (28, 30, 40))
+                            pygame.draw.rect(screen, type_bg, type_rect, border_radius=3)
+                            arrow = "v" if is_type_expanded else ">"
+                            type_label = fonts.small.render(f"  {arrow} {ctype} ({len(monsters)})", True,
+                                                            COLORS["accent"] if is_type_expanded else COLORS["text_main"])
+                            screen.blit(type_label, (type_rect.x + 4, type_rect.y + 4))
+                        y += 28
+
+                        if is_type_expanded:
+                            for m in monsters:
+                                if y >= 115:
+                                    item_rect = pygame.Rect(panel_x + 30, y, 248, 24)
+                                    is_hover = item_rect.collidepoint(mp)
+                                    bg = COLORS["hover"] if is_hover else COLORS["panel"]
+                                    pygame.draw.rect(screen, bg, item_rect, border_radius=3)
+                                    lt = fonts.small.render(f"  {m.name}", True, COLORS["text_bright"])
+                                    screen.blit(lt, (item_rect.x + 6, item_rect.y + 4))
+                                y += 26
+
+        screen.set_clip(None)
 
     # ---- NPC Location Picker ----
 
@@ -3707,7 +3876,87 @@ class CampaignManagerState:
                 pygame.draw.line(screen, COLORS["accent"], (cursor_x, cursor_y), (cursor_x, cursor_y + 18), 2)
 
             # Save / Cancel hints
-            hints = fonts.small.render("Enter = Save  |  Escape = Cancel", True, COLORS["text_dim"])
+            hints = fonts.small.render("Ctrl+Enter = Save  |  Escape = Save & Close", True, COLORS["text_dim"])
+            screen.blit(hints, (x + 20, y + h - 30))
+
+        elif self.modal[0] == "edit_field":
+            # Generic single-line field editor
+            field_key = self.modal[1] if len(self.modal) > 1 else ""
+            # Pretty label from field key
+            label_map = {
+                "npc_name": "Name", "npc_race": "Race", "npc_gender": "Gender",
+                "npc_age": "Age", "npc_occupation": "Occupation",
+                "npc_appearance": "Appearance", "npc_personality": "Personality",
+                "npc_backstory": "Backstory", "npc_notes": "DM Notes",
+                "npc_gold": "Gold", "npc_add_item": "Add Item",
+                "npc_add_tag": "Add Tag", "npc_add_relationship": "Add Relationship",
+                "location_name": "Location Name", "location_desc": "Description",
+                "location_notes": "Notes", "location_color": "Map Color",
+                "location_map_note": "Map Note", "location_map_icon": "Map Icon",
+                "location_population": "Population",
+                "shop_name": "Shop Name", "map_image_path": "Map Image Path",
+                "pin_name": "Pin Name", "pin_description": "Pin Description",
+                "pin_notes": "Pin Notes", "pin_add_link": "Add Link",
+                "hero_add_relationship": "Add Relationship",
+                "hero_add_link": "Add Link",
+                "campaign_name": "Campaign Name", "encounter_name": "Encounter Name",
+                "area_name": "Area Name", "member_note": "DM Note",
+            }
+            # Handle relationship/quest sub-fields
+            title = "Edit"
+            if field_key in label_map:
+                title = f"Edit {label_map[field_key]}"
+            elif field_key.startswith("npc_rel_notes_"):
+                title = "Edit Relationship Notes"
+            elif field_key.startswith("hero_rel_desc_"):
+                title = "Edit Relationship Description"
+            elif field_key.startswith("quest_"):
+                title = f"Edit {field_key.replace('quest_', '').replace('_', ' ').title()}"
+
+            tt = fonts.header.render(title, True, COLORS["accent"])
+            screen.blit(tt, (x + 20, y + 15))
+
+            # Determine if this is a multiline field
+            multiline_fields = {"npc_backstory", "npc_notes", "npc_personality",
+                                "location_desc", "location_notes", "pin_description",
+                                "pin_notes", "quest_description", "quest_notes",
+                                "quest_reward_notes", "member_note"}
+            is_multiline = field_key in multiline_fields or field_key.startswith("npc_rel_notes_") or field_key.startswith("hero_rel_desc_")
+
+            if is_multiline:
+                area = pygame.Rect(x + 20, y + 55, w - 40, h - 120)
+                pygame.draw.rect(screen, COLORS["input_bg"], area, border_radius=4)
+                pygame.draw.rect(screen, COLORS["input_focus"], area, 1, border_radius=4)
+
+                text_y = area.y + 5
+                for line in self.input_text.split("\n"):
+                    lt = fonts.body.render(line, True, COLORS["text_bright"])
+                    screen.blit(lt, (area.x + 5, text_y))
+                    text_y += 22
+
+                if pygame.time.get_ticks() % 1000 < 500:
+                    lines = self.input_text.split("\n")
+                    last_line = lines[-1] if lines else ""
+                    cursor_x = area.x + 5 + fonts.body.size(last_line)[0]
+                    cursor_y = area.y + 5 + (len(lines) - 1) * 22
+                    pygame.draw.line(screen, COLORS["accent"], (cursor_x, cursor_y), (cursor_x, cursor_y + 18), 2)
+            else:
+                # Single-line input
+                area = pygame.Rect(x + 20, y + 70, w - 40, 36)
+                pygame.draw.rect(screen, COLORS["input_bg"], area, border_radius=4)
+                pygame.draw.rect(screen, COLORS["input_focus"], area, 1, border_radius=4)
+
+                lt = fonts.body.render(self.input_text, True, COLORS["text_bright"])
+                screen.blit(lt, (area.x + 8, area.y + 7))
+
+                if pygame.time.get_ticks() % 1000 < 500:
+                    cursor_x = area.x + 8 + fonts.body.size(self.input_text)[0]
+                    pygame.draw.line(screen, COLORS["accent"], (cursor_x, area.y + 6), (cursor_x, area.y + 28), 2)
+
+            if is_multiline:
+                hints = fonts.small.render("Ctrl+Enter = Save  |  Escape = Save & Close", True, COLORS["text_dim"])
+            else:
+                hints = fonts.small.render("Enter = Save  |  Escape = Cancel", True, COLORS["text_dim"])
             screen.blit(hints, (x + 20, y + h - 30))
 
     # ================================================================
@@ -3795,15 +4044,19 @@ class CampaignManagerState:
 
         # Background image or default
         if self._map_bg_surface and self.world.map_image_path:
-            # Scale image to fit grid with zoom
+            # Scale image to fit grid with zoom — use cached scaled surface
             iw = int(grid_area.width * self.map_zoom)
             ih = int(grid_area.height * self.map_zoom)
             if iw > 0 and ih > 0:
-                scaled = pygame.transform.smoothscale(self._map_bg_surface, (iw, ih))
+                cache_key = (iw, ih)
+                if self._map_bg_cache_key != cache_key or self._map_bg_scaled_cache is None:
+                    # Only re-scale when zoom/size actually changes
+                    self._map_bg_scaled_cache = pygame.transform.smoothscale(self._map_bg_surface, (iw, ih))
+                    self._map_bg_cache_key = cache_key
                 bx = grid_area.x + grid_area.width // 2 + self.map_offset_x - iw // 2
                 by = grid_area.y + grid_area.height // 2 + self.map_offset_y - ih // 2
                 screen.set_clip(grid_area)
-                screen.blit(scaled, (bx, by))
+                screen.blit(self._map_bg_scaled_cache, (bx, by))
                 screen.set_clip(None)
         else:
             pygame.draw.rect(screen, (16, 18, 26), grid_area, border_radius=4)
