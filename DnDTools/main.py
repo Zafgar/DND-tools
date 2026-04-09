@@ -78,6 +78,7 @@ class GameManager:
         game_instance = self
 
         pygame.init()
+        pygame.key.set_repeat(400, 50)  # Enable key repeat: 400ms delay, 50ms interval
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("D&D 5e AI Encounter Manager – Endgame Edition")
         self.clock = pygame.time.Clock()
