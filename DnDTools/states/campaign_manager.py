@@ -22,12 +22,14 @@ from data.hero_import import export_hero, import_hero, import_heroes_from_file
 from data.library import library
 from data.campaign import (
     Campaign, PartyMember, CampaignEncounter, EncounterSlot,
-    CampaignArea, CampaignNote, save_campaign, load_campaign,
+    CampaignArea, CampaignNote, HeroRelationship,
+    save_campaign, load_campaign,
     list_campaigns, CAMPAIGNS_DIR, _timestamp,
 )
 from data.world import (
-    World, Location, NPC, ShopItem, NPCRelationship, MapRoute,
+    World, Location, NPC, ShopItem, NPCRelationship, MapRoute, MapPin,
     Quest, QuestObjective, QUEST_STATUSES, QUEST_TYPES, QUEST_PRIORITIES,
+    MAP_PIN_TYPES,
     save_world, load_world, generate_id,
     add_location, add_npc, move_npc, delete_location, delete_npc,
     add_quest, delete_quest, get_quests_by_status, get_quests_for_npc,
@@ -36,6 +38,7 @@ from data.world import (
     get_npcs_at_location, search_npcs, search_locations,
     populate_shop, get_shop_suggestions, get_shopkeepers,
     get_shopkeepers_at_location, LOCATION_TYPES,
+    add_pin, remove_pin, get_pin_by_id, get_visible_pins,
 )
 from data.shop_catalog import (
     get_item_price, get_item_tooltip, get_price_display,
@@ -254,7 +257,12 @@ class CampaignManagerState:
         self._map_route_from = ""  # First location ID when creating a route
         self._map_dragging_node = ""  # Location ID being dragged on map
         self._click_cooldown = 0  # Frame-based cooldown to prevent draw-loop spam
+        self._map_pin_mode = False  # True = click to place a new pin
+        self.selected_pin_id = ""  # Currently selected map pin ID
         self._load_map_background()
+
+        # Hero relationship view state
+        self.hero_rel_scroll = 0
 
         # Input state
         self.input_active = ""  # Which input field is active
@@ -1109,6 +1117,23 @@ class CampaignManagerState:
 
     def _handle_map_click(self, mp, grid_area):
         """Handle left-click on the map grid area."""
+        # Check if clicking on a map pin first
+        clicked_pin_id = ""
+        for pin in self.world.map_pins:
+            if not pin.visible:
+                continue
+            px, py = self._map_to_screen(pin.map_x, pin.map_y, grid_area)
+            pin_size = max(4, int(7 * self.map_zoom))
+            hit_dist = pin_size + 5
+            if abs(mp[0] - px) < hit_dist and abs(mp[1] - py) < hit_dist:
+                clicked_pin_id = pin.id
+                break
+
+        if clicked_pin_id and not self._map_route_mode and not self._map_pin_mode:
+            self.selected_pin_id = clicked_pin_id
+            self.selected_location_id = ""
+            return
+
         # Check if clicking on a location node
         clicked_loc_id = ""
         for loc_id, pos in self._location_map_positions.items():
@@ -1141,7 +1166,18 @@ class CampaignManagerState:
                     self._status_timer = 90
             return
 
+        if self._map_pin_mode:
+            # Pin placement mode — place a new pin at clicked position
+            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+            pct_x = max(1, min(99, pct_x))
+            pct_y = max(1, min(99, pct_y))
+            new_pin = add_pin(self.world, "New Pin", "note", pct_x, pct_y)
+            self.selected_pin_id = new_pin.id
+            self._map_pin_mode = False
+            return
+
         if clicked_loc_id:
+            self.selected_pin_id = ""
             if self.selected_location_id == clicked_loc_id:
                 # Double-select: switch to detail view
                 self.world_map_mode = False
@@ -1162,6 +1198,7 @@ class CampaignManagerState:
                 self.map_placing_location = ""
             else:
                 self.selected_location_id = ""
+                self.selected_pin_id = ""
                 self._map_route_mode = False
                 self._map_route_from = ""
 
@@ -1339,6 +1376,58 @@ class CampaignManagerState:
         elif self.input_active == "member_note":
             if 0 <= self.selected_member_idx < len(self.campaign.party):
                 self.campaign.party[self.selected_member_idx].notes = self.input_text
+        elif self.input_active == "hero_add_relationship":
+            if 0 <= self.selected_member_idx < len(self.campaign.party) and self.input_text.strip():
+                member = self.campaign.party[self.selected_member_idx]
+                # Auto-detect if target is an NPC or hero
+                target_name = self.input_text.strip()
+                target_type = "npc"
+                target_id = ""
+                # Check if it's an NPC in the world
+                npc = self._find_npc_by_name(target_name)
+                if npc:
+                    target_id = npc.id
+                    target_type = "npc"
+                else:
+                    # Check if it's a party member
+                    for pm in self.campaign.party:
+                        if pm.hero_data.get("name", "") == target_name:
+                            target_type = "hero"
+                            break
+                member.relationships.append(HeroRelationship(
+                    target_name=target_name,
+                    target_id=target_id,
+                    target_type=target_type,
+                    attitude="neutral",
+                ))
+        elif self.input_active and self.input_active.startswith("hero_rel_desc_"):
+            if 0 <= self.selected_member_idx < len(self.campaign.party):
+                member = self.campaign.party[self.selected_member_idx]
+                try:
+                    ri = int(self.input_active.split("_")[-1])
+                    if 0 <= ri < len(member.relationships):
+                        member.relationships[ri].description = self.input_text
+                except (ValueError, IndexError):
+                    pass
+        elif self.input_active == "hero_add_link":
+            if 0 <= self.selected_member_idx < len(self.campaign.party) and self.input_text.strip():
+                self.campaign.party[self.selected_member_idx].links.append(self.input_text.strip())
+        elif self.input_active == "pin_name":
+            pin = get_pin_by_id(self.world, self.selected_pin_id)
+            if pin:
+                pin.name = self.input_text
+        elif self.input_active == "pin_description":
+            pin = get_pin_by_id(self.world, self.selected_pin_id)
+            if pin:
+                pin.description = self.input_text
+        elif self.input_active == "pin_notes":
+            pin = get_pin_by_id(self.world, self.selected_pin_id)
+            if pin:
+                pin.notes = self.input_text
+        elif self.input_active == "pin_add_link":
+            pin = get_pin_by_id(self.world, self.selected_pin_id)
+            if pin and self.input_text.strip():
+                pin.links.append(self.input_text.strip())
         elif self.input_active == "location_name":
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
@@ -1899,6 +1988,158 @@ class CampaignManagerState:
             self.input_active = "member_note"
             self.input_text = member.notes
             self.modal = ("edit_member_note", self.selected_member_idx)
+        y += 70
+
+        # ---- Hero Relationships ----
+        rel_label = fonts.small_bold.render("Relationships:", True, COLORS["text_dim"])
+        screen.blit(rel_label, (30, y))
+        # Add relationship button
+        add_rel_btn = pygame.Rect(140, y - 2, 20, 20)
+        is_addrel = add_rel_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_addrel else COLORS["panel"],
+                         add_rel_btn, border_radius=3)
+        pls = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(pls, (add_rel_btn.x + 5, add_rel_btn.y + 3))
+        if is_addrel and pygame.mouse.get_pressed()[0]:
+            self.input_active = "hero_add_relationship"
+            self.input_text = ""
+            self.modal = ("edit_field", "hero_add_relationship")
+        y += 22
+
+        hero_att_cols = {
+            "friendly": COLORS["success"], "allied": (100, 200, 255),
+            "neutral": COLORS["text_dim"], "unfriendly": COLORS["warning"],
+            "hostile": COLORS["danger"], "romantic": (255, 100, 200),
+            "rival": (200, 120, 50),
+        }
+        hero_attitudes = ["friendly", "allied", "neutral", "unfriendly", "hostile", "romantic", "rival"]
+
+        if member.relationships:
+            for ri, rel in enumerate(member.relationships):
+                # Target name (clickable — navigates to NPC or hero)
+                name_text = f"{rel.target_name}"
+                type_tag = f" [{rel.target_type.upper()}]"
+                nt_render = fonts.small.render(name_text, True, COLORS["accent"])
+                name_rect = pygame.Rect(40, y, nt_render.get_width(), 18)
+                screen.blit(nt_render, (40, y))
+                tt = fonts.tiny.render(type_tag, True, COLORS["text_muted"])
+                screen.blit(tt, (40 + nt_render.get_width() + 2, y + 2))
+
+                # Clicking the name navigates to the NPC/hero
+                if name_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                    if rel.target_type == "npc" and rel.target_id:
+                        self.selected_npc_id = rel.target_id
+                        self.active_tab = 4
+                        self.tabs.active = 4
+                        self.world_view = "npcs"
+                    elif rel.target_type == "hero":
+                        # Find hero in party by name
+                        for pi, pm in enumerate(self.campaign.party):
+                            if pm.hero_data.get("name", "") == rel.target_name:
+                                self.selected_member_idx = pi
+                                break
+                y += 20
+
+                # Attitude chips
+                ax = 50
+                for att in hero_attitudes:
+                    is_act = rel.attitude == att
+                    aw = fonts.tiny.size(att[:3])[0] + 10
+                    ar = pygame.Rect(ax, y, aw, 16)
+                    bg = hero_att_cols.get(att, COLORS["panel"]) if is_act else COLORS["panel"]
+                    if ar.collidepoint(mp):
+                        bg = COLORS["hover"]
+                        if pygame.mouse.get_pressed()[0]:
+                            rel.attitude = att
+                    pygame.draw.rect(screen, bg, ar, border_radius=6)
+                    at_t = fonts.tiny.render(att[:3], True,
+                                             COLORS["text_bright"] if is_act else COLORS["text_muted"])
+                    screen.blit(at_t, (ax + 4, y + 1))
+                    ax += aw + 3
+
+                # Description (short inline)
+                desc_x = ax + 8
+                desc_text = rel.description[:30] if rel.description else "(desc)"
+                desc_col = COLORS["text_dim"] if rel.description else COLORS["text_muted"]
+                dt = fonts.tiny.render(desc_text, True, desc_col)
+                desc_rect = pygame.Rect(desc_x, y, dt.get_width() + 6, 16)
+                screen.blit(dt, (desc_x, y + 1))
+                if desc_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                    self.input_active = f"hero_rel_desc_{ri}"
+                    self.input_text = rel.description
+                    self.modal = ("edit_field", f"hero_rel_desc_{ri}")
+
+                # Delete button
+                del_x = desc_rect.right + 5
+                del_r = pygame.Rect(del_x, y, 14, 16)
+                if del_r.collidepoint(mp):
+                    dxt = fonts.tiny.render("x", True, COLORS["danger"])
+                    screen.blit(dxt, (del_x + 2, y + 1))
+                    if pygame.mouse.get_pressed()[0]:
+                        member.relationships.pop(ri)
+                        break
+                y += 20
+        else:
+            empty_rel = fonts.tiny.render("(no relationships — click + to add)", True, COLORS["text_muted"])
+            screen.blit(empty_rel, (40, y))
+            y += 20
+
+        # ---- Hero Links (hyperlinks) ----
+        y += 8
+        link_label = fonts.small_bold.render("Links:", True, COLORS["text_dim"])
+        screen.blit(link_label, (30, y))
+        # Add link button
+        add_link_btn = pygame.Rect(80, y - 2, 20, 20)
+        is_addlink = add_link_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_addlink else COLORS["panel"],
+                         add_link_btn, border_radius=3)
+        pls2 = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(pls2, (add_link_btn.x + 5, add_link_btn.y + 3))
+        if is_addlink and pygame.mouse.get_pressed()[0]:
+            self.input_active = "hero_add_link"
+            self.input_text = ""
+            self.modal = ("edit_field", "hero_add_link")
+        y += 22
+
+        if member.links:
+            for li, link in enumerate(member.links):
+                # Link icon and text
+                prefix = "WEB" if link.startswith("http") else "FILE"
+                lp = fonts.tiny.render(f"[{prefix}]", True, COLORS["accent"])
+                screen.blit(lp, (40, y + 1))
+                lt_text = link if len(link) <= 60 else link[:57] + "..."
+                lt_r = fonts.tiny.render(lt_text, True, COLORS["text_main"])
+                link_rect = pygame.Rect(40 + lp.get_width() + 4, y, lt_r.get_width(), 16)
+                screen.blit(lt_r, (link_rect.x, y + 1))
+                # Click to open link
+                if link_rect.collidepoint(mp):
+                    # Underline effect on hover
+                    pygame.draw.line(screen, COLORS["accent"],
+                                     (link_rect.x, link_rect.bottom),
+                                     (link_rect.right, link_rect.bottom), 1)
+                    if pygame.mouse.get_pressed()[0]:
+                        import webbrowser
+                        try:
+                            if link.startswith("http"):
+                                webbrowser.open(link)
+                            else:
+                                os.startfile(link) if hasattr(os, 'startfile') else os.system(f'xdg-open "{link}"')
+                        except Exception:
+                            pass
+                # Delete link
+                del_lx = link_rect.right + 5
+                del_lr = pygame.Rect(del_lx, y, 14, 16)
+                if del_lr.collidepoint(mp):
+                    dxt2 = fonts.tiny.render("x", True, COLORS["danger"])
+                    screen.blit(dxt2, (del_lx + 2, y + 1))
+                    if pygame.mouse.get_pressed()[0]:
+                        member.links.pop(li)
+                        break
+                y += 18
+        else:
+            empty_link = fonts.tiny.render("(no links — click + to add URL or file path)", True, COLORS["text_muted"])
+            screen.blit(empty_link, (40, y))
+            y += 18
 
     # ---- Encounters Tab Drawing ----
 
@@ -3705,7 +3946,72 @@ class CampaignManagerState:
                 pygame.draw.rect(screen, COLORS["player"], br, border_radius=bh // 2)
                 screen.blit(bt, (br.x + 3, br.y + 1))
 
+        # --- Draw map pins ---
+        hovered_pin_id = ""
+        for pin in self.world.map_pins:
+            if not pin.visible:
+                continue
+            px, py = self._map_to_screen(pin.map_x, pin.map_y, grid_area)
+            if px < grid_area.x - 20 or px > grid_area.right + 20:
+                continue
+            if py < grid_area.y - 20 or py > grid_area.bottom + 20:
+                continue
+
+            pin_info = MAP_PIN_TYPES.get(pin.pin_type, MAP_PIN_TYPES["custom"])
+            color_hex = pin.color or pin_info["color"]
+            color = self._hex_to_rgb(color_hex) or (180, 180, 180)
+            icon = pin.icon or pin_info["icon"]
+            pin_size = max(4, int(7 * self.map_zoom))
+            is_sel = pin.id == self.selected_pin_id
+            hit_dist = pin_size + 5
+            is_hover = abs(mp[0] - px) < hit_dist and abs(mp[1] - py) < hit_dist
+
+            if is_hover:
+                hovered_pin_id = pin.id
+
+            # Draw pin marker (inverted triangle / diamond)
+            pts = [(px, py + pin_size), (px - pin_size, py - pin_size // 2),
+                   (px + pin_size, py - pin_size // 2)]
+            pygame.draw.polygon(screen, color, pts)
+            if is_sel or is_hover:
+                pygame.draw.polygon(screen, COLORS["text_bright"], pts, 2)
+
+            # Icon inside
+            if pin_size >= 5:
+                it = fonts.tiny.render(icon, True, (0, 0, 0))
+                screen.blit(it, (px - it.get_width() // 2, py - pin_size // 2 - 1))
+
+            # Name label below
+            label = fonts.tiny.render(pin.name, True, COLORS["text_main"])
+            lx = px - label.get_width() // 2
+            ly = py + pin_size + 2
+            lbg = pygame.Surface((label.get_width() + 4, label.get_height()), pygame.SRCALPHA)
+            lbg.fill((0, 0, 0, 120))
+            screen.blit(lbg, (lx - 2, ly))
+            screen.blit(label, (lx, ly))
+
         screen.set_clip(None)  # End map clip
+
+        # --- Pin hover tooltip ---
+        if hovered_pin_id and not pygame.mouse.get_pressed()[0]:
+            pin = get_pin_by_id(self.world, hovered_pin_id)
+            if pin:
+                tip_lines = [pin.name]
+                if pin.description:
+                    tip_lines.append(pin.description[:60])
+                if pin.links:
+                    tip_lines.append(f"Links: {len(pin.links)}")
+                tw = max(fonts.small.size(l)[0] for l in tip_lines) + 16
+                th = len(tip_lines) * 18 + 8
+                tx = min(mp[0] + 12, SCREEN_WIDTH - tw - 10)
+                ty = mp[1] - th - 5
+                tip_rect = pygame.Rect(tx, ty, tw, th)
+                pygame.draw.rect(screen, (20, 22, 30), tip_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["border"], tip_rect, 1, border_radius=4)
+                for i, line in enumerate(tip_lines):
+                    col = COLORS["accent"] if i == 0 else COLORS["text_main"]
+                    lt = fonts.small.render(line, True, col)
+                    screen.blit(lt, (tx + 8, ty + 4 + i * 18))
 
         # --- Outer frame ---
         pygame.draw.rect(screen, COLORS["border"], map_area, 1, border_radius=8)
@@ -3722,7 +4028,7 @@ class CampaignManagerState:
         # Map mode toolbar buttons (drawn inline)
         tool_x = map_area.x + 200
         tool_btns = [
-            ("+ Route", "add_route"), ("Set Image", "set_image"),
+            ("+ Route", "add_route"), ("+ Pin", "add_pin"), ("Set Image", "set_image"),
             ("Reset View", "reset_view"), ("Color", "set_color"),
             ("Note", "set_note"),
         ]
@@ -3753,6 +4059,166 @@ class CampaignManagerState:
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
                 self._draw_map_info_panel(screen, mp, loc)
+
+        # --- Info panel for selected pin ---
+        if self.selected_pin_id and not self.selected_location_id:
+            pin = get_pin_by_id(self.world, self.selected_pin_id)
+            if pin:
+                self._draw_pin_info_panel(screen, mp, pin)
+
+        # --- Pin mode indicator ---
+        if self._map_pin_mode:
+            pm_text = fonts.small_bold.render("PIN MODE: Click to place a new pin", True, COLORS["warning"])
+            screen.blit(pm_text, (map_area.x + 12, tb_y + 40))
+
+    def _draw_pin_info_panel(self, screen, mp, pin):
+        """Draw an info/edit panel for a selected map pin."""
+        pw = 280
+        ph = 300
+        ix = SCREEN_WIDTH - pw - 40
+        iy_start = 130
+        info_rect = pygame.Rect(ix - 10, iy_start - 10, pw + 20, ph)
+        pygame.draw.rect(screen, (18, 20, 30, 230), info_rect, border_radius=6)
+        pygame.draw.rect(screen, COLORS["border"], info_rect, 1, border_radius=6)
+
+        iy = iy_start
+        pin_info = MAP_PIN_TYPES.get(pin.pin_type, MAP_PIN_TYPES["custom"])
+        color_hex = pin.color or pin_info["color"]
+        color = self._hex_to_rgb(color_hex) or (180, 180, 180)
+
+        # Pin icon and name
+        icon = pin.icon or pin_info["icon"]
+        icon_t = fonts.body_bold.render(icon, True, color)
+        screen.blit(icon_t, (ix, iy))
+        # Name (editable)
+        name_t = fonts.body_bold.render(pin.name, True, COLORS["accent"])
+        name_rect = pygame.Rect(ix + icon_t.get_width() + 8, iy, name_t.get_width() + 20, 22)
+        screen.blit(name_t, (name_rect.x, iy))
+        if name_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "pin_name"
+            self.input_text = pin.name
+            self.modal = ("edit_field", "pin_name")
+        iy += 28
+
+        # Pin type selector
+        tl = fonts.small_bold.render("Type:", True, COLORS["text_dim"])
+        screen.blit(tl, (ix, iy))
+        tx = ix + 42
+        for pt_key, pt_val in MAP_PIN_TYPES.items():
+            is_act = pin.pin_type == pt_key
+            tw = fonts.tiny.size(pt_key[:4])[0] + 10
+            tr = pygame.Rect(tx, iy, tw, 16)
+            pt_col = self._hex_to_rgb(pt_val["color"]) or (150, 150, 150)
+            bg = pt_col if is_act else COLORS["panel"]
+            if tr.collidepoint(mp):
+                bg = COLORS["hover"]
+                if pygame.mouse.get_pressed()[0]:
+                    pin.pin_type = pt_key
+            pygame.draw.rect(screen, bg, tr, border_radius=6)
+            tt = fonts.tiny.render(pt_key[:4], True,
+                                   COLORS["text_bright"] if is_act else COLORS["text_muted"])
+            screen.blit(tt, (tx + 4, iy + 1))
+            tx += tw + 3
+        iy += 22
+
+        # Description (editable)
+        dl = fonts.small_bold.render("Desc:", True, COLORS["text_dim"])
+        screen.blit(dl, (ix, iy))
+        desc_rect = pygame.Rect(ix + 42, iy - 2, pw - 42, 20)
+        pygame.draw.rect(screen, COLORS["input_bg"], desc_rect, border_radius=3)
+        desc_text = pin.description or "(click to set)"
+        dc = COLORS["text_main"] if pin.description else COLORS["text_muted"]
+        dt = fonts.tiny.render(desc_text[:40], True, dc)
+        screen.blit(dt, (desc_rect.x + 3, iy))
+        if desc_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "pin_description"
+            self.input_text = pin.description
+            self.modal = ("edit_field", "pin_description")
+        iy += 24
+
+        # Notes (editable)
+        nl = fonts.small_bold.render("Notes:", True, COLORS["text_dim"])
+        screen.blit(nl, (ix, iy))
+        notes_rect = pygame.Rect(ix, iy + 16, pw, 40)
+        pygame.draw.rect(screen, COLORS["input_bg"], notes_rect, border_radius=3)
+        notes_text = pin.notes or "(click to add notes)"
+        nc = COLORS["text_main"] if pin.notes else COLORS["text_muted"]
+        nt = fonts.tiny.render(notes_text[:60], True, nc)
+        screen.blit(nt, (notes_rect.x + 3, iy + 20))
+        if notes_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self.input_active = "pin_notes"
+            self.input_text = pin.notes
+            self.modal = ("edit_field", "pin_notes")
+        iy += 62
+
+        # Links
+        ll = fonts.small_bold.render("Links:", True, COLORS["text_dim"])
+        screen.blit(ll, (ix, iy))
+        # Add link button
+        add_btn = pygame.Rect(ix + 48, iy - 2, 18, 18)
+        is_add = add_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["success"] if is_add else COLORS["panel"],
+                         add_btn, border_radius=3)
+        pt = fonts.tiny.render("+", True, COLORS["text_bright"])
+        screen.blit(pt, (add_btn.x + 4, add_btn.y + 2))
+        if is_add and pygame.mouse.get_pressed()[0]:
+            self.input_active = "pin_add_link"
+            self.input_text = ""
+            self.modal = ("edit_field", "pin_add_link")
+        iy += 20
+        for li, link in enumerate(pin.links[:4]):
+            prefix = "WEB" if link.startswith("http") else "FILE"
+            lp = fonts.tiny.render(f"[{prefix}]", True, COLORS["accent"])
+            screen.blit(lp, (ix + 4, iy + 1))
+            lt_text = link if len(link) <= 35 else link[:32] + "..."
+            lt_r = fonts.tiny.render(lt_text, True, COLORS["text_main"])
+            link_rect = pygame.Rect(ix + 4 + lp.get_width() + 3, iy, lt_r.get_width(), 14)
+            screen.blit(lt_r, (link_rect.x, iy + 1))
+            if link_rect.collidepoint(mp):
+                pygame.draw.line(screen, COLORS["accent"],
+                                 (link_rect.x, link_rect.bottom),
+                                 (link_rect.right, link_rect.bottom), 1)
+                if pygame.mouse.get_pressed()[0]:
+                    import webbrowser
+                    try:
+                        if link.startswith("http"):
+                            webbrowser.open(link)
+                        else:
+                            os.startfile(link) if hasattr(os, 'startfile') else os.system(f'xdg-open "{link}"')
+                    except Exception:
+                        pass
+            # Delete link
+            del_x = link_rect.right + 4
+            del_r = pygame.Rect(del_x, iy, 12, 14)
+            if del_r.collidepoint(mp):
+                dxt = fonts.tiny.render("x", True, COLORS["danger"])
+                screen.blit(dxt, (del_x + 1, iy + 1))
+                if pygame.mouse.get_pressed()[0]:
+                    pin.links.pop(li)
+                    break
+            iy += 16
+
+        # Visibility toggle
+        iy += 8
+        vis_btn = pygame.Rect(ix, iy, 80, 20)
+        vis_hover = vis_btn.collidepoint(mp)
+        vis_col = COLORS["success"] if pin.visible else COLORS["danger"]
+        pygame.draw.rect(screen, COLORS["hover"] if vis_hover else vis_col, vis_btn, border_radius=3)
+        vt = fonts.tiny.render("Visible" if pin.visible else "Hidden", True, COLORS["text_bright"])
+        screen.blit(vt, (ix + 8, iy + 3))
+        if vis_hover and pygame.mouse.get_pressed()[0]:
+            pin.visible = not pin.visible
+
+        # Delete pin button
+        del_btn = pygame.Rect(ix + 90, iy, 80, 20)
+        del_hover = del_btn.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["danger_hover"] if del_hover else COLORS["danger"],
+                         del_btn, border_radius=3)
+        delt = fonts.tiny.render("Delete Pin", True, COLORS["text_bright"])
+        screen.blit(delt, (ix + 96, iy + 3))
+        if del_hover and pygame.mouse.get_pressed()[0]:
+            remove_pin(self.world, pin.id)
+            self.selected_pin_id = ""
 
     def _draw_dashed_line(self, screen, color, start, end, width, dash_len, gap_len):
         """Draw a dashed line."""
@@ -4001,6 +4467,9 @@ class CampaignManagerState:
                     self.modal = ("edit_field", "location_map_note")
                     self.input_active = "location_map_note"
                     self.input_text = loc.map_note
+        elif action == "add_pin":
+            self._map_pin_mode = not self._map_pin_mode
+            self._map_route_mode = False
 
     def _auto_layout_locations(self, roots, grid_area):
         """Auto-assign positions to locations that don't have one yet."""

@@ -21,6 +21,8 @@ class CampaignNote:
     text: str = ""
     timestamp: str = ""
     category: str = "general"  # general, combat, lore, quest, loot
+    links: List[str] = field(default_factory=list)  # URLs or file paths (hyperlinks)
+    pinned: bool = False  # Pinned notes stay at top
 
 
 @dataclass
@@ -58,6 +60,17 @@ class CampaignArea:
 
 
 @dataclass
+class HeroRelationship:
+    """A hero's relationship to an NPC or another hero."""
+    target_name: str = ""         # NPC name or hero name
+    target_id: str = ""           # NPC ID from world.py (empty for heroes)
+    target_type: str = "npc"      # "npc" or "hero"
+    attitude: str = "neutral"     # friendly, allied, neutral, unfriendly, hostile, romantic, rival
+    description: str = ""         # Short description of the relationship
+    notes: str = ""               # Detailed DM notes
+
+
+@dataclass
 class PartyMember:
     """Wrapper for a hero in the campaign party with campaign-specific state."""
     hero_data: dict = field(default_factory=dict)  # Serialized CreatureStats
@@ -71,6 +84,10 @@ class PartyMember:
     exhaustion: int = 0
     death_saves: Dict[str, int] = field(default_factory=lambda: {"success": 0, "failure": 0})
     custom_items: List[str] = field(default_factory=list)  # Extra item names beyond class defaults
+    # Relationships with NPCs and other heroes
+    relationships: List[HeroRelationship] = field(default_factory=list)
+    # Hyperlinks to external resources (character sheet, backstory doc, etc.)
+    links: List[str] = field(default_factory=list)
 
 
 @dataclass
