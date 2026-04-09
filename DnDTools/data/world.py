@@ -179,6 +179,36 @@ QUEST_PRIORITIES = ["low", "normal", "high", "urgent"]
 # ============================================================================
 
 @dataclass
+class MapPin:
+    """A pin/marker on the world map with notes and optional hyperlinks."""
+    id: str = ""
+    name: str = "New Pin"
+    pin_type: str = "note"            # note, poi, danger, treasure, quest, camp, custom
+    description: str = ""             # Short description shown on hover
+    notes: str = ""                   # Detailed DM notes
+    links: List[str] = field(default_factory=list)  # URLs or file paths
+    icon: str = ""                    # 1-2 char icon override (empty = auto from pin_type)
+    color: str = ""                   # Custom hex color (empty = auto from pin_type)
+    map_x: float = 0.0               # X position on map (percentage 0-100)
+    map_y: float = 0.0               # Y position on map (percentage 0-100)
+    location_id: str = ""             # Optional link to a Location
+    npc_ids: List[str] = field(default_factory=list)  # Optional linked NPCs
+    visible: bool = True              # Can be hidden from player view
+
+
+# Pin type display defaults
+MAP_PIN_TYPES = {
+    "note":     {"icon": "N", "color": "#AAAAAA", "label": "Note"},
+    "poi":      {"icon": "!", "color": "#FFD700", "label": "Point of Interest"},
+    "danger":   {"icon": "X", "color": "#FF4444", "label": "Danger"},
+    "treasure": {"icon": "$", "color": "#44FF44", "label": "Treasure"},
+    "quest":    {"icon": "?", "color": "#4488FF", "label": "Quest"},
+    "camp":     {"icon": "C", "color": "#FF8844", "label": "Camp/Rest"},
+    "custom":   {"icon": "*", "color": "#CCCCCC", "label": "Custom"},
+}
+
+
+@dataclass
 class MapRoute:
     """A travel route between two locations on the map."""
     from_id: str = ""
@@ -204,6 +234,7 @@ class World:
     next_id: int = 1                  # Auto-increment for IDs
     # Map data
     map_routes: List[MapRoute] = field(default_factory=list)
+    map_pins: List[MapPin] = field(default_factory=list)          # Map pin annotations
     map_image_path: str = ""          # Path to custom background image
     map_positions: Dict[str, list] = field(default_factory=dict)  # loc_id -> [x%, y%]
 
@@ -355,6 +386,26 @@ def _deserialize_route(d: dict) -> MapRoute:
         notes=d.get("notes", ""), danger_level=d.get("danger_level", "safe"),
     )
 
+def _serialize_pin(p: MapPin) -> dict:
+    return {
+        "id": p.id, "name": p.name, "pin_type": p.pin_type,
+        "description": p.description, "notes": p.notes, "links": p.links,
+        "icon": p.icon, "color": p.color, "map_x": p.map_x, "map_y": p.map_y,
+        "location_id": p.location_id, "npc_ids": p.npc_ids, "visible": p.visible,
+    }
+
+def _deserialize_pin(d: dict) -> MapPin:
+    return MapPin(
+        id=d.get("id", ""), name=d.get("name", "New Pin"),
+        pin_type=d.get("pin_type", "note"),
+        description=d.get("description", ""), notes=d.get("notes", ""),
+        links=d.get("links", []), icon=d.get("icon", ""), color=d.get("color", ""),
+        map_x=d.get("map_x", 0.0), map_y=d.get("map_y", 0.0),
+        location_id=d.get("location_id", ""), npc_ids=d.get("npc_ids", []),
+        visible=d.get("visible", True),
+    )
+
+
 def _serialize_quest_objective(obj: QuestObjective) -> dict:
     return {
         "description": obj.description, "completed": obj.completed,
@@ -424,6 +475,7 @@ def save_world(world: World, filepath: str = ""):
         "quests": {k: _serialize_quest(v) for k, v in world.quests.items()},
         "next_id": world.next_id,
         "map_routes": [_serialize_route(r) for r in world.map_routes],
+        "map_pins": [_serialize_pin(p) for p in world.map_pins],
         "map_image_path": world.map_image_path,
         "map_positions": world.map_positions,
     }
@@ -449,6 +501,7 @@ def load_world(filepath: str) -> World:
         quests={k: _deserialize_quest(v) for k, v in data.get("quests", {}).items()},
         next_id=data.get("next_id", 1),
         map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
+        map_pins=[_deserialize_pin(p) for p in data.get("map_pins", [])],
         map_image_path=data.get("map_image_path", ""),
         map_positions=data.get("map_positions", {}),
     )
@@ -639,6 +692,60 @@ def get_shop_suggestions(npc: NPC, count: int = 5) -> list:
     if not npc.shop_type:
         return []
     return suggest_items_for_shop(npc.shop_type, npc.target_party_level, count)
+
+
+# ============================================================================
+# MAP PIN HELPERS
+# ============================================================================
+
+def add_pin(world: World, name: str, pin_type: str = "note",
+            map_x: float = 50.0, map_y: float = 50.0, **kwargs) -> MapPin:
+    """Create and add a new map pin to the world."""
+    pin = MapPin(
+        id=generate_id(world, "pin"),
+        name=name,
+        pin_type=pin_type,
+        map_x=map_x,
+        map_y=map_y,
+        **kwargs,
+    )
+    world.map_pins.append(pin)
+    return pin
+
+
+def remove_pin(world: World, pin_id: str):
+    """Remove a map pin by ID."""
+    world.map_pins = [p for p in world.map_pins if p.id != pin_id]
+
+
+def get_pin_by_id(world: World, pin_id: str) -> Optional[MapPin]:
+    """Get a map pin by its ID."""
+    for p in world.map_pins:
+        if p.id == pin_id:
+            return p
+    return None
+
+
+def get_pins_at_location(world: World, location_id: str) -> List[MapPin]:
+    """Get all map pins linked to a specific location."""
+    return [p for p in world.map_pins if p.location_id == location_id]
+
+
+def get_pins_by_type(world: World, pin_type: str) -> List[MapPin]:
+    """Get all map pins of a specific type."""
+    return [p for p in world.map_pins if p.pin_type == pin_type]
+
+
+def get_visible_pins(world: World) -> List[MapPin]:
+    """Get all visible map pins."""
+    return [p for p in world.map_pins if p.visible]
+
+
+def search_pins(world: World, query: str) -> List[MapPin]:
+    """Search map pins by name, description, or notes."""
+    q = query.lower()
+    return [p for p in world.map_pins
+            if q in p.name.lower() or q in p.description.lower() or q in p.notes.lower()]
 
 
 def get_shopkeepers(world: World) -> List[NPC]:
