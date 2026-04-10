@@ -1,4 +1,5 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature, SpellInfo
+from data.spells import get_spell
 
 monsters = [
     CreatureStats(name="Couatl", size="Medium", creature_type="Celestial",
@@ -13,6 +14,13 @@ monsters = [
         damage_resistances=["radiant"],
         damage_immunities=["psychic"],
         spellcasting_ability="Charisma", spell_save_dc=14, spell_attack_bonus=6,
+        spell_slots={"1st":3,"2nd":2},
+        spells_known=[
+            get_spell("Bless"),
+            get_spell("Cure Wounds"),
+            get_spell("Shield"),
+            get_spell("Lesser Restoration"),
+        ],
         features=[Feature("Magic Resistance","Adv on saves vs spells and magical effects"),
                   Feature("Shielded Mind","Immune to scrying and any effect that senses emotions/reads thoughts"),
                   Feature("Innate Spellcasting","CHA-based (DC 14). Can innately cast detect evil and good, detect magic, detect thoughts at will; bless, create food and water, cure wounds, lesser restoration, protection from poison, sanctuary, shield 3/day each; dream, greater restoration, scrying 1/day each"),

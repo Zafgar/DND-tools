@@ -1,4 +1,5 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature
+from data.spells import get_spell
 
 monsters = [
     CreatureStats(name="Goblin", size="Small", creature_type="Humanoid",
@@ -103,7 +104,14 @@ monsters = [
         spellcasting_ability="Wisdom",
         spell_save_dc=12,
         spell_attack_bonus=4,
-        spell_slots={"1":3},
+        spell_slots={"1st":3},
+        spells_known=[
+            get_spell("Bless"),
+            get_spell("Cure Wounds"),
+        ],
+        cantrips=[
+            get_spell("Sacred Flame", save_dc_fixed=12),
+        ],
         features=[Feature("Spellcasting","1st-level spellcaster. Spellcasting ability is Wisdom (spell save DC 12, +4 to hit). Cantrips: Light, Sacred Flame, Thaumaturgy. 1st level (3 slots): Bless, Cure Wounds, Sanctuary")],
         challenge_rating=0.25, xp=50, proficiency_bonus=2),
 

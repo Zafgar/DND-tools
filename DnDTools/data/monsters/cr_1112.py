@@ -1,4 +1,5 @@
 from data.models import CreatureStats, AbilityScores, Action, Feature
+from data.spells import get_spell
 
 monsters = [
     # ------------------------------------------------------------------ #
@@ -92,6 +93,20 @@ monsters = [
             Action("Dagger","Melee",6,"1d4",2,"piercing"),
         ],
         spellcasting_ability="Intelligence", spell_save_dc=17, spell_attack_bonus=9,
+        spell_slots={"1st":4,"2nd":3,"3rd":3,"4th":3,"5th":3},
+        spells_known=[
+            get_spell("Mage Armor"),
+            get_spell("Shield"),
+            get_spell("Misty Step"),
+            get_spell("Counterspell"),
+            get_spell("Fireball"),
+            get_spell("Lightning Bolt"),
+            get_spell("Banishment"),
+            get_spell("Cone of Cold"),
+        ],
+        cantrips=[
+            get_spell("Fire Bolt", attack_bonus_fixed=9),
+        ],
         damage_resistances=["damage from spells"],
         features=[
             Feature("Magic Resistance","Adv on saves vs spells"),
