@@ -540,10 +540,14 @@ class BattleRendererMixin:
     def _draw_terrain(self, screen):
         gsz = self.battle.grid_size
         ticks = pygame.time.get_ticks()
+        mp = pygame.mouse.get_pos()
         for t in self.battle.terrain:
             rx, ry = self._grid_to_screen(t.grid_x, t.grid_y)
             rw = t.width * gsz
             rh = t.height * gsz
+            # Hover tooltip for spell terrain: show rules/description
+            if t.is_spell_terrain and pygame.Rect(rx, ry, rw, rh).collidepoint(mp):
+                self._build_spell_terrain_tooltip(t)
             # Filled tile
             s = pygame.Surface((rw, rh), pygame.SRCALPHA)
             r, g, b = t.color
@@ -594,6 +598,42 @@ class BattleRendererMixin:
             if t.blocks_los and not t.is_door:
                 los_mark = fonts.tiny.render("LOS", True, (255, 80, 80))
                 screen.blit(los_mark, (rx + rw - los_mark.get_width() - 2, ry + rh - 14))
+
+    def _build_spell_terrain_tooltip(self, t):
+        """Build hover tooltip for spell-created terrain (Wall of Fire, Moonbeam, etc.)."""
+        try:
+            from data.spells import get_spell
+        except Exception:
+            get_spell = None
+        name = t.spell_name or "Spell Effect"
+        owner = t.spell_owner or "Unknown"
+        lines = [f"{name}", f"Cast by: {owner}"]
+        sp = None
+        if get_spell:
+            try:
+                sp = get_spell(name)
+            except Exception:
+                sp = None
+        if sp is not None and getattr(sp, 'name', '') and sp.name != "Unknown spell":
+            if sp.level > 0:
+                lines.append(f"Level {sp.level}")
+            if sp.damage_dice:
+                lines.append(f"Damage: {sp.damage_dice} {sp.damage_type}")
+            if sp.heals:
+                lines.append(f"Heals: {sp.heals}")
+            if sp.save_ability:
+                lines.append(f"Save: {sp.save_ability} (Half: {sp.half_on_save})")
+            if sp.concentration:
+                lines.append("Concentration")
+            if sp.description:
+                lines.append("")
+                lines.append(sp.description)
+        else:
+            if t.hazard_damage:
+                lines.append(f"Damage: {t.hazard_damage}")
+            if t.blocks_los:
+                lines.append("Blocks line of sight")
+        self.active_tooltip = "\n".join(lines)
 
     def _draw_spell_terrain_vfx(self, surface, terrain, rw, rh, ticks):
         """Draw animated VFX for spell-created terrain tiles."""
@@ -837,7 +877,7 @@ class BattleRendererMixin:
             dx = cx_grid - origin_x
             dy = cy_grid - origin_y
             angle_rad = math.atan2(dy, dx)
-            
+
             pts = [(radius_px + 2, radius_px + 2)]
             # 60 degree cone
             for deg in range(-30, 31, 10):
@@ -848,6 +888,37 @@ class BattleRendererMixin:
             if len(pts) >= 3:
                 pygame.draw.polygon(aoe_surf, color, pts)
                 pygame.draw.lines(aoe_surf, border, True, pts, 2)
+        elif shape == "line":
+            # Draw a wall/line: 1 square thick, oriented from caster toward target
+            wall_half_squares = max(1, int(round((radius / 5) / 2)))
+            wall_len_px = wall_half_squares * 2 * gsz + gsz
+            vertical_wall = True
+            if step.attacker is not None:
+                cdx = cx_grid - step.attacker.grid_x
+                cdy = cy_grid - step.attacker.grid_y
+                vertical_wall = abs(cdy) < abs(cdx)
+            if vertical_wall:
+                rect_w = gsz
+                rect_h = wall_len_px
+            else:
+                rect_w = wall_len_px
+                rect_h = gsz
+            line_surf = pygame.Surface((rect_w + 4, rect_h + 4), pygame.SRCALPHA)
+            pygame.draw.rect(line_surf, color, (2, 2, rect_w, rect_h))
+            pygame.draw.rect(line_surf, border, (2, 2, rect_w, rect_h), 3)
+            screen.blit(line_surf, (cx_px - rect_w // 2 - 2, cy_px - rect_h // 2 - 2))
+            lbl = fonts.tiny.render(f"{name} ({radius}ft)", True, (255, 255, 200))
+            screen.blit(lbl, (cx_px - lbl.get_width() // 2, cy_px - rect_h // 2 - 20))
+            return
+        elif shape == "cube":
+            side_px = int((radius / 5) * gsz) * 2 + gsz
+            cube_surf = pygame.Surface((side_px + 4, side_px + 4), pygame.SRCALPHA)
+            pygame.draw.rect(cube_surf, color, (2, 2, side_px, side_px))
+            pygame.draw.rect(cube_surf, border, (2, 2, side_px, side_px), 3)
+            screen.blit(cube_surf, (cx_px - side_px // 2 - 2, cy_px - side_px // 2 - 2))
+            lbl = fonts.tiny.render(f"{name} ({radius}ft)", True, (255, 255, 200))
+            screen.blit(lbl, (cx_px - lbl.get_width() // 2, cy_px - side_px // 2 - 20))
+            return
         else:
             pygame.draw.circle(aoe_surf, color, (radius_px + 2, radius_px + 2), radius_px)
             pygame.draw.circle(aoe_surf, border, (radius_px + 2, radius_px + 2), radius_px, 3)
@@ -2143,26 +2214,51 @@ class BattleRendererMixin:
     # --- Tooltip ---
     def _draw_tooltip(self, screen):
         if not self.active_tooltip: return
-        
+
         mx, my = pygame.mouse.get_pos()
-        tip = fonts.tiny.render(self.active_tooltip, True, (255,255,255))
-        tw, th = tip.get_width() + 10, tip.get_height() + 8
-        
+        # Multi-line tooltip with word wrap
+        max_chars = 60
+        raw_lines = str(self.active_tooltip).split("\n")
+        wrapped = []
+        for raw in raw_lines:
+            if len(raw) <= max_chars:
+                wrapped.append(raw)
+                continue
+            words = raw.split(" ")
+            cur = ""
+            for w in words:
+                if not cur:
+                    cur = w
+                elif len(cur) + 1 + len(w) <= max_chars:
+                    cur += " " + w
+                else:
+                    wrapped.append(cur)
+                    cur = w
+            if cur:
+                wrapped.append(cur)
+        if not wrapped:
+            return
+        surfs = [fonts.tiny.render(ln, True, (255, 255, 255)) for ln in wrapped]
+        tw = max(s.get_width() for s in surfs) + 10
+        line_h = surfs[0].get_height()
+        th = line_h * len(surfs) + 8
+
         # Default position: right-down
         tx = mx + 15
         ty = my + 10
-        
+
         # Flip to left if off-screen right
         if tx + tw > SCREEN_WIDTH:
             tx = mx - tw - 10
-        
+
         # Flip up if off-screen bottom
         if ty + th > SCREEN_HEIGHT:
             ty = my - th - 10
-        
-        pygame.draw.rect(screen, (20,20,20), (tx, ty, tw, th))
+
+        pygame.draw.rect(screen, (20, 20, 20), (tx, ty, tw, th))
         pygame.draw.rect(screen, COLORS["border"], (tx, ty, tw, th), 1)
-        screen.blit(tip, (tx+5, ty+4))
+        for i, s in enumerate(surfs):
+            screen.blit(s, (tx + 5, ty + 4 + i * line_h))
 
     # --- Hover Info (DM Helper) ---
     def _draw_hover_info(self, screen, mp):

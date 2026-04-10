@@ -1892,7 +1892,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # Roll Damage/Healing
         dmg = roll_dice(spell.damage_dice)
         heal = roll_dice(spell.heals)
-        
+
+        # Determine whether this is a healing cast — the resolver uses
+        # damage_type == "healing" to route to target.heal() instead of damage.
+        is_healing = bool(spell.heals) and heal > 0
+        step_damage = heal if is_healing else dmg
+        step_damage_type = "healing" if is_healing else spell.damage_type
+
         # Create ActionStep
         step = ActionStep(
             step_type="spell",
@@ -1900,8 +1906,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             attacker=caster,
             targets=targets,
             spell=spell,
-            damage=dmg if dmg > 0 else heal, # Reuse damage field for heal if needed, logic handles it
-            damage_type=spell.damage_type,
+            damage=step_damage,
+            damage_type=step_damage_type,
             save_dc=caster.stats.spell_save_dc,
             save_ability=spell.save_ability,
             applies_condition=spell.applies_condition,
@@ -2318,9 +2324,26 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
-            self.battle.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
-            self._log(f"[MAP] Loaded map: {os.path.basename(filepath)}")
+            new_terrain = []
+            for t in data.get("terrain", []):
+                try:
+                    new_terrain.append(TerrainObject.from_dict(t))
+                except Exception as inner:
+                    self._log(f"[WARN] Skipped bad terrain entry: {inner}")
+            self.battle.terrain = new_terrain
+            # Restore grid size if saved
+            saved_gsz = data.get("grid_size")
+            if isinstance(saved_gsz, int) and saved_gsz > 0:
+                self.battle.grid_size = saved_gsz
+            # Invalidate selections/targeting that may reference old terrain
+            self.pending_plan = None
+            self.pending_step_idx = 0
+            self.spell_targeting = False
+            self.spell_caster = None
+            self._log(f"[MAP] Loaded map: {os.path.basename(filepath)} ({len(new_terrain)} tiles)")
         except Exception as ex:
+            import traceback
+            traceback.print_exc()
             self._log(f"[ERROR] Map load failed: {ex}")
         self.map_save_menu_open = False
 
@@ -2329,12 +2352,26 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
     def _load_premade_map(self, map_key):
         """Load a premade map, replacing current terrain."""
-        from data.maps import load_map_terrain
-        terrain_list = load_map_terrain(map_key)
-        if terrain_list:
+        try:
+            from data.maps import load_map_terrain
+            terrain_list = load_map_terrain(map_key)
+            if not terrain_list:
+                self._log(f"[ERROR] Premade map '{map_key}' is empty or missing")
+                self.map_browser_open = False
+                return
             self.battle.terrain = terrain_list
+            # Invalidate selections/targeting that may reference old terrain
+            self.pending_plan = None
+            self.pending_step_idx = 0
+            self.spell_targeting = False
+            self.spell_caster = None
             self.map_browser_open = False
-            self._log(f"[MAP] Loaded premade map: {map_key}")
+            self._log(f"[MAP] Loaded premade map: {map_key} ({len(terrain_list)} tiles)")
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self._log(f"[ERROR] Premade map load failed: {ex}")
+            self.map_browser_open = False
     def _open_save_modal(self):
         self.scenario_modal = ScenarioModal("save", self._perform_save)
 

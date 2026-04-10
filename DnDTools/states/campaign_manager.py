@@ -778,20 +778,84 @@ class CampaignManagerState:
         self._map_bg_surface = None
         self._map_bg_scaled_cache = None
         self._map_bg_cache_key = None
-        if self.world.map_image_path and os.path.isfile(self.world.map_image_path):
+        path = self.world.map_image_path
+        if not path:
+            return
+        # Resolve relative paths against the project directory
+        if not os.path.isabs(path):
+            candidate = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
+            if os.path.isfile(candidate):
+                path = candidate
+        if not os.path.isfile(path):
+            logging.warning(f"[MAP] Background image not found: {path}")
+            self._status_msg = f"Map image not found: {os.path.basename(path)}"
+            self._status_timer = 240
+            return
+        try:
+            raw = pygame.image.load(path).convert()
+            # Cap loaded image to max 4096 on longest side for memory/performance
+            max_dim = 4096
+            w, h = raw.get_size()
+            if w > max_dim or h > max_dim:
+                scale = max_dim / max(w, h)
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                raw = pygame.transform.smoothscale(raw, (new_w, new_h))
+            self._map_bg_surface = raw
+        except Exception as ex:
+            logging.warning(f"[MAP] Failed to load background image: {ex}")
+            self._status_msg = f"Map load failed: {ex}"
+            self._status_timer = 240
+            self._map_bg_surface = None
+
+    def _pick_image_file(self):
+        """Open a native file picker for selecting an image. Returns path or ''."""
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
             try:
-                raw = pygame.image.load(self.world.map_image_path).convert()
-                # Cap loaded image to max 4096 on longest side for memory/performance
-                max_dim = 4096
-                w, h = raw.get_size()
-                if w > max_dim or h > max_dim:
-                    scale = max_dim / max(w, h)
-                    new_w = int(w * scale)
-                    new_h = int(h * scale)
-                    raw = pygame.transform.smoothscale(raw, (new_w, new_h))
-                self._map_bg_surface = raw
+                root.attributes("-topmost", True)
             except Exception:
-                self._map_bg_surface = None
+                pass
+            path = filedialog.askopenfilename(
+                title="Select map image",
+                filetypes=[
+                    ("Image files", "*.jpg *.jpeg *.png *.bmp *.webp"),
+                    ("JPEG", "*.jpg *.jpeg"),
+                    ("PNG", "*.png"),
+                    ("All files", "*.*"),
+                ],
+            )
+            root.destroy()
+            return path or ""
+        except Exception as ex:
+            logging.warning(f"[MAP] File picker unavailable: {ex}")
+            return ""
+
+    def _import_map_image(self, src_path: str) -> str:
+        """Copy a selected image into the project's map backgrounds folder.
+        Returns the relative path that should be stored in world.map_image_path."""
+        if not src_path or not os.path.isfile(src_path):
+            return ""
+        try:
+            import shutil, time
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            dest_dir = os.path.join(base_dir, "saves", "map_backgrounds")
+            os.makedirs(dest_dir, exist_ok=True)
+            ext = os.path.splitext(src_path)[1].lower() or ".jpg"
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            safe_name = "".join(c if c.isalnum() else "_" for c in os.path.splitext(os.path.basename(src_path))[0])[:40]
+            dest_name = f"{safe_name}_{stamp}{ext}"
+            dest_path = os.path.join(dest_dir, dest_name)
+            shutil.copy2(src_path, dest_path)
+            # Return project-relative path for portability
+            rel = os.path.relpath(dest_path, base_dir)
+            return rel
+        except Exception as ex:
+            logging.warning(f"[MAP] Failed to import image: {ex}")
+            return ""
 
     def _apply_template(self, template_type: str, template_key: str):
         """Apply a template to the current selected location."""
@@ -1052,6 +1116,12 @@ class CampaignManagerState:
 
             # Tab-specific event handling
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Global: click on campaign name in header to rename
+                name_rect = getattr(self, '_campaign_name_rect', None)
+                if name_rect is not None and name_rect.collidepoint(mp):
+                    self.input_active = "campaign_name"
+                    self.input_buffer = self.campaign.name
+                    continue
                 if self.active_tab == 0:
                     self._handle_party_click(mp)
                 elif self.active_tab == 1:
@@ -1864,10 +1934,17 @@ class CampaignManagerState:
         pygame.draw.rect(screen, COLORS["panel_dark"], (0, 0, SCREEN_WIDTH, 55))
         pygame.draw.line(screen, COLORS["border"], (0, 55), (SCREEN_WIDTH, 55))
 
-        # Campaign name
+        # Campaign name (clickable to rename)
         name_text = self.campaign.name
         nt = fonts.header.render(name_text, True, COLORS["accent"])
-        screen.blit(nt, (140, 14))
+        name_rect = pygame.Rect(140, 12, max(nt.get_width() + 20, 120), 30)
+        self._campaign_name_rect = name_rect
+        if name_rect.collidepoint(mp):
+            pygame.draw.rect(screen, COLORS["panel"], name_rect, border_radius=4)
+            pygame.draw.rect(screen, COLORS["accent"], name_rect, 1, border_radius=4)
+            hint = fonts.small.render("click to rename", True, COLORS["text_dim"])
+            screen.blit(hint, (name_rect.right + 6, 20))
+        screen.blit(nt, (150, 14))
 
         # Time of day indicator
         tod = self.campaign.time_of_day
@@ -4202,10 +4279,14 @@ class CampaignManagerState:
 
         # Background image or default
         if self._map_bg_surface and self.world.map_image_path:
-            # Scale image to fit grid with zoom — use cached scaled surface
-            iw = int(grid_area.width * self.map_zoom)
-            ih = int(grid_area.height * self.map_zoom)
-            if iw > 0 and ih > 0:
+            # Fit image into grid preserving aspect ratio, then apply zoom
+            src_w, src_h = self._map_bg_surface.get_size()
+            if src_w > 0 and src_h > 0 and grid_area.width > 0 and grid_area.height > 0:
+                fit_scale = min(grid_area.width / src_w, grid_area.height / src_h)
+                base_w = max(1, int(src_w * fit_scale))
+                base_h = max(1, int(src_h * fit_scale))
+                iw = max(1, int(base_w * self.map_zoom))
+                ih = max(1, int(base_h * self.map_zoom))
                 cache_key = (iw, ih)
                 if self._map_bg_cache_key != cache_key or self._map_bg_scaled_cache is None:
                     # Only re-scale when zoom/size actually changes
@@ -5117,9 +5198,26 @@ class CampaignManagerState:
             self._map_route_mode = not getattr(self, '_map_route_mode', False)
             self._map_route_from = ""
         elif action == "set_image":
-            self.modal = ("edit_field", "map_image_path")
-            self.input_active = "map_image_path"
-            self.input_text = self.world.map_image_path
+            # Try a native file picker first; fall back to text input.
+            picked = self._pick_image_file()
+            if picked:
+                local_path = self._import_map_image(picked)
+                if local_path:
+                    self.world.map_image_path = local_path
+                    self._load_map_background()
+                    if self._map_bg_surface:
+                        iw, ih = self._map_bg_surface.get_size()
+                        self._status_msg = f"Map loaded: {os.path.basename(local_path)} ({iw}x{ih})"
+                    else:
+                        self._status_msg = f"Map path set but image failed to load: {os.path.basename(local_path)}"
+                    self._status_timer = 180
+                else:
+                    self._status_msg = "Failed to import map image"
+                    self._status_timer = 180
+            else:
+                self.modal = ("edit_field", "map_image_path")
+                self.input_active = "map_image_path"
+                self.input_text = self.world.map_image_path
         elif action == "reset_view":
             self.map_offset_x = 0
             self.map_offset_y = 0
