@@ -45,6 +45,7 @@ class Location:
     map_note: str = ""                # Hover note shown on map tooltip
     population: int = 0               # Population size (for cities/towns)
     map_size: int = 0                 # Custom node size on map (0 = auto)
+    map_image_path: str = ""          # Per-location map background (JPG path)
     # Extended info
     government: str = ""              # Monarchy, council, anarchy, theocracy, etc.
     dominant_races: str = ""          # Comma-separated races (e.g. "Human, Elf, Dwarf")
@@ -204,7 +205,33 @@ MAP_PIN_TYPES = {
     "treasure": {"icon": "$", "color": "#44FF44", "label": "Treasure"},
     "quest":    {"icon": "?", "color": "#4488FF", "label": "Quest"},
     "camp":     {"icon": "C", "color": "#FF8844", "label": "Camp/Rest"},
+    "encounter":{"icon": "E", "color": "#FF2222", "label": "Encounter"},
     "custom":   {"icon": "*", "color": "#CCCCCC", "label": "Custom"},
+}
+
+
+@dataclass
+class MapToken:
+    """A movable token on the world map (party, NPC caravan, encounter, etc.)."""
+    id: str = ""
+    name: str = "Token"
+    token_type: str = "party"           # party, npc, encounter, caravan, custom
+    icon: str = ""                      # 1-2 char icon (empty = auto)
+    color: str = ""                     # Custom hex color
+    map_x: float = 50.0                # X position (percentage 0-100)
+    map_y: float = 50.0                # Y position (percentage 0-100)
+    notes: str = ""                     # DM notes
+    npc_ids: List[str] = field(default_factory=list)  # Linked NPCs
+    encounter_id: str = ""             # Linked encounter (for encounter tokens)
+    visible: bool = True
+
+
+MAP_TOKEN_TYPES = {
+    "party":     {"icon": "P", "color": "#44BBFF", "label": "Party"},
+    "npc":       {"icon": "N", "color": "#FFAA44", "label": "NPC Group"},
+    "encounter": {"icon": "!", "color": "#FF4444", "label": "Encounter"},
+    "caravan":   {"icon": "C", "color": "#DDAA44", "label": "Caravan"},
+    "custom":    {"icon": "*", "color": "#CCCCCC", "label": "Custom"},
 }
 
 
@@ -219,6 +246,8 @@ class MapRoute:
     distance_miles: float = 0.0       # Distance in miles
     notes: str = ""                   # DM notes about this route
     danger_level: str = "safe"        # safe, low, medium, high, deadly
+    terrain_type: str = "road"        # Terrain for travel time calc (road, forest, hills, etc.)
+    encounter_ids: List[str] = field(default_factory=list)  # Encounter IDs along this route
 
 
 @dataclass
@@ -235,8 +264,11 @@ class World:
     # Map data
     map_routes: List[MapRoute] = field(default_factory=list)
     map_pins: List[MapPin] = field(default_factory=list)          # Map pin annotations
+    map_tokens: List[MapToken] = field(default_factory=list)      # Movable tokens on map
     map_image_path: str = ""          # Path to custom background image
     map_positions: Dict[str, list] = field(default_factory=dict)  # loc_id -> [x%, y%]
+    map_scale_miles: float = 0.0      # Miles per 100% map width (0 = unset)
+    map_scale_reference: float = 0.0  # Reference distance in map % for scale calibration
 
 
 def generate_id(world: World, prefix: str = "loc") -> str:
@@ -294,6 +326,8 @@ def _serialize_location(loc: Location) -> dict:
     if loc.map_size:
         d["map_size"] = loc.map_size
     # Extended info (only if set)
+    if loc.map_image_path:
+        d["map_image_path"] = loc.map_image_path
     for field_name in ("government", "dominant_races", "languages", "religion",
                        "wealth_level", "defenses", "known_for"):
         val = getattr(loc, field_name, "")
@@ -317,6 +351,7 @@ def _deserialize_location(d: dict) -> Location:
         map_note=d.get("map_note", ""),
         population=d.get("population", 0),
         map_size=d.get("map_size", 0),
+        map_image_path=d.get("map_image_path", ""),
         government=d.get("government", ""),
         dominant_races=d.get("dominant_races", ""),
         languages=d.get("languages", ""),
@@ -376,6 +411,7 @@ def _serialize_route(r: MapRoute) -> dict:
         "from_id": r.from_id, "to_id": r.to_id, "route_type": r.route_type,
         "label": r.label, "color": r.color, "distance_miles": r.distance_miles,
         "notes": r.notes, "danger_level": r.danger_level,
+        "terrain_type": r.terrain_type, "encounter_ids": r.encounter_ids,
     }
 
 def _deserialize_route(d: dict) -> MapRoute:
@@ -384,6 +420,26 @@ def _deserialize_route(d: dict) -> MapRoute:
         route_type=d.get("route_type", "road"), label=d.get("label", ""),
         color=d.get("color", ""), distance_miles=d.get("distance_miles", 0),
         notes=d.get("notes", ""), danger_level=d.get("danger_level", "safe"),
+        terrain_type=d.get("terrain_type", "road"),
+        encounter_ids=d.get("encounter_ids", []),
+    )
+
+def _serialize_token(t: MapToken) -> dict:
+    return {
+        "id": t.id, "name": t.name, "token_type": t.token_type,
+        "icon": t.icon, "color": t.color, "map_x": t.map_x, "map_y": t.map_y,
+        "notes": t.notes, "npc_ids": t.npc_ids,
+        "encounter_id": t.encounter_id, "visible": t.visible,
+    }
+
+def _deserialize_token(d: dict) -> MapToken:
+    return MapToken(
+        id=d.get("id", ""), name=d.get("name", "Token"),
+        token_type=d.get("token_type", "party"),
+        icon=d.get("icon", ""), color=d.get("color", ""),
+        map_x=d.get("map_x", 50.0), map_y=d.get("map_y", 50.0),
+        notes=d.get("notes", ""), npc_ids=d.get("npc_ids", []),
+        encounter_id=d.get("encounter_id", ""), visible=d.get("visible", True),
     )
 
 def _serialize_pin(p: MapPin) -> dict:
@@ -476,8 +532,11 @@ def save_world(world: World, filepath: str = ""):
         "next_id": world.next_id,
         "map_routes": [_serialize_route(r) for r in world.map_routes],
         "map_pins": [_serialize_pin(p) for p in world.map_pins],
+        "map_tokens": [_serialize_token(t) for t in world.map_tokens],
         "map_image_path": world.map_image_path,
         "map_positions": world.map_positions,
+        "map_scale_miles": world.map_scale_miles,
+        "map_scale_reference": world.map_scale_reference,
     }
 
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
@@ -502,8 +561,11 @@ def load_world(filepath: str) -> World:
         next_id=data.get("next_id", 1),
         map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
         map_pins=[_deserialize_pin(p) for p in data.get("map_pins", [])],
+        map_tokens=[_deserialize_token(t) for t in data.get("map_tokens", [])],
         map_image_path=data.get("map_image_path", ""),
         map_positions=data.get("map_positions", {}),
+        map_scale_miles=data.get("map_scale_miles", 0.0),
+        map_scale_reference=data.get("map_scale_reference", 0.0),
     )
 
 
@@ -746,6 +808,57 @@ def search_pins(world: World, query: str) -> List[MapPin]:
     q = query.lower()
     return [p for p in world.map_pins
             if q in p.name.lower() or q in p.description.lower() or q in p.notes.lower()]
+
+
+# ============================================================================
+# MAP TOKEN HELPERS
+# ============================================================================
+
+def add_token(world: World, name: str, token_type: str = "party",
+              map_x: float = 50.0, map_y: float = 50.0, **kwargs) -> MapToken:
+    """Add a new map token."""
+    token = MapToken(
+        id=generate_id(world, "tok"),
+        name=name, token_type=token_type,
+        map_x=map_x, map_y=map_y, **kwargs,
+    )
+    world.map_tokens.append(token)
+    return token
+
+def remove_token(world: World, token_id: str):
+    """Remove a map token by ID."""
+    world.map_tokens = [t for t in world.map_tokens if t.id != token_id]
+
+def get_token_by_id(world: World, token_id: str) -> Optional[MapToken]:
+    """Get token by ID."""
+    for t in world.map_tokens:
+        if t.id == token_id:
+            return t
+    return None
+
+def get_route_distance_miles(world: World, from_id: str, to_id: str) -> float:
+    """Get the distance in miles between two locations via route. Returns 0 if no route."""
+    for route in world.map_routes:
+        if (route.from_id == from_id and route.to_id == to_id) or \
+           (route.from_id == to_id and route.to_id == from_id):
+            return route.distance_miles
+    return 0.0
+
+def calculate_map_distance_pct(world: World, from_id: str, to_id: str) -> float:
+    """Calculate straight-line distance between two locations in map percentage units."""
+    import math
+    pos_a = world.map_positions.get(from_id)
+    pos_b = world.map_positions.get(to_id)
+    if not pos_a or not pos_b:
+        return 0.0
+    return math.hypot(pos_a[0] - pos_b[0], pos_a[1] - pos_b[1])
+
+def estimate_route_miles_from_scale(world: World, from_id: str, to_id: str) -> float:
+    """Estimate miles between two locations using map scale (if set)."""
+    if world.map_scale_miles <= 0:
+        return 0.0
+    dist_pct = calculate_map_distance_pct(world, from_id, to_id)
+    return dist_pct * world.map_scale_miles / 100.0
 
 
 def get_shopkeepers(world: World) -> List[NPC]:

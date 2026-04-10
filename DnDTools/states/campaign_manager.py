@@ -28,6 +28,7 @@ from data.campaign import (
 )
 from data.world import (
     World, Location, NPC, ShopItem, NPCRelationship, MapRoute, MapPin,
+    MapToken, MAP_TOKEN_TYPES,
     Quest, QuestObjective, QUEST_STATUSES, QUEST_TYPES, QUEST_PRIORITIES,
     MAP_PIN_TYPES,
     save_world, load_world, generate_id,
@@ -39,6 +40,8 @@ from data.world import (
     populate_shop, get_shop_suggestions, get_shopkeepers,
     get_shopkeepers_at_location, LOCATION_TYPES,
     add_pin, remove_pin, get_pin_by_id, get_visible_pins,
+    add_token, remove_token, get_token_by_id,
+    get_route_distance_miles, estimate_route_miles_from_scale,
 )
 from data.shop_catalog import (
     get_item_price, get_item_tooltip, get_price_display,
@@ -262,6 +265,27 @@ class CampaignManagerState:
         self._map_pin_mode = False  # True = click to place a new pin
         self.selected_pin_id = ""  # Currently selected map pin ID
         self._load_map_background()
+
+        # Map tokens
+        self._map_dragging_token = ""  # Token ID being dragged
+        self._map_token_mode = False   # True = click to place a new token
+        self._map_token_type = "party" # Type for new token
+        self.selected_token_id = ""    # Currently selected token
+
+        # Map scale mode
+        self._map_scale_mode = False   # True = click two points to set scale
+        self._map_scale_point1 = None  # First point (pct_x, pct_y)
+        self._map_scale_point2 = None  # Second point (pct_x, pct_y)
+        self._map_scale_pct = 0.0      # Pct distance between points (set on 2nd click)
+
+        # Map location detail popup
+        self._map_detail_location_id = ""  # Location to show detail for
+        self._map_detail_scroll = 0
+
+        # Per-location sub-map surfaces
+        self._location_map_surfaces: dict = {}  # loc_id -> pygame.Surface
+        self._location_map_cache: dict = {}     # loc_id -> (scaled_surface, cache_key)
+        self._current_sub_map_id = ""           # Currently viewing sub-map of this location
 
         # Hero relationship view state
         self.hero_rel_scroll = 0
@@ -894,14 +918,21 @@ class CampaignManagerState:
                 if self.active_tab == 4 and self.world_map_mode:
                     grid_area = self._get_map_grid_area()
                     if grid_area.collidepoint(mp):
-                        old_zoom = self.map_zoom
-                        self.map_zoom = max(0.2, min(5.0, self.map_zoom + event.y * 0.15))
-                        # Zoom toward cursor
-                        factor = self.map_zoom / old_zoom if old_zoom != 0 else 1
-                        cx = grid_area.x + grid_area.width / 2
-                        cy = grid_area.y + grid_area.height / 2
-                        self.map_offset_x = (self.map_offset_x + cx - mp[0]) * factor + mp[0] - cx
-                        self.map_offset_y = (self.map_offset_y + cy - mp[1]) * factor + mp[1] - cy
+                        if self._map_token_mode:
+                            # Cycle token type while in token placement mode
+                            types = list(MAP_TOKEN_TYPES.keys())
+                            if types:
+                                idx = types.index(self._map_token_type) if self._map_token_type in types else 0
+                                self._map_token_type = types[(idx + event.y) % len(types)]
+                        else:
+                            old_zoom = self.map_zoom
+                            self.map_zoom = max(0.2, min(5.0, self.map_zoom + event.y * 0.15))
+                            # Zoom toward cursor
+                            factor = self.map_zoom / old_zoom if old_zoom != 0 else 1
+                            cx = grid_area.x + grid_area.width / 2
+                            cy = grid_area.y + grid_area.height / 2
+                            self.map_offset_x = (self.map_offset_x + cx - mp[0]) * factor + mp[0] - cx
+                            self.map_offset_y = (self.map_offset_y + cy - mp[1]) * factor + mp[1] - cy
                     else:
                         self.scroll_y += event.y * 30
                 elif self.hero_picker_open and mp[0] > SCREEN_WIDTH - 300:
@@ -933,10 +964,22 @@ class CampaignManagerState:
                         pct_x = max(1, min(99, pct_x))
                         pct_y = max(1, min(99, pct_y))
                         self._location_map_positions[self._map_dragging_node] = (pct_x, pct_y)
+                    elif self._map_dragging_token and pygame.mouse.get_pressed()[0]:
+                        # Drag map token
+                        grid_area = self._get_map_grid_area()
+                        pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+                        pct_x = max(1, min(99, pct_x))
+                        pct_y = max(1, min(99, pct_y))
+                        tok = get_token_by_id(self.world, self._map_dragging_token)
+                        if tok:
+                            tok.map_x = pct_x
+                            tok.map_y = pct_y
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     if self._map_dragging_node:
                         self._save_map_positions()
                         self._map_dragging_node = ""
+                    if self._map_dragging_token:
+                        self._map_dragging_token = ""
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     grid_area = self._get_map_grid_area()
                     if grid_area.collidepoint(mp):
@@ -987,9 +1030,18 @@ class CampaignManagerState:
                     elif event.unicode.isprintable():
                         self.quest_search += event.unicode
                     continue
-                if event.key == pygame.K_ESCAPE and self._map_route_mode:
+                if event.key == pygame.K_ESCAPE and (
+                    self._map_route_mode or self._map_pin_mode
+                    or self._map_token_mode or self._map_scale_mode
+                    or self._map_detail_location_id
+                ):
                     self._map_route_mode = False
                     self._map_route_from = ""
+                    self._map_pin_mode = False
+                    self._map_token_mode = False
+                    self._map_scale_mode = False
+                    self._map_scale_point1 = None
+                    self._map_detail_location_id = ""
                     continue
                 if event.key == pygame.K_ESCAPE and getattr(self, '_npc_location_picker_open', False):
                     self._npc_location_picker_open = False
@@ -1202,7 +1254,71 @@ class CampaignManagerState:
 
     def _handle_map_click(self, mp, grid_area):
         """Handle left-click on the map grid area."""
-        # Check if clicking on a map pin first
+        import math as _math
+
+        # --- Scale calibration mode: pick two points, then ask for miles ---
+        if self._map_scale_mode:
+            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+            pct_x = max(0, min(100, pct_x))
+            pct_y = max(0, min(100, pct_y))
+            if not self._map_scale_point1:
+                self._map_scale_point1 = (pct_x, pct_y)
+                self._status_msg = "Scale: click second point"
+                self._status_timer = 120
+            else:
+                p1 = self._map_scale_point1
+                dist_pct = _math.hypot(pct_x - p1[0], pct_y - p1[1])
+                if dist_pct > 0.5:
+                    self._map_scale_point2 = (pct_x, pct_y)
+                    self._map_scale_pct = dist_pct
+                    # Open modal to ask for real distance
+                    self.modal = ("edit_field", "scale_distance_miles")
+                    self.input_active = "scale_distance_miles"
+                    self.input_text = ""
+                self._map_scale_mode = False
+                self._map_scale_point1 = None
+            return
+
+        # --- Token click detection (highest priority among markers) ---
+        clicked_token_id = ""
+        for token in self.world.map_tokens:
+            if not token.visible:
+                continue
+            tx, ty = self._map_to_screen(token.map_x, token.map_y, grid_area)
+            tok_size = max(6, int(10 * self.map_zoom))
+            hit_dist = tok_size + 4
+            if abs(mp[0] - tx) < hit_dist and abs(mp[1] - ty) < hit_dist:
+                clicked_token_id = token.id
+                break
+
+        # --- Token placement mode ---
+        if self._map_token_mode:
+            if clicked_token_id:
+                # Clicked an existing token in placement mode: just select it
+                self.selected_token_id = clicked_token_id
+                self._map_dragging_token = clicked_token_id
+                return
+            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+            pct_x = max(1, min(99, pct_x))
+            pct_y = max(1, min(99, pct_y))
+            tok_info = MAP_TOKEN_TYPES.get(self._map_token_type, MAP_TOKEN_TYPES.get("custom", {}))
+            default_name = tok_info.get("label", "Token")
+            new_tok = add_token(self.world, default_name, self._map_token_type, pct_x, pct_y)
+            self.selected_token_id = new_tok.id
+            self._map_token_mode = False
+            self._status_msg = f"Placed {new_tok.name}"
+            self._status_timer = 90
+            return
+
+        # --- Clicking an existing token (not in any mode): select + start drag ---
+        if clicked_token_id and not self._map_route_mode and not self._map_pin_mode:
+            self.selected_token_id = clicked_token_id
+            self.selected_pin_id = ""
+            self.selected_location_id = ""
+            self._map_dragging_token = clicked_token_id
+            return
+
+        # Check if clicking on a map pin
         clicked_pin_id = ""
         for pin in self.world.map_pins:
             if not pin.visible:
@@ -1217,6 +1333,7 @@ class CampaignManagerState:
         if clicked_pin_id and not self._map_route_mode and not self._map_pin_mode:
             self.selected_pin_id = clicked_pin_id
             self.selected_location_id = ""
+            self.selected_token_id = ""
             return
 
         # Check if clicking on a location node
@@ -1239,11 +1356,13 @@ class CampaignManagerState:
                     self._map_route_from = clicked_loc_id
                 elif clicked_loc_id != self._map_route_from:
                     # Create route between the two locations
+                    dist = estimate_route_miles_from_scale(self.world, self._map_route_from, clicked_loc_id)
                     self.world.map_routes.append(MapRoute(
                         from_id=self._map_route_from,
                         to_id=clicked_loc_id,
                         route_type="road",
                         label="",
+                        distance_miles=dist,
                     ))
                     self._map_route_mode = False
                     self._map_route_from = ""
@@ -1263,11 +1382,11 @@ class CampaignManagerState:
 
         if clicked_loc_id:
             self.selected_pin_id = ""
+            self.selected_token_id = ""
             if self.selected_location_id == clicked_loc_id:
-                # Double-select: switch to detail view
-                self.world_map_mode = False
-                self.world_view = "locations"
-                self.world_location_expanded.add(clicked_loc_id)
+                # Double-select: open location detail popup
+                self._map_detail_location_id = clicked_loc_id
+                self._map_detail_scroll = 0
             else:
                 self.selected_location_id = clicked_loc_id
                 self._map_dragging_node = clicked_loc_id
@@ -1284,6 +1403,7 @@ class CampaignManagerState:
             else:
                 self.selected_location_id = ""
                 self.selected_pin_id = ""
+                self.selected_token_id = ""
                 self._map_route_mode = False
                 self._map_route_from = ""
 
@@ -1437,7 +1557,7 @@ class CampaignManagerState:
         "npc_backstory", "npc_notes", "npc_personality",
         "location_desc", "location_notes", "pin_description",
         "pin_notes", "quest_description", "quest_notes",
-        "quest_reward_notes", "member_note", "note",
+        "quest_reward_notes", "member_note", "note", "token_notes",
     }
 
     def _handle_input_key(self, event):
@@ -1621,6 +1741,44 @@ class CampaignManagerState:
         elif self.input_active == "map_image_path":
             self.world.map_image_path = self.input_text.strip()
             self._load_map_background()
+        elif self.input_active == "map_scale_miles":
+            try:
+                self.world.map_scale_miles = float(self.input_text)
+            except ValueError:
+                pass
+        elif self.input_active == "scale_distance_miles":
+            try:
+                miles = float(self.input_text)
+                dist_pct = getattr(self, "_map_scale_pct", 0.0)
+                if miles > 0 and dist_pct > 0.0:
+                    self.world.map_scale_miles = miles * 100.0 / dist_pct
+                    self._status_msg = f"Map scale set: {self.world.map_scale_miles:.1f} mi across"
+                    self._status_timer = 150
+            except ValueError:
+                pass
+            self._map_scale_point2 = None
+            self._map_scale_pct = 0.0
+        elif self.input_active == "loc_map_image":
+            loc = self.world.locations.get(self.selected_location_id)
+            if loc:
+                loc.map_image_path = self.input_text.strip()
+                # Clear cached surface
+                self._location_map_surfaces.pop(self.selected_location_id, None)
+                self._location_map_cache.pop(self.selected_location_id, None)
+        elif self.input_active == "route_distance":
+            if hasattr(self, '_editing_route_idx') and 0 <= self._editing_route_idx < len(self.world.map_routes):
+                try:
+                    self.world.map_routes[self._editing_route_idx].distance_miles = float(self.input_text)
+                except ValueError:
+                    pass
+        elif self.input_active == "token_name":
+            tok = get_token_by_id(self.world, self.selected_token_id)
+            if tok:
+                tok.name = self.input_text
+        elif self.input_active == "token_notes":
+            tok = get_token_by_id(self.world, self.selected_token_id)
+            if tok:
+                tok.notes = self.input_text
         elif self.input_active == "location_color":
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
@@ -4093,14 +4251,52 @@ class CampaignManagerState:
                     self._draw_dashed_line(screen, rc, start, end, thickness, 8, 5)
                 else:
                     pygame.draw.line(screen, rc, start, end, thickness)
-                # Route label
+                # Route label (show distance + label)
+                route_text_parts = []
                 if route.label:
+                    route_text_parts.append(route.label)
+                if route.distance_miles > 0 and self.map_zoom >= 0.5:
+                    route_text_parts.append(f"{route.distance_miles:.0f} mi")
+                elif route.distance_miles == 0 and self.world.map_scale_miles > 0 and self.map_zoom >= 0.5:
+                    # Auto-estimate from map scale
+                    est = estimate_route_miles_from_scale(self.world, route.from_id, route.to_id)
+                    if est > 0:
+                        route_text_parts.append(f"~{est:.0f} mi")
+                if route_text_parts and self.map_zoom >= 0.35:
                     mid = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
-                    rl = fonts.tiny.render(route.label, True, COLORS["text_main"])
+                    route_label_str = " | ".join(route_text_parts)
+                    rl = fonts.tiny.render(route_label_str, True, COLORS["text_main"])
                     bg = pygame.Surface((rl.get_width() + 6, rl.get_height() + 2), pygame.SRCALPHA)
                     bg.fill((0, 0, 0, 140))
                     screen.blit(bg, (mid[0] - rl.get_width() // 2 - 3, mid[1] - rl.get_height() // 2 - 1))
                     screen.blit(rl, (mid[0] - rl.get_width() // 2, mid[1] - rl.get_height() // 2))
+
+                    # Route hover: show travel time details
+                    mid_rect = pygame.Rect(mid[0] - 30, mid[1] - 10, 60, 20)
+                    if mid_rect.collidepoint(mp) and not pygame.mouse.get_pressed()[0]:
+                        dist = route.distance_miles
+                        if dist <= 0:
+                            dist = estimate_route_miles_from_scale(self.world, route.from_id, route.to_id)
+                        if dist > 0:
+                            from data.travel import calculate_travel_time, format_travel_time, TRAVEL_PACE
+                            tip_lines = [f"Distance: {dist:.1f} miles"]
+                            for pace_key in ("fast", "normal", "slow"):
+                                info = calculate_travel_time(dist, pace=pace_key, terrain=route.terrain_type)
+                                tip_lines.append(f"{pace_key.title()}: {format_travel_time(info['total_days'])}")
+                            tip_lines.append(f"Terrain: {route.terrain_type}")
+                            if route.danger_level != "safe":
+                                tip_lines.append(f"Danger: {route.danger_level}")
+                            tw = max(fonts.small.size(l)[0] for l in tip_lines) + 16
+                            th = len(tip_lines) * 18 + 8
+                            tx = min(mp[0] + 12, SCREEN_WIDTH - tw - 10)
+                            ty = mp[1] - th - 5
+                            tip_rect = pygame.Rect(tx, ty, tw, th)
+                            pygame.draw.rect(screen, (20, 22, 30), tip_rect, border_radius=4)
+                            pygame.draw.rect(screen, COLORS["border"], tip_rect, 1, border_radius=4)
+                            for i, line in enumerate(tip_lines):
+                                col = COLORS["accent"] if i == 0 else COLORS["text_main"]
+                                lt = fonts.small.render(line, True, col)
+                                screen.blit(lt, (tx + 8, ty + 4 + i * 18))
 
         # --- Draw parent-child connections (thin lines) ---
         for loc_id, loc in self.world.locations.items():
@@ -4177,16 +4373,24 @@ class CampaignManagerState:
                 it = icon_font.render(icon, True, (0, 0, 0))
                 screen.blit(it, (px - it.get_width() // 2, py - it.get_height() // 2))
 
-            # Name label below
-            label_font = fonts.small if is_sel else fonts.tiny
-            label = label_font.render(loc.name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
-            lx = px - label.get_width() // 2
-            ly = py + size + 3
-            # Label background for readability
-            lbg = pygame.Surface((label.get_width() + 4, label.get_height()), pygame.SRCALPHA)
-            lbg.fill((0, 0, 0, 120))
-            screen.blit(lbg, (lx - 2, ly))
-            screen.blit(label, (lx, ly))
+            # Name label below (zoom-aware: hide at very low zoom, shrink at medium)
+            show_label = self.map_zoom >= 0.4 or is_sel or is_hover
+            if show_label:
+                if self.map_zoom < 0.6 and not is_sel and not is_hover:
+                    label_font = fonts.tiny
+                    label_alpha = max(60, int(255 * (self.map_zoom - 0.3) / 0.3))
+                else:
+                    label_font = fonts.small if is_sel else fonts.tiny
+                    label_alpha = 255
+                label = label_font.render(loc.name, True, COLORS["text_bright"] if is_sel else COLORS["text_main"])
+                lx = px - label.get_width() // 2
+                ly = py + size + 3
+                lbg = pygame.Surface((label.get_width() + 4, label.get_height()), pygame.SRCALPHA)
+                lbg.fill((0, 0, 0, min(120, label_alpha)))
+                screen.blit(lbg, (lx - 2, ly))
+                if label_alpha < 255:
+                    label.set_alpha(label_alpha)
+                screen.blit(label, (lx, ly))
 
             # NPC count badge
             npc_count = len([n for n in self.world.npcs.values() if n.location_id == loc_id and n.active])
@@ -4243,6 +4447,65 @@ class CampaignManagerState:
             screen.blit(lbg, (lx - 2, ly))
             screen.blit(label, (lx, ly))
 
+        # --- Draw map tokens (party, NPC groups, encounter markers) ---
+        for token in self.world.map_tokens:
+            if not token.visible:
+                continue
+            tx, ty = self._map_to_screen(token.map_x, token.map_y, grid_area)
+            if tx < grid_area.x - 20 or tx > grid_area.right + 20:
+                continue
+            if ty < grid_area.y - 20 or ty > grid_area.bottom + 20:
+                continue
+
+            tok_info = MAP_TOKEN_TYPES.get(token.token_type, MAP_TOKEN_TYPES["custom"])
+            color_hex = token.color or tok_info["color"]
+            color = self._hex_to_rgb(color_hex) or (180, 180, 180)
+            icon = token.icon or tok_info["icon"]
+            tok_size = max(6, int(10 * self.map_zoom))
+            is_sel = token.id == self.selected_token_id
+            hit_dist = tok_size + 5
+            is_hover = abs(mp[0] - tx) < hit_dist and abs(mp[1] - ty) < hit_dist
+
+            # Draw token (distinctive rounded square with border)
+            tok_rect = pygame.Rect(tx - tok_size, ty - tok_size, tok_size * 2, tok_size * 2)
+            pygame.draw.rect(screen, color, tok_rect, border_radius=tok_size // 2)
+            pygame.draw.rect(screen, (255, 255, 255) if is_sel else (0, 0, 0),
+                             tok_rect, 2, border_radius=tok_size // 2)
+
+            # Icon
+            if tok_size >= 6:
+                it = fonts.tiny.render(icon, True, (0, 0, 0))
+                screen.blit(it, (tx - it.get_width() // 2, ty - it.get_height() // 2))
+
+            # Name
+            if self.map_zoom >= 0.5 or is_sel or is_hover:
+                nl = fonts.tiny.render(token.name, True, COLORS["text_bright"])
+                nlx = tx - nl.get_width() // 2
+                nly = ty + tok_size + 2
+                nbg = pygame.Surface((nl.get_width() + 4, nl.get_height()), pygame.SRCALPHA)
+                nbg.fill((0, 0, 0, 120))
+                screen.blit(nbg, (nlx - 2, nly))
+                screen.blit(nl, (nlx, nly))
+
+            # Token hover tooltip
+            if is_hover and not pygame.mouse.get_pressed()[0]:
+                tip = [f"{token.name} ({tok_info['label']})"]
+                if token.notes:
+                    tip.append(token.notes[:50])
+                if token.npc_ids:
+                    tip.append(f"NPCs: {len(token.npc_ids)}")
+                tw = max(fonts.small.size(l)[0] for l in tip) + 16
+                th = len(tip) * 18 + 8
+                ttx = min(mp[0] + 12, SCREEN_WIDTH - tw - 10)
+                tty = mp[1] - th - 5
+                tip_rect = pygame.Rect(ttx, tty, tw, th)
+                pygame.draw.rect(screen, (20, 22, 30), tip_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["border"], tip_rect, 1, border_radius=4)
+                for i, line in enumerate(tip):
+                    col = COLORS["accent"] if i == 0 else COLORS["text_main"]
+                    lt = fonts.small.render(line, True, col)
+                    screen.blit(lt, (ttx + 8, tty + 4 + i * 18))
+
         screen.set_clip(None)  # End map clip
 
         # --- Pin hover tooltip ---
@@ -4281,9 +4544,9 @@ class CampaignManagerState:
         # Map mode toolbar buttons (drawn inline)
         tool_x = map_area.x + 200
         tool_btns = [
-            ("+ Route", "add_route"), ("+ Pin", "add_pin"), ("Set Image", "set_image"),
-            ("Reset View", "reset_view"), ("Color", "set_color"),
-            ("Note", "set_note"),
+            ("+ Route", "add_route"), ("+ Pin", "add_pin"), ("+ Token", "add_token"),
+            ("Image", "set_image"), ("Scale", "set_scale_value"),
+            ("Cal", "set_scale"), ("Reset", "reset_view"), ("Sub-Map", "loc_sub_map"),
         ]
         for btn_label, btn_action in tool_btns:
             bw = fonts.small.size(btn_label)[0] + 14
@@ -4298,10 +4561,30 @@ class CampaignManagerState:
                 self._click_cooldown = 15
             tool_x += bw + 5
 
-        # Route mode indicator
+        # Mode indicators
+        mode_y = tb_y + 40
         if self._map_route_mode:
             rm = fonts.small_bold.render("ROUTE MODE: Click two locations to connect", True, COLORS["warning"])
-            screen.blit(rm, (map_area.x + 12, tb_y + 40))
+            screen.blit(rm, (map_area.x + 12, mode_y))
+        elif self._map_token_mode:
+            tok_type_label = MAP_TOKEN_TYPES.get(self._map_token_type, {}).get("label", "Custom")
+            rm = fonts.small_bold.render(f"TOKEN MODE: Click to place {tok_type_label} (scroll to change type)", True, COLORS["warning"])
+            screen.blit(rm, (map_area.x + 12, mode_y))
+        elif self._map_scale_mode:
+            if self._map_scale_point1:
+                rm = fonts.small_bold.render("SCALE: Click second point to set distance", True, COLORS["warning"])
+            else:
+                rm = fonts.small_bold.render("SCALE: Click first point on map", True, COLORS["warning"])
+            screen.blit(rm, (map_area.x + 12, mode_y))
+        elif self._map_pin_mode:
+            rm = fonts.small_bold.render("PIN MODE: Click to place pin", True, COLORS["warning"])
+            screen.blit(rm, (map_area.x + 12, mode_y))
+
+        # Scale indicator
+        if self.world.map_scale_miles > 0:
+            scale_text = f"Map scale: {self.world.map_scale_miles:.0f} miles across"
+            st = fonts.tiny.render(scale_text, True, COLORS["text_dim"])
+            screen.blit(st, (map_area.right - st.get_width() - 10, tb_y + 2))
 
         # --- Hover tooltip ---
         if hovered_loc_id and not pygame.mouse.get_pressed()[0]:
@@ -4323,6 +4606,141 @@ class CampaignManagerState:
         if self._map_pin_mode:
             pm_text = fonts.small_bold.render("PIN MODE: Click to place a new pin", True, COLORS["warning"])
             screen.blit(pm_text, (map_area.x + 12, tb_y + 40))
+
+        # --- Location detail popup (opened by double-clicking a location) ---
+        if self._map_detail_location_id:
+            self._draw_location_detail_popup(screen, mp)
+
+    def _draw_location_detail_popup(self, screen, mp):
+        """Full-screen popup showing NPCs, children, quests for a location."""
+        loc = self.world.locations.get(self._map_detail_location_id)
+        if not loc:
+            self._map_detail_location_id = ""
+            return
+
+        # Dimmed backdrop
+        backdrop = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        backdrop.fill((0, 0, 0, 160))
+        screen.blit(backdrop, (0, 0))
+
+        pw, ph = 640, 520
+        px = (SCREEN_WIDTH - pw) // 2
+        py = (SCREEN_HEIGHT - ph) // 2
+        popup = pygame.Rect(px, py, pw, ph)
+        pygame.draw.rect(screen, (20, 22, 32), popup, border_radius=8)
+        pygame.draw.rect(screen, COLORS["accent"], popup, 2, border_radius=8)
+
+        # Title
+        title = fonts.title.render(loc.name, True, COLORS["accent"])
+        screen.blit(title, (px + 16, py + 12))
+        subtitle = fonts.small.render(
+            f"{loc.location_type}  •  Pop: {loc.population}" if loc.population else loc.location_type,
+            True, COLORS["text_dim"],
+        )
+        screen.blit(subtitle, (px + 16, py + 44))
+
+        # Close button (top right)
+        close_rect = pygame.Rect(px + pw - 32, py + 10, 22, 22)
+        close_hover = close_rect.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["danger"] if close_hover else COLORS["panel"],
+                         close_rect, border_radius=3)
+        ct = fonts.small_bold.render("X", True, COLORS["text_bright"])
+        screen.blit(ct, (close_rect.x + 7, close_rect.y + 2))
+        if close_hover and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+            self._map_detail_location_id = ""
+            self._click_cooldown = 15
+            return
+
+        # Sub-map button
+        submap_rect = pygame.Rect(px + pw - 140, py + 10, 100, 22)
+        sh = submap_rect.collidepoint(mp)
+        pygame.draw.rect(screen, COLORS["hover"] if sh else COLORS["panel"],
+                         submap_rect, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], submap_rect, 1, border_radius=3)
+        sbt = fonts.small.render("Set Sub-Map", True, COLORS["text_bright"])
+        screen.blit(sbt, (submap_rect.x + 8, submap_rect.y + 4))
+        if sh and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+            self.selected_location_id = loc.id
+            self.modal = ("edit_field", "loc_map_image")
+            self.input_active = "loc_map_image"
+            self.input_text = loc.map_image_path
+            self._click_cooldown = 15
+
+        # Description
+        y = py + 76
+        if loc.description:
+            desc_lbl = fonts.small_bold.render("Description", True, COLORS["text_dim"])
+            screen.blit(desc_lbl, (px + 16, y))
+            y += 20
+            # Simple wrap
+            words = loc.description.split()
+            line = ""
+            max_w = pw - 32
+            for w in words:
+                test = line + " " + w if line else w
+                if fonts.small.size(test)[0] > max_w:
+                    screen.blit(fonts.small.render(line, True, COLORS["text_main"]), (px + 16, y))
+                    y += 18
+                    line = w
+                    if y > py + 180:
+                        break
+                else:
+                    line = test
+            if line:
+                screen.blit(fonts.small.render(line, True, COLORS["text_main"]), (px + 16, y))
+                y += 18
+            y += 6
+
+        # Two columns: NPCs here + Sub-locations
+        col_y = max(y, py + 200)
+        col1_x = px + 16
+        col2_x = px + pw // 2 + 8
+
+        # NPCs at this location
+        npcs = get_npcs_at_location(self.world, loc.id)
+        lbl = fonts.small_bold.render(f"NPCs ({len(npcs)})", True, COLORS["accent"])
+        screen.blit(lbl, (col1_x, col_y))
+        ny = col_y + 22
+        max_list_h = py + ph - ny - 20
+        line_h = 22
+        max_rows = max(1, max_list_h // line_h)
+        for npc in npcs[:max_rows]:
+            row = pygame.Rect(col1_x, ny, pw // 2 - 24, 20)
+            rh = row.collidepoint(mp)
+            if rh:
+                pygame.draw.rect(screen, COLORS["hover"], row, border_radius=3)
+            nt = fonts.small.render(f"• {npc.name}", True, COLORS["text_main"])
+            screen.blit(nt, (col1_x + 4, ny + 2))
+            if rh and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                self.selected_npc_id = npc.id
+                self.world_view = "npcs"
+                self.world_map_mode = False
+                self._map_detail_location_id = ""
+                self._click_cooldown = 15
+                return
+            ny += line_h
+
+        # Sub-locations
+        children = get_children(self.world, loc.id)
+        lbl2 = fonts.small_bold.render(f"Sub-locations ({len(children)})", True, COLORS["accent"])
+        screen.blit(lbl2, (col2_x, col_y))
+        cy = col_y + 22
+        for child in children[:max_rows]:
+            row = pygame.Rect(col2_x, cy, pw // 2 - 24, 20)
+            rh = row.collidepoint(mp)
+            if rh:
+                pygame.draw.rect(screen, COLORS["hover"], row, border_radius=3)
+            ct = fonts.small.render(f"• {child.name}", True, COLORS["text_main"])
+            screen.blit(ct, (col2_x + 4, cy + 2))
+            if rh and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                self.selected_location_id = child.id
+                self._map_detail_location_id = child.id
+                self._click_cooldown = 15
+            cy += line_h
+
+        # Hint
+        hint = fonts.tiny.render("Press ESC to close", True, COLORS["text_muted"])
+        screen.blit(hint, (px + 16, py + ph - 18))
 
     def _draw_pin_info_panel(self, screen, mp, pin):
         """Draw an info/edit panel for a selected map pin."""
@@ -4723,6 +5141,34 @@ class CampaignManagerState:
         elif action == "add_pin":
             self._map_pin_mode = not self._map_pin_mode
             self._map_route_mode = False
+            self._map_token_mode = False
+            self._map_scale_mode = False
+        elif action == "add_token":
+            self._map_token_mode = not self._map_token_mode
+            self._map_pin_mode = False
+            self._map_route_mode = False
+            self._map_scale_mode = False
+        elif action == "set_scale":
+            self._map_scale_mode = not self._map_scale_mode
+            self._map_scale_point1 = None
+            self._map_pin_mode = False
+            self._map_route_mode = False
+            self._map_token_mode = False
+        elif action == "set_scale_value":
+            self.modal = ("edit_field", "map_scale_miles")
+            self.input_active = "map_scale_miles"
+            self.input_text = str(self.world.map_scale_miles) if self.world.map_scale_miles else ""
+        elif action == "cycle_token_type":
+            types = list(MAP_TOKEN_TYPES.keys())
+            idx = types.index(self._map_token_type) if self._map_token_type in types else 0
+            self._map_token_type = types[(idx + 1) % len(types)]
+        elif action == "loc_sub_map":
+            if self.selected_location_id:
+                loc = self.world.locations.get(self.selected_location_id)
+                if loc:
+                    self.modal = ("edit_field", "loc_map_image")
+                    self.input_active = "loc_map_image"
+                    self.input_text = loc.map_image_path
 
     def _auto_layout_locations(self, roots, grid_area):
         """Auto-assign positions to locations that don't have one yet."""
