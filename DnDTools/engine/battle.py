@@ -208,6 +208,11 @@ class BattleSystem:
         if self.turn_index >= len(self.entities):
             self.turn_index = 0
 
+        # Clean up any spell terrain from concentration that was dropped
+        # since the last turn advance (e.g. caster took damage from an
+        # attack and failed the concentration save, caster fell unconscious).
+        self._auto_cleanup_dropped_terrain()
+
         # --- END OF TURN LOGIC (Previous Entity) ---
         prev_ent = self.entities[self.turn_index]
         if prev_ent.hp > 0 and not skip_saves:
@@ -957,6 +962,17 @@ class BattleSystem:
         if not terrain_type:
             return
         radius_sq = spell.aoe_radius / 5.0  # convert feet to grid squares
+        # For line/wall spells: wall length = aoe_radius (e.g. Wall of Fire 60ft).
+        # Wall extends half on each side of center → half-length in squares.
+        wall_half = max(1, int(round(radius_sq / 2)))
+        # Determine wall orientation from caster→center direction.
+        # Wall runs perpendicular to the cast direction (blocks the path).
+        vertical_wall = True  # default
+        if caster is not None:
+            cdx = center_x - caster.grid_x
+            cdy = center_y - caster.grid_y
+            # If caster is mostly north/south of center, wall runs east-west
+            vertical_wall = abs(cdy) < abs(cdx)
         tiles_created = 0
         for dx in range(int(-radius_sq), int(radius_sq) + 1):
             for dy in range(int(-radius_sq), int(radius_sq) + 1):
@@ -970,11 +986,13 @@ class BattleSystem:
                     if abs(dx) > radius_sq or abs(dy) > radius_sq:
                         continue
                 elif spell.aoe_shape == "line":
-                    # Walls: thin strip along longest axis
-                    if abs(dy) > 0 and abs(dx) > 0:
-                        continue
-                    if abs(dx) + abs(dy) > radius_sq:
-                        continue
+                    # 5e Wall: a single straight line, 1 square thick, not a cross.
+                    if vertical_wall:
+                        if dx != 0 or abs(dy) > wall_half:
+                            continue
+                    else:
+                        if dy != 0 or abs(dx) > wall_half:
+                            continue
                 # Don't overwrite non-spell terrain (walls, doors, etc.)
                 existing = self.get_terrain_at(gx, gy)
                 if existing and not existing.is_spell_terrain:
@@ -999,6 +1017,28 @@ class BattleSystem:
         removed = before - len(self.terrain)
         if removed > 0:
             self.log(f"  [TERRAIN] {spell_name} terrain fades ({removed} tiles removed).")
+
+    def _auto_cleanup_dropped_terrain(self):
+        """Scan all entities for concentration-spell terrain that should be cleaned up.
+
+        Triggers:
+          - Entity's drop_concentration() set `_dropped_spell_terrain` (damage broke
+            concentration, caster was incapacitated, etc.)
+          - Entity is dead/unconscious AND still listed as concentrating on a
+            terrain-creating spell (fallback in case drop_concentration was skipped).
+        """
+        for ent in self.entities:
+            info = getattr(ent, '_dropped_spell_terrain', None)
+            if info:
+                caster_name, spell_name = info
+                self.remove_spell_terrain(caster_name, spell_name)
+                ent._dropped_spell_terrain = None
+            # Fallback: dead caster still concentrating on terrain spell
+            if ent.hp <= 0 and ent.concentrating_on and getattr(ent.concentrating_on, 'creates_terrain', ''):
+                spell = ent.concentrating_on
+                self.remove_spell_terrain(ent.name, spell.name)
+                ent.drop_concentration()
+                ent._dropped_spell_terrain = None
 
     def toggle_door_at(self, gx: int, gy: int) -> bool:
         """Toggle a door at the given position. Returns True if toggled."""
