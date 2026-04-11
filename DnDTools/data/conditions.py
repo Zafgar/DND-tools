@@ -92,6 +92,12 @@ CONDITIONS = {
         "attack that hits the creature is a critical hit if the attacker is within "
         "5 feet of the creature."
     ),
+    "Slowed": (
+        "Speed is halved. -2 penalty to AC and Dexterity saving throws. "
+        "Can't use reactions. On its turn, can use either an action OR a bonus "
+        "action (not both), and at most one attack. Spellcasters with casting "
+        "time of 1 action must succeed on a DC 15 Intelligence save or fail."
+    ),
 }
 
 # Mechanical effects used by the rules engine
@@ -192,6 +198,14 @@ CONDITION_EFFECTS = {
         "fail_dex_save": True,
         "attacked_advantage": True,
         "auto_crit_melee": True,
+    },
+    "Slowed": {
+        "speed_halved": True,
+        "ac_penalty": 2,
+        "dex_save_disadvantage": True,
+        "no_reactions": True,
+        "one_action_or_bonus": True,  # Not both per turn
+        "max_one_attack": True,
     },
 }
 

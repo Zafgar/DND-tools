@@ -559,6 +559,14 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
     if entity.exhaustion >= 3:
         disadvantage = True
 
+    # Conditions that impose disadvantage on DEX saves (Restrained, Slowed)
+    if ability_lower in ("dexterity", "dex"):
+        for cond in entity.conditions:
+            effects = CONDITION_EFFECTS.get(cond, {})
+            if effects.get("dex_save_disadvantage"):
+                disadvantage = True
+                break
+
     # Danger Sense (Barbarian): advantage on DEX saves you can see
     if entity.has_feature("danger_sense") and ability_lower in ("dexterity", "dex"):
         if not entity.has_condition("Blinded") and not entity.is_incapacitated():

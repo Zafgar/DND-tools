@@ -355,6 +355,9 @@ class Entity:
             ac += 2
         if "Defensive Duelist" in self.active_effects:
             ac += self.stats.proficiency_bonus
+        # Slow spell penalty (-2 AC)
+        if self.has_condition("Slowed"):
+            ac -= 2
         return ac
 
     def get_max_melee_reach(self) -> int:
@@ -560,17 +563,19 @@ class Entity:
         if self.rage_active:
             self.rage_damage_taken = True
 
-        # Concentration check on damage
+        # Concentration check on damage (PHB p.203)
+        # DC = max(10, damage // 2). War Caster grants advantage. Exhaustion 3+
+        # imposes disadvantage. Handled via rules.make_saving_throw for consistency.
         broke_conc = False
         if self.concentrating_on and amount > 0:
-            dc = max(10, amount // 2)
-            con_bonus = self.get_save_bonus("Constitution")
-            roll = random.randint(1, 20) + con_bonus
-            # War Caster: advantage on concentration saves
-            if self.has_feature("war_caster"):
-                roll2 = random.randint(1, 20) + con_bonus
-                roll = max(roll, roll2)
-            if roll < dc:
+            from engine.rules import concentration_save_dc, make_saving_throw
+            dc = concentration_save_dc(amount)
+            advantage = self.has_feature("war_caster")
+            success, _total, _msg = make_saving_throw(
+                self, "Constitution", dc,
+                advantage=advantage,
+            )
+            if not success:
                 self.drop_concentration()
                 broke_conc = True
 
@@ -784,6 +789,9 @@ class Entity:
             return 0.0
         speed = float(self.stats.speed)
         if self.has_condition("Prone"):
+            speed = speed / 2.0
+        # Slow spell: speed halved (PHB p.277)
+        if self.has_condition("Slowed"):
             speed = speed / 2.0
         # Exhaustion 2+: half speed
         if self.exhaustion >= 2:

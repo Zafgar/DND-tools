@@ -233,9 +233,23 @@ _spells = {
     
     "Haste": SpellInfo("Haste", level=3, action_type="action", range=30, targets="single", concentration=True, duration="1 minute",
                        description="Double speed, +2 AC, extra action"),
-    
+
+    "Hypnotic Pattern": SpellInfo("Hypnotic Pattern", level=3, action_type="action", range=120,
+                                  aoe_radius=30, aoe_shape="cube", save_ability="Wisdom",
+                                  applies_condition="Charmed", concentration=True, duration="1 minute",
+                                  targets="aoe", half_on_save=False,
+                                  description="Charmed (Incapacitated + speed 0) on failed WIS save. "
+                                  "Ends when creature takes damage or is shaken awake."),
+
     "Lightning Bolt": SpellInfo("Lightning Bolt", level=3, action_type="action", range=100, aoe_radius=100, aoe_shape="line",
                                 damage_dice="8d6", damage_type="lightning", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+
+    "Slow": SpellInfo("Slow", level=3, action_type="action", range=120,
+                      aoe_radius=40, aoe_shape="cube", save_ability="Wisdom",
+                      applies_condition="Slowed", concentration=True, duration="1 minute",
+                      targets="aoe", half_on_save=False,
+                      description="Up to 6 creatures: speed halved, -2 AC & DEX saves, "
+                      "can't use more than one action + bonus action per turn."),
     
     "Revivify": SpellInfo("Revivify", level=3, action_type="action", range=0, targets="single",
                           description="Return dead to life with 1 HP (within 1 min)"),
@@ -300,7 +314,13 @@ _spells = {
                               save_ability="Wisdom", applies_condition="Paralyzed", concentration=True, duration="1 minute"),
     
     "Mass Cure Wounds": SpellInfo("Mass Cure Wounds", level=5, action_type="action", range=60, heals="3d8+4", targets="aoe",
+                                  aoe_radius=30, aoe_shape="sphere",
                                   description="Heal up to 6 creatures"),
+
+    "Mass Healing Word": SpellInfo("Mass Healing Word", level=3, action_type="bonus", range=60,
+                                   heals="1d4+4", targets="aoe", aoe_radius=60, aoe_shape="sphere",
+                                   description="Bonus action: heal up to 6 creatures within 60ft. "
+                                   "+1d4 healing per slot above 3rd."),
 
     # --- LEVEL 6 ---
     "Chain Lightning": SpellInfo("Chain Lightning", level=6, action_type="action", range=150, targets="single",

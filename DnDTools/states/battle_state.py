@@ -1047,6 +1047,58 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                             # Skip damage application
                             return
             
+            # --- AI REACTION CHECK (Silvery Barbs) ---
+            # TCoE p.108: When a creature within 60ft succeeds on an attack roll,
+            # a caster ally within 60ft can force it to reroll (use the lower).
+            # Handled automatically for NPCs (AI) defending an NPC ally that was hit.
+            if (not target.is_player and outcome in ("hit", "crit")
+                    and step.step_type in ("attack", "multiattack", "bonus_attack",
+                                           "legendary", "reaction")
+                    and step.attack_roll > 0 and step.attacker):
+                barb_caster = None
+                barb_spell = None
+                for ally in self.battle.get_allies_of(target):
+                    if ally is target or ally.hp <= 0 or ally.reaction_used:
+                        continue
+                    if ally.is_incapacitated():
+                        continue
+                    sb = next((s for s in ally.stats.spells_known
+                               if s.name == "Silvery Barbs"), None)
+                    if not sb or not ally.has_spell_slot(sb.level):
+                        continue
+                    # 60ft from caster to the attacker
+                    if self.battle.get_distance(ally, step.attacker) * 5 > 60:
+                        continue
+                    if not self.battle.has_line_of_sight(ally, step.attacker):
+                        continue
+                    barb_caster = ally
+                    barb_spell = sb
+                    break
+                if barb_caster is not None and barb_spell is not None:
+                    barb_caster.use_spell_slot(barb_spell.level)
+                    barb_caster.reaction_used = True
+                    # Reroll the attack: new d20 + original bonus, use lower
+                    attack_bonus = step.attack_roll - step.nat_roll if step.nat_roll else 0
+                    new_roll = random.randint(1, 20)
+                    new_total = new_roll + attack_bonus
+                    chosen_total = min(step.attack_roll, new_total)
+                    chosen_nat = new_roll if new_total < step.attack_roll else step.nat_roll
+                    self._log(f"[REACTION] {barb_caster.name} casts Silvery Barbs! "
+                              f"{step.attacker.name} rerolls ({new_roll}+{attack_bonus}"
+                              f"={new_total}) -> uses {chosen_total}.")
+                    self._spawn_damage_text(target, "Barbs!", is_heal=True)
+                    step.attack_roll = chosen_total
+                    step.nat_roll = chosen_nat
+                    # A natural 1 on the chosen roll is no longer a crit; nat 20 stays
+                    if chosen_nat != 20 and outcome == "crit":
+                        outcome = "hit"
+                    if chosen_total < target.armor_class and chosen_nat != 20:
+                        outcome = "miss"
+                        self._log(f"  -> Attack now MISSES!")
+                        if step.step_type in ("attack", "multiattack", "bonus_attack", "legendary"):
+                            self.battle.stats_tracker.entity_stats[attacker_name].attacks_hit -= 1
+                        return
+
             # --- AI REACTION CHECK (Parry) ---
             # Generic Parry: Adds AC (usually 2 or 3) against melee attack
             if not target.is_player and not target.reaction_used and outcome in ("hit", "crit") and step.step_type in ("attack", "multiattack", "bonus_attack", "legendary", "reaction"):

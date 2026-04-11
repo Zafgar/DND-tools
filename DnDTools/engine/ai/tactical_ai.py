@@ -14,7 +14,11 @@ from engine.ai.constants import (
     GRAPPLE_SHOVE_COMBO_VALUE, DODGE_HP_THRESHOLD, DODGE_CRITICAL_THRESHOLD,
     HEAL_MELEE_THRESHOLD, HEAL_RANGED_THRESHOLD, DISENGAGE_HP_LOW,
 )
-from engine.ai.utils import _get_effective_caster_level, _get_spell_damage_dice
+from engine.ai.utils import (
+    _get_effective_caster_level,
+    _get_spell_damage_dice,
+    _best_cast_level_for_damage,
+)
 
 if TYPE_CHECKING:
     from engine.entities import Entity
@@ -1895,49 +1899,103 @@ class TacticalAI:
         Returns (score, [ActionStep]) or None.
         Only triggers when an ally is below 40% HP and healing is available.
         Competes with offensive options via the scoring system.
+        Considers both single-target and multi-target healing spells
+        (Mass Cure Wounds, Mass Healing Word). Picks the option with the
+        best effective healing per slot.
         """
         wounded = [a for a in allies if 0 < a.hp < a.max_hp * 0.4 and not a.is_summon]
         if not wounded:
             return None
 
-        # Find best healing spell (action-type)
+        # Action-type healing spells (we handle bonus-action separately)
         healing_spells = [s for s in entity.stats.spells_known
-                          if s.heals and s.action_type == "action" and entity.can_cast_spell(s)]
+                          if s.heals and s.action_type == "action"
+                          and entity.can_cast_spell(s)]
         if not healing_spells:
             return None
 
-        # Pick most wounded ally that's in range
+        # Sort most-wounded first for single-target consideration
         wounded.sort(key=lambda a: a.hp / max(a.max_hp, 1))
 
-        for target in wounded:
-            for spell in healing_spells:
-                dist_ft = battle.get_distance(entity, target) * 5
-                if dist_ft > spell.range:
+        best_option = None  # (score, spell, target_or_None, targets_list, heal_amount)
+        best_score = -1.0
+
+        for spell in healing_spells:
+            heal_amount = roll_dice(spell.heals)
+
+            if spell.aoe_radius > 0 or spell.targets == "aoe":
+                # Multi-target mass heal (Mass Cure Wounds, etc.)
+                # Find all wounded allies within spell range of caster
+                reachable_wounded = []
+                for a in [al for al in allies if 0 < al.hp and not al.is_summon]:
+                    if a.hp >= a.max_hp:
+                        continue
+                    dist_ft = battle.get_distance(entity, a) * 5
+                    if dist_ft > spell.range + spell.aoe_radius:
+                        continue
+                    reachable_wounded.append(a)
+                if not reachable_wounded:
                     continue
-                if spell.range > 5 and not battle.has_line_of_sight(entity, target):
-                    continue
+                # Cap at 6 targets (PHB Mass Cure Wounds limit)
+                reachable_wounded.sort(key=lambda a: a.hp / max(a.max_hp, 1))
+                targets = reachable_wounded[:6]
+                total_effective = 0.0
+                max_urgency = 0.0
+                for t in targets:
+                    deficit = t.max_hp - t.hp
+                    total_effective += min(heal_amount, deficit)
+                    hp_pct = t.hp / max(t.max_hp, 1)
+                    max_urgency = max(max_urgency, (1.0 - hp_pct) * 30)
+                score = total_effective * 0.5 + max_urgency
+                # Bonus for hitting 2+ targets (mass heal value)
+                if len(targets) >= 2:
+                    score += 10 * (len(targets) - 1)
+                if score > best_score:
+                    best_score = score
+                    best_option = (spell, None, targets, heal_amount)
+            else:
+                # Single-target healing spell
+                for target in wounded:
+                    dist_ft = battle.get_distance(entity, target) * 5
+                    if dist_ft > spell.range:
+                        continue
+                    if spell.range > 5 and not battle.has_line_of_sight(entity, target):
+                        continue
+                    deficit = target.max_hp - target.hp
+                    effective_heal = min(heal_amount, deficit)
+                    hp_pct = target.hp / max(target.max_hp, 1)
+                    urgency = (1.0 - hp_pct) * 30
+                    score = effective_heal * 0.5 + urgency
+                    if score > best_score:
+                        best_score = score
+                        best_option = (spell, target, [target], heal_amount)
 
-                slot = spell.level
-                # Calculate expected healing
-                heal_amount = roll_dice(spell.heals)
-                hp_deficit = target.max_hp - target.hp
-                effective_heal = min(heal_amount, hp_deficit)
+        if not best_option:
+            return None
 
-                # Score: more valuable when ally is close to death
-                hp_pct = target.hp / max(target.max_hp, 1)
-                urgency = (1.0 - hp_pct) * 30  # 0-30 bonus based on how low they are
-                # Healers (cleric/druid/bard) get extra healing score
-                score = effective_heal * 0.5 + urgency
+        spell, single_target, targets, heal_amount = best_option
+        slot = spell.level
+        entity.use_spell_slot(slot)
 
-                entity.use_spell_slot(slot)
-                step = ActionStep(
-                    step_type="spell",
-                    description=f"{entity.name} casts {spell.name} on {target.name}, healing {heal_amount} HP.",
-                    attacker=entity, target=target, spell=spell, slot_used=slot,
-                    action_name=spell.name, damage=heal_amount, damage_type="healing"
-                )
-                return (score, [step])
-        return None
+        if single_target is not None:
+            step = ActionStep(
+                step_type="spell",
+                description=(f"{entity.name} casts {spell.name} on "
+                             f"{single_target.name}, healing {heal_amount} HP."),
+                attacker=entity, target=single_target, spell=spell, slot_used=slot,
+                action_name=spell.name, damage=heal_amount, damage_type="healing",
+            )
+        else:
+            names = ", ".join(t.name for t in targets)
+            step = ActionStep(
+                step_type="spell",
+                description=(f"{entity.name} casts {spell.name} "
+                             f"(healing {heal_amount} HP each to {names})"),
+                attacker=entity, target=targets[0], targets=targets, spell=spell,
+                slot_used=slot, action_name=spell.name, damage=heal_amount,
+                damage_type="healing",
+            )
+        return (best_score, [step])
 
     def _try_heal_action(self, entity):
         for spell in entity.stats.spells_known:
@@ -2373,59 +2431,67 @@ class TacticalAI:
             if not clusters or len(clusters) < min_targets:
                 continue
 
-            # Calculate total EV per target with precise save calculations
-            total_ev = 0.0
+            # Candidate slot levels: base and one upcast tier
+            candidate_levels = [spell.level]
+            upcast_lvl = min(9, spell.level + 1)
+            if upcast_lvl > spell.level and entity.has_spell_slot(upcast_lvl):
+                candidate_levels.append(upcast_lvl)
+
             dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 13)
 
-            for t in clusters:
-                base = self._estimate_damage(_get_spell_damage_dice(spell, entity), spell.damage_type, t)
-                if base <= 0:
-                    continue
+            for cast_lvl in candidate_levels:
+                effective_dice = _get_spell_damage_dice(spell, entity, cast_level=cast_lvl)
+                total_ev = 0.0
+                for t in clusters:
+                    base = self._estimate_damage(effective_dice, spell.damage_type, t)
+                    if base <= 0:
+                        continue
 
-                if spell.save_ability:
-                    save_bonus = t.get_save_bonus(spell.save_ability)
-                    # Check if target has magic resistance
-                    has_magic_res = t.has_feature("magic_resistance")
-                    fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
-                    if has_magic_res:
-                        # Advantage on save = square the success chance
-                        success = 1.0 - fail_chance
-                        fail_chance = 1.0 - (1.0 - (1.0 - success) ** 2)
-                    fail_chance = max(0.05, min(0.95, fail_chance))
+                    if spell.save_ability:
+                        save_bonus = t.get_save_bonus(spell.save_ability)
+                        # Check if target has magic resistance
+                        has_magic_res = t.has_feature("magic_resistance")
+                        fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
+                        if has_magic_res:
+                            # Advantage on save = square the success chance
+                            success = 1.0 - fail_chance
+                            fail_chance = 1.0 - (1.0 - (1.0 - success) ** 2)
+                        fail_chance = max(0.05, min(0.95, fail_chance))
 
-                    if spell.half_on_save:
-                        ev = base * fail_chance + (base / 2.0) * (1.0 - fail_chance)
+                        if spell.half_on_save:
+                            ev = base * fail_chance + (base / 2.0) * (1.0 - fail_chance)
+                        else:
+                            ev = base * fail_chance
                     else:
-                        ev = base * fail_chance
-                else:
-                    ev = base
+                        ev = base
 
-                # Kill bonus (finishing off wounded enemies)
-                if base >= t.hp:
-                    ev *= 1.2
+                    # Kill bonus (finishing off wounded enemies)
+                    if base >= t.hp:
+                        ev *= 1.2
 
-                # Concentration disruption bonus
-                if t.concentrating_on:
-                    ev += 5
+                    # Concentration disruption bonus
+                    if t.concentrating_on:
+                        ev += 5
 
-                total_ev += ev
+                    total_ev += ev
 
-            # Slot efficiency: compare EV per slot level
-            slot_efficiency = total_ev / max(spell.level, 1)
+                # Penalize upcasting if slot isn't clearly worth it
+                tier_delta = max(0, cast_lvl - spell.level)
+                comparable_ev = total_ev / (1.0 + 0.2 * tier_delta)
 
-            if total_ev > best_total_ev:
-                best_total_ev = total_ev
-                best_step = (spell, clusters, cx, cy)
+                if comparable_ev > best_total_ev:
+                    best_total_ev = comparable_ev
+                    best_step = (spell, clusters, cx, cy, cast_lvl)
 
         if best_step:
-            spell, clusters, cx, cy = best_step
-            if entity.use_spell_slot(spell.level):
-                slot = spell.level
+            spell, clusters, cx, cy, cast_lvl = best_step
+            if entity.use_spell_slot(cast_lvl):
+                slot = cast_lvl
                 dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                      (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                       + entity.get_modifier(entity.stats.spellcasting_ability))
 
-                raw_dmg = roll_dice(_get_spell_damage_dice(spell, entity))
+                raw_dmg = roll_dice(_get_spell_damage_dice(spell, entity, cast_level=cast_lvl))
 
                 # Empowered Evocation: add INT mod to evocation damage
                 if entity.has_feature("empowered_evocation"):
@@ -2698,7 +2764,7 @@ class TacticalAI:
         for spell in damage_spells:
             if spell.level > 0 and not entity.has_spell_slot(spell.level):
                 continue
-            
+
             # Calculate spell DC and Attack Bonus once
             dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                  (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
@@ -2714,67 +2780,83 @@ class TacticalAI:
             if entity.has_feature("empowered_evocation"):
                 extra += entity.get_modifier("intelligence")
 
+            # Consider candidate slot levels: base level and one tier up (if slot
+            # is available). Higher upcasts are only picked when they clearly win
+            # the EV comparison, so the AI won't dump 9th-level slots on 1st.
+            candidate_levels = [spell.level] if spell.level > 0 else [0]
+            if spell.level > 0:
+                upcast_lvl = min(9, spell.level + 1)
+                if upcast_lvl > spell.level and entity.has_spell_slot(upcast_lvl):
+                    candidate_levels.append(upcast_lvl)
+
             # Find best target for this spell based on Expected Value (EV)
-            for target in enemies:
-                if target.hp <= 0: continue
+            for cast_lvl in candidate_levels:
+                effective_dice = _get_spell_damage_dice(spell, entity, cast_level=cast_lvl)
+                for target in enemies:
+                    if target.hp <= 0: continue
 
-                # LOS + range check
-                if not self._can_ranged_attack(entity, target, battle, range_ft=spell.range):
-                    continue
+                    # LOS + range check
+                    if not self._can_ranged_attack(entity, target, battle, range_ft=spell.range):
+                        continue
 
-                # Calculate damage against THIS target (vulnerability/resistance)
-                effective_dice = _get_spell_damage_dice(spell, entity)
-                base_dmg = self._estimate_damage(effective_dice, spell.damage_type, target)
-                if base_dmg <= 0: continue
-                base_dmg += extra
+                    # Calculate damage against THIS target (vulnerability/resistance)
+                    base_dmg = self._estimate_damage(effective_dice, spell.damage_type, target)
+                    if base_dmg <= 0: continue
+                    base_dmg += extra
 
-                # Check if caster is threatened (enemy within 5ft) for ranged spells
-                is_threatened = False
-                if spell.action_type != "save": # Attack roll spells
-                    enemies_adj = [e for e in enemies if battle.is_adjacent(e, entity)]
-                    if enemies_adj: is_threatened = True
+                    # Check if caster is threatened (enemy within 5ft) for ranged spells
+                    is_threatened = False
+                    if spell.action_type != "save": # Attack roll spells
+                        enemies_adj = [e for e in enemies if battle.is_adjacent(e, entity)]
+                        if enemies_adj: is_threatened = True
 
-                ev = 0.0
-                if spell.save_ability:
-                    # Check target weakness (Save Bonus)
-                    save_bonus = target.get_save_bonus(spell.save_ability)
-                    # Chance to fail = 1 - (21 + bonus - DC)/20
-                    fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
-                    fail_chance = max(0.05, min(0.95, fail_chance))
-                    
-                    if spell.half_on_save:
-                        ev = base_dmg * fail_chance + (base_dmg / 2.0) * (1.0 - fail_chance)
+                    ev = 0.0
+                    if spell.save_ability:
+                        # Check target weakness (Save Bonus)
+                        save_bonus = target.get_save_bonus(spell.save_ability)
+                        # Chance to fail = 1 - (21 + bonus - DC)/20
+                        fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
+                        fail_chance = max(0.05, min(0.95, fail_chance))
+
+                        if spell.half_on_save:
+                            ev = base_dmg * fail_chance + (base_dmg / 2.0) * (1.0 - fail_chance)
+                        else:
+                            ev = base_dmg * fail_chance
                     else:
-                        ev = base_dmg * fail_chance
-                else:
-                    # Attack Roll
-                    hit_chance = (21 + atk_bonus - target.stats.armor_class) / 20.0
-                    adv = entity.has_attack_advantage(target, is_ranged=True)
-                    dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
-                    if adv and not dis: hit_chance = 1 - (1-hit_chance)**2
-                    if dis and not adv: hit_chance = hit_chance**2
-                    hit_chance = max(0.05, min(0.95, hit_chance))
-                    ev = base_dmg * hit_chance
+                        # Attack Roll
+                        hit_chance = (21 + atk_bonus - target.stats.armor_class) / 20.0
+                        adv = entity.has_attack_advantage(target, is_ranged=True)
+                        dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
+                        if adv and not dis: hit_chance = 1 - (1-hit_chance)**2
+                        if dis and not adv: hit_chance = hit_chance**2
+                        hit_chance = max(0.05, min(0.95, hit_chance))
+                        ev = base_dmg * hit_chance
 
-                # Bonus for killing blow
-                if base_dmg >= target.hp:
-                    ev *= 1.2
+                    # Bonus for killing blow
+                    if base_dmg >= target.hp:
+                        ev *= 1.2
 
-                if ev > best_ev:
-                    best_ev = ev
-                    best_step = (spell, target, dc, atk_bonus, extra)
+                    # Penalize upcasting unless the EV gain is significant:
+                    # require +20% EV per slot tier above base, otherwise
+                    # the base slot wins out.
+                    tier_delta = max(0, cast_lvl - spell.level)
+                    comparable_ev = ev / (1.0 + 0.2 * tier_delta)
+
+                    if comparable_ev > best_ev:
+                        best_ev = comparable_ev
+                        best_step = (spell, target, dc, atk_bonus, extra, cast_lvl)
 
         if best_step:
-            spell, target, dc, atk_bonus, extra = best_step
-            slot = spell.level
+            spell, target, dc, atk_bonus, extra, cast_lvl = best_step
+            slot = cast_lvl if spell.level > 0 else 0
             if spell.level > 0:
                 entity.use_spell_slot(slot)
-            
+
             if spell.concentration:
                 entity.start_concentration(spell)
 
-            # Scale cantrip damage dice by caster level
-            effective_dice = _get_spell_damage_dice(spell, entity)
+            # Scale cantrip damage dice by caster level; upcast scaling for leveled spells
+            effective_dice = _get_spell_damage_dice(spell, entity, cast_level=cast_lvl)
 
             if spell.save_ability:
                 dmg = roll_dice(effective_dice) + int(extra)
