@@ -195,6 +195,13 @@ class MapPin:
     location_id: str = ""             # Optional link to a Location
     npc_ids: List[str] = field(default_factory=list)  # Optional linked NPCs
     visible: bool = True              # Can be hidden from player view
+    overlay: str = "surface"          # Overlay layer this pin belongs to
+    # A pin can "open" something when clicked. Supported actions:
+    #   "open_submap:<location_id>" - drill into that location's sub-map
+    #   "open_location:<location_id>" - switch campaign view to that location
+    #   "open_url:<url>" - open an external URL
+    #   "" - no default action (falls back to selection)
+    open_action: str = ""
 
 
 # Pin type display defaults
@@ -248,6 +255,73 @@ class MapRoute:
     danger_level: str = "safe"        # safe, low, medium, high, deadly
     terrain_type: str = "road"        # Terrain for travel time calc (road, forest, hills, etc.)
     encounter_ids: List[str] = field(default_factory=list)  # Encounter IDs along this route
+    overlay: str = "surface"          # Overlay layer this route belongs to
+
+
+# ---- Multi-point travel paths (waypoint routes) ----------------------------
+
+@dataclass
+class MapPath:
+    """A multi-waypoint travel path drawn on the map.
+
+    Unlike MapRoute (two-endpoint, tied to locations), MapPath is a free
+    polyline of (map_x%, map_y%) waypoints with per-path terrain and notes.
+    Used for winding roads, rivers, or marches of the party across terrain.
+    """
+    id: str = ""
+    name: str = "New Path"
+    path_type: str = "road"           # road, trail, river, sea, air, secret, party
+    color: str = ""                   # Custom hex color (empty = auto from type)
+    points: List[list] = field(default_factory=list)  # [[x%, y%], ...] (pct coords)
+    terrain_type: str = "road"        # For travel-time estimation
+    label: str = ""                   # Optional static label
+    notes: str = ""                   # DM notes
+    danger_level: str = "safe"        # safe, low, medium, high, deadly
+    distance_miles: float = 0.0       # 0 = auto-estimate from scale
+    visible: bool = True
+    overlay: str = "surface"          # Overlay layer
+
+
+# ---- Freehand drawings -----------------------------------------------------
+
+@dataclass
+class MapDrawing:
+    """A freehand annotation stroke drawn on top of the map.
+
+    Stored as a list of (x%, y%) points. The DM can sketch routes,
+    circle regions of interest, write highlights, etc. Each stroke keeps
+    its own color/width so the DM can build up layered sketches.
+    """
+    id: str = ""
+    points: List[list] = field(default_factory=list)    # [[x%, y%], ...]
+    color: str = "#FFDD44"
+    width: int = 3                     # Stroke thickness in pixels at 1.0 zoom
+    shape: str = "freehand"            # freehand, line, rect, circle
+    label: str = ""                    # Optional text label at first point
+    notes: str = ""
+    visible: bool = True
+    overlay: str = "surface"           # Overlay layer
+
+
+# ---- Overlay layers --------------------------------------------------------
+# Overlays are tag filters that hide/show pins, paths, routes, and drawings
+# belonging to a specific layer (surface, underdark levels, effects, etc.).
+# They do NOT swap background images — use Location.map_image_path for that.
+
+MAP_OVERLAYS = {
+    "surface":      {"label": "Surface",       "color": "#8BC34A"},
+    "underdark_1":  {"label": "Upperdark",     "color": "#795548"},
+    "underdark_2":  {"label": "Middledark",    "color": "#5D4037"},
+    "underdark_3":  {"label": "Lowerdark",     "color": "#3E2723"},
+    "underwater":   {"label": "Underwater",    "color": "#0288D1"},
+    "feywild":      {"label": "Feywild",       "color": "#E91E63"},
+    "shadowfell":   {"label": "Shadowfell",    "color": "#424242"},
+    "ethereal":     {"label": "Ethereal",      "color": "#9575CD"},
+    "astral":       {"label": "Astral",        "color": "#5C6BC0"},
+    "effects":      {"label": "Effects/Weather", "color": "#FF9800"},
+    "political":    {"label": "Political",     "color": "#F44336"},
+    "secret":       {"label": "DM-only",       "color": "#9C27B0"},
+}
 
 
 @dataclass
@@ -265,10 +339,15 @@ class World:
     map_routes: List[MapRoute] = field(default_factory=list)
     map_pins: List[MapPin] = field(default_factory=list)          # Map pin annotations
     map_tokens: List[MapToken] = field(default_factory=list)      # Movable tokens on map
+    map_paths: List["MapPath"] = field(default_factory=list)      # Multi-waypoint travel paths
+    map_drawings: List["MapDrawing"] = field(default_factory=list)  # Freehand annotations
     map_image_path: str = ""          # Path to custom background image
     map_positions: Dict[str, list] = field(default_factory=dict)  # loc_id -> [x%, y%]
     map_scale_miles: float = 0.0      # Miles per 100% map width (0 = unset)
     map_scale_reference: float = 0.0  # Reference distance in map % for scale calibration
+    # Overlay visibility: overlay_key -> bool (True = visible). Missing = visible.
+    map_overlay_visible: Dict[str, bool] = field(default_factory=dict)
+    map_active_overlay: str = "surface"  # Overlay new annotations attach to
 
 
 def generate_id(world: World, prefix: str = "loc") -> str:
@@ -412,6 +491,7 @@ def _serialize_route(r: MapRoute) -> dict:
         "label": r.label, "color": r.color, "distance_miles": r.distance_miles,
         "notes": r.notes, "danger_level": r.danger_level,
         "terrain_type": r.terrain_type, "encounter_ids": r.encounter_ids,
+        "overlay": r.overlay,
     }
 
 def _deserialize_route(d: dict) -> MapRoute:
@@ -422,6 +502,66 @@ def _deserialize_route(d: dict) -> MapRoute:
         notes=d.get("notes", ""), danger_level=d.get("danger_level", "safe"),
         terrain_type=d.get("terrain_type", "road"),
         encounter_ids=d.get("encounter_ids", []),
+        overlay=d.get("overlay", "surface"),
+    )
+
+
+def _serialize_path(p: MapPath) -> dict:
+    return {
+        "id": p.id, "name": p.name, "path_type": p.path_type,
+        "color": p.color, "points": [[pt[0], pt[1]] for pt in p.points],
+        "terrain_type": p.terrain_type, "label": p.label, "notes": p.notes,
+        "danger_level": p.danger_level, "distance_miles": p.distance_miles,
+        "visible": p.visible, "overlay": p.overlay,
+    }
+
+def _deserialize_path(d: dict) -> MapPath:
+    pts = d.get("points", []) or []
+    # Normalise to list of [x, y]
+    norm = []
+    for p in pts:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            try:
+                norm.append([float(p[0]), float(p[1])])
+            except (TypeError, ValueError):
+                continue
+    return MapPath(
+        id=d.get("id", ""), name=d.get("name", "Path"),
+        path_type=d.get("path_type", "road"),
+        color=d.get("color", ""), points=norm,
+        terrain_type=d.get("terrain_type", "road"),
+        label=d.get("label", ""), notes=d.get("notes", ""),
+        danger_level=d.get("danger_level", "safe"),
+        distance_miles=d.get("distance_miles", 0.0),
+        visible=d.get("visible", True),
+        overlay=d.get("overlay", "surface"),
+    )
+
+
+def _serialize_drawing(dw: MapDrawing) -> dict:
+    return {
+        "id": dw.id, "points": [[pt[0], pt[1]] for pt in dw.points],
+        "color": dw.color, "width": dw.width, "shape": dw.shape,
+        "label": dw.label, "notes": dw.notes,
+        "visible": dw.visible, "overlay": dw.overlay,
+    }
+
+def _deserialize_drawing(d: dict) -> MapDrawing:
+    pts = d.get("points", []) or []
+    norm = []
+    for p in pts:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            try:
+                norm.append([float(p[0]), float(p[1])])
+            except (TypeError, ValueError):
+                continue
+    return MapDrawing(
+        id=d.get("id", ""), points=norm,
+        color=d.get("color", "#FFDD44"), width=int(d.get("width", 3)),
+        shape=d.get("shape", "freehand"),
+        label=d.get("label", ""), notes=d.get("notes", ""),
+        visible=d.get("visible", True),
+        overlay=d.get("overlay", "surface"),
     )
 
 def _serialize_token(t: MapToken) -> dict:
@@ -448,6 +588,7 @@ def _serialize_pin(p: MapPin) -> dict:
         "description": p.description, "notes": p.notes, "links": p.links,
         "icon": p.icon, "color": p.color, "map_x": p.map_x, "map_y": p.map_y,
         "location_id": p.location_id, "npc_ids": p.npc_ids, "visible": p.visible,
+        "overlay": p.overlay, "open_action": p.open_action,
     }
 
 def _deserialize_pin(d: dict) -> MapPin:
@@ -459,6 +600,8 @@ def _deserialize_pin(d: dict) -> MapPin:
         map_x=d.get("map_x", 0.0), map_y=d.get("map_y", 0.0),
         location_id=d.get("location_id", ""), npc_ids=d.get("npc_ids", []),
         visible=d.get("visible", True),
+        overlay=d.get("overlay", "surface"),
+        open_action=d.get("open_action", ""),
     )
 
 
@@ -533,10 +676,14 @@ def save_world(world: World, filepath: str = ""):
         "map_routes": [_serialize_route(r) for r in world.map_routes],
         "map_pins": [_serialize_pin(p) for p in world.map_pins],
         "map_tokens": [_serialize_token(t) for t in world.map_tokens],
+        "map_paths": [_serialize_path(p) for p in world.map_paths],
+        "map_drawings": [_serialize_drawing(d) for d in world.map_drawings],
         "map_image_path": world.map_image_path,
         "map_positions": world.map_positions,
         "map_scale_miles": world.map_scale_miles,
         "map_scale_reference": world.map_scale_reference,
+        "map_overlay_visible": dict(world.map_overlay_visible),
+        "map_active_overlay": world.map_active_overlay,
     }
 
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
@@ -562,10 +709,14 @@ def load_world(filepath: str) -> World:
         map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
         map_pins=[_deserialize_pin(p) for p in data.get("map_pins", [])],
         map_tokens=[_deserialize_token(t) for t in data.get("map_tokens", [])],
+        map_paths=[_deserialize_path(p) for p in data.get("map_paths", [])],
+        map_drawings=[_deserialize_drawing(d) for d in data.get("map_drawings", [])],
         map_image_path=data.get("map_image_path", ""),
         map_positions=data.get("map_positions", {}),
         map_scale_miles=data.get("map_scale_miles", 0.0),
         map_scale_reference=data.get("map_scale_reference", 0.0),
+        map_overlay_visible=data.get("map_overlay_visible", {}),
+        map_active_overlay=data.get("map_active_overlay", "surface"),
     )
 
 
@@ -835,6 +986,109 @@ def get_token_by_id(world: World, token_id: str) -> Optional[MapToken]:
         if t.id == token_id:
             return t
     return None
+
+# ============================================================================
+# MAP PATH HELPERS (multi-waypoint polylines)
+# ============================================================================
+
+def add_path(world: World, name: str = "New Path", path_type: str = "road",
+             points: Optional[List[list]] = None, overlay: str = "",
+             **kwargs) -> MapPath:
+    """Add a new multi-waypoint path to the world."""
+    path = MapPath(
+        id=generate_id(world, "path"),
+        name=name, path_type=path_type,
+        points=[list(p) for p in (points or [])],
+        overlay=overlay or world.map_active_overlay or "surface",
+        **kwargs,
+    )
+    world.map_paths.append(path)
+    return path
+
+
+def remove_path(world: World, path_id: str):
+    world.map_paths = [p for p in world.map_paths if p.id != path_id]
+
+
+def get_path_by_id(world: World, path_id: str) -> Optional[MapPath]:
+    for p in world.map_paths:
+        if p.id == path_id:
+            return p
+    return None
+
+
+def path_length_pct(path: MapPath) -> float:
+    """Total polyline length in map-percent units."""
+    import math
+    if len(path.points) < 2:
+        return 0.0
+    total = 0.0
+    for i in range(1, len(path.points)):
+        x0, y0 = path.points[i - 1][0], path.points[i - 1][1]
+        x1, y1 = path.points[i][0], path.points[i][1]
+        total += math.hypot(x1 - x0, y1 - y0)
+    return total
+
+
+def path_length_miles(world: World, path: MapPath) -> float:
+    """Distance in miles. Uses stored override if >0, else map scale."""
+    if path.distance_miles > 0:
+        return path.distance_miles
+    if world.map_scale_miles <= 0:
+        return 0.0
+    return path_length_pct(path) * world.map_scale_miles / 100.0
+
+
+# ============================================================================
+# MAP DRAWING HELPERS (freehand annotations)
+# ============================================================================
+
+def add_drawing(world: World, points: Optional[List[list]] = None,
+                color: str = "#FFDD44", width: int = 3,
+                shape: str = "freehand", overlay: str = "",
+                **kwargs) -> MapDrawing:
+    """Add a new freehand drawing stroke."""
+    dw = MapDrawing(
+        id=generate_id(world, "draw"),
+        points=[list(p) for p in (points or [])],
+        color=color, width=width, shape=shape,
+        overlay=overlay or world.map_active_overlay or "surface",
+        **kwargs,
+    )
+    world.map_drawings.append(dw)
+    return dw
+
+
+def remove_drawing(world: World, drawing_id: str):
+    world.map_drawings = [d for d in world.map_drawings if d.id != drawing_id]
+
+
+def clear_drawings(world: World, overlay: str = ""):
+    """Remove all drawings, or only those on a specific overlay."""
+    if overlay:
+        world.map_drawings = [d for d in world.map_drawings if d.overlay != overlay]
+    else:
+        world.map_drawings = []
+
+
+# ============================================================================
+# OVERLAY LAYER HELPERS
+# ============================================================================
+
+def is_overlay_visible(world: World, overlay: str) -> bool:
+    """Whether items on a given overlay should render. Missing = visible."""
+    if not overlay:
+        overlay = "surface"
+    return world.map_overlay_visible.get(overlay, True)
+
+
+def set_overlay_visible(world: World, overlay: str, visible: bool):
+    world.map_overlay_visible[overlay] = visible
+
+
+def toggle_overlay(world: World, overlay: str):
+    world.map_overlay_visible[overlay] = not is_overlay_visible(world, overlay)
+
 
 def get_route_distance_miles(world: World, from_id: str, to_id: str) -> float:
     """Get the distance in miles between two locations via route. Returns 0 if no route."""

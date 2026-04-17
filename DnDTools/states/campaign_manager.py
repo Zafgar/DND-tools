@@ -28,7 +28,7 @@ from data.campaign import (
 )
 from data.world import (
     World, Location, NPC, ShopItem, NPCRelationship, MapRoute, MapPin,
-    MapToken, MAP_TOKEN_TYPES,
+    MapToken, MAP_TOKEN_TYPES, MapPath, MapDrawing, MAP_OVERLAYS,
     Quest, QuestObjective, QUEST_STATUSES, QUEST_TYPES, QUEST_PRIORITIES,
     MAP_PIN_TYPES,
     save_world, load_world, generate_id,
@@ -42,6 +42,9 @@ from data.world import (
     add_pin, remove_pin, get_pin_by_id, get_visible_pins,
     add_token, remove_token, get_token_by_id,
     get_route_distance_miles, estimate_route_miles_from_scale,
+    add_path, remove_path, get_path_by_id, path_length_miles, path_length_pct,
+    add_drawing, remove_drawing, clear_drawings,
+    is_overlay_visible, toggle_overlay, set_overlay_visible,
 )
 from data.shop_catalog import (
     get_item_price, get_item_tooltip, get_price_display,
@@ -286,6 +289,30 @@ class CampaignManagerState:
         self._location_map_surfaces: dict = {}  # loc_id -> pygame.Surface
         self._location_map_cache: dict = {}     # loc_id -> (scaled_surface, cache_key)
         self._current_sub_map_id = ""           # Currently viewing sub-map of this location
+        # Breadcrumb of location IDs when drilling into sub-maps (world -> region -> town -> ...)
+        self._map_breadcrumb: list = []
+
+        # Path drawing mode (multi-waypoint)
+        self._map_path_mode = False             # True = placing waypoints
+        self._map_path_points: list = []        # [(pct_x, pct_y), ...] accumulated
+        self._map_path_type = "road"            # Terrain type for the new path
+        self.selected_path_id = ""
+
+        # Freehand drawing (pen/annotation) mode
+        self._map_draw_mode = False             # True = drawing freehand
+        self._map_draw_erase = False            # True = erase drawings on click
+        self._map_draw_current: list = []       # Current stroke points while LMB held
+        self._map_draw_color = "#FFDD44"
+        self._map_draw_width = 3
+        self._map_draw_shape = "freehand"       # freehand, line, rect, circle
+        self._map_draw_active = False            # True while LMB held during drawing
+
+        # Overlay / layer panel
+        self._map_layer_panel_open = False      # Toggle-able side panel
+        # Full-resolution source surface (never destructively downscaled).
+        # The renderer picks the right subsurface/scale on demand.
+        self._map_bg_full: "pygame.Surface | None" = None
+        self._map_bg_full_size = (0, 0)
 
         # Hero relationship view state
         self.hero_rel_scroll = 0
@@ -774,10 +801,20 @@ class CampaignManagerState:
         self.world.map_positions = {k: list(v) for k, v in self._location_map_positions.items()}
 
     def _load_map_background(self):
-        """Load map background image if path is set. Large images are downscaled for performance."""
+        """Load map background image.
+
+        For very large JPGs (hundreds of MB when decoded) we keep the
+        original full-resolution surface (``_map_bg_full``) AND a
+        downscaled "overview" surface (``_map_bg_surface``) that is used
+        when the user is zoomed out. Once the user zooms in past the
+        overview resolution, the renderer samples from the full-res source
+        via ``subsurface`` so no pixel detail is lost.
+        """
         self._map_bg_surface = None
         self._map_bg_scaled_cache = None
         self._map_bg_cache_key = None
+        self._map_bg_full = None
+        self._map_bg_full_size = (0, 0)
         path = self.world.map_image_path
         if not path:
             return
@@ -793,20 +830,111 @@ class CampaignManagerState:
             return
         try:
             raw = pygame.image.load(path).convert()
-            # Cap loaded image to max 4096 on longest side for memory/performance
-            max_dim = 4096
             w, h = raw.get_size()
+            # Keep the full-resolution surface so zoom-in preserves detail.
+            self._map_bg_full = raw
+            self._map_bg_full_size = (w, h)
+            # Build a downscaled overview surface for fast low-zoom rendering.
+            # 3072 is enough to look crisp at 1.0x on a 4K monitor and keeps
+            # memory in check for the overview copy even when source is 30k+px.
+            max_dim = 3072
             if w > max_dim or h > max_dim:
                 scale = max_dim / max(w, h)
-                new_w = int(w * scale)
-                new_h = int(h * scale)
-                raw = pygame.transform.smoothscale(raw, (new_w, new_h))
-            self._map_bg_surface = raw
+                new_w = max(1, int(w * scale))
+                new_h = max(1, int(h * scale))
+                overview = pygame.transform.smoothscale(raw, (new_w, new_h))
+                self._map_bg_surface = overview
+            else:
+                self._map_bg_surface = raw
+            self._status_msg = f"Map loaded: {w}x{h} (full-res kept in memory)"
+            self._status_timer = 180
         except Exception as ex:
             logging.warning(f"[MAP] Failed to load background image: {ex}")
             self._status_msg = f"Map load failed: {ex}"
             self._status_timer = 240
             self._map_bg_surface = None
+            self._map_bg_full = None
+
+    def _draw_map_background(self, screen, grid_area):
+        """Render the world-map background with smart full-res sampling.
+
+        When zoomed out, we render a pre-built overview surface (cheap).
+        When zoomed in far enough that the overview would show blur/pixels,
+        we sample directly from the full-resolution source using subsurface
+        rects aligned to only the portion of the image that is on-screen.
+        """
+        overview = self._map_bg_surface
+        full = self._map_bg_full
+        if overview is None:
+            return
+        src_w, src_h = overview.get_size()
+        if src_w <= 0 or src_h <= 0:
+            return
+        fit_scale = min(grid_area.width / src_w, grid_area.height / src_h)
+        base_w = max(1, int(src_w * fit_scale))
+        base_h = max(1, int(src_h * fit_scale))
+        iw = max(1, int(base_w * self.map_zoom))
+        ih = max(1, int(base_h * self.map_zoom))
+        bx = grid_area.x + grid_area.width // 2 + self.map_offset_x - iw // 2
+        by = grid_area.y + grid_area.height // 2 + self.map_offset_y - ih // 2
+
+        screen.set_clip(grid_area)
+
+        # Decide whether the overview or full-res source should be used.
+        # If the target display width on screen (iw) exceeds the overview's
+        # native width, sampling the full-res source avoids upscaling blur.
+        use_full = full is not None and iw > src_w * 1.05
+
+        if not use_full:
+            cache_key = (iw, ih, "overview")
+            if self._map_bg_cache_key != cache_key or self._map_bg_scaled_cache is None:
+                self._map_bg_scaled_cache = pygame.transform.smoothscale(overview, (iw, ih))
+                self._map_bg_cache_key = cache_key
+            screen.blit(self._map_bg_scaled_cache, (bx, by))
+        else:
+            # Sample a rectangle from the full-resolution surface
+            # corresponding to just the visible portion, then smoothscale it
+            # to the screen area. This keeps memory/cpu bounded regardless of
+            # how large the source image is.
+            fw, fh = self._map_bg_full_size
+            # Screen->image mapping:
+            # pixel (bx, by) -> full-image coord (0, 0); total display size = (iw, ih)
+            scale_full_to_disp_x = iw / fw
+            scale_full_to_disp_y = ih / fh
+            # Visible region in display coords
+            vis_disp_x0 = max(grid_area.x, bx)
+            vis_disp_y0 = max(grid_area.y, by)
+            vis_disp_x1 = min(grid_area.right, bx + iw)
+            vis_disp_y1 = min(grid_area.bottom, by + ih)
+            if vis_disp_x1 <= vis_disp_x0 or vis_disp_y1 <= vis_disp_y0:
+                screen.set_clip(None)
+                return
+            # Convert to full-image coords
+            src_x0 = int((vis_disp_x0 - bx) / scale_full_to_disp_x)
+            src_y0 = int((vis_disp_y0 - by) / scale_full_to_disp_y)
+            src_x1 = int((vis_disp_x1 - bx) / scale_full_to_disp_x)
+            src_y1 = int((vis_disp_y1 - by) / scale_full_to_disp_y)
+            src_x0 = max(0, min(fw, src_x0))
+            src_y0 = max(0, min(fh, src_y0))
+            src_x1 = max(src_x0 + 1, min(fw, src_x1))
+            src_y1 = max(src_y0 + 1, min(fh, src_y1))
+            try:
+                sub = full.subsurface(pygame.Rect(src_x0, src_y0,
+                                                  src_x1 - src_x0,
+                                                  src_y1 - src_y0))
+                disp_w = vis_disp_x1 - vis_disp_x0
+                disp_h = vis_disp_y1 - vis_disp_y0
+                scaled = pygame.transform.smoothscale(sub, (disp_w, disp_h))
+                screen.blit(scaled, (vis_disp_x0, vis_disp_y0))
+            except (ValueError, pygame.error):
+                # Fallback: use overview if subsurface math goes wrong
+                cache_key = (iw, ih, "overview_fb")
+                if self._map_bg_cache_key != cache_key or self._map_bg_scaled_cache is None:
+                    self._map_bg_scaled_cache = pygame.transform.smoothscale(overview, (iw, ih))
+                    self._map_bg_cache_key = cache_key
+                screen.blit(self._map_bg_scaled_cache, (bx, by))
+
+        screen.set_clip(None)
 
     def _pick_image_file(self):
         """Open a native file picker for selecting an image. Returns path or ''."""
@@ -1021,15 +1149,27 @@ class CampaignManagerState:
                         self.map_offset_x += dx
                         self.map_offset_y += dy
                         self.map_drag_start = mp
+                    elif self._map_draw_mode and not self._map_draw_erase \
+                            and self._map_draw_active and pygame.mouse.get_pressed()[0]:
+                        grid_area = self._get_map_grid_area()
+                        if grid_area.collidepoint(mp):
+                            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+                            pct_x = max(0, min(100, pct_x))
+                            pct_y = max(0, min(100, pct_y))
+                            if self._map_draw_shape == "freehand":
+                                self._map_draw_current.append((pct_x, pct_y))
+                            else:
+                                if len(self._map_draw_current) >= 2:
+                                    self._map_draw_current[-1] = (pct_x, pct_y)
+                                else:
+                                    self._map_draw_current.append((pct_x, pct_y))
                     elif self._map_dragging_node and pygame.mouse.get_pressed()[0]:
-                        # Drag location node
                         grid_area = self._get_map_grid_area()
                         pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
                         pct_x = max(1, min(99, pct_x))
                         pct_y = max(1, min(99, pct_y))
                         self._location_map_positions[self._map_dragging_node] = (pct_x, pct_y)
                     elif self._map_dragging_token and pygame.mouse.get_pressed()[0]:
-                        # Drag map token
                         grid_area = self._get_map_grid_area()
                         pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
                         pct_x = max(1, min(99, pct_x))
@@ -1039,6 +1179,17 @@ class CampaignManagerState:
                             tok.map_x = pct_x
                             tok.map_y = pct_y
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if self._map_draw_active:
+                        if len(self._map_draw_current) >= 2:
+                            add_drawing(self.world,
+                                        points=self._map_draw_current,
+                                        color=self._map_draw_color,
+                                        width=self._map_draw_width,
+                                        shape=self._map_draw_shape)
+                            self._status_msg = "Drawing saved"
+                            self._status_timer = 60
+                        self._map_draw_current = []
+                        self._map_draw_active = False
                     if self._map_dragging_node:
                         self._save_map_positions()
                         self._map_dragging_node = ""
@@ -1047,10 +1198,17 @@ class CampaignManagerState:
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     grid_area = self._get_map_grid_area()
                     if grid_area.collidepoint(mp):
-                        try:
-                            self._handle_map_click(mp, grid_area)
-                        except Exception:
-                            pass
+                        if self._map_draw_mode and not self._map_draw_erase:
+                            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+                            pct_x = max(0, min(100, pct_x))
+                            pct_y = max(0, min(100, pct_y))
+                            self._map_draw_active = True
+                            self._map_draw_current = [(pct_x, pct_y)]
+                        else:
+                            try:
+                                self._handle_map_click(mp, grid_area)
+                            except Exception:
+                                pass
 
             # Keyboard input
             if event.type == pygame.KEYDOWN:
@@ -1098,6 +1256,7 @@ class CampaignManagerState:
                     self._map_route_mode or self._map_pin_mode
                     or self._map_token_mode or self._map_scale_mode
                     or self._map_detail_location_id
+                    or self._map_path_mode or self._map_draw_mode
                 ):
                     self._map_route_mode = False
                     self._map_route_from = ""
@@ -1106,10 +1265,124 @@ class CampaignManagerState:
                     self._map_scale_mode = False
                     self._map_scale_point1 = None
                     self._map_detail_location_id = ""
+                    self._map_path_mode = False
+                    self._map_path_points = []
+                    self._map_draw_mode = False
+                    self._map_draw_erase = False
+                    self._map_draw_current = []
+                    self._map_draw_active = False
+                    self._map_layer_panel_open = False
                     continue
                 if event.key == pygame.K_ESCAPE and getattr(self, '_npc_location_picker_open', False):
                     self._npc_location_picker_open = False
                     continue
+
+                # --- Map keyboard shortcuts (path/draw modes + navigation) ---
+                if self.active_tab == 4 and self.world_map_mode:
+                    _handled_map_key = False
+
+                    if event.key == pygame.K_RETURN and self._map_path_mode:
+                        if len(self._map_path_points) >= 2:
+                            add_path(self.world,
+                                     name=f"Path {len(self.world.map_paths) + 1}",
+                                     path_type=self._map_path_type,
+                                     points=self._map_path_points)
+                            self._status_msg = f"Path saved ({len(self._map_path_points)} pts)"
+                            self._status_timer = 90
+                        else:
+                            self._status_msg = "Path needs at least 2 points"
+                            self._status_timer = 90
+                        self._map_path_points = []
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_t and self._map_path_mode:
+                        types = ["road", "trail", "river", "mountain", "forest",
+                                 "swamp", "desert", "arctic", "coastal"]
+                        idx = types.index(self._map_path_type) if self._map_path_type in types else 0
+                        self._map_path_type = types[(idx + 1) % len(types)]
+                        self._status_msg = f"Path terrain: {self._map_path_type}"
+                        self._status_timer = 60
+                        _handled_map_key = True
+
+                    elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4) \
+                            and self._map_draw_mode:
+                        shapes = ["freehand", "line", "rect", "circle"]
+                        self._map_draw_shape = shapes[event.key - pygame.K_1]
+                        self._status_msg = f"Draw shape: {self._map_draw_shape}"
+                        self._status_timer = 60
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_LEFTBRACKET and self._map_draw_mode:
+                        self._map_draw_width = max(1, self._map_draw_width - 1)
+                        self._status_msg = f"Brush width: {self._map_draw_width}"
+                        self._status_timer = 60
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_RIGHTBRACKET and self._map_draw_mode:
+                        self._map_draw_width = min(20, self._map_draw_width + 1)
+                        self._status_msg = f"Brush width: {self._map_draw_width}"
+                        self._status_timer = 60
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_c and self._map_draw_mode:
+                        colors = ["#FFDD44", "#FF4444", "#44FF44", "#4488FF",
+                                  "#FF88FF", "#FFFFFF", "#FF8800", "#00FFFF"]
+                        idx = colors.index(self._map_draw_color) if self._map_draw_color in colors else -1
+                        self._map_draw_color = colors[(idx + 1) % len(colors)]
+                        self._status_msg = f"Draw color: {self._map_draw_color}"
+                        self._status_timer = 60
+                        _handled_map_key = True
+
+                    elif event.key in (pygame.K_w, pygame.K_UP):
+                        self.map_offset_y += 40
+                        _handled_map_key = True
+                    elif event.key in (pygame.K_s, pygame.K_DOWN):
+                        self.map_offset_y -= 40
+                        _handled_map_key = True
+                    elif event.key in (pygame.K_a, pygame.K_LEFT):
+                        self.map_offset_x += 40
+                        _handled_map_key = True
+                    elif event.key in (pygame.K_d, pygame.K_RIGHT):
+                        self.map_offset_x -= 40
+                        _handled_map_key = True
+
+                    elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                        self.map_zoom = min(5.0, self.map_zoom + 0.15)
+                        _handled_map_key = True
+                    elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        self.map_zoom = max(0.2, self.map_zoom - 0.15)
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_HOME:
+                        self.map_zoom = 1.0
+                        self.map_offset_x = 0.0
+                        self.map_offset_y = 0.0
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_f:
+                        self.map_zoom = 1.0
+                        self.map_offset_x = 0.0
+                        self.map_offset_y = 0.0
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_l:
+                        self._map_layer_panel_open = not self._map_layer_panel_open
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_g:
+                        self._map_grid_visible = not getattr(self, '_map_grid_visible', True)
+                        _handled_map_key = True
+
+                    elif event.key == pygame.K_BACKSPACE and self._map_path_mode:
+                        if self._map_path_points:
+                            self._map_path_points.pop()
+                            self._status_msg = f"Removed last waypoint ({len(self._map_path_points)} left)"
+                            self._status_timer = 60
+                        _handled_map_key = True
+
+                    if _handled_map_key:
+                        continue
+
                 if self.input_active:
                     self._handle_input_key(event)
                     continue
@@ -1326,6 +1599,47 @@ class CampaignManagerState:
         """Handle left-click on the map grid area."""
         import math as _math
 
+        # --- Path placement: add a waypoint at click position ---
+        if self._map_path_mode:
+            pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
+            pct_x = max(0, min(100, pct_x))
+            pct_y = max(0, min(100, pct_y))
+            self._map_path_points.append((pct_x, pct_y))
+            return
+
+        # --- Draw erase: find a drawing near the click and remove it ---
+        if self._map_draw_mode and self._map_draw_erase:
+            closest = None
+            closest_d = 10
+            for dw in self.world.map_drawings:
+                if not is_overlay_visible(self.world, dw.overlay):
+                    continue
+                for i in range(1, len(dw.points)):
+                    a = self._map_to_screen(dw.points[i - 1][0],
+                                             dw.points[i - 1][1], grid_area)
+                    b = self._map_to_screen(dw.points[i][0],
+                                             dw.points[i][1], grid_area)
+                    # Distance mouse-to-segment
+                    import math as _m2
+                    ax, ay = a; bx, by = b; mx, my = mp
+                    dx, dy = bx - ax, by - ay
+                    if dx == 0 and dy == 0:
+                        d = _m2.hypot(mx - ax, my - ay)
+                    else:
+                        t = max(0.0, min(1.0, ((mx - ax) * dx + (my - ay) * dy) /
+                                         (dx * dx + dy * dy)))
+                        cx = ax + t * dx
+                        cy = ay + t * dy
+                        d = _m2.hypot(mx - cx, my - cy)
+                    if d < closest_d:
+                        closest_d = d
+                        closest = dw
+            if closest:
+                remove_drawing(self.world, closest.id)
+                self._status_msg = "Erased drawing"
+                self._status_timer = 90
+            return
+
         # --- Scale calibration mode: pick two points, then ask for miles ---
         if self._map_scale_mode:
             pct_x, pct_y = self._screen_to_map(mp[0], mp[1], grid_area)
@@ -1401,6 +1715,10 @@ class CampaignManagerState:
                 break
 
         if clicked_pin_id and not self._map_route_mode and not self._map_pin_mode:
+            pin = get_pin_by_id(self.world, clicked_pin_id)
+            action = getattr(pin, 'open_action', '') if pin else ''
+            if action:
+                self._execute_pin_action(action)
             self.selected_pin_id = clicked_pin_id
             self.selected_location_id = ""
             self.selected_token_id = ""
@@ -1454,9 +1772,12 @@ class CampaignManagerState:
             self.selected_pin_id = ""
             self.selected_token_id = ""
             if self.selected_location_id == clicked_loc_id:
-                # Double-select: open location detail popup
-                self._map_detail_location_id = clicked_loc_id
-                self._map_detail_scroll = 0
+                loc = self.world.locations.get(clicked_loc_id)
+                if loc and getattr(loc, 'map_image_path', ''):
+                    self._map_descend_into(clicked_loc_id)
+                else:
+                    self._map_detail_location_id = clicked_loc_id
+                    self._map_detail_scroll = 0
             else:
                 self.selected_location_id = clicked_loc_id
                 self._map_dragging_node = clicked_loc_id
@@ -4272,6 +4593,311 @@ class CampaignManagerState:
             return loc.map_size
         return self._MAP_TYPE_SIZES.get(loc.location_type, 6)
 
+    def _execute_pin_action(self, action: str):
+        """Handle a pin's open_action string: 'open_submap:<loc_id>',
+        'open_location:<loc_id>', or 'open_npc:<npc_id>'."""
+        if not action:
+            return
+        parts = action.split(":", 1)
+        cmd = parts[0]
+        arg = parts[1] if len(parts) > 1 else ""
+        if cmd == "open_submap" and arg:
+            self._map_descend_into(arg)
+        elif cmd == "open_location" and arg:
+            loc = self.world.locations.get(arg)
+            if loc:
+                self.selected_location_id = arg
+                self._map_detail_location_id = arg
+                self._status_msg = f"Opened: {loc.name}"
+                self._status_timer = 90
+            else:
+                self._status_msg = f"Location '{arg}' not found"
+                self._status_timer = 90
+        elif cmd == "open_npc" and arg:
+            npc = self.world.npcs.get(arg)
+            if npc:
+                self.selected_npc_id = arg
+                self._status_msg = f"Opened NPC: {npc.name}"
+                self._status_timer = 90
+        else:
+            self._status_msg = f"Unknown action: {action}"
+            self._status_timer = 90
+
+    def _map_navigate_up(self):
+        """Pop one level of the sub-map breadcrumb and reload the parent."""
+        if not self._map_breadcrumb:
+            self._status_msg = "Already at top-level map"
+            self._status_timer = 120
+            return
+        self._map_breadcrumb.pop()
+        if self._map_breadcrumb:
+            parent_loc_id = self._map_breadcrumb[-1]
+            loc = self.world.locations.get(parent_loc_id)
+            if loc and loc.map_image_path:
+                # Swap world background to this location's map temporarily
+                self.world.map_image_path = loc.map_image_path
+                self._load_map_background()
+                self.map_offset_x = 0
+                self.map_offset_y = 0
+                self.map_zoom = 1.0
+                self._status_msg = f"Map: {loc.name}"
+                self._status_timer = 180
+                return
+        # Back at the root (no breadcrumb entries left). Caller responsibility
+        # to restore the original world.map_image_path is too invasive; keep it.
+        self._status_msg = "Returned to parent map"
+        self._status_timer = 120
+
+    def _map_descend_into(self, location_id: str):
+        """Drill down into a location's sub-map (pushes a breadcrumb frame)."""
+        loc = self.world.locations.get(location_id)
+        if not loc or not loc.map_image_path:
+            self._status_msg = "This location has no sub-map image set"
+            self._status_timer = 150
+            return
+        self._map_breadcrumb.append(location_id)
+        self.world.map_image_path = loc.map_image_path
+        self._load_map_background()
+        self.map_offset_x = 0
+        self.map_offset_y = 0
+        self.map_zoom = 1.0
+        self._status_msg = f"Descended into: {loc.name}"
+        self._status_timer = 180
+
+    def _draw_map_paths(self, screen, grid_area, mp):
+        """Render multi-waypoint paths that belong to visible overlays.
+
+        Also renders the in-progress path being drawn in path-mode.
+        Returns the ID of the path hovered (or '').
+        """
+        import math
+        hovered = ""
+        for path in self.world.map_paths:
+            if not path.visible:
+                continue
+            if not is_overlay_visible(self.world, path.overlay):
+                continue
+            if len(path.points) < 2:
+                continue
+            # Resolve color
+            type_colors = self._MAP_ROUTE_COLORS
+            col = (self._hex_to_rgb(path.color) if path.color else None) \
+                  or type_colors.get(path.path_type, (180, 180, 180))
+            thickness = max(2, self._MAP_ROUTE_STYLES.get(path.path_type, 2))
+            # Draw segments (dashed for trail/secret/air like routes)
+            dashed = path.path_type in ("trail", "secret", "air")
+            prev = self._map_to_screen(path.points[0][0], path.points[0][1], grid_area)
+            seg_midpoints = []
+            for i in range(1, len(path.points)):
+                cur = self._map_to_screen(path.points[i][0], path.points[i][1], grid_area)
+                if dashed:
+                    self._draw_dashed_line(screen, col, prev, cur, thickness, 8, 5)
+                else:
+                    pygame.draw.line(screen, col, prev, cur, thickness)
+                seg_midpoints.append(((prev[0] + cur[0]) // 2,
+                                      (prev[1] + cur[1]) // 2))
+                # Hover test: distance from mouse to segment
+                if hovered == "":
+                    if self._point_near_segment(mp, prev, cur, thickness + 4):
+                        hovered = path.id
+                prev = cur
+            # Waypoint markers
+            if self.map_zoom >= 0.4:
+                for px_pct, py_pct in path.points:
+                    px, py = self._map_to_screen(px_pct, py_pct, grid_area)
+                    pygame.draw.circle(screen, col, (px, py), 3)
+            # Label at midpoint
+            if self.map_zoom >= 0.5 and seg_midpoints:
+                mid = seg_midpoints[len(seg_midpoints) // 2]
+                miles = path_length_miles(self.world, path)
+                parts = []
+                if path.name:
+                    parts.append(path.name)
+                if miles > 0:
+                    parts.append(f"{miles:.0f} mi")
+                if parts:
+                    txt = " | ".join(parts)
+                    rl = fonts.tiny.render(txt, True, COLORS["text_main"])
+                    bg = pygame.Surface((rl.get_width() + 6, rl.get_height() + 2),
+                                        pygame.SRCALPHA)
+                    bg.fill((0, 0, 0, 140))
+                    screen.blit(bg, (mid[0] - rl.get_width() // 2 - 3,
+                                     mid[1] - rl.get_height() // 2 - 1))
+                    screen.blit(rl, (mid[0] - rl.get_width() // 2,
+                                     mid[1] - rl.get_height() // 2))
+
+        # In-progress new path
+        if self._map_path_mode and self._map_path_points:
+            col = (255, 220, 80)
+            pts_scr = [self._map_to_screen(p[0], p[1], grid_area)
+                       for p in self._map_path_points]
+            for i in range(1, len(pts_scr)):
+                pygame.draw.line(screen, col, pts_scr[i - 1], pts_scr[i], 3)
+            # Preview segment to cursor
+            if grid_area.collidepoint(mp):
+                pygame.draw.line(screen, (255, 220, 80, 128), pts_scr[-1], mp, 2)
+            for px, py in pts_scr:
+                pygame.draw.circle(screen, col, (px, py), 4)
+                pygame.draw.circle(screen, (0, 0, 0), (px, py), 4, 1)
+            # Running length
+            total_pct = 0.0
+            for i in range(1, len(self._map_path_points)):
+                a, b = self._map_path_points[i - 1], self._map_path_points[i]
+                total_pct += math.hypot(b[0] - a[0], b[1] - a[1])
+            if self.world.map_scale_miles > 0:
+                miles = total_pct * self.world.map_scale_miles / 100.0
+                txt = f"Path: {miles:.1f} mi ({len(self._map_path_points)} pts)"
+            else:
+                txt = f"Path: {len(self._map_path_points)} pts (set map scale)"
+            tt = fonts.small_bold.render(txt, True, COLORS["accent"])
+            screen.blit(tt, (grid_area.x + 10, grid_area.bottom - 22))
+
+        return hovered
+
+    def _draw_map_drawings(self, screen, grid_area):
+        """Render freehand annotation strokes for visible overlays."""
+        for dw in self.world.map_drawings:
+            if not dw.visible:
+                continue
+            if not is_overlay_visible(self.world, dw.overlay):
+                continue
+            pts = dw.points
+            if len(pts) < 1:
+                continue
+            col = self._hex_to_rgb(dw.color) or (255, 221, 68)
+            w = max(1, int(dw.width * max(0.4, self.map_zoom)))
+            if dw.shape == "freehand" and len(pts) >= 2:
+                scr_pts = [self._map_to_screen(p[0], p[1], grid_area) for p in pts]
+                pygame.draw.lines(screen, col, False, scr_pts, w)
+            elif dw.shape == "line" and len(pts) >= 2:
+                a = self._map_to_screen(pts[0][0], pts[0][1], grid_area)
+                b = self._map_to_screen(pts[-1][0], pts[-1][1], grid_area)
+                pygame.draw.line(screen, col, a, b, w)
+            elif dw.shape == "rect" and len(pts) >= 2:
+                a = self._map_to_screen(pts[0][0], pts[0][1], grid_area)
+                b = self._map_to_screen(pts[-1][0], pts[-1][1], grid_area)
+                rx, ry = min(a[0], b[0]), min(a[1], b[1])
+                rw, rh = abs(b[0] - a[0]), abs(b[1] - a[1])
+                if rw > 0 and rh > 0:
+                    pygame.draw.rect(screen, col, pygame.Rect(rx, ry, rw, rh), w)
+            elif dw.shape == "circle" and len(pts) >= 2:
+                import math
+                a = self._map_to_screen(pts[0][0], pts[0][1], grid_area)
+                b = self._map_to_screen(pts[-1][0], pts[-1][1], grid_area)
+                r = int(math.hypot(b[0] - a[0], b[1] - a[1]))
+                if r > 0:
+                    pygame.draw.circle(screen, col, a, r, w)
+
+        # In-progress stroke
+        if self._map_draw_mode and not self._map_draw_erase \
+                and len(self._map_draw_current) >= 1:
+            col = self._hex_to_rgb(self._map_draw_color) or (255, 221, 68)
+            w = max(1, int(self._map_draw_width * max(0.4, self.map_zoom)))
+            if self._map_draw_shape == "freehand" and len(self._map_draw_current) >= 2:
+                scr = [self._map_to_screen(p[0], p[1], grid_area)
+                       for p in self._map_draw_current]
+                pygame.draw.lines(screen, col, False, scr, w)
+            elif len(self._map_draw_current) >= 2 \
+                    and self._map_draw_shape in ("line", "rect", "circle"):
+                a = self._map_to_screen(self._map_draw_current[0][0],
+                                         self._map_draw_current[0][1], grid_area)
+                b = self._map_to_screen(self._map_draw_current[-1][0],
+                                         self._map_draw_current[-1][1], grid_area)
+                if self._map_draw_shape == "line":
+                    pygame.draw.line(screen, col, a, b, w)
+                elif self._map_draw_shape == "rect":
+                    rx, ry = min(a[0], b[0]), min(a[1], b[1])
+                    rw, rh = abs(b[0] - a[0]), abs(b[1] - a[1])
+                    if rw > 0 and rh > 0:
+                        pygame.draw.rect(screen, col,
+                                         pygame.Rect(rx, ry, rw, rh), w)
+                elif self._map_draw_shape == "circle":
+                    import math
+                    r = int(math.hypot(b[0] - a[0], b[1] - a[1]))
+                    if r > 0:
+                        pygame.draw.circle(screen, col, a, r, w)
+
+    @staticmethod
+    def _point_near_segment(p, a, b, tol=6):
+        """True if point p is within tol pixels of segment (a, b)."""
+        import math
+        ax, ay = a
+        bx, by = b
+        px, py = p
+        dx, dy = bx - ax, by - ay
+        if dx == 0 and dy == 0:
+            return math.hypot(px - ax, py - ay) <= tol
+        t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+        t = max(0.0, min(1.0, t))
+        cx = ax + t * dx
+        cy = ay + t * dy
+        return math.hypot(px - cx, py - cy) <= tol
+
+    def _draw_layer_panel(self, screen, mp):
+        """Draw the overlay-layer visibility panel when open."""
+        if not self._map_layer_panel_open:
+            return
+        pw = 220
+        ph = 24 + len(MAP_OVERLAYS) * 26 + 40
+        px = 40
+        py = 120
+        panel = pygame.Rect(px, py, pw, ph)
+        pygame.draw.rect(screen, (20, 22, 30), panel, border_radius=6)
+        pygame.draw.rect(screen, COLORS["border"], panel, 1, border_radius=6)
+        hdr = fonts.small_bold.render("Overlay Layers", True, COLORS["accent"])
+        screen.blit(hdr, (px + 10, py + 6))
+        active = self.world.map_active_overlay or "surface"
+        y = py + 28
+        for key, info in MAP_OVERLAYS.items():
+            visible = is_overlay_visible(self.world, key)
+            is_active = key == active
+            row = pygame.Rect(px + 6, y, pw - 12, 22)
+            row_hov = row.collidepoint(mp)
+            if row_hov:
+                pygame.draw.rect(screen, COLORS["hover"], row, border_radius=3)
+            # Visibility checkbox
+            cb = pygame.Rect(px + 10, y + 4, 14, 14)
+            cb_fill = self._hex_to_rgb(info["color"]) if visible else (60, 60, 70)
+            pygame.draw.rect(screen, cb_fill, cb, border_radius=2)
+            pygame.draw.rect(screen, COLORS["border"], cb, 1, border_radius=2)
+            if visible:
+                pygame.draw.line(screen, (0, 0, 0),
+                                 (cb.x + 3, cb.y + 7),
+                                 (cb.x + 6, cb.y + 10), 2)
+                pygame.draw.line(screen, (0, 0, 0),
+                                 (cb.x + 6, cb.y + 10),
+                                 (cb.x + 11, cb.y + 3), 2)
+            # Name
+            name_col = COLORS["accent"] if is_active else (
+                COLORS["text_bright"] if visible else COLORS["text_muted"])
+            tt = fonts.small.render(info["label"], True, name_col)
+            screen.blit(tt, (px + 30, y + 3))
+            # Active marker button
+            act_btn = pygame.Rect(px + pw - 30, y + 3, 20, 16)
+            act_hov = act_btn.collidepoint(mp)
+            act_col = COLORS["accent"] if is_active else (
+                COLORS["hover"] if act_hov else COLORS["panel"])
+            pygame.draw.rect(screen, act_col, act_btn, border_radius=3)
+            at = fonts.tiny.render("[*]" if is_active else "[ ]", True,
+                                   COLORS["text_bright"])
+            screen.blit(at, (act_btn.x + 2, act_btn.y + 1))
+            # Click handling
+            if pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                if cb.collidepoint(mp):
+                    toggle_overlay(self.world, key)
+                    self._click_cooldown = 12
+                elif act_btn.collidepoint(mp):
+                    self.world.map_active_overlay = key
+                    self._status_msg = f"Active overlay: {info['label']}"
+                    self._status_timer = 120
+                    self._click_cooldown = 12
+            y += 26
+        # Helper text
+        hint = fonts.tiny.render(
+            "Box = visible | [*] = active (new items use this layer)",
+            True, COLORS["text_muted"])
+        screen.blit(hint, (px + 10, y + 4))
+
     def _draw_world_map(self, screen, mp):
         """Draw an interactive world map with zoom, pan, routes, tooltips."""
         map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
@@ -4279,24 +4905,7 @@ class CampaignManagerState:
 
         # Background image or default
         if self._map_bg_surface and self.world.map_image_path:
-            # Fit image into grid preserving aspect ratio, then apply zoom
-            src_w, src_h = self._map_bg_surface.get_size()
-            if src_w > 0 and src_h > 0 and grid_area.width > 0 and grid_area.height > 0:
-                fit_scale = min(grid_area.width / src_w, grid_area.height / src_h)
-                base_w = max(1, int(src_w * fit_scale))
-                base_h = max(1, int(src_h * fit_scale))
-                iw = max(1, int(base_w * self.map_zoom))
-                ih = max(1, int(base_h * self.map_zoom))
-                cache_key = (iw, ih)
-                if self._map_bg_cache_key != cache_key or self._map_bg_scaled_cache is None:
-                    # Only re-scale when zoom/size actually changes
-                    self._map_bg_scaled_cache = pygame.transform.smoothscale(self._map_bg_surface, (iw, ih))
-                    self._map_bg_cache_key = cache_key
-                bx = grid_area.x + grid_area.width // 2 + self.map_offset_x - iw // 2
-                by = grid_area.y + grid_area.height // 2 + self.map_offset_y - ih // 2
-                screen.set_clip(grid_area)
-                screen.blit(self._map_bg_scaled_cache, (bx, by))
-                screen.set_clip(None)
+            self._draw_map_background(screen, grid_area)
         else:
             pygame.draw.rect(screen, (16, 18, 26), grid_area, border_radius=4)
 
@@ -4314,8 +4923,16 @@ class CampaignManagerState:
             if grid_area.y <= y <= grid_area.bottom:
                 pygame.draw.line(screen, (24, 26, 36), (grid_area.x, y), (grid_area.right, y), 1)
 
+        # --- Draw freehand drawings (below everything except bg grid) ---
+        self._draw_map_drawings(screen, grid_area)
+
+        # --- Draw multi-waypoint paths ---
+        hovered_path_id = self._draw_map_paths(screen, grid_area, mp)
+
         # --- Draw routes ---
         for route in self.world.map_routes:
+            if not is_overlay_visible(self.world, route.overlay):
+                continue
             if route.from_id in self._location_map_positions and route.to_id in self._location_map_positions:
                 fp = self._location_map_positions[route.from_id]
                 tp = self._location_map_positions[route.to_id]
@@ -4489,6 +5106,8 @@ class CampaignManagerState:
         for pin in self.world.map_pins:
             if not pin.visible:
                 continue
+            if not is_overlay_visible(self.world, pin.overlay):
+                continue
             px, py = self._map_to_screen(pin.map_x, pin.map_y, grid_area)
             if px < grid_area.x - 20 or px > grid_area.right + 20:
                 continue
@@ -4626,16 +5245,39 @@ class CampaignManagerState:
         tool_x = map_area.x + 200
         tool_btns = [
             ("+ Route", "add_route"), ("+ Pin", "add_pin"), ("+ Token", "add_token"),
+            ("+ Path", "add_path"), ("Draw", "draw_mode"), ("Erase", "erase_mode"),
+            ("Layers", "toggle_layer_panel"),
             ("Image", "set_image"), ("Scale", "set_scale_value"),
-            ("Cal", "set_scale"), ("Reset", "reset_view"), ("Sub-Map", "loc_sub_map"),
+            ("Cal", "set_scale"), ("Fit", "fit_view"), ("Reset", "reset_view"),
+            ("Sub-Map", "loc_sub_map"), ("Up", "map_up"),
         ]
+        # Highlight active modes in the toolbar
+        active_action_map = {
+            "add_route": self._map_route_mode,
+            "add_pin": self._map_pin_mode,
+            "add_token": self._map_token_mode,
+            "add_path": self._map_path_mode,
+            "draw_mode": self._map_draw_mode and not self._map_draw_erase,
+            "erase_mode": self._map_draw_mode and self._map_draw_erase,
+            "toggle_layer_panel": self._map_layer_panel_open,
+            "set_scale": self._map_scale_mode,
+        }
         for btn_label, btn_action in tool_btns:
             bw = fonts.small.size(btn_label)[0] + 14
             btn_rect = pygame.Rect(tool_x, tb_y + 2, bw, 22)
             bh = btn_rect.collidepoint(mp)
-            pygame.draw.rect(screen, COLORS["hover"] if bh else COLORS["panel"], btn_rect, border_radius=3)
-            pygame.draw.rect(screen, COLORS["border"], btn_rect, 1, border_radius=3)
-            bt = fonts.small.render(btn_label, True, COLORS["text_bright"] if bh else COLORS["text_dim"])
+            is_active = active_action_map.get(btn_action, False)
+            if is_active:
+                bg_col = COLORS["accent_dim"]
+            elif bh:
+                bg_col = COLORS["hover"]
+            else:
+                bg_col = COLORS["panel"]
+            pygame.draw.rect(screen, bg_col, btn_rect, border_radius=3)
+            border_col = COLORS["accent"] if is_active else COLORS["border"]
+            pygame.draw.rect(screen, border_col, btn_rect, 1, border_radius=3)
+            text_col = COLORS["text_bright"] if (bh or is_active) else COLORS["text_dim"]
+            bt = fonts.small.render(btn_label, True, text_col)
             screen.blit(bt, (tool_x + 7, tb_y + 5))
             if bh and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
                 self._map_tool_action(btn_action)
@@ -4687,6 +5329,68 @@ class CampaignManagerState:
         if self._map_pin_mode:
             pm_text = fonts.small_bold.render("PIN MODE: Click to place a new pin", True, COLORS["warning"])
             screen.blit(pm_text, (map_area.x + 12, tb_y + 40))
+
+        # --- Path hover tooltip (travel time) ---
+        if hovered_path_id and not pygame.mouse.get_pressed()[0]:
+            path = get_path_by_id(self.world, hovered_path_id)
+            if path:
+                miles = path_length_miles(self.world, path)
+                lines = [f"Path: {path.name}"]
+                if miles > 0:
+                    from data.travel import calculate_travel_time, format_travel_time
+                    lines.append(f"Length: {miles:.1f} mi")
+                    for pace_key in ("fast", "normal", "slow"):
+                        info = calculate_travel_time(miles, pace=pace_key,
+                                                     terrain=path.terrain_type)
+                        lines.append(f"  {pace_key}: "
+                                     f"{format_travel_time(info['total_days'])}")
+                else:
+                    lines.append("(set map scale to estimate travel time)")
+                lines.append(f"Terrain: {path.terrain_type}")
+                if path.danger_level != "safe":
+                    lines.append(f"Danger: {path.danger_level}")
+                lines.append(f"Waypoints: {len(path.points)}")
+                tw = max(fonts.small.size(l)[0] for l in lines) + 16
+                th = len(lines) * 18 + 8
+                tx = min(mp[0] + 12, SCREEN_WIDTH - tw - 10)
+                ty = min(mp[1] - th - 5, SCREEN_HEIGHT - th - 10)
+                tr = pygame.Rect(tx, ty, tw, th)
+                pygame.draw.rect(screen, (20, 22, 30), tr, border_radius=4)
+                pygame.draw.rect(screen, COLORS["border"], tr, 1, border_radius=4)
+                for i, line in enumerate(lines):
+                    col = COLORS["accent"] if i == 0 else COLORS["text_main"]
+                    lt = fonts.small.render(line, True, col)
+                    screen.blit(lt, (tx + 8, ty + 4 + i * 18))
+
+        # --- Breadcrumb for sub-map navigation ---
+        if self._map_breadcrumb:
+            crumbs = ["World"]
+            for loc_id in self._map_breadcrumb:
+                loc = self.world.locations.get(loc_id)
+                crumbs.append(loc.name if loc else "?")
+            bc_text = " > ".join(crumbs)
+            bt = fonts.small.render(bc_text, True, COLORS["warning"])
+            screen.blit(bt, (map_area.right - bt.get_width() - 12, tb_y + 22))
+
+        # --- Layer panel (overlay visibility) ---
+        self._draw_layer_panel(screen, mp)
+
+        # --- Mode overlays (path / draw) ---
+        if self._map_path_mode:
+            msg = ("PATH MODE: LMB add waypoint, Enter = finish, Esc = cancel "
+                   f"| type: {self._map_path_type} (press T to cycle)")
+            mt = fonts.small_bold.render(msg, True, COLORS["accent"])
+            screen.blit(mt, (map_area.x + 12, map_area.y + 40))
+        elif self._map_draw_mode:
+            if self._map_draw_erase:
+                msg = ("ERASE: click a drawing stroke to remove it "
+                       "(Esc to exit)")
+            else:
+                msg = (f"DRAW [{self._map_draw_shape}] w={self._map_draw_width} "
+                       f"c={self._map_draw_color} — hold LMB to sketch | "
+                       "1/2/3/4=shape [ ]=thickness C=color Esc=exit")
+            mt = fonts.small_bold.render(msg, True, COLORS["accent"])
+            screen.blit(mt, (map_area.x + 12, map_area.y + 40))
 
         # --- Location detail popup (opened by double-clicking a location) ---
         if self._map_detail_location_id:
@@ -5267,6 +5971,60 @@ class CampaignManagerState:
                     self.modal = ("edit_field", "loc_map_image")
                     self.input_active = "loc_map_image"
                     self.input_text = loc.map_image_path
+        elif action == "add_path":
+            # Toggle polyline path drawing mode
+            self._map_path_mode = not self._map_path_mode
+            self._map_path_points = []
+            self._map_pin_mode = False
+            self._map_route_mode = False
+            self._map_token_mode = False
+            self._map_scale_mode = False
+            self._map_draw_mode = False
+            if self._map_path_mode:
+                self._status_msg = ("Path: click to add waypoints, "
+                                    "Enter = finish, Esc = cancel")
+                self._status_timer = 240
+        elif action == "draw_mode":
+            self._map_draw_mode = not self._map_draw_mode
+            self._map_draw_erase = False
+            if self._map_draw_mode:
+                self._map_pin_mode = False
+                self._map_route_mode = False
+                self._map_token_mode = False
+                self._map_scale_mode = False
+                self._map_path_mode = False
+                self._status_msg = ("Draw: hold LMB to sketch ("
+                                    f"{self._map_draw_shape}, color {self._map_draw_color}); "
+                                    "keys 1/2/3/4=freehand/line/rect/circle, "
+                                    "[ / ]=thickness, C=color")
+                self._status_timer = 300
+        elif action == "erase_mode":
+            # Erase mode is just the draw-mode flag with erase flag set.
+            self._map_draw_mode = True
+            self._map_draw_erase = not self._map_draw_erase
+            self._map_pin_mode = False
+            self._map_route_mode = False
+            self._map_token_mode = False
+            self._map_scale_mode = False
+            self._map_path_mode = False
+            self._status_msg = ("Erase: click a drawing to remove it"
+                                if self._map_draw_erase else
+                                "Draw mode: sketch with LMB")
+            self._status_timer = 180
+        elif action == "toggle_layer_panel":
+            self._map_layer_panel_open = not self._map_layer_panel_open
+        elif action == "fit_view":
+            # Fit background image to screen: reset offset and zoom to 1.0
+            self.map_offset_x = 0
+            self.map_offset_y = 0
+            self.map_zoom = 1.0
+        elif action == "map_up":
+            # Navigate up one level in the sub-map breadcrumb
+            self._map_navigate_up()
+        elif action == "cycle_path_type":
+            types = ["road", "trail", "river", "sea", "air", "secret", "party"]
+            idx = types.index(self._map_path_type) if self._map_path_type in types else 0
+            self._map_path_type = types[(idx + 1) % len(types)]
 
     def _auto_layout_locations(self, roots, grid_area):
         """Auto-assign positions to locations that don't have one yet."""
