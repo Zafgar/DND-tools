@@ -190,6 +190,122 @@ class NotesModal:
 # ============================================================
 # Add Effect Modal
 # ============================================================
+# ============================================================
+# Conditions Modal: full toggle panel for all PHB conditions
+# ============================================================
+class ConditionsModal:
+    """DM-only modal showing every PHB condition with a visible on/off state.
+    Click a row to toggle. Immune conditions are shown greyed-out.
+    Exhaustion is adjusted with +/-; its level sits on entity.exhaustion."""
+
+    ORDERED_CONDITIONS = [
+        "Blinded", "Charmed", "Deafened", "Frightened", "Grappled", "Incapacitated",
+        "Invisible", "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained",
+        "Stunned", "Unconscious",
+    ]
+
+    def __init__(self, entity, callback):
+        from data.conditions import CONDITIONS
+        self.entity = entity
+        self.callback = callback
+        self.w, self.h = 640, 560
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+        self.conditions = CONDITIONS
+
+        self.row_rects = []
+        row_h = 28
+        start_y = self.y + 60
+        for i, cond in enumerate(self.ORDERED_CONDITIONS):
+            self.row_rects.append((cond, pygame.Rect(self.x + 20, start_y + i * row_h, self.w - 40, row_h - 4)))
+
+        # Exhaustion row at bottom
+        exh_y = start_y + len(self.ORDERED_CONDITIONS) * row_h + 10
+        self.exh_minus_rect = pygame.Rect(self.x + self.w - 180, exh_y, 32, 30)
+        self.exh_plus_rect = pygame.Rect(self.x + self.w - 60, exh_y, 32, 30)
+        self.exh_label_y = exh_y
+
+        self.btn_close = Button(self.x + self.w - 120, self.y + self.h - 50, 100, 40, "CLOSE",
+                                lambda: callback(True), color=COLORS["success"])
+
+    def _is_immune(self, cond: str) -> bool:
+        immune = [x.lower() for x in self.entity.stats.condition_immunities]
+        return cond.lower() in immune
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.callback(True)
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mp = event.pos
+            for cond, rect in self.row_rects:
+                if rect.collidepoint(mp):
+                    if self._is_immune(cond):
+                        return
+                    if self.entity.has_condition(cond):
+                        self.entity.remove_condition(cond)
+                    else:
+                        self.entity.add_condition(cond)
+                    return
+            if self.exh_minus_rect.collidepoint(mp):
+                self.entity.exhaustion = max(0, self.entity.exhaustion - 1)
+                return
+            if self.exh_plus_rect.collidepoint(mp):
+                self.entity.exhaustion = min(6, self.entity.exhaustion + 1)
+                # Level 6 exhaustion = death (PHB)
+                if self.entity.exhaustion >= 6:
+                    self.entity.hp = 0
+                return
+        self.btn_close.handle_event(event)
+
+    def draw(self, screen, mp):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 180))
+        screen.blit(ov, (0, 0))
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h), 2, border_radius=10)
+
+        title = fonts.header.render(f"Conditions — {self.entity.name}", True, COLORS["accent"])
+        screen.blit(title, (self.x + 20, self.y + 15))
+
+        for cond, rect in self.row_rects:
+            active = self.entity.has_condition(cond)
+            immune = self._is_immune(cond)
+            if immune:
+                bg = (40, 40, 50)
+                fg = (110, 110, 120)
+                tag = "[IMMUNE]"
+            elif active:
+                bg = (70, 120, 70)
+                fg = (240, 240, 240)
+                tag = "[ON]"
+            else:
+                bg = (35, 35, 42)
+                fg = (200, 200, 210)
+                tag = ""
+            pygame.draw.rect(screen, bg, rect, border_radius=4)
+            if rect.collidepoint(mp) and not immune:
+                pygame.draw.rect(screen, COLORS["accent"], rect, 1, border_radius=4)
+            label = fonts.body.render(cond, True, fg)
+            screen.blit(label, (rect.x + 10, rect.y + 4))
+            if tag:
+                t = fonts.small.render(tag, True, fg)
+                screen.blit(t, (rect.right - 90, rect.y + 6))
+
+        # Exhaustion row
+        lvl = self.entity.exhaustion
+        exh_text = fonts.body.render(f"Exhaustion: {lvl}/6", True, COLORS["text_main"])
+        screen.blit(exh_text, (self.x + 20, self.exh_label_y + 4))
+        pygame.draw.rect(screen, (60, 60, 70), self.exh_minus_rect, border_radius=4)
+        m = fonts.body.render("-", True, (255, 255, 255))
+        screen.blit(m, (self.exh_minus_rect.x + 12, self.exh_minus_rect.y + 4))
+        pygame.draw.rect(screen, (60, 60, 70), self.exh_plus_rect, border_radius=4)
+        p = fonts.body.render("+", True, (255, 255, 255))
+        screen.blit(p, (self.exh_plus_rect.x + 10, self.exh_plus_rect.y + 4))
+
+        self.btn_close.draw(screen, mp)
+
+
 class EffectModal:
     def __init__(self, entity, callback):
         self.entity = entity

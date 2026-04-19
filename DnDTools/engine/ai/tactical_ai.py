@@ -2419,13 +2419,30 @@ class TacticalAI:
 
         if best_step:
             spell, clusters, cx, cy = best_step
-            if entity.use_spell_slot(spell.level):
-                slot = spell.level
+            # Decide slot: upcast by 1 for big AoEs when 3+ enemies are caught and a higher slot is free.
+            # Save top-tier slots (7+) for boss moments unless the caller really wants to burn them.
+            chosen_slot = spell.level
+            if spell.damage_scaling:
+                highest = entity.get_highest_slot()
+                if highest > spell.level and len(clusters) >= 3 and highest <= 6:
+                    # Upcast one level to gain scaling damage on a crowd
+                    if entity.spell_slots.get(entity._LEVEL_KEYS.get(spell.level + 1, ""), 0) > 0:
+                        chosen_slot = spell.level + 1
+
+            if chosen_slot != spell.level:
+                ok = entity.use_spell_slot_exact(chosen_slot)
+                if not ok:
+                    chosen_slot = spell.level
+                    ok = entity.use_spell_slot(spell.level)
+            else:
+                ok = entity.use_spell_slot(spell.level)
+            if ok:
+                slot = chosen_slot
                 dc = spell.save_dc_fixed if spell.save_dc_fixed else \
                      (entity.stats.spell_save_dc or 8 + entity.stats.proficiency_bonus
                       + entity.get_modifier(entity.stats.spellcasting_ability))
 
-                raw_dmg = roll_dice(_get_spell_damage_dice(spell, entity))
+                raw_dmg = roll_dice(_get_spell_damage_dice(spell, entity, slot))
 
                 # Empowered Evocation: add INT mod to evocation damage
                 if entity.has_feature("empowered_evocation"):
@@ -2438,9 +2455,10 @@ class TacticalAI:
                 if spell.concentration:
                     entity.start_concentration(spell)
 
+                upcast_tag = f" [upcast {slot}]" if slot > spell.level else ""
                 return ActionStep(
                     step_type="spell",
-                    description=f"{entity.name} casts {spell.name} (DC {dc} {spell.save_ability})",
+                    description=f"{entity.name} casts {spell.name} (DC {dc} {spell.save_ability}){upcast_tag}",
                     attacker=entity, targets=clusters, spell=spell, slot_used=slot,
                     damage=raw_dmg, damage_type=spell.damage_type,
                     action_name=spell.name, aoe_center=(cx, cy),

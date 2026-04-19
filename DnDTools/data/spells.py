@@ -32,9 +32,12 @@ _spells = {
     "Mage Hand": SpellInfo("Mage Hand", level=0, action_type="action", range=30, targets="single",
                            description="Move objects 30ft"),
 
+    # Mind Blast is actually a Mind Flayer monster action (8d8 psychic, 60ft cone, recharge 5-6).
+    # Represented here so that innate-spellcasting blocks referencing it don't break. Not a player cantrip.
     "Mind Blast": SpellInfo("Mind Blast", level=0, action_type="action", range=60, aoe_radius=60, aoe_shape="cone",
-                            damage_dice="5d8", damage_type="psychic", save_ability="Intelligence", applies_condition="Stunned",
-                            half_on_save=False, targets="aoe"),
+                            damage_dice="8d8", damage_type="psychic", save_ability="Intelligence", applies_condition="Stunned",
+                            half_on_save=False, targets="aoe", innate=True, innate_uses_per_day=-1,
+                            description="Mind Flayer blast. 60ft cone, INT save or 8d8 psychic + Stunned 1 min (repeat save)."),
 
     "Ray of Frost": SpellInfo("Ray of Frost", level=0, action_type="action", range=60, targets="single",
                               damage_dice="1d8", damage_type="cold", description="Reduces speed by 10ft"),
@@ -55,7 +58,8 @@ _spells = {
 
     # --- LEVEL 1 ---
     "Burning Hands": SpellInfo("Burning Hands", level=1, action_type="action", range=15, aoe_radius=15, aoe_shape="cone",
-                               damage_dice="3d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+                               damage_dice="3d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe",
+                               damage_scaling="1d6"),
     
     "Animate Dead": SpellInfo("Animate Dead", level=3, action_type="action", range=10, targets="single",
                               description="Create undead servant"),
@@ -64,9 +68,11 @@ _spells = {
                        description="+1d4 to attacks/saves for 3 targets"),
     
     "Chromatic Orb": SpellInfo("Chromatic Orb", level=1, action_type="action", range=90, targets="single",
-                               damage_dice="3d8", damage_type="acid", description="Choose acid, cold, fire, lightning, poison, thunder"),
+                               damage_dice="3d8", damage_type="acid", damage_scaling="1d8",
+                               description="Choose acid, cold, fire, lightning, poison, thunder"),
     
     "Cure Wounds": SpellInfo("Cure Wounds", level=1, action_type="action", range=5, heals="1d8+4", targets="single",
+                             damage_scaling="1d8",
                              description="Heals 1d8 + mod"),
     
     "Divine Favor": SpellInfo("Divine Favor", level=1, action_type="bonus", range=0, targets="self", concentration=True, duration="1 minute",
@@ -82,17 +88,20 @@ _spells = {
                            description="Heavily obscured area. Blocks line of sight."),
     
     "Guiding Bolt": SpellInfo("Guiding Bolt", level=1, action_type="action", range=120, targets="single",
-                              damage_dice="4d6", damage_type="radiant", description="Next attack vs target has Adv",
+                              damage_dice="4d6", damage_type="radiant", damage_scaling="1d6",
+                              description="Next attack vs target has Adv",
                               applies_condition="Guiding Bolt", duration="2 rounds"),
     
     "Hail of Thorns": SpellInfo("Hail of Thorns", level=1, action_type="bonus", range=0, targets="self", concentration=True,
                                 damage_dice="1d10", damage_type="piercing", description="Next hit explodes 5ft radius"),
     
     "Healing Word": SpellInfo("Healing Word", level=1, action_type="bonus", range=60, heals="1d4+4", targets="single",
+                              damage_scaling="1d4",
                               description="Bonus action heal"),
     
     "Hellish Rebuke": SpellInfo("Hellish Rebuke", level=1, action_type="reaction", range=60, targets="single",
                                 damage_dice="2d10", damage_type="fire", save_ability="Dexterity", half_on_save=True,
+                                damage_scaling="1d10",
                                 description="Reaction when damaged"),
 
     "Hex": SpellInfo("Hex", level=1, action_type="bonus", range=90, targets="single", concentration=True, duration="1 hour",
@@ -116,12 +125,14 @@ _spells = {
                                           concentration=True, duration="1 minute",
                                           description="Target falls prone and is incapacitated, laughing"),
     
+    # Hunter's Mark: +1d6 on weapon hits vs marked target. Damage type follows the weapon
+    # (no inherent type), so bonus_damage_type is intentionally blank.
     "Hunter's Mark": SpellInfo("Hunter's Mark", level=1, action_type="bonus", range=90, targets="single", concentration=True, duration="1 hour",
                                description="Extra 1d6 dmg on weapon hits vs marked target",
                                bonus_damage_dice="1d6", bonus_damage_type=""),
     
     "Inflict Wounds": SpellInfo("Inflict Wounds", level=1, action_type="action", range=5, targets="single",
-                                damage_dice="3d10", damage_type="necrotic"),
+                                damage_dice="3d10", damage_type="necrotic", damage_scaling="1d10"),
     
     "Mage Armor": SpellInfo("Mage Armor", level=1, action_type="action", range=0, targets="self", duration="8 hours",
                             description="AC becomes 13 + Dex"),
@@ -130,7 +141,8 @@ _spells = {
                               duration="1 hour", description="Weapon becomes magical +1"),
 
     "Magic Missile": SpellInfo("Magic Missile", level=1, action_type="action", range=120, targets="single",
-                               damage_dice="3d4+3", damage_type="force", description="Auto-hit 3 missiles (1d4+1 each)"),
+                               damage_dice="3d4+3", damage_type="force", damage_scaling="1d4+1",
+                               description="Auto-hit 3 missiles (1d4+1 each). +1 missile per slot above 1st."),
     
     "Shield": SpellInfo("Shield", level=1, action_type="reaction", range=0, targets="self", duration="1 round",
                         description="+5 AC until start of next turn"),
@@ -140,7 +152,49 @@ _spells = {
     
     "Thunderwave": SpellInfo("Thunderwave", level=1, action_type="action", range=0, aoe_radius=15, aoe_shape="cube",
                              damage_dice="2d8", damage_type="thunder", save_ability="Constitution", half_on_save=True, targets="aoe",
+                             damage_scaling="1d8",
                              description="Push 10ft on fail"),
+
+    "Bane": SpellInfo("Bane", level=1, action_type="action", range=30, targets="aoe", concentration=True,
+                      duration="1 minute", save_ability="Charisma", applies_condition="Baned",
+                      description="Up to 3 targets. CHA save; on fail: -1d4 on attacks & saves for 1 min."),
+
+    "Sleep": SpellInfo("Sleep", level=1, action_type="action", range=90, aoe_radius=20, aoe_shape="sphere",
+                       targets="aoe", applies_condition="Unconscious",
+                       description="5d8 HP total; affects lowest-HP creatures first (unconscious until damaged/shaken). "
+                       "Immune: undead & charm-immune. +2d8/slot above 1st."),
+
+    "Color Spray": SpellInfo("Color Spray", level=1, action_type="action", range=15, aoe_radius=15, aoe_shape="cone",
+                             targets="aoe", applies_condition="Blinded", duration="1 round",
+                             description="6d10 HP total of creatures blinded (lowest first). +2d10/slot above 1st."),
+
+    "Charm Person": SpellInfo("Charm Person", level=1, action_type="action", range=30, targets="single",
+                              save_ability="Wisdom", applies_condition="Charmed", duration="1 hour",
+                              description="WIS save or Charmed. Advantage on save if hostile in combat. "
+                              "+1 target/slot above 1st."),
+
+    "Sanctuary": SpellInfo("Sanctuary", level=1, action_type="bonus", range=30, targets="single",
+                           duration="1 minute",
+                           description="Attackers must make WIS save (DC = caster's spell save DC) or lose attack/harmful spell. "
+                           "Ends if target attacks or casts harmful spell."),
+
+    "Aid": SpellInfo("Aid", level=2, action_type="action", range=30, targets="aoe", duration="8 hours",
+                     description="3 creatures gain +5 HP to current & max. +5/slot above 2nd."),
+
+    "Warding Bond": SpellInfo("Warding Bond", level=2, action_type="action", range=60, targets="touch",
+                              concentration=False, duration="1 hour",
+                              description="Bonded target gains +1 AC, +1 all saves, resist all damage. "
+                              "Caster takes same amount of damage target takes."),
+
+    "Prayer of Healing": SpellInfo("Prayer of Healing", level=2, action_type="action", range=30, heals="2d8+4",
+                                   targets="aoe", duration="instant",
+                                   description="Up to 6 creatures regain 2d8 + mod HP. Not usable in combat (10 min cast). "
+                                   "+1d8/slot above 2nd."),
+
+    "Mass Healing Word": SpellInfo("Mass Healing Word", level=3, action_type="bonus", range=60, heals="1d4+4",
+                                   targets="aoe", duration="instant",
+                                   description="Up to 6 creatures regain 1d4 + mod HP. Bonus action heal. "
+                                   "+1d4/slot above 3rd."),
 
     # --- LEVEL 2 ---
     "Blindness/Deafness": SpellInfo("Blindness/Deafness", level=2, action_type="action", range=30, targets="single",
@@ -164,10 +218,12 @@ _spells = {
                             description="Teleport 30ft"),
     
     "Scorching Ray": SpellInfo("Scorching Ray", level=2, action_type="action", range=120, targets="single",
-                               damage_dice="6d6", damage_type="fire", description="3 rays, 2d6 each (Simulated as one 6d6 hit for AI)"),
-    
+                               damage_dice="6d6", damage_type="fire", damage_scaling="2d6",
+                               description="3 rays, 2d6 each (simulated as 6d6 vs single target for AI). +1 ray/slot above 2nd."),
+
     "Shatter": SpellInfo("Shatter", level=2, action_type="action", range=60, aoe_radius=10, aoe_shape="sphere",
-                         damage_dice="3d8", damage_type="thunder", save_ability="Constitution", half_on_save=True, targets="aoe"),
+                         damage_dice="3d8", damage_type="thunder", save_ability="Constitution", half_on_save=True, targets="aoe",
+                         damage_scaling="1d8"),
 
     "Silence": SpellInfo("Silence", level=2, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
                          targets="aoe", concentration=True, duration="10 minutes", ritual=True,
@@ -226,7 +282,8 @@ _spells = {
                       save_ability="Wisdom", applies_condition="Frightened", concentration=True, duration="1 minute", targets="aoe"),
     
     "Fireball": SpellInfo("Fireball", level=3, action_type="action", range=150, aoe_radius=20, aoe_shape="sphere",
-                          damage_dice="8d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+                          damage_dice="8d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe",
+                          damage_scaling="1d6"),
     
     "Fly": SpellInfo("Fly", level=3, action_type="action", range=0, targets="single", concentration=True, duration="10 minutes",
                      description="Target gains 60ft fly speed"),
@@ -235,7 +292,8 @@ _spells = {
                        description="Double speed, +2 AC, extra action"),
     
     "Lightning Bolt": SpellInfo("Lightning Bolt", level=3, action_type="action", range=100, aoe_radius=100, aoe_shape="line",
-                                damage_dice="8d6", damage_type="lightning", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+                                damage_dice="8d6", damage_type="lightning", save_ability="Dexterity", half_on_save=True, targets="aoe",
+                                damage_scaling="1d6"),
     
     "Revivify": SpellInfo("Revivify", level=3, action_type="action", range=0, targets="single",
                           description="Return dead to life with 1 HP (within 1 min)"),
@@ -248,7 +306,7 @@ _spells = {
 
     "Spirit Guardians": SpellInfo("Spirit Guardians", level=3, action_type="action", range=0, aoe_radius=15, aoe_shape="sphere",
                                   damage_dice="3d8", damage_type="radiant", save_ability="Wisdom", half_on_save=True, targets="aoe",
-                                  concentration=True, duration="10 minutes",
+                                  concentration=True, duration="10 minutes", damage_scaling="1d8",
                                   creates_terrain="spirit_guardians"),
 
     "Stinking Cloud": SpellInfo("Stinking Cloud", level=3, action_type="action", range=90, aoe_radius=20, aoe_shape="sphere",
@@ -261,13 +319,33 @@ _spells = {
                                 damage_dice="3d6", damage_type="necrotic", concentration=True, duration="1 minute",
                                 description="Heal half damage dealt"),
 
+    "Slow": SpellInfo("Slow", level=3, action_type="action", range=120, aoe_radius=40, aoe_shape="cube",
+                      save_ability="Wisdom", concentration=True, duration="1 minute", targets="aoe",
+                      description="Up to 6 creatures. WIS save or: speed halved, -2 AC & DEX saves, no reactions, "
+                      "one of action/bonus per turn, 50% chance spell with 1+ action casting fails."),
+
+    "Tidal Wave": SpellInfo("Tidal Wave", level=3, action_type="action", range=120, aoe_radius=30, aoe_shape="cube",
+                            damage_dice="4d8", damage_type="bludgeoning", save_ability="Dexterity",
+                            half_on_save=False, targets="aoe", applies_condition="Prone",
+                            description="30x10x10ft line. DEX save or 4d8 bludgeoning + knocked prone. Area becomes wet."),
+
+    "Hypnotic Pattern": SpellInfo("Hypnotic Pattern", level=3, action_type="action", range=120,
+                                  aoe_radius=30, aoe_shape="cube", save_ability="Wisdom",
+                                  applies_condition="Charmed", concentration=True, duration="1 minute",
+                                  targets="aoe",
+                                  description="WIS save or Charmed + Incapacitated & speed 0 until shaken/damaged."),
+
+    "Blink": SpellInfo("Blink", level=3, action_type="action", range=0, targets="self", duration="1 minute",
+                       description="Roll d20 at end of turn: 11+ vanish to Ethereal plane until start of next turn."),
+
     # --- LEVEL 4 ---
     "Banishment": SpellInfo("Banishment", level=4, school="Abjuration", action_type="action", range=60, targets="single",
                             save_ability="Charisma", applies_condition="Banished", concentration=True, duration="1 minute", repeat_save=False,
                             description="Banishes creature to another plane. Target is Incapacitated."),
 
     "Blight": SpellInfo("Blight", level=4, action_type="action", range=30, targets="single",
-                        damage_dice="8d8", damage_type="necrotic", save_ability="Constitution", half_on_save=True),
+                        damage_dice="8d8", damage_type="necrotic", save_ability="Constitution", half_on_save=True,
+                        damage_scaling="1d8"),
     
     "Dimension Door": SpellInfo("Dimension Door", level=4, action_type="action", range=500, targets="self",
                                 description="Teleport 500ft"),
@@ -277,30 +355,84 @@ _spells = {
                                       description="Does not break on attack"),
     
     "Ice Storm": SpellInfo("Ice Storm", level=4, action_type="action", range=300, aoe_radius=20, aoe_shape="cylinder",
-                           damage_dice="2d8+4d6", damage_type="cold", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+                           damage_dice="2d8+4d6", damage_type="cold", save_ability="Dexterity", half_on_save=True, targets="aoe",
+                           damage_scaling="1d8"),
     
     "Wall of Fire": SpellInfo("Wall of Fire", level=4, action_type="action", range=120, aoe_radius=60, aoe_shape="line",
                               damage_dice="5d8", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe",
                               concentration=True, duration="1 minute",
                               creates_terrain="wall_fire"),
 
+    "Polymorph": SpellInfo("Polymorph", level=4, action_type="action", range=60, targets="single",
+                           save_ability="Wisdom", concentration=True, duration="1 hour",
+                           description="Transform target into beast of CR ≤ target's CR/level. Uses beast's stats but keeps INT/WIS/CHA. "
+                           "Lasts 1 hour or until reduced to 0 HP."),
+
+    "Confusion": SpellInfo("Confusion", level=4, action_type="action", range=90, aoe_radius=10, aoe_shape="sphere",
+                           save_ability="Wisdom", concentration=True, duration="1 minute", targets="aoe",
+                           description="WIS save or act randomly each turn (d10 roll). Repeat save end of turn. "
+                           "+5ft radius/slot above 4th."),
+
+    "Evard's Black Tentacles": SpellInfo("Evard's Black Tentacles", level=4, action_type="action", range=90,
+                                         aoe_radius=20, aoe_shape="cube",
+                                         damage_dice="3d6", damage_type="bludgeoning",
+                                         save_ability="Dexterity", half_on_save=False, targets="aoe",
+                                         applies_condition="Restrained", concentration=True, duration="1 minute",
+                                         creates_terrain="black_tentacles",
+                                         description="20ft square. DEX save or Restrained + 3d6. Restrained creatures "
+                                         "take 3d6/turn. STR/DEX check to escape. Difficult terrain."),
+
     # --- LEVEL 5 ---
     "Cloudkill": SpellInfo("Cloudkill", level=5, action_type="action", range=120, aoe_radius=20, aoe_shape="sphere",
                            damage_dice="5d8", damage_type="poison", save_ability="Constitution", half_on_save=True, targets="aoe",
-                           concentration=True, duration="10 minutes",
+                           concentration=True, duration="10 minutes", damage_scaling="1d8",
                            creates_terrain="cloudkill"),
-    
+
     "Cone of Cold": SpellInfo("Cone of Cold", level=5, action_type="action", range=60, aoe_radius=60, aoe_shape="cone",
-                              damage_dice="8d8", damage_type="cold", save_ability="Constitution", half_on_save=True, targets="aoe"),
-    
+                              damage_dice="8d8", damage_type="cold", save_ability="Constitution", half_on_save=True, targets="aoe",
+                              damage_scaling="1d8"),
+
     "Flame Strike": SpellInfo("Flame Strike", level=5, action_type="action", range=60, aoe_radius=10, aoe_shape="cylinder",
-                              damage_dice="4d6+4d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe"),
+                              damage_dice="4d6+4d6", damage_type="fire", save_ability="Dexterity", half_on_save=True, targets="aoe",
+                              damage_scaling="1d6"),
     
     "Hold Monster": SpellInfo("Hold Monster", level=5, action_type="action", range=90, targets="single",
                               save_ability="Wisdom", applies_condition="Paralyzed", concentration=True, duration="1 minute"),
     
     "Mass Cure Wounds": SpellInfo("Mass Cure Wounds", level=5, action_type="action", range=60, heals="3d8+4", targets="aoe",
                                   description="Heal up to 6 creatures"),
+
+    "Wall of Force": SpellInfo("Wall of Force", level=5, action_type="action", range=120, aoe_radius=40, aoe_shape="line",
+                               targets="aoe", concentration=True, duration="10 minutes",
+                               creates_terrain="wall_force",
+                               description="Invisible force wall. 10x10ft panels or 10ft sphere. "
+                               "Blocks movement & most spells. Immune to damage & dispel (dispelled only by Disintegrate)."),
+
+    "Telekinesis": SpellInfo("Telekinesis", level=5, action_type="action", range=60, targets="single",
+                             save_ability="Strength", concentration=True, duration="10 minutes",
+                             description="STR contest (+spellcasting mod) to move creature 30ft/turn. "
+                             "Restrain if held. Or move 1000lb object."),
+
+    "Bigby's Hand": SpellInfo("Bigby's Hand", level=5, action_type="action", range=120, targets="single",
+                              damage_dice="4d8", damage_type="force", concentration=True, duration="1 minute",
+                              summon_name="Spectral Hand", summon_hp=0, summon_ac=20,
+                              summon_damage_dice="4d8", summon_damage_type="force",
+                              summon_attack_bonus=0, summon_duration_rounds=10,
+                              description="Large floating hand. Modes: Clenched Fist (4d8 force + push 5ft), "
+                              "Forceful Hand (STR contest to shove), Grasping Hand (grapple + 2d6/turn), "
+                              "Interposing Hand (+half cover). +2d8/slot above 5th."),
+
+    "Otiluke's Resilient Sphere": SpellInfo("Otiluke's Resilient Sphere", level=4, action_type="action", range=30,
+                                            targets="single", save_ability="Dexterity", concentration=True,
+                                            duration="1 minute",
+                                            description="DEX save or encased in force sphere. Target incapacitated inside. "
+                                            "Nothing passes in/out. Sphere has 20 AC, 1 HP (immune to most damage)."),
+
+    "Contagion": SpellInfo("Contagion", level=5, action_type="action", range=5, targets="touch",
+                           save_ability="Constitution", applies_condition="Poisoned",
+                           duration="7 days",
+                           description="Make spell attack on touch. Target fails 3 CON saves (end of turn) to contract disease. "
+                           "Diseases: Blinding Sickness, Mindfire, Seizure, Slimy Doom, Filth Fever, Flesh Rot."),
 
     # --- LEVEL 6 ---
     "Chain Lightning": SpellInfo("Chain Lightning", level=6, action_type="action", range=150, targets="single",
@@ -537,13 +669,17 @@ _spells = {
     # ============================================================
 
     # --- CANTRIPS (TCoE) ---
+    # Booming Blade: rider-damage cantrip. damage_dice represents the rider that triggers
+    # if the target moves before the caster's next turn (SCAG/TCoE, scales 5th/11th/17th).
+    # The AI simulates it as a standard single-target cantrip for scoring purposes.
     "Booming Blade": SpellInfo("Booming Blade", level=0, action_type="action", range=5, targets="single",
-                               damage_dice="0", damage_type="thunder",
+                               damage_dice="1d8", damage_type="thunder",
                                description="Melee weapon attack as part of spell. If target willingly "
                                "moves before your next turn: 1d8 thunder (2d8 at 5th, 3d8 at 11th, 4d8 at 17th)."),
 
+    # Green-Flame Blade: rider-damage cantrip. Damage field represents the leap damage die.
     "Green-Flame Blade": SpellInfo("Green-Flame Blade", level=0, action_type="action", range=5, targets="single",
-                                   damage_dice="0", damage_type="fire",
+                                   damage_dice="1d8", damage_type="fire",
                                    description="Melee weapon attack. Fire leaps to adjacent creature: "
                                    "spellcasting mod fire. At 5th: +1d8 melee + 1d8+mod leap. Scales."),
 
