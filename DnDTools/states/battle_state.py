@@ -1515,6 +1515,61 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             sel.add_condition(cond)
             self._log(f"[DM] {sel.name}: {cond} applied.")
 
+    def _toggle_equip_item(self, item):
+        """Toggle the equipped state of an item on the selected entity."""
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        self._save_undo_snapshot()
+        # If equipping, unequip any other item in the same slot first.
+        if not item.equipped and item.slot:
+            for other in sel.items:
+                if other is not item and other.equipped and other.slot == item.slot:
+                    other.equipped = False
+        item.equipped = not item.equipped
+        state = "equipped" if item.equipped else "unequipped"
+        self._log(f"[DM] {sel.name} {state} {item.name}.")
+
+    def _toggle_attune_item(self, item):
+        """Toggle attunement on the selected entity's item."""
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        if not item.requires_attunement:
+            return
+        self._save_undo_snapshot()
+        item.attuned = not item.attuned
+        state = "attuned to" if item.attuned else "unattuned from"
+        self._log(f"[DM] {sel.name} {state} {item.name}.")
+
+    def _consume_item(self, item):
+        """Consume one use of a consumable item on the selected entity.
+
+        For potions with ``heals``, applies the heal. Items with uses<=0
+        after consumption are removed from inventory.
+        """
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        if item.uses <= 0:
+            self._log(f"[DM] {item.name} has no uses left.")
+            return
+        self._save_undo_snapshot()
+        # Apply heal effects for healing potions.
+        if item.heals:
+            amt = roll_dice(item.heals) if any(c.isdigit() for c in item.heals) else 0
+            if amt > 0:
+                old_hp = sel.hp
+                sel.heal(amt)
+                self._log(f"[DM] {sel.name} drinks {item.name} and heals {sel.hp - old_hp} HP.")
+                self._spawn_damage_text(sel, sel.hp - old_hp, is_heal=True)
+        else:
+            self._log(f"[DM] {sel.name} uses {item.name}.")
+        item.uses -= 1
+        if item.uses <= 0 and item.item_type in ("potion", "scroll"):
+            sel.items.remove(item)
+            self._log(f"  -> {item.name} consumed and removed.")
+
     def _use_spell_slot(self, level):
         self._modify_spell_slot(level, -1)
 

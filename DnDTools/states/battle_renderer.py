@@ -1101,6 +1101,8 @@ class BattleRendererMixin:
         elif self.active_tab == 1:
             content_y = self._draw_spells_tab(screen, sel, x0, content_y, mp)
         elif self.active_tab == 2:
+            content_y = self._draw_gear_tab(screen, sel, x0, content_y, mp)
+        elif self.active_tab == 3:
             content_y = self._draw_log_tab(screen, sel, x0, content_y, mp)
 
         screen.set_clip(None)
@@ -1565,6 +1567,83 @@ class BattleRendererMixin:
                     screen.blit(s_info, (x0+4 + s.get_width(), y))
                 
                 y += 20
+
+        return y
+
+    # ------------------------------------------------------------------ #
+    # Gear tab (inventory / equipment)                                     #
+    # ------------------------------------------------------------------ #
+
+    _RARITY_COLORS = {
+        "common": (200, 200, 200),
+        "uncommon": (90, 220, 90),
+        "rare": (90, 150, 255),
+        "very_rare": (200, 100, 255),
+        "legendary": (255, 180, 60),
+        "artifact": (255, 80, 80),
+    }
+
+    def _draw_gear_tab(self, screen, sel, x0, y, mp):
+        def ln(text, color=COLORS["text_main"], indent=0):
+            nonlocal y
+            s = fonts.small.render(text, True, color)
+            screen.blit(s, (x0+indent, y))
+            y += 20
+
+        items = getattr(sel, "items", None) or []
+        if not items:
+            ln("(no items)", COLORS["text_dim"])
+            return y
+
+        ln(f"INVENTORY  ({len(items)} items)", COLORS["text_dim"])
+        ln("click = toggle equipped  |  right-click = use/attune", COLORS["text_dim"])
+        y += 4
+
+        def draw_row(item):
+            nonlocal y
+            rarity_col = self._RARITY_COLORS.get(item.rarity, COLORS["text_main"])
+            marker = "[E]" if item.equipped else "[ ]"
+            if item.requires_attunement:
+                marker += "(A)" if item.attuned else "(a)"
+            uses = f" ({item.uses})" if item.uses > 0 else ""
+            charges = f" [{item.charges}/{item.max_charges}]" if item.max_charges else ""
+            label = f"{marker} {item.name}{uses}{charges}"
+            row_rect = pygame.Rect(x0, y, PANEL_W - 24, 20)
+            hover = row_rect.collidepoint(mp)
+            color = rarity_col if not hover else COLORS["accent_hover"]
+            s = fonts.small.render(label, True, color)
+            screen.blit(s, (x0, y))
+            if hover:
+                tip = f"{item.name} ({item.rarity})\n{item.description}"
+                if item.item_type == "weapon" and item.weapon_damage_dice:
+                    tip += f"\nDamage: {item.weapon_damage_dice} {item.weapon_damage_type}"
+                if item.item_type == "armor":
+                    tip += f"\nBase AC: {item.base_ac}"
+                if item.heals:
+                    tip += f"\nHeals: {item.heals}"
+                self.active_tooltip = tip
+            # Left-click: toggle equip
+            self.ui_click_zones.append((row_rect, lambda it=item: self._toggle_equip_item(it)))
+            # Right-click: consume (potion/scroll) or attune (magic)
+            if item.uses > 0 and item.item_type in ("potion", "scroll"):
+                self.ui_right_click_zones.append((row_rect, lambda it=item: self._consume_item(it)))
+            elif item.requires_attunement:
+                self.ui_right_click_zones.append((row_rect, lambda it=item: self._toggle_attune_item(it)))
+            y += 22
+
+        equipped = [i for i in items if i.equipped]
+        unequipped = [i for i in items if not i.equipped]
+
+        if equipped:
+            ln("EQUIPPED:", COLORS["accent"])
+            for it in equipped:
+                draw_row(it)
+            y += 4
+
+        if unequipped:
+            ln("CARRIED:", COLORS["text_dim"])
+            for it in unequipped:
+                draw_row(it)
 
         return y
 
