@@ -8,7 +8,7 @@ PANEL_W = 520
 TOP_BAR_H = 105
 GRID_W = SCREEN_WIDTH - PANEL_W
 
-TABS = ["Stats", "Spells", "Log"]
+TABS = ["Stats", "Spells", "Gear", "Log"]
 
 DAMAGE_TYPE_COLORS = {
     "fire": (255, 100, 30), "cold": (100, 180, 255), "lightning": (255, 255, 100),

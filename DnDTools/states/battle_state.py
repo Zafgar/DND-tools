@@ -440,7 +440,16 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 reactor = self.reaction_pending[0]
                 ctx = self.reaction_context or {}
                 spell_level = ctx.get("level", 1)
-                should_counter = spell_level >= 3 or reactor.has_spell_slot(4)
+                caster = ctx.get("caster")
+                spell = None
+                # Pull the actual spell object from the pending plan if available
+                if self.pending_plan:
+                    idx = ctx.get("step_idx", -1)
+                    if 0 <= idx < len(self.pending_plan.steps):
+                        spell = self.pending_plan.steps[idx].spell
+                should_counter = self.battle.ai.should_counterspell(
+                    reactor, caster, spell, spell_level, self.battle
+                ) if caster else (spell_level >= 3 or reactor.has_spell_slot(4))
                 self._resolve_reaction(should_counter)
             else:
                 self._resolve_reaction(True)
@@ -1015,6 +1024,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 target.remove_condition("Guiding Bolt")
                 self._log(f"  [EFFECT] Guiding Bolt on {target.name} consumed.")
 
+            # --- AI REACTION CHECK (Silvery Barbs) ---
+            # Third-party NPC caster may force the attacker to reroll.
+            if (step.attacker and outcome in ("hit", "crit")
+                    and step.attack_roll > 0 and step.nat_roll > 0):
+                outcome = self._try_silvery_barbs_reaction(step, target, outcome, attacker_name)
+
         if outcome == "hit" or outcome == "fail":
             # --- AI REACTION CHECK (Shield) ---
             # If target is NPC, has Shield, reaction available, and Shield would make it miss
@@ -1500,6 +1515,61 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             sel.add_condition(cond)
             self._log(f"[DM] {sel.name}: {cond} applied.")
 
+    def _toggle_equip_item(self, item):
+        """Toggle the equipped state of an item on the selected entity."""
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        self._save_undo_snapshot()
+        # If equipping, unequip any other item in the same slot first.
+        if not item.equipped and item.slot:
+            for other in sel.items:
+                if other is not item and other.equipped and other.slot == item.slot:
+                    other.equipped = False
+        item.equipped = not item.equipped
+        state = "equipped" if item.equipped else "unequipped"
+        self._log(f"[DM] {sel.name} {state} {item.name}.")
+
+    def _toggle_attune_item(self, item):
+        """Toggle attunement on the selected entity's item."""
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        if not item.requires_attunement:
+            return
+        self._save_undo_snapshot()
+        item.attuned = not item.attuned
+        state = "attuned to" if item.attuned else "unattuned from"
+        self._log(f"[DM] {sel.name} {state} {item.name}.")
+
+    def _consume_item(self, item):
+        """Consume one use of a consumable item on the selected entity.
+
+        For potions with ``heals``, applies the heal. Items with uses<=0
+        after consumption are removed from inventory.
+        """
+        sel = self.selected_entity
+        if not sel or item not in sel.items:
+            return
+        if item.uses <= 0:
+            self._log(f"[DM] {item.name} has no uses left.")
+            return
+        self._save_undo_snapshot()
+        # Apply heal effects for healing potions.
+        if item.heals:
+            amt = roll_dice(item.heals) if any(c.isdigit() for c in item.heals) else 0
+            if amt > 0:
+                old_hp = sel.hp
+                sel.heal(amt)
+                self._log(f"[DM] {sel.name} drinks {item.name} and heals {sel.hp - old_hp} HP.")
+                self._spawn_damage_text(sel, sel.hp - old_hp, is_heal=True)
+        else:
+            self._log(f"[DM] {sel.name} uses {item.name}.")
+        item.uses -= 1
+        if item.uses <= 0 and item.item_type in ("potion", "scroll"):
+            sel.items.remove(item)
+            self._log(f"  -> {item.name} consumed and removed.")
+
     def _use_spell_slot(self, level):
         self._modify_spell_slot(level, -1)
 
@@ -1617,6 +1687,66 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self._save_undo_snapshot()
         sel.temp_hp = 0
         self._log(f"[DM] {sel.name}: temp HP cleared.")
+
+    def _try_silvery_barbs_reaction(self, step, target, outcome, attacker_name):
+        """Look for an NPC caster willing to burn Silvery Barbs on this hit.
+
+        Returns the new ``outcome`` after any reroll. Only one reactor may act
+        per attack. Silvery Barbs forces the attacker to reroll and use the
+        LOWER of the two d20s; if the new total falls below AC the hit becomes
+        a miss, and a nat-20 crit downgrades to a normal hit.
+        """
+        attacker = step.attacker
+        if attacker is None:
+            return outcome
+        for ally in self.battle.entities:
+            if ally is target or ally.hp <= 0:
+                continue
+            # Same-team reaction only (NPC helping NPC, or hero helping hero).
+            if ally.is_player != target.is_player:
+                continue
+            # Only NPCs auto-use; heroes defer to the DM.
+            if ally.is_player:
+                continue
+            if not any(s.name == "Silvery Barbs" for s in ally.stats.spells_known):
+                continue
+            if not self.battle.ai.should_silvery_barbs(ally, attacker, target, step, self.battle):
+                continue
+            sb = next(s for s in ally.stats.spells_known if s.name == "Silvery Barbs")
+            ally.use_spell_slot(sb.level)
+            ally.reaction_used = True
+            bonus = step.attack_roll - step.nat_roll
+            new_nat = random.randint(1, 20)
+            # PHB: use the LOWER roll
+            if new_nat < step.nat_roll:
+                step.nat_roll = new_nat
+                step.attack_roll = new_nat + bonus
+                self._log(
+                    f"[REACTION] {ally.name} casts Silvery Barbs! {attacker.name} "
+                    f"rerolls: {new_nat}+{bonus}={step.attack_roll}."
+                )
+                self._spawn_damage_text(attacker, "Silvery!", is_heal=False)
+                if step.attack_roll < target.armor_class:
+                    if outcome == "crit" and step.step_type in (
+                            "attack", "multiattack", "bonus_attack", "legendary"):
+                        # Crit had been counted as a hit+crit; remove the hit.
+                        try:
+                            self.battle.stats_tracker.entity_stats[attacker_name].attacks_hit -= 1
+                        except (KeyError, AttributeError):
+                            pass
+                    self._log(f"  -> Attack now MISSES!")
+                    return "miss"
+                if outcome == "crit" and step.nat_roll != 20:
+                    self._log(f"  -> No longer a crit; downgraded to a regular hit.")
+                    step.is_crit = False
+                    outcome = "hit"
+            else:
+                self._log(
+                    f"[REACTION] {ally.name} casts Silvery Barbs! Reroll {new_nat} "
+                    f"was higher, {attacker.name} keeps original."
+                )
+            return outcome
+        return outcome
 
     def _force_concentration_save(self, entity, dc: int):
         """Roll a concentration save at the given DC (PHB p.203). Drops concentration on fail."""

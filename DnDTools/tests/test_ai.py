@@ -248,5 +248,124 @@ class TestOpportunityAttack(unittest.TestCase):
         self.assertTrue(result is None or isinstance(result, ActionStep))
 
 
+class TestCounterspellDecision(unittest.TestCase):
+    """Tests for TacticalAI.should_counterspell heuristics."""
+
+    def _make_wizard(self, is_player):
+        from data.spells import get_spell
+        return _make_entity(
+            "Wiz", is_player=is_player, hp=40, ac=12,
+            spells_known=[get_spell("Counterspell"), get_spell("Fireball"),
+                          get_spell("Shield"), get_spell("Magic Missile")],
+            spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 1},
+            character_level=9, spellcasting_ability="Intelligence",
+            spell_save_dc=15, spell_attack_bonus=7, proficiency_bonus=4,
+        )
+
+    def test_counter_high_level_spell(self):
+        """Always worth countering lvl 3+ spells when slot auto-succeeds."""
+        from data.spells import get_spell
+        ai = TacticalAI()
+        reactor = self._make_wizard(False)
+        caster = self._make_wizard(True)
+        hero = _make_entity("Hero", is_player=True, x=0, y=0)
+        battle = _make_battle([hero, reactor, caster])
+        battle.start_combat()
+        self.assertTrue(ai.should_counterspell(reactor, caster, get_spell("Fireball"), 3, battle))
+
+    def test_do_not_counter_ally(self):
+        """Never counter a same-team caster (e.g. friendly Bless)."""
+        from data.spells import get_spell
+        ai = TacticalAI()
+        reactor = self._make_wizard(False)
+        ally = self._make_wizard(False)
+        battle = _make_battle([reactor, ally])
+        battle.start_combat()
+        self.assertFalse(ai.should_counterspell(reactor, ally, get_spell("Fireball"), 3, battle))
+
+    def test_skip_low_level_buff(self):
+        """Don't burn a lvl 3 slot on a no-threat lvl 1 Mage Armor cast."""
+        from data.spells import get_spell
+        ai = TacticalAI()
+        reactor = self._make_wizard(False)
+        caster = self._make_wizard(True)
+        battle = _make_battle([reactor, caster])
+        battle.start_combat()
+        # Mage Armor is lvl 1, not priority, not AoE, not control
+        self.assertFalse(ai.should_counterspell(reactor, caster, get_spell("Mage Armor"), 1, battle))
+
+    def test_counter_reaction_used(self):
+        """Reaction already spent — cannot counter."""
+        from data.spells import get_spell
+        ai = TacticalAI()
+        reactor = self._make_wizard(False)
+        caster = self._make_wizard(True)
+        battle = _make_battle([reactor, caster])
+        battle.start_combat()
+        reactor.reaction_used = True
+        self.assertFalse(ai.should_counterspell(reactor, caster, get_spell("Fireball"), 3, battle))
+
+
+class TestSilveryBarbsDecision(unittest.TestCase):
+    """Tests for TacticalAI.should_silvery_barbs heuristics."""
+
+    def _make_caster(self, is_player, x=5.0, y=5.0):
+        from data.spells import get_spell
+        return _make_entity(
+            "Warlock", is_player=is_player, x=x, y=y, hp=30, ac=12,
+            spells_known=[get_spell("Silvery Barbs")],
+            spell_slots={"1st": 2},
+            character_level=5, spellcasting_ability="Charisma",
+        )
+
+    def test_react_on_crit(self):
+        ai = TacticalAI()
+        reactor = self._make_caster(False, x=2, y=2)
+        attacker = _make_entity("Hero", is_player=True, x=0, y=0)
+        target = _make_entity("Ally", is_player=False, x=1, y=1, hp=20)
+        battle = _make_battle([attacker, target, reactor])
+        battle.start_combat()
+        step = ActionStep(step_type="attack", attacker=attacker,
+                          attack_roll=28, nat_roll=20, is_crit=True)
+        self.assertTrue(ai.should_silvery_barbs(reactor, attacker, target, step, battle))
+
+    def test_skip_far_comfortable_hit(self):
+        """Don't waste a slot on a hit that rolled way over AC."""
+        ai = TacticalAI()
+        reactor = self._make_caster(False, x=2, y=2)
+        attacker = _make_entity("Hero", is_player=True, x=0, y=0)
+        target = _make_entity("Ally", is_player=False, x=1, y=1, hp=20, ac=10)
+        battle = _make_battle([attacker, target, reactor])
+        battle.start_combat()
+        # Hit total 22 vs AC 10: reroll unlikely to miss, not a crit
+        step = ActionStep(step_type="attack", attacker=attacker,
+                          attack_roll=22, nat_roll=17, is_crit=False)
+        self.assertFalse(ai.should_silvery_barbs(reactor, attacker, target, step, battle))
+
+    def test_react_on_tight_hit(self):
+        """Hit just barely above AC — reroll is valuable."""
+        ai = TacticalAI()
+        reactor = self._make_caster(False, x=2, y=2)
+        attacker = _make_entity("Hero", is_player=True, x=0, y=0)
+        target = _make_entity("Ally", is_player=False, x=1, y=1, hp=20, ac=15)
+        battle = _make_battle([attacker, target, reactor])
+        battle.start_combat()
+        step = ActionStep(step_type="attack", attacker=attacker,
+                          attack_roll=16, nat_roll=10, is_crit=False)
+        self.assertTrue(ai.should_silvery_barbs(reactor, attacker, target, step, battle))
+
+    def test_skip_out_of_range(self):
+        """Reactor too far from attacker (> 60 ft)."""
+        ai = TacticalAI()
+        reactor = self._make_caster(False, x=20, y=20)
+        attacker = _make_entity("Hero", is_player=True, x=0, y=0)
+        target = _make_entity("Ally", is_player=False, x=19, y=19, hp=20)
+        battle = _make_battle([attacker, target, reactor])
+        battle.start_combat()
+        step = ActionStep(step_type="attack", attacker=attacker,
+                          attack_roll=30, nat_roll=20, is_crit=True)
+        self.assertFalse(ai.should_silvery_barbs(reactor, attacker, target, step, battle))
+
+
 if __name__ == "__main__":
     unittest.main()

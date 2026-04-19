@@ -3871,6 +3871,102 @@ class TacticalAI:
         return step
 
     # ------------------------------------------------------------------ #
+    # Reaction decisions (NPC auto-use)                                    #
+    # ------------------------------------------------------------------ #
+
+    # Spells considered "high impact" — always worth countering if able.
+    _COUNTER_PRIORITY_SPELLS = {
+        "Fireball", "Cone of Cold", "Lightning Bolt", "Ice Storm", "Cloudkill",
+        "Meteor Swarm", "Fire Storm", "Circle of Death", "Sunburst", "Tsunami",
+        "Hypnotic Pattern", "Hold Person", "Hold Monster", "Banishment",
+        "Polymorph", "Confusion", "Fear", "Dominate Person", "Dominate Monster",
+        "Mass Suggestion", "Power Word Stun", "Power Word Kill", "Feeblemind",
+        "Wall of Force", "Forcecage", "Telekinesis", "Evard's Black Tentacles",
+        "Otiluke's Resilient Sphere", "Bigby's Hand", "Spirit Guardians",
+        "Revivify", "Raise Dead", "Healing Word", "Mass Healing Word",
+        "Heal", "Mass Heal", "Cure Wounds", "Prayer of Healing",
+    }
+
+    def should_counterspell(self, reactor, caster, spell, spell_level: int, battle) -> bool:
+        """Decide whether ``reactor`` should spend their reaction on Counterspell.
+
+        spell may be ``None`` if only the level is known (DM path). reactor is
+        assumed to have Counterspell and a slot ≥3 already.
+        """
+        if reactor.reaction_used or reactor.is_incapacitated():
+            return False
+        # Never counter an ally (e.g. Bless on the caster's own team)
+        if reactor.is_player == caster.is_player:
+            return False
+
+        # Level-based auto-success check.
+        own_slot = None
+        for lvl in (spell_level, spell_level + 1, spell_level + 2):
+            if lvl >= 3 and reactor.has_spell_slot(lvl):
+                own_slot = lvl
+                break
+
+        spell_name = spell.name if spell else ""
+        is_priority = spell_name in self._COUNTER_PRIORITY_SPELLS
+        is_aoe = bool(spell and (spell.aoe_radius or spell.aoe_shape))
+        is_control = bool(spell and spell.applies_condition)
+        is_heal = spell_name in ("Healing Word", "Mass Healing Word", "Cure Wounds",
+                                 "Prayer of Healing", "Heal", "Mass Heal",
+                                 "Revivify", "Raise Dead")
+
+        # Counter slot ≤ cast slot: auto-success, cheap win if worth it.
+        if own_slot is not None and own_slot <= spell_level:
+            # Spells level ≥3 are almost always worth countering; for lvl 1-2
+            # spells, only counter priority/AoE/control.
+            if spell_level >= 3:
+                return True
+            if is_priority or is_aoe or is_control or is_heal:
+                return True
+            # Low-value lvl 1-2 spell: don't waste a 3rd slot.
+            return False
+
+        # Counter slot < cast slot: DC 10 + spell_level ability check.
+        # Only attempt if the spell is clearly high-impact.
+        if reactor.has_spell_slot(3):
+            if is_priority or (is_aoe and spell_level >= 3) or (is_control and spell_level >= 3):
+                # Expected DC check success probability rough gate.
+                ab_mod = reactor.get_modifier(reactor.stats.spellcasting_ability) if reactor.stats.spellcasting_ability else 0
+                prof = reactor.stats.proficiency_bonus
+                needed = (10 + spell_level) - (ab_mod + prof)
+                if needed <= 15:  # ≥30% success
+                    return True
+        return False
+
+    def should_silvery_barbs(self, reactor, attacker, target, step, battle) -> bool:
+        """Decide whether ``reactor`` should use Silvery Barbs on an incoming hit.
+
+        Reactor must have the spell known, a slot ≥1, see the attacker, and be
+        within 60 ft of the attacker. Caller is expected to have done the
+        possess/slot/reaction availability checks already, but we re-check to
+        be safe.
+        """
+        if reactor.reaction_used or reactor.is_incapacitated():
+            return False
+        if reactor.is_player == attacker.is_player:
+            return False  # Don't counter allies
+        sb = next((s for s in reactor.stats.spells_known if s.name == "Silvery Barbs"), None)
+        if not sb or not reactor.has_spell_slot(sb.level):
+            return False
+        if battle.get_distance(reactor, attacker) * 5 > 60:
+            return False
+        if not battle.has_line_of_sight(reactor, attacker):
+            return False
+        # Only spend a slot on crits or tight hits that might miss on reroll.
+        if step.is_crit:
+            return True
+        # For non-crit hits, only react if attack_roll is within 3 of AC
+        # (reroll has a real chance of turning the hit into a miss).
+        if step.attack_roll > 0 and target is not None:
+            if step.attack_roll - target.armor_class <= 3:
+                return True
+        return False
+
+    # ------------------------------------------------------------------ #
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
 
