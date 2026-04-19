@@ -21,7 +21,7 @@ from engine.battle_report import generate_battle_report, format_report_text, sav
 from engine.win_probability import assess_encounter_danger
 from data.hero_import import import_heroes_from_file, export_heroes_to_file
 from data.campaign import Campaign, load_campaign, list_campaigns, CAMPAIGNS_DIR, _timestamp
-from states.game_state_base import GameState, ScenarioModal, NotesModal, EffectModal, SAVES_DIR
+from states.game_state_base import GameState, ScenarioModal, NotesModal, EffectModal, ConditionsModal, SAVES_DIR
 from states.battle_constants import PANEL_W, TOP_BAR_H, GRID_W, TABS, DAMAGE_TYPE_COLORS, CONDITION_BADGES
 from states.battle_renderer import BattleRendererMixin
 from states.battle_events import BattleEventsMixin
@@ -238,6 +238,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.scenario_modal = None
         self.notes_modal = None
         self.effect_modal = None
+        self.conditions_modal = None
 
         # Battle Report / Win Probability / DM Advisor state
         self.battle_report = None              # Generated report dict when combat ends
@@ -1557,12 +1558,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             (f"Dmg 10", lambda: self._modify_hp(-10)),
             (f"Heal  5", lambda: self._modify_hp(5)),
             (f"Heal 10", lambda: self._modify_hp(10)),
-            (f"Toggle Prone",     lambda: self._toggle_condition("Prone")),
-            (f"Toggle Stunned",   lambda: self._toggle_condition("Stunned")),
-            (f"Toggle Poisoned",  lambda: self._toggle_condition("Poisoned")),
-            (f"Toggle Restrained",lambda: self._toggle_condition("Restrained")),
+            (f"Temp HP +5", lambda: self._add_temp_hp(5)),
+            (f"Temp HP +10", lambda: self._add_temp_hp(10)),
+            (f"Clear Temp HP", lambda: self._clear_temp_hp()),
+            (f"Conditions...", lambda: self._open_conditions_modal(entity)),
             (f"Init +1", lambda: self._modify_init(1)),
             (f"Init -1", lambda: self._modify_init(-1)),
+            (f"Force CON save (DC 10)", lambda: self._force_concentration_save(entity, 10)),
             (f"Drop Concentration", lambda: (entity.drop_concentration(), self._cleanup_dropped_spell_terrain(), self._log(f"{entity.name} drops concentration."))),
             (f"Add Effect...", lambda: self._open_effect_modal(entity)),
             (f"Edit Notes...", lambda: self._open_notes_modal(entity)),
@@ -1591,6 +1593,56 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if result: self._save_undo_snapshot()
         self.effect_modal = None
         if result: self._log(f"[DM] Added effect: {result}")
+
+    def _open_conditions_modal(self, entity):
+        self.ctx_open = False
+        self._save_undo_snapshot()
+        self.conditions_modal = ConditionsModal(entity, self._close_conditions_modal)
+
+    def _close_conditions_modal(self, _result):
+        self.conditions_modal = None
+
+    def _add_temp_hp(self, amount):
+        sel = self.selected_entity
+        if not sel or amount <= 0:
+            return
+        self._save_undo_snapshot()
+        sel.add_temp_hp(amount)
+        self._log(f"[DM] {sel.name} gains {amount} temp HP (now {sel.temp_hp}).")
+
+    def _clear_temp_hp(self):
+        sel = self.selected_entity
+        if not sel:
+            return
+        self._save_undo_snapshot()
+        sel.temp_hp = 0
+        self._log(f"[DM] {sel.name}: temp HP cleared.")
+
+    def _force_concentration_save(self, entity, dc: int):
+        """Roll a concentration save at the given DC (PHB p.203). Drops concentration on fail."""
+        if not entity.concentrating_on:
+            self._log(f"[DM] {entity.name} is not concentrating on anything.")
+            return
+        self._save_undo_snapshot()
+        con_bonus = entity.get_save_bonus("Constitution")
+        r1 = random.randint(1, 20)
+        total = r1 + con_bonus
+        adv = entity.has_feature("war_caster")
+        if adv:
+            r2 = random.randint(1, 20)
+            if r2 + con_bonus > total:
+                total = r2 + con_bonus
+                r1 = r2
+            rolled = f"d20({r1},adv)"
+        else:
+            rolled = f"d20({r1})"
+        spell_name = entity.concentrating_on.name
+        if total < dc:
+            entity.drop_concentration()
+            self._cleanup_dropped_spell_terrain()
+            self._log(f"[CONC SAVE] {entity.name} {rolled}+{con_bonus}={total} vs DC {dc} — FAIL, drops {spell_name}.")
+        else:
+            self._log(f"[CONC SAVE] {entity.name} {rolled}+{con_bonus}={total} vs DC {dc} — SUCCESS, keeps {spell_name}.")
 
     def _set_ai_forced_target(self, target_entity):
         """DM forces the current active entity to target a specific enemy on next AI turn."""

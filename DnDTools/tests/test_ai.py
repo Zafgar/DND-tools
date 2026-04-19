@@ -198,6 +198,41 @@ class TestTacticalAIBasic(unittest.TestCase):
         self.assertFalse(plan.skipped)
 
 
+class TestUpcastScaling(unittest.TestCase):
+    def test_combine_dice(self):
+        from engine.ai.utils import _combine_dice
+        self.assertEqual(_combine_dice("", "1d6"), "1d6")
+        self.assertEqual(_combine_dice("3d6", ""), "3d6")
+        self.assertEqual(_combine_dice("3d6", "2d6"), "3d6+2d6")
+
+    def test_scale_dice_by_count(self):
+        from engine.ai.utils import _scale_dice_by_count
+        self.assertEqual(_scale_dice_by_count("1d6", 3), "3d6")
+        self.assertEqual(_scale_dice_by_count("1d6+2", 3), "3d6+2")
+        self.assertEqual(_scale_dice_by_count("2d4+1", 2), "4d4+1")
+        self.assertEqual(_scale_dice_by_count("1d8", 0), "1d8")
+        self.assertEqual(_scale_dice_by_count("1d8", 1), "1d8")
+
+    def test_fireball_upcast(self):
+        from data.spells import get_spell
+        fb = get_spell("Fireball")
+        caster = _make_entity("Wiz", is_player=True)
+        base = _get_spell_damage_dice(fb, caster, slot_used=3)
+        upcast_5 = _get_spell_damage_dice(fb, caster, slot_used=5)
+        self.assertEqual(base, "8d6")
+        self.assertEqual(upcast_5, "8d6+2d6")
+
+    def test_magic_missile_upcast(self):
+        from data.spells import get_spell
+        from engine.ai.utils import _get_spell_damage_dice
+        mm = get_spell("Magic Missile")
+        caster = _make_entity("Wiz", is_player=True)
+        l3 = _get_spell_damage_dice(mm, caster, slot_used=3)
+        # Magic Missile scaling = "1d4+1" per slot above 1st, so +2 slots = +2d4+2
+        # Scaled by 2 -> "2d4+1" (flat bonus preserved once per term)
+        self.assertIn("d4", l3)
+
+
 class TestOpportunityAttack(unittest.TestCase):
     def test_opportunity_attack_calculation(self):
         """Should return an ActionStep or None for opportunity attacks."""

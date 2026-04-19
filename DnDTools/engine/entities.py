@@ -1093,6 +1093,17 @@ class Entity:
                 return True
         return False
 
+    def use_spell_slot_exact(self, level: int) -> bool:
+        """Consume a slot of exactly the given level. Returns False if unavailable.
+        Used for explicit upcasting decisions (so the AI picks the slot deliberately)."""
+        if level <= 0:
+            return True  # cantrip
+        key = self._LEVEL_KEYS.get(level, f"{level}th")
+        if self.spell_slots.get(key, 0) > 0:
+            self.spell_slots[key] -= 1
+            return True
+        return False
+
     def restore_spell_slot(self, level: int):
         """Refund a spell slot (e.g. when AI step is skipped/cancelled)."""
         key = self._LEVEL_KEYS.get(level, f"{level}th")

@@ -367,6 +367,8 @@ class BattleRendererMixin:
             self.notes_modal.draw(screen, mp)
         if self.effect_modal:
             self.effect_modal.draw(screen, mp)
+        if self.conditions_modal:
+            self.conditions_modal.draw(screen, mp)
         
         self._draw_hover_info(screen, mp)
 

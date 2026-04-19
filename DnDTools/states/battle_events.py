@@ -128,6 +128,9 @@ class BattleEventsMixin:
                 if self.effect_modal:
                     self.effect_modal.handle_event(event)
                     continue
+                if self.conditions_modal:
+                    self.conditions_modal.handle_event(event)
+                    continue
 
                 # Battle Report Modal handling
                 if self.report_modal_open:
