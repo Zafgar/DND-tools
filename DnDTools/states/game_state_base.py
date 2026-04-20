@@ -306,6 +306,88 @@ class ConditionsModal:
         self.btn_close.draw(screen, mp)
 
 
+class VariantRulesModal:
+    """Toggle DMG optional rules for the active campaign. Flags are persisted
+    on Campaign.settings and applied immediately via engine.variant_rules."""
+
+    FLAGS = [
+        ("flanking_advantage",        "Flanking (DMG 251)",
+         "Two allies on opposite sides of a target give melee advantage."),
+        ("slow_natural_healing",      "Slow Natural Healing (DMG 267)",
+         "Long rest no longer restores HP; hit dice are the only recovery."),
+        ("gritty_realism",            "Gritty Realism (DMG 267)",
+         "Short rest = 8 hours; long rest = 7 days."),
+        ("healers_kit_required",      "Healer's Kit Dependency (DMG 266)",
+         "Hit dice spent on a short rest consume one use of a Healer's Kit."),
+        ("cleaving_through_creatures","Cleaving Through Creatures (DMG 272)",
+         "Melee kill with excess damage rolls over to an adjacent target."),
+    ]
+
+    def __init__(self, campaign, callback):
+        from engine import variant_rules
+        self.campaign = campaign
+        self.callback = callback
+        self.variant_rules = variant_rules
+        self.w, self.h = 720, 480
+        self.x = SCREEN_WIDTH // 2 - self.w // 2
+        self.y = SCREEN_HEIGHT // 2 - self.h // 2
+
+        # Make sure settings dict carries every flag so UI state stays stable.
+        for key, _, _ in self.FLAGS:
+            self.campaign.settings.setdefault(key, variant_rules.get(key))
+
+        self.row_rects = []
+        row_h = 60
+        start_y = self.y + 60
+        for i, (key, _, _) in enumerate(self.FLAGS):
+            self.row_rects.append((key, pygame.Rect(self.x + 20, start_y + i * row_h,
+                                                    self.w - 40, row_h - 8)))
+
+        self.btn_close = Button(self.x + self.w - 130, self.y + self.h - 50, 110, 40,
+                                "CLOSE", lambda: callback(True), color=COLORS["success"])
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.callback(True)
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for key, rect in self.row_rects:
+                if rect.collidepoint(event.pos):
+                    cur = self.campaign.settings.get(key, False)
+                    self.campaign.settings[key] = not cur
+                    self.variant_rules.set_flag(key, not cur)
+                    return
+        self.btn_close.handle_event(event)
+
+    def draw(self, screen, mp):
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 180))
+        screen.blit(ov, (0, 0))
+        pygame.draw.rect(screen, COLORS["panel"], (self.x, self.y, self.w, self.h),
+                         border_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (self.x, self.y, self.w, self.h),
+                         2, border_radius=10)
+
+        title = fonts.header.render("Variant Rules", True, COLORS["accent"])
+        screen.blit(title, (self.x + 20, self.y + 15))
+
+        for key, rect in self.row_rects:
+            _, label, desc = next(f for f in self.FLAGS if f[0] == key)
+            on = self.campaign.settings.get(key, False)
+            bg = (70, 120, 70) if on else (35, 35, 42)
+            pygame.draw.rect(screen, bg, rect, border_radius=4)
+            if rect.collidepoint(mp):
+                pygame.draw.rect(screen, COLORS["accent"], rect, 1, border_radius=4)
+            tag = "[ON]" if on else "[OFF]"
+            name_s = fonts.body.render(f"{tag}  {label}", True,
+                                       (240, 240, 240) if on else (200, 200, 210))
+            screen.blit(name_s, (rect.x + 10, rect.y + 6))
+            desc_s = fonts.small.render(desc, True, (180, 180, 200))
+            screen.blit(desc_s, (rect.x + 10, rect.y + 30))
+
+        self.btn_close.draw(screen, mp)
+
+
 class EffectModal:
     def __init__(self, entity, callback):
         self.entity = entity

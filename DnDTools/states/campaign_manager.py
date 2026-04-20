@@ -78,6 +78,7 @@ from data.encounters import (
     roll_random_encounter, get_encounter_environments,
     generate_loot, roll_magic_item, MAGIC_ITEM_TABLES,
 )
+from states.game_state_base import VariantRulesModal
 
 
 # ============================================================================
@@ -294,6 +295,7 @@ class CampaignManagerState:
         self.input_active = ""  # Which input field is active
         self.input_text = ""
         self.modal = None       # Active modal (note edit, encounter edit, etc.)
+        self.variant_rules_modal = None  # DMG optional variant rules toggle modal
 
         # Hero picker for adding to party
         self.hero_picker_open = False
@@ -322,6 +324,8 @@ class CampaignManagerState:
                                color=COLORS["panel"])
         self.btn_save = Button(SCREEN_WIDTH - 130, 15, 110, 35, "Save",
                                self._save_campaign, color=COLORS["success"])
+        self.btn_rules = Button(SCREEN_WIDTH - 250, 15, 110, 35, "Rules",
+                                self._open_variant_rules_modal, color=COLORS["accent"])
 
         # Time of day buttons
         self.time_buttons = []
@@ -435,6 +439,15 @@ class CampaignManagerState:
         path = save_campaign(self.campaign)
         self._status_msg = f"Saved to {os.path.basename(path)}"
         self._status_timer = 120
+
+    def _open_variant_rules_modal(self):
+        """Open DMG optional variant rules toggle modal (flanking, gritty, etc.)."""
+        self.variant_rules_modal = VariantRulesModal(
+            self.campaign, self._close_variant_rules_modal
+        )
+
+    def _close_variant_rules_modal(self, _result=None):
+        self.variant_rules_modal = None
 
     # ---- Party Management ----
 
@@ -964,6 +977,9 @@ class CampaignManagerState:
     def handle_events(self, events):
         mp = pygame.mouse.get_pos()
         for event in events:
+            if self.variant_rules_modal:
+                self.variant_rules_modal.handle_event(event)
+                continue
             if self.modal:
                 self._handle_modal_event(event)
                 continue
@@ -974,6 +990,7 @@ class CampaignManagerState:
             # Global buttons
             self.btn_back.handle_event(event)
             self.btn_save.handle_event(event)
+            self.btn_rules.handle_event(event)
             for tb in self.time_buttons:
                 tb.handle_event(event)
 
@@ -1963,6 +1980,7 @@ class CampaignManagerState:
         # Draw buttons
         self.btn_back.draw(screen, mp)
         self.btn_save.draw(screen, mp)
+        self.btn_rules.draw(screen, mp)
         self.tabs.draw(screen, mp)
         for tb in self.time_buttons:
             # Highlight active time
@@ -2033,6 +2051,10 @@ class CampaignManagerState:
         # Modal overlay
         if self.modal:
             self._draw_modal(screen, mp)
+
+        # Variant rules modal overlay
+        if self.variant_rules_modal:
+            self.variant_rules_modal.draw(screen, mp)
 
     # ---- Party Tab Drawing ----
 
