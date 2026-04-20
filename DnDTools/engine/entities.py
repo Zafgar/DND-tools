@@ -977,7 +977,8 @@ class Entity:
     # Attack advantage/disadvantage                                        #
     # ------------------------------------------------------------------ #
 
-    def has_attack_advantage(self, target: "Entity" = None, is_ranged: bool = False, dist: float = 0) -> bool:
+    def has_attack_advantage(self, target: "Entity" = None, is_ranged: bool = False,
+                             dist: float = 0, battle: "BattleSystem" = None) -> bool:
         # Invisible attacker has advantage (unless target has Alert)
         if self.has_condition("Invisible"):
             if target and target.has_feature("alert"):
@@ -1001,6 +1002,48 @@ class Entity:
                 return True
             # PHB p.48: Reckless Attack - enemies have advantage on attacks against you
             if target.reckless_attack_active and not is_ranged:
+                return True
+            # DMG p.251 optional Flanking: two allies on opposite sides of a
+            # target give advantage on melee attacks. Only active if the
+            # variant is enabled.
+            if not is_ranged and battle is not None:
+                from engine import variant_rules
+                if variant_rules.get("flanking_advantage") and self._is_flanking(target, battle):
+                    return True
+        return False
+
+    def _is_flanking(self, target: "Entity", battle: "BattleSystem") -> bool:
+        """Check DMG flanking: another ally of self is adjacent to target on
+        the opposite side. Approximation: any non-incapacitated ally within 5
+        ft of target whose vector from the target points roughly opposite to
+        self's vector (cosine ≤ -0.5) qualifies."""
+        if self.hp <= 0 or target.hp <= 0:
+            return False
+        if battle.get_distance(self, target) > 1.5:
+            return False
+        tx = target.grid_x + target.size_in_squares / 2
+        ty = target.grid_y + target.size_in_squares / 2
+        ax = self.grid_x + self.size_in_squares / 2 - tx
+        ay = self.grid_y + self.size_in_squares / 2 - ty
+        a_len = (ax * ax + ay * ay) ** 0.5
+        if a_len == 0:
+            return False
+        for ally in battle.entities:
+            if ally is self or ally is target or ally.hp <= 0:
+                continue
+            if ally.is_player != self.is_player:
+                continue
+            if ally.is_incapacitated():
+                continue
+            if battle.get_distance(ally, target) > 1.5:
+                continue
+            bx = ally.grid_x + ally.size_in_squares / 2 - tx
+            by = ally.grid_y + ally.size_in_squares / 2 - ty
+            b_len = (bx * bx + by * by) ** 0.5
+            if b_len == 0:
+                continue
+            cos_theta = (ax * bx + ay * by) / (a_len * b_len)
+            if cos_theta <= -0.5:
                 return True
         return False
 
@@ -1166,7 +1209,11 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def long_rest(self):
-        self.hp = self.max_hp
+        from engine import variant_rules
+        # DMG p.267 Slow Natural Healing: long rest no longer restores HP,
+        # characters must spend hit dice instead.
+        if not variant_rules.get("slow_natural_healing"):
+            self.hp = self.max_hp
         self.temp_hp = 0
         # PHB p.186: Regain up to half total Hit Dice (min 1) on long rest
         import re as _re
@@ -1225,6 +1272,7 @@ class Entity:
 
         # PHB p.186: Spend Hit Dice to heal
         if hit_dice_to_spend > 0 and self.hp < self.max_hp:
+            from engine import variant_rules
             # Parse hit dice from stats (e.g. "10d8+30" → die size 8, max dice = 10)
             import re as _re
             hd_match = _re.search(r"(\d+)d(\d+)", self.stats.hit_dice)
@@ -1239,6 +1287,18 @@ class Entity:
             if not hasattr(self, "hit_dice_remaining"):
                 self.hit_dice_remaining = max_dice
             dice_to_use = min(hit_dice_to_spend, self.hit_dice_remaining)
+
+            # DMG p.266 Healer's Kit Dependency: each die spent consumes one kit use.
+            if variant_rules.get("healers_kit_required"):
+                kit = next((it for it in self.items
+                            if it.name == "Healer's Kit" and it.uses > 0), None)
+                if kit is None:
+                    msgs.append(f"{self.name} has no Healer's Kit — no hit dice may be spent.")
+                    return " ".join(msgs)
+                allowed = min(dice_to_use, kit.uses)
+                dice_to_use = allowed
+                kit.uses -= allowed
+
             con_mod = self.stats.abilities.get_mod("constitution")
             total_healed = 0
             for _ in range(dice_to_use):

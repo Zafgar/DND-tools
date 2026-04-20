@@ -11,6 +11,7 @@ from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect
 from data.models import CreatureStats, AbilityScores, Action, SpellInfo, Feature, RacialTrait, Item
 from data.class_features import get_class_features, BARBARIAN_RAGE_COUNT
+from data.tce_features import get_available_tce_features, resolve_selected_tce_features
 from data.equipment import (get_item, get_all_weapons, get_all_armor, get_all_shields,
                             get_all_wondrous, get_all_consumables, ALL_ITEMS_DB,
                             WEAPON_DB, ARMOR_DB, SHIELD_DB, WONDROUS_DB, CONSUMABLE_DB)
@@ -899,6 +900,9 @@ class HeroCreatorState(GameState):
         # Feat selection
         self.selected_feats = []  # list of feat name strings
         self.feat_scroll = 0
+        # TCE optional class features (flat list of feature names chosen)
+        self.selected_tce_features = []  # list of str; see data.tce_features
+        self.tce_scroll = 0
         # Spell selection
         self.selected_spells = []  # list of spell name strings
         self.selected_cantrips = []  # list of cantrip name strings
@@ -1015,8 +1019,9 @@ class HeroCreatorState(GameState):
 
         # Right panel tab buttons
         self.right_tab_buttons = {}
-        tab_names = [("features", "Features"), ("feats", "Feats"), ("spells", "Spells"),
-                     ("skills", "Skills"), ("equipment", "Equipment"), ("multiclass", "Multiclass")]
+        tab_names = [("features", "Features"), ("feats", "Feats"), ("tasha", "Tasha"),
+                     ("spells", "Spells"), ("skills", "Skills"),
+                     ("equipment", "Equipment"), ("multiclass", "Multiclass")]
         tab_x = 1030
         tab_w = 870 // len(tab_names)
         for i, (key, label) in enumerate(tab_names):
@@ -1066,6 +1071,10 @@ class HeroCreatorState(GameState):
         self.selected_cantrips = []
         self.skill_proficiencies = set()
         self.feat_scroll = 0
+        # Drop TCE picks that no longer match the new class
+        available_names = {f.name for f in get_available_tce_features(value, self.char_level)}
+        self.selected_tce_features = [n for n in self.selected_tce_features if n in available_names]
+        self.tce_scroll = 0
         self.spell_scroll = 0
         # Update weapon dropdown
         weapon_opts = WEAPON_CHOICES.get(value, ["Default"])
@@ -1086,6 +1095,8 @@ class HeroCreatorState(GameState):
 
     def _change_level(self, delta):
         self.char_level = max(1, min(20, self.char_level + delta))
+        available_names = {f.name for f in get_available_tce_features(self.char_class, self.char_level)}
+        self.selected_tce_features = [n for n in self.selected_tce_features if n in available_names]
 
     def _toggle_free_edit(self):
         self.free_edit_mode = not self.free_edit_mode
@@ -1513,6 +1524,14 @@ class HeroCreatorState(GameState):
             feat_features.append(feat_feature)
         features = features + feat_features
 
+        # --- Apply chosen TCE optional class features ---
+        tce_picked = resolve_selected_tce_features(self.selected_tce_features)
+        if tce_picked:
+            existing_names = {f.name for f in features}
+            for tf in tce_picked:
+                if tf.name not in existing_names:
+                    features.append(tf)
+
         # Recalc HP after feat bonuses (Tough feat: +2 HP per level)
         if "Tough" in self.selected_feats:
             hp += 2 * level
@@ -1840,6 +1859,8 @@ class HeroCreatorState(GameState):
                 if mouse_pos[0] > 1030:
                     if self.right_tab == "feats":
                         self._handle_feat_clicks(mouse_pos)
+                    elif self.right_tab == "tasha":
+                        self._handle_tasha_clicks(mouse_pos)
                     elif self.right_tab == "spells":
                         self._handle_spell_clicks(mouse_pos)
                     elif self.right_tab == "skills":
@@ -1863,6 +1884,8 @@ class HeroCreatorState(GameState):
                             self.trait_scroll = max(0, self.trait_scroll - event.y * 20)
                     elif self.right_tab == "feats":
                         self.feat_scroll = max(0, self.feat_scroll - event.y * 20)
+                    elif self.right_tab == "tasha":
+                        self.tce_scroll = max(0, self.tce_scroll - event.y * 20)
                     elif self.right_tab == "spells":
                         self.spell_scroll = max(0, self.spell_scroll - event.y * 20)
                     elif self.right_tab == "equipment":
@@ -2370,7 +2393,7 @@ class HeroCreatorState(GameState):
             btn.draw(screen, mouse_pos)
 
         # Draw active tab indicator
-        tab_keys = ["features", "feats", "spells", "skills", "equipment", "multiclass"]
+        tab_keys = ["features", "feats", "tasha", "spells", "skills", "equipment", "multiclass"]
         active_idx = tab_keys.index(self.right_tab) if self.right_tab in tab_keys else 0
         tab_w = right_w // len(tab_keys)
         indicator_rect = pygame.Rect(right_x + active_idx * tab_w, 100, tab_w, 3)
@@ -2381,6 +2404,8 @@ class HeroCreatorState(GameState):
             self._draw_features_tab(screen, mouse_pos)
         elif self.right_tab == "feats":
             self._draw_feats_tab(screen, mouse_pos)
+        elif self.right_tab == "tasha":
+            self._draw_tasha_tab(screen, mouse_pos)
         elif self.right_tab == "spells":
             self._draw_spells_tab(screen, mouse_pos)
         elif self.right_tab == "skills":
@@ -2565,6 +2590,106 @@ class HeroCreatorState(GameState):
             max_scroll = max(1, total_h - panel_h)
             sb_h = max(20, int(panel_h * panel_h / total_h))
             sb_y = content_y + int((panel_h - sb_h) * min(1, self.feat_scroll / max_scroll))
+            pygame.draw.rect(screen, COLORS["scrollbar_thumb"],
+                             (right_x + right_w - 8, sb_y, 5, sb_h), border_radius=2)
+
+    # ------------------------------------------------------------------
+    # Tasha's Cauldron optional class features tab
+    # ------------------------------------------------------------------
+    def _handle_tasha_clicks(self, mouse_pos):
+        """Toggle a Tasha optional class feature when its row is clicked."""
+        right_x = 1030
+        right_w = 870
+        row_h = 52
+        content_y = 133 + 25
+        available = get_available_tce_features(self.char_class, self.char_level)
+        for i, feat in enumerate(available):
+            fy = content_y + i * row_h - self.tce_scroll
+            if fy + row_h < content_y or fy > SCREEN_HEIGHT - 100:
+                continue
+            if pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 2).collidepoint(mouse_pos):
+                if feat.name in self.selected_tce_features:
+                    self.selected_tce_features.remove(feat.name)
+                else:
+                    self.selected_tce_features.append(feat.name)
+                return
+
+    def _draw_tasha_tab(self, screen, mouse_pos):
+        """Draw Tasha's Cauldron of Everything optional class feature toggles."""
+        right_x = 1030
+        right_w = 870
+
+        available = get_available_tce_features(self.char_class, self.char_level)
+        panel = Panel(right_x, 103, right_w, SCREEN_HEIGHT - 193,
+                      title=f"TASHA'S OPTIONAL FEATURES ({len(self.selected_tce_features)} picked)")
+        panel.draw(screen)
+
+        info_y = 133
+        if not available:
+            msg = f"No Tasha options available for {self.char_class} at level {self.char_level}."
+            ns = fonts.body_font.render(msg, True, COLORS["text_muted"])
+            screen.blit(ns, (right_x + 15, info_y + 10))
+            return
+
+        hint = fonts.small.render("DM permission assumed. Toggle to swap or add TCE class options.",
+                                  True, COLORS["text_dim"])
+        screen.blit(hint, (right_x + 15, info_y))
+
+        row_h = 52
+        content_y = info_y + 25
+        clip_rect = pygame.Rect(right_x + 5, content_y, right_w - 10,
+                                SCREEN_HEIGHT - content_y - 100)
+        screen.set_clip(clip_rect)
+
+        for i, feat in enumerate(available):
+            fy = content_y + i * row_h - self.tce_scroll
+            if fy > SCREEN_HEIGHT - 100:
+                break
+            if fy + row_h < content_y:
+                continue
+
+            is_selected = feat.name in self.selected_tce_features
+            row_rect = pygame.Rect(right_x + 5, fy, right_w - 10, row_h - 4)
+            is_hover = row_rect.collidepoint(mouse_pos)
+
+            if is_selected:
+                pygame.draw.rect(screen, COLORS["success_dim"], row_rect, border_radius=4)
+                pygame.draw.rect(screen, COLORS["success"], row_rect, 1, border_radius=4)
+            elif is_hover:
+                pygame.draw.rect(screen, COLORS["hover"], row_rect, border_radius=4)
+
+            # Checkbox
+            cb_rect = pygame.Rect(right_x + 12, fy + 14, 18, 18)
+            pygame.draw.rect(screen, COLORS["border"], cb_rect, 1, border_radius=3)
+            if is_selected:
+                pygame.draw.rect(screen, COLORS["success"], cb_rect.inflate(-4, -4), border_radius=2)
+
+            name_col = COLORS["text_bright"] if is_selected else COLORS["text_main"]
+            ns = fonts.body_bold.render(feat.name, True, name_col)
+            screen.blit(ns, (right_x + 38, fy + 4))
+
+            if feat.description:
+                desc = feat.description[:110] + "..." if len(feat.description) > 110 else feat.description
+                ds = fonts.tiny_font.render(desc, True, COLORS["text_dim"])
+                desc_clip = pygame.Rect(right_x + 38, fy + 26, right_w - 60, 18)
+                screen.set_clip(desc_clip.clip(clip_rect))
+                screen.blit(ds, (right_x + 38, fy + 26))
+                screen.set_clip(clip_rect)
+
+            if feat.mechanic:
+                Badge.draw(screen, right_x + right_w - 130, fy + 6,
+                           feat.mechanic[:18], COLORS["accent_dim"],
+                           font=fonts.tiny_font)
+
+        screen.set_clip(None)
+
+        # Scrollbar
+        total_h = len(available) * row_h
+        panel_h = SCREEN_HEIGHT - content_y - 100
+        if total_h > panel_h:
+            max_scroll = max(1, total_h - panel_h)
+            sb_h = max(20, int(panel_h * panel_h / total_h))
+            sb_y = content_y + int((panel_h - sb_h) * min(1, self.tce_scroll / max_scroll))
             pygame.draw.rect(screen, COLORS["scrollbar_thumb"],
                              (right_x + right_w - 8, sb_y, 5, sb_h), border_radius=2)
 

@@ -3086,7 +3086,7 @@ class TacticalAI:
             if enemies_adj:
                 is_threatened = True
 
-        adv = entity.has_attack_advantage(target, is_ranged, dist)
+        adv = entity.has_attack_advantage(target, is_ranged, dist, battle=battle)
         # Long range: normal_range = action.range, long_range = action.long_range
         dist_ft = dist * 5  # grid units to feet
         normal_range = action.range if is_ranged else 0
@@ -3682,7 +3682,7 @@ class TacticalAI:
         total_dmg = 0
         desc_parts = []
         for i in range(2):
-            adv = entity.has_attack_advantage(target, is_ranged=False)
+            adv = entity.has_attack_advantage(target, is_ranged=False, battle=battle)
             dis = entity.has_attack_disadvantage(target, is_ranged=False, battle=battle)
             total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
             is_hit = total >= target.stats.armor_class and not is_fumble

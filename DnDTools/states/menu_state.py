@@ -81,12 +81,15 @@ class MenuState(GameState):
         self.campaign_modal = None
         if result is None:
             return
+        from engine import variant_rules
         if result == "__new__":
             campaign = Campaign(name="New Campaign", created=_timestamp())
+            variant_rules.load_from_campaign(campaign.settings)
             self.manager.change_state("CAMPAIGN", campaign=campaign)
         elif isinstance(result, str) and os.path.exists(result):
             try:
                 campaign = load_campaign(result)
+                variant_rules.load_from_campaign(campaign.settings)
                 self.manager.change_state("CAMPAIGN", campaign=campaign)
             except Exception as ex:
                 print(f"Campaign load error: {ex}")
