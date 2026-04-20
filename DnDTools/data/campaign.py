@@ -110,6 +110,13 @@ class Campaign:
     notes: List[CampaignNote] = field(default_factory=list)
     # World reference (world.py World object saved inline)
     world_data: dict = field(default_factory=dict)  # Serialized World for persistence
+    # Kingdom navigator data — list of serialized KingdomEntry dicts.
+    # See data/kingdoms.py for the shape; empty by default until populated via
+    # ensure_kingdoms_on_campaign() on first open.
+    kingdoms_data: List[Dict] = field(default_factory=list)
+    # Interactive map editor references.
+    primary_world_map_id: str = ""      # Top-level "world" map id
+    active_map_id: str = ""             # Last-opened map id (resume)
     # Settings
     settings: Dict = field(default_factory=lambda: {
         "variant_healing_potions": True,   # Potions as bonus action
@@ -150,6 +157,9 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "areas": [serialize(a) for a in campaign.areas],
         "notes": [serialize(n) for n in campaign.notes],
         "world_data": campaign.world_data,
+        "kingdoms_data": campaign.kingdoms_data,
+        "primary_world_map_id": campaign.primary_world_map_id,
+        "active_map_id": campaign.active_map_id,
         "settings": campaign.settings,
     }
 
@@ -177,6 +187,9 @@ def load_campaign(filepath: str) -> Campaign:
         areas=[deserialize(CampaignArea, a) for a in data.get("areas", [])],
         notes=[deserialize(CampaignNote, n) for n in data.get("notes", [])],
         world_data=data.get("world_data", {}),
+        kingdoms_data=data.get("kingdoms_data", []),
+        primary_world_map_id=data.get("primary_world_map_id", ""),
+        active_map_id=data.get("active_map_id", ""),
         settings=data.get("settings", {}),
     )
 
