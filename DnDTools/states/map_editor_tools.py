@@ -40,7 +40,8 @@ def route_events(state, events) -> None:
         # Top-bar buttons
         for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                     state.btn_grid, state.btn_scale, state.btn_layers,
-                    state.btn_parent, state.btn_nav, state.btn_army_sim):
+                    state.btn_parent, state.btn_nav, state.btn_army_sim,
+                    state.btn_advance):
             btn.handle_event(ev)
 
         # Navigator consumes its own events when open

@@ -223,6 +223,16 @@ class MapEditorState(GameState):
         self._edit_modal = NPCDetailModal(self.world, npc_ids, _close)
 
     # ------------------------------------------------------------------
+    def open_advance_time_modal(self) -> None:
+        """Open the time-advance modal that moves path-following tokens."""
+        from states.map_editor_modals import AdvanceTimeModal
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = AdvanceTimeModal(self, _close)
+
+    # ------------------------------------------------------------------
     # Army-vs-army simulation: two-click picker on the canvas
     # ------------------------------------------------------------------
     def begin_army_battle_pick(self) -> None:
@@ -454,6 +464,8 @@ class MapEditorState(GameState):
         self.btn_nav      = mk("Kuningaskunnat", 150, self._toggle_navigator)
         self.btn_army_sim = mk("Simuloi armeijat", 160, self.begin_army_battle_pick,
                                 COLORS["warning"])
+        self.btn_advance  = mk("Edistä päivä", 130, self.open_advance_time_modal,
+                                COLORS["accent"])
         # Parent button only enabled if we have history or parent_map_id
         self._refresh_parent_button()
 

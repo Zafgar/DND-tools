@@ -86,6 +86,14 @@ class MapObjectEditModal:
                                                allowed="0123456789")),
             ("detect_dc",           _TextField("Havainto DC", str(obj.detect_dc),
                                                allowed="0123456789")),
+            ("follow_path_id",      _TextField("Seuraa reittiä (path id)",
+                                                obj.follow_path_id)),
+            ("travel_speed_mult",   _TextField("Matkanopeuskerroin",
+                                                str(obj.travel_speed_mult),
+                                                allowed="0123456789.")),
+            ("path_progress_miles", _TextField("Reittietappi (mailia)",
+                                                str(obj.path_progress_miles),
+                                                allowed="0123456789.")),
         ]
         self.flags = {
             "visible": obj.visible,
@@ -118,6 +126,11 @@ class MapObjectEditModal:
             elif key == "treasure_gold":
                 try:
                     o.treasure_gold = float(v or 0)
+                except ValueError:
+                    pass
+            elif key in ("travel_speed_mult", "path_progress_miles"):
+                try:
+                    setattr(o, key, float(v or 0))
                 except ValueError:
                     pass
             elif key == "object_type":
@@ -516,3 +529,85 @@ class NPCDetailModal:
             y = self._wrap(screen, rel.notes or "-", x, y, max_w)
             y += 8
         return y
+
+
+# ======================================================================
+class AdvanceTimeModal:
+    """Small confirm dialog: pick a day count, advance world time.
+
+    Triggers :func:`data.map_travel.advance_followers` on the state's
+    ``world_map`` and nudges every party/caravan/army_token that has a
+    ``follow_path_id`` forward by the configured number of travel days.
+    """
+    W = 400
+    H = 230
+    PRESETS = (1, 3, 7)
+
+    def __init__(self, state, on_close):
+        self.state = state
+        self.on_close = on_close
+        self.days = 1.0
+        self.x = SCREEN_WIDTH // 2 - self.W // 2
+        self.y = SCREEN_HEIGHT // 2 - self.H // 2
+        self.rect = pygame.Rect(self.x, self.y, self.W, self.H)
+
+        self._preset_btns = []
+        bx = self.x + 20
+        for n in self.PRESETS:
+            self._preset_btns.append(
+                Button(bx, self.y + 80, 70, 36, f"{n} pv",
+                        lambda n=n: self._set_days(n),
+                        color=COLORS["panel_light"])
+            )
+            bx += 80
+
+        self.btn_go = Button(self.x + 20, self.y + self.H - 50,
+                              170, 38, "Edistä aikaa", self._go,
+                              color=COLORS["accent"])
+        self.btn_close = Button(self.x + self.W - 110, self.y + self.H - 50,
+                                 90, 38, "Sulje", self._close,
+                                 color=COLORS["danger"])
+
+    def _set_days(self, n: float) -> None:
+        self.days = float(n)
+
+    def _close(self) -> None:
+        self.on_close()
+
+    def _go(self) -> None:
+        from data.map_travel import advance_followers
+        moved = advance_followers(self.state.world_map, self.days)
+        self.state._set_status(
+            f"Edistetty {self.days:.1f} pv — siirrettiin {moved} yksikköä."
+        )
+
+    def handle_event(self, ev: pygame.event.Event) -> None:
+        if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+            self._close()
+            return
+        self.btn_go.handle_event(ev)
+        self.btn_close.handle_event(ev)
+        for b in self._preset_btns:
+            b.handle_event(ev)
+
+    def draw(self, screen) -> None:
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 170))
+        screen.blit(ov, (0, 0))
+        pygame.draw.rect(screen, COLORS["panel"], self.rect, border_radius=12)
+        pygame.draw.rect(screen, COLORS["border"], self.rect, 2, border_radius=12)
+
+        hdr = fonts.header.render("Edistä matkaa",
+                                    True, COLORS["text_bright"])
+        screen.blit(hdr, (self.x + 20, self.y + 16))
+
+        info = fonts.small.render(
+            f"Valitut päivät: {self.days:.1f} — siirtää reittiä seuraavat tokenit.",
+            True, COLORS["text_dim"])
+        screen.blit(info, (self.x + 20, self.y + 54))
+
+        mp = pygame.mouse.get_pos()
+        for b in self._preset_btns:
+            b.draw(screen, mp)
+        self.btn_go.draw(screen, mp)
+        self.btn_close.draw(screen, mp)
