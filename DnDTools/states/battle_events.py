@@ -223,6 +223,12 @@ class BattleEventsMixin:
                         self.help_overlay_open = not self.help_overlay_open
                         continue
 
+                    # Shift+B = Load / clear battle-map background image
+                    if (event.key == pygame.K_b and (mods & pygame.KMOD_SHIFT)
+                            and not self.hp_input_active):
+                        self._pick_battle_background()
+                        continue
+
                     # Space = Next Turn (when combat started)
                     if event.key == pygame.K_SPACE and self.battle.combat_started:
                         if not self.roll_modal_open and not self.dmg_modal_open:

@@ -32,6 +32,16 @@ class BattleSystem:
         self.terrain: List[TerrainObject] = []
         self.weather = "Clear"  # Clear, Rain, Fog, Ash
 
+        # Optional JPG/PNG background image painted beneath the terrain
+        # (so imported real-world battle maps can provide art while the
+        # DM still paints walls/hazards on top for the AI to read).
+        self.background_image_path: str = ""
+        self.background_alpha: int = 200            # 0-255
+        self.background_world_cells_w: int = 40     # image width in grid cells
+        self.background_world_cells_h: int = 40     # image height in grid cells
+        self.background_offset_x: int = 0           # world px offset
+        self.background_offset_y: int = 0           # world px offset
+
         # Pending OA reactions: list of (reactor, mover)
         self.pending_reactions: List[tuple] = []
 
@@ -1252,6 +1262,32 @@ class BattleSystem:
             "destination_type": t_final.terrain_type if t_final else "",
         })
         return result
+
+    # ------------------------------------------------------------------ #
+    # Battle background image                                              #
+    # ------------------------------------------------------------------ #
+    def set_background_image(self, path: str, alpha: int = 200,
+                              cells_w: int = 40, cells_h: int = 40,
+                              offset_x: int = 0, offset_y: int = 0) -> bool:
+        """Configure a JPG/PNG background image. path may be empty to clear.
+        Returns True if accepted (path empty, or the file exists)."""
+        if not path:
+            self.background_image_path = ""
+            return True
+        import os as _os
+        abs_path = path
+        if not _os.path.isabs(abs_path):
+            base_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+            abs_path = _os.path.join(base_dir, path)
+        if not _os.path.isfile(abs_path):
+            return False
+        self.background_image_path = path
+        self.background_alpha = max(0, min(255, int(alpha)))
+        self.background_world_cells_w = max(1, int(cells_w))
+        self.background_world_cells_h = max(1, int(cells_h))
+        self.background_offset_x = int(offset_x)
+        self.background_offset_y = int(offset_y)
+        return True
 
     # ------------------------------------------------------------------ #
     # Manual DM operations                                                 #

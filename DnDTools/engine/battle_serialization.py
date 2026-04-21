@@ -24,6 +24,12 @@ def get_state_dict(battle) -> dict:
         "terrain": [t.to_dict() for t in battle.terrain],
         "weather": battle.weather,
         "lair_enabled": battle.lair_enabled,
+        "background_image_path": getattr(battle, "background_image_path", ""),
+        "background_alpha": getattr(battle, "background_alpha", 200),
+        "background_world_cells_w": getattr(battle, "background_world_cells_w", 40),
+        "background_world_cells_h": getattr(battle, "background_world_cells_h", 40),
+        "background_offset_x": getattr(battle, "background_offset_x", 0),
+        "background_offset_y": getattr(battle, "background_offset_y", 0),
     }
     for e in battle.entities:
         ent_data = {
@@ -217,6 +223,12 @@ def restore_state(battle, data: dict):
     battle.current_plane = data.get("current_plane", "Material Plane")
     battle.turn_index = data.get("turn_index", 0)
     battle.weather = data.get("weather", "Clear")
+    battle.background_image_path = data.get("background_image_path", "")
+    battle.background_alpha = data.get("background_alpha", 200)
+    battle.background_world_cells_w = data.get("background_world_cells_w", 40)
+    battle.background_world_cells_h = data.get("background_world_cells_h", 40)
+    battle.background_offset_x = data.get("background_offset_x", 0)
+    battle.background_offset_y = data.get("background_offset_y", 0)
     battle.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
     battle.entities = []
     battle.pending_reactions = []
@@ -265,6 +277,12 @@ def battle_from_save(filepath: str, log_callback: Callable[[str], None]):
     sys_obj.ai = TacticalAI()
     sys_obj.terrain = []
     sys_obj.weather = data.get("weather", "Clear")
+    sys_obj.background_image_path = data.get("background_image_path", "")
+    sys_obj.background_alpha = data.get("background_alpha", 200)
+    sys_obj.background_world_cells_w = data.get("background_world_cells_w", 40)
+    sys_obj.background_world_cells_h = data.get("background_world_cells_h", 40)
+    sys_obj.background_offset_x = data.get("background_offset_x", 0)
+    sys_obj.background_offset_y = data.get("background_offset_y", 0)
     sys_obj.pending_reactions = []
     sys_obj.legendary_queue = []
     sys_obj.lair_enabled = data.get("lair_enabled", False)
