@@ -279,6 +279,8 @@ def _tool_select_down(state, mp) -> None:
             state.open_linked_map(obj)
         elif obj.linked_encounter_id or (obj.unit_type and obj.unit_count > 0):
             state.start_encounter_from_object(obj)
+        elif obj.linked_npc_ids:
+            state.open_npc_modal(list(obj.linked_npc_ids))
         else:
             _open_edit_modal(state, obj)
 

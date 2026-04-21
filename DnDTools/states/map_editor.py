@@ -188,6 +188,20 @@ class MapEditorState(GameState):
             self._get_navigator()
             self._set_status("Kuningaskunnat auki")
 
+    def open_npc_modal(self, npc_ids) -> None:
+        """Open a read-only NPC profile view. Accepts a string or list."""
+        if isinstance(npc_ids, str):
+            npc_ids = [npc_ids]
+        if not npc_ids or self.world is None:
+            self._set_status("Ei linkitettyä NPC:tä tai worldia.")
+            return
+        from states.map_editor_modals import NPCDetailModal
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = NPCDetailModal(self.world, npc_ids, _close)
+
     # ================================================================
     # Layout
     # ================================================================
