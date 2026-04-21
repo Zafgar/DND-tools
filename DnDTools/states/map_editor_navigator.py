@@ -141,7 +141,7 @@ class KingdomsNavigator:
             if cb:
                 cb(npc_id)
             else:
-                st._set_status(f"NPC: {npc_id}")
+                st.open_npc_modal(npc_id)
         elif action == "focus_location":
             (loc_id,) = payload
             cb = st.callbacks.get("open_location")

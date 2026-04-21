@@ -91,6 +91,21 @@ TOOL_PANEL_W   = 220
 DETAIL_PANEL_W = 320
 
 
+def _seg_dist_sq(a, b, p) -> float:
+    """Squared distance from point p to segment ab (all 2-tuples)."""
+    ax, ay = a
+    bx, by = b
+    px, py = p
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return (px - ax) ** 2 + (py - ay) ** 2
+    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+    t = max(0.0, min(1.0, t))
+    cx = ax + dx * t
+    cy = ay + dy * t
+    return (px - cx) ** 2 + (py - cy) ** 2
+
+
 class MapEditorState(GameState):
     """Interactive world map editor. Initialised by the campaign manager.
 
@@ -151,6 +166,7 @@ class MapEditorState(GameState):
         self.brush_radius: int = 0
         self.selected_object_id: str = ""
         self.hover_object_id: str = ""
+        self.selected_path_id: str = ""
         self.measure_points: List[Tuple[float, float]] = []   # in world %
         self.draw_points: List[Tuple[float, float]] = []       # in world %
         self._drag_object_id: str = ""
@@ -173,6 +189,10 @@ class MapEditorState(GameState):
         self._navigator = None
         self.navigator_open = False
 
+        # --- Army-vs-army picker state --------------------------------------
+        self.army_pick_mode: bool = False
+        self._army_pick_a = None
+
         # Centre camera on the map by default
         self._center_camera()
 
@@ -187,6 +207,91 @@ class MapEditorState(GameState):
         if self.navigator_open:
             self._get_navigator()
             self._set_status("Kuningaskunnat auki")
+
+    def open_npc_modal(self, npc_ids) -> None:
+        """Open a read-only NPC profile view. Accepts a string or list."""
+        if isinstance(npc_ids, str):
+            npc_ids = [npc_ids]
+        if not npc_ids or self.world is None:
+            self._set_status("Ei linkitettyä NPC:tä tai worldia.")
+            return
+        from states.map_editor_modals import NPCDetailModal
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = NPCDetailModal(self.world, npc_ids, _close)
+
+    # ------------------------------------------------------------------
+    def open_advance_time_modal(self) -> None:
+        """Open the time-advance modal that moves path-following tokens."""
+        from states.map_editor_modals import AdvanceTimeModal
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = AdvanceTimeModal(self, _close)
+
+    # ------------------------------------------------------------------
+    # Army-vs-army simulation: two-click picker on the canvas
+    # ------------------------------------------------------------------
+    def begin_army_battle_pick(self) -> None:
+        """Enter a mode where the next two army_token clicks on the canvas
+        feed into an abstract army-vs-army Monte Carlo simulation."""
+        self.army_pick_mode = True
+        self._army_pick_a = None
+        self._set_status(
+            "Valitse ensimmäinen armeija kartalta (paina ESC peruuttaaksesi)."
+        )
+
+    def cancel_army_pick(self) -> None:
+        self.army_pick_mode = False
+        self._army_pick_a = None
+        self._set_status("Armeijavalinta peruttu.")
+
+    def handle_army_pick_click(self, obj) -> bool:
+        """Called from the canvas click router when army_pick_mode is on.
+        Returns True if the click was consumed."""
+        if not self.army_pick_mode:
+            return False
+        if obj is None or obj.object_type != "army_token" or not obj.unit_type:
+            self._set_status("Napsauta armeijan yksikköä (army_token).")
+            return True
+        if self._army_pick_a is None:
+            self._army_pick_a = obj
+            self._set_status(
+                f"Ensimmäinen valittu: {obj.label or obj.unit_type}. "
+                "Valitse vastustaja."
+            )
+            return True
+        if obj.id == self._army_pick_a.id:
+            self._set_status("Valitse eri kohde vastustajaksi.")
+            return True
+        self._open_army_battle(self._army_pick_a, obj)
+        self.army_pick_mode = False
+        self._army_pick_a = None
+        return True
+
+    def _open_army_battle(self, obj_a, obj_b) -> None:
+        from data.army_sim import army_from_map_object
+        from states.map_editor_army_modal import ArmyBattleModal
+        from data.library import library
+
+        army_a = army_from_map_object(obj_a, library=library)
+        army_b = army_from_map_object(obj_b, library=library)
+        if army_a is None or army_b is None:
+            self._set_status(
+                "Yksikkötyyppiä ei löydy kirjastosta — tarkista unit_type."
+            )
+            return
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = ArmyBattleModal(army_a, army_b, _close)
+        self._set_status(
+            f"Simulaatio: {army_a.name} vs {army_b.name}"
+        )
 
     # ================================================================
     # Layout
@@ -320,6 +425,21 @@ class MapEditorState(GameState):
         spd = self.world_map.travel_speed_miles_per_day or 1.0
         return miles / spd
 
+    def path_length_miles(self, points: List[Tuple[float, float]]) -> float:
+        """Aspect-aware polyline length in miles.  Sums segment distances in
+        % space after rescaling y by (h/w) before applying the map scale."""
+        if len(points) < 2:
+            return 0.0
+        ww, wh = self.world_size_px()
+        aspect = (wh / ww) if ww else 1.0
+        scale = max(self.world_map.scale_miles_per_pct, 0.0)
+        total = 0.0
+        for i in range(1, len(points)):
+            dx = points[i][0] - points[i - 1][0]
+            dy = (points[i][1] - points[i - 1][1]) * aspect
+            total += math.hypot(dx, dy)
+        return total * scale
+
     # ================================================================
     # Top bar buttons
     # ================================================================
@@ -342,6 +462,10 @@ class MapEditorState(GameState):
         self.btn_layers   = mk("Kerrokset",  110, self._on_cycle_layer)
         self.btn_parent   = mk("^ Ylös",      90, self._on_go_parent)
         self.btn_nav      = mk("Kuningaskunnat", 150, self._toggle_navigator)
+        self.btn_army_sim = mk("Simuloi armeijat", 160, self.begin_army_battle_pick,
+                                COLORS["warning"])
+        self.btn_advance  = mk("Edistä päivä", 130, self.open_advance_time_modal,
+                                COLORS["accent"])
         # Parent button only enabled if we have history or parent_map_id
         self._refresh_parent_button()
 
@@ -477,6 +601,23 @@ class MapEditorState(GameState):
                     return obj
         return None
 
+    def annotation_at_screen(self, sx: int, sy: int, tolerance_px: int = 6):
+        """Return the AnnotationPath whose polyline passes within tolerance_px
+        of the cursor, or None."""
+        best = None
+        best_d2 = tolerance_px * tolerance_px
+        for path in self.world_map.annotations:
+            pts_screen = []
+            for px, py in path.points:
+                wx, wy = self.pct_to_world(px, py)
+                pts_screen.append(self.world_to_screen(wx, wy))
+            for i in range(1, len(pts_screen)):
+                d2 = _seg_dist_sq(pts_screen[i - 1], pts_screen[i], (sx, sy))
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best = path
+        return best
+
     # ================================================================
     # Encounter launch from a map token
     # ================================================================
@@ -523,11 +664,24 @@ class MapEditorState(GameState):
             self._set_status("Ei kelvollista taistelijaa rosteriin.")
             return False
 
-        from states.game_states import BattleState
-        bs = BattleState(self.manager, roster)
-        self.manager.states["BATTLE"] = bs
-        self.manager.change_state("BATTLE")
-        self._set_status(f"Taistelu alkoi: {obj.label or obj.object_type}")
+        # Open placement modal; battle launches from its confirm callback.
+        from states.map_editor_placement import PreBattleSetupModal
+
+        def _launch():
+            self._edit_modal = None
+            from states.game_states import BattleState
+            bs = BattleState(self.manager, roster)
+            self.manager.states["BATTLE"] = bs
+            self.manager.change_state("BATTLE")
+            self._set_status(f"Taistelu alkoi: {obj.label or obj.object_type}")
+
+        def _cancel():
+            self._edit_modal = None
+            self._set_status("Taistelu peruttu.")
+
+        self._edit_modal = PreBattleSetupModal(
+            self.manager, roster, _launch, _cancel
+        )
         return True
 
     def _resolve_encounter_slots(self, obj: MapObject):

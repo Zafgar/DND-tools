@@ -165,6 +165,10 @@ class MapObject:
     unit_count: int = 0
     unit_type: str = ""            # "orcs", "knights", etc.
     faction: str = ""              # Army allegiance
+    # Movement along an AnnotationPath (party_token / caravan / army_token)
+    follow_path_id: str = ""
+    path_progress_miles: float = 0.0
+    travel_speed_mult: float = 1.0
     # Misc
     tags: List[str] = field(default_factory=list)
 
@@ -420,6 +424,9 @@ def _obj_from_dict(d: dict) -> MapObject:
         unit_count=int(d.get("unit_count", 0)),
         unit_type=d.get("unit_type", ""),
         faction=d.get("faction", ""),
+        follow_path_id=d.get("follow_path_id", ""),
+        path_progress_miles=float(d.get("path_progress_miles", 0.0)),
+        travel_speed_mult=float(d.get("travel_speed_mult", 1.0)),
         tags=list(d.get("tags", [])),
     )
 
