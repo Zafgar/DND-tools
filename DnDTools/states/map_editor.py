@@ -585,11 +585,24 @@ class MapEditorState(GameState):
             self._set_status("Ei kelvollista taistelijaa rosteriin.")
             return False
 
-        from states.game_states import BattleState
-        bs = BattleState(self.manager, roster)
-        self.manager.states["BATTLE"] = bs
-        self.manager.change_state("BATTLE")
-        self._set_status(f"Taistelu alkoi: {obj.label or obj.object_type}")
+        # Open placement modal; battle launches from its confirm callback.
+        from states.map_editor_placement import PreBattleSetupModal
+
+        def _launch():
+            self._edit_modal = None
+            from states.game_states import BattleState
+            bs = BattleState(self.manager, roster)
+            self.manager.states["BATTLE"] = bs
+            self.manager.change_state("BATTLE")
+            self._set_status(f"Taistelu alkoi: {obj.label or obj.object_type}")
+
+        def _cancel():
+            self._edit_modal = None
+            self._set_status("Taistelu peruttu.")
+
+        self._edit_modal = PreBattleSetupModal(
+            self.manager, roster, _launch, _cancel
+        )
         return True
 
     def _resolve_encounter_slots(self, obj: MapObject):
