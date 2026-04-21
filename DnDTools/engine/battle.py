@@ -1145,6 +1145,115 @@ class BattleSystem:
         entity.grid_y = float(new_y)
 
     # ------------------------------------------------------------------ #
+    # Forced movement (shove / telekinesis / thunderwave etc.)
+    # ------------------------------------------------------------------ #
+    def push_entity(self, target: Entity, from_x: float, from_y: float,
+                     distance: int = 5) -> dict:
+        """Push ``target`` ``distance`` feet straight away from (from_x, from_y).
+
+        Handles:
+          * Destination occupied or blocked by an impassable (non-gap) wall:
+            stops at the last free cell along the push line.
+          * Destination is a gap/chasm: the target falls in (unless flying)
+            and takes gap hazard + fall damage via move_entity_with_elevation.
+          * Destination is a ground hazard (lava / spikes / fire / acid):
+            full hazard damage applied, one-shot (simulates being thrown
+            into it rather than walking through).
+          * Destination is a lower tile (platform edge): fall damage applies
+            if drop is >= 10 ft.
+
+        Returns a summary dict with ``moved_cells``, ``final_cell``,
+        ``fell_into_gap``, ``fell_from``, ``hazard_damage``,
+        ``destination_type`` — the AI uses it for scoring.
+        """
+        result = {
+            "moved_cells": 0,
+            "final_cell": (int(target.grid_x), int(target.grid_y)),
+            "fell_into_gap": False,
+            "fell_from": 0,
+            "hazard_damage": 0,
+            "destination_type": "",
+        }
+        if target.hp <= 0 or distance <= 0:
+            return result
+
+        cells = max(1, int(round(distance / 5.0)))
+        dx = target.grid_x - from_x
+        dy = target.grid_y - from_y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist <= 0:
+            return result
+        step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
+        step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
+        # Snap to nearest cardinal if diagonal dominance is not clear
+        if abs(dx) > abs(dy) * 1.2:
+            step_y = 0
+        elif abs(dy) > abs(dx) * 1.2:
+            step_x = 0
+
+        last_x, last_y = target.grid_x, target.grid_y
+        cur_x, cur_y = last_x, last_y
+        pushed = 0
+        for _ in range(cells):
+            nx = cur_x + step_x
+            ny = cur_y + step_y
+            t = self.get_terrain_at(int(nx), int(ny))
+            if self.is_occupied(nx, ny, exclude=target):
+                break
+            # Gap / hazard stops the push AT the gap (target gets shoved in)
+            if t is not None and t.is_gap:
+                pushed += 1
+                cur_x, cur_y = nx, ny
+                break
+            if t is not None and not t.passable and not (t.is_gap):
+                # Impassable wall/pillar — target stops at previous cell
+                break
+            pushed += 1
+            cur_x, cur_y = nx, ny
+            # Ground hazard: continue past, but we mark it
+            if t is not None and t.is_hazard:
+                # Stop at first big hazard (lava-tier) — no walking through
+                if t.terrain_type in ("lava", "fire", "acid", "lava_chasm"):
+                    break
+
+        if pushed == 0:
+            return result
+
+        # Apply destination effects via move_entity_with_elevation so the
+        # existing fall / gap / hazard handling fires consistently.
+        old_elev = target.elevation
+        before_hp = target.hp
+        self.move_entity_with_elevation(target, cur_x, cur_y)
+        t_final = self.get_terrain_at(int(cur_x), int(cur_y))
+
+        # Forced-movement ground hazard: a shove into lava/fire/acid/spikes
+        # triggers hazard damage immediately (unlike walking, which only
+        # charges on turn events).
+        if (t_final is not None and t_final.is_hazard
+                and not t_final.is_gap and target.hp > 0):
+            from engine.dice import roll_dice
+            hdmg = roll_dice(t_final.hazard_damage)
+            dealt, _ = target.take_damage(hdmg, t_final.hazard_damage_type)
+            self.log(
+                f"  [SHOVE HAZARD] {target.name} pushed into {t_final.label}: "
+                f"{dealt} {t_final.hazard_damage_type} damage!"
+            )
+
+        after_hp = target.hp
+        # fell_from = how many feet the target actually descended due to
+        # the push (platform edge → ground, or stayed on a gap).
+        fell_from = max(0, old_elev - target.elevation)
+        result.update({
+            "moved_cells": pushed,
+            "final_cell": (int(cur_x), int(cur_y)),
+            "fell_into_gap": bool(t_final and t_final.is_gap),
+            "fell_from": fell_from,
+            "hazard_damage": max(0, before_hp - after_hp),
+            "destination_type": t_final.terrain_type if t_final else "",
+        })
+        return result
+
+    # ------------------------------------------------------------------ #
     # Manual DM operations                                                 #
     # ------------------------------------------------------------------ #
 
