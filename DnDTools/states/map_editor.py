@@ -169,8 +169,24 @@ class MapEditorState(GameState):
         # --- Edit modal (created lazily) --------------------------------------
         self._edit_modal = None
 
+        # --- Kingdoms navigator (lazy) ---------------------------------------
+        self._navigator = None
+        self.navigator_open = False
+
         # Centre camera on the map by default
         self._center_camera()
+
+    def _get_navigator(self):
+        if self._navigator is None:
+            from states.map_editor_navigator import KingdomsNavigator
+            self._navigator = KingdomsNavigator(self)
+        return self._navigator
+
+    def _toggle_navigator(self) -> None:
+        self.navigator_open = not self.navigator_open
+        if self.navigator_open:
+            self._get_navigator()
+            self._set_status("Kuningaskunnat auki")
 
     # ================================================================
     # Layout
@@ -325,6 +341,7 @@ class MapEditorState(GameState):
         self.btn_scale    = mk("Mittakaava", 110, self._on_edit_scale)
         self.btn_layers   = mk("Kerrokset",  110, self._on_cycle_layer)
         self.btn_parent   = mk("^ Ylös",      90, self._on_go_parent)
+        self.btn_nav      = mk("Kuningaskunnat", 150, self._toggle_navigator)
         # Parent button only enabled if we have history or parent_map_id
         self._refresh_parent_button()
 

@@ -40,8 +40,13 @@ def route_events(state, events) -> None:
         # Top-bar buttons
         for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                     state.btn_grid, state.btn_scale, state.btn_layers,
-                    state.btn_parent):
+                    state.btn_parent, state.btn_nav):
             btn.handle_event(ev)
+
+        # Navigator consumes its own events when open
+        if state.navigator_open and state._navigator is not None:
+            if state._navigator.handle_event(ev):
+                continue
 
         # Tool palette click (left panel)
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:

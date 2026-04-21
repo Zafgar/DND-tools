@@ -27,7 +27,10 @@ def render_editor(state, screen) -> None:
     _draw_canvas(state, screen)
     _draw_top_bar(state, screen)
     _draw_tool_panel(state, screen)
-    _draw_detail_panel(state, screen)
+    if state.navigator_open and state._navigator is not None:
+        state._navigator.draw(screen)
+    else:
+        _draw_detail_panel(state, screen)
     _draw_bottom_bar(state, screen)
     _draw_hover_tooltip(state, screen)
     if state._edit_modal is not None:
@@ -245,7 +248,7 @@ def _draw_top_bar(state, screen) -> None:
     mp = pygame.mouse.get_pos()
     for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                 state.btn_grid, state.btn_scale, state.btn_layers,
-                state.btn_parent):
+                state.btn_parent, state.btn_nav):
         btn.draw(screen, mp)
     # Map name
     name = f"{state.world_map.name}  ({state.world_map.map_type})"
