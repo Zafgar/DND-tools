@@ -42,6 +42,11 @@ class BattleSystem:
         self.background_offset_x: int = 0           # world px offset
         self.background_offset_y: int = 0           # world px offset
 
+        # Global ceiling (feet). 0 = outdoor (no ceiling); a positive
+        # value caps how high flying creatures may go. Used to model
+        # indoor encounters (10ft corridor, 15ft cave, etc.).
+        self.ceiling_ft: int = 0
+
         # Pending OA reactions: list of (reactor, mover)
         self.pending_reactions: List[tuple] = []
 
@@ -775,7 +780,10 @@ class BattleSystem:
         if best_bonus == 0:
             ax, ay = int(attacker.grid_x), int(attacker.grid_y)
             tx, ty = int(target.grid_x), int(target.grid_y)
-            if check_los_blocked(self.terrain, ax, ay, tx, ty):
+            # 3D LOS — use eye-level ≈ top of the model (elevation + 5 ft)
+            az = float(attacker.elevation) + 5.0
+            tz = float(target.elevation) + 5.0
+            if check_los_blocked(self.terrain, ax, ay, tx, ty, az, tz):
                 best_bonus = max(best_bonus, 2)  # At minimum half cover if LOS obstructed
 
         return best_bonus
@@ -798,9 +806,10 @@ class BattleSystem:
                 # Still blocked by full cover (terrain LOS blocking)
                 x1, y1 = int(e1.grid_x), int(e1.grid_y)
                 x2, y2 = int(e2.grid_x), int(e2.grid_y)
-                if check_los_blocked(self.terrain, x1, y1, x2, y2):
-                    if not (e1.is_flying and e1.elevation >= 15):
-                        return False
+                z1 = float(e1.elevation) + 5.0
+                z2 = float(e2.elevation) + 5.0
+                if check_los_blocked(self.terrain, x1, y1, x2, y2, z1, z2):
+                    return False
                 return True
 
         # Invisible target: can't see unless truesight
@@ -809,11 +818,11 @@ class BattleSystem:
 
         x1, y1 = int(e1.grid_x), int(e1.grid_y)
         x2, y2 = int(e2.grid_x), int(e2.grid_y)
+        z1 = float(e1.elevation) + 5.0
+        z2 = float(e2.elevation) + 5.0
 
         # Check terrain LOS blocking (walls, full cover)
-        if check_los_blocked(self.terrain, x1, y1, x2, y2):
-            if e1.is_flying and e1.elevation >= 15:
-                return True  # Can see over most walls from high altitude
+        if check_los_blocked(self.terrain, x1, y1, x2, y2, z1, z2):
             return False
 
         # Darkness check: target in darkness terrain (heavily obscured)
@@ -1119,6 +1128,11 @@ class BattleSystem:
         if entity.is_flying:
             # Flying entity: stays at current elevation or terrain elevation, whichever is higher
             entity.elevation = max(entity.elevation, new_ground)
+            # Indoor ceiling cap (Phase 4c): enforce max altitude
+            if self.ceiling_ft > 0:
+                cap = self.ceiling_ft - 5
+                if entity.elevation > cap:
+                    entity.elevation = max(new_ground, cap)
         elif entity.is_climbing:
             # Climbing: entity reaches the terrain's elevation
             entity.elevation = new_ground
@@ -1262,6 +1276,29 @@ class BattleSystem:
             "destination_type": t_final.terrain_type if t_final else "",
         })
         return result
+
+    # ------------------------------------------------------------------ #
+    # Ceiling (indoor flight cap)                                          #
+    # ------------------------------------------------------------------ #
+    def max_fly_altitude(self, ground_elev: int = 0) -> int:
+        """Return the highest elevation (ft) a flying creature may reach
+        above ``ground_elev``. If no ceiling is set, returns a very large
+        number (effectively unlimited)."""
+        if self.ceiling_ft <= 0:
+            return 10_000
+        # The ceiling is measured in ft above global zero, so even on a
+        # platform the entity still can't go above ceiling_ft total.
+        return max(ground_elev, self.ceiling_ft - 5)
+
+    def clamp_fly_altitude(self, entity: Entity):
+        """If entity is flying above the ceiling, pull it down to the cap."""
+        if self.ceiling_ft <= 0 or not entity.is_flying:
+            return
+        cap = self.ceiling_ft - 5
+        if entity.elevation > cap:
+            entity.elevation = max(0, cap)
+            self.log(f"  [CEILING] {entity.name} caps at {entity.elevation}ft "
+                     f"(ceiling {self.ceiling_ft}ft).")
 
     # ------------------------------------------------------------------ #
     # Battle background image                                              #

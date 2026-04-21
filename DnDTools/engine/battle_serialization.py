@@ -30,6 +30,7 @@ def get_state_dict(battle) -> dict:
         "background_world_cells_h": getattr(battle, "background_world_cells_h", 40),
         "background_offset_x": getattr(battle, "background_offset_x", 0),
         "background_offset_y": getattr(battle, "background_offset_y", 0),
+        "ceiling_ft": getattr(battle, "ceiling_ft", 0),
     }
     for e in battle.entities:
         ent_data = {
@@ -229,6 +230,7 @@ def restore_state(battle, data: dict):
     battle.background_world_cells_h = data.get("background_world_cells_h", 40)
     battle.background_offset_x = data.get("background_offset_x", 0)
     battle.background_offset_y = data.get("background_offset_y", 0)
+    battle.ceiling_ft = data.get("ceiling_ft", 0)
     battle.terrain = [TerrainObject.from_dict(t) for t in data.get("terrain", [])]
     battle.entities = []
     battle.pending_reactions = []
@@ -283,6 +285,7 @@ def battle_from_save(filepath: str, log_callback: Callable[[str], None]):
     sys_obj.background_world_cells_h = data.get("background_world_cells_h", 40)
     sys_obj.background_offset_x = data.get("background_offset_x", 0)
     sys_obj.background_offset_y = data.get("background_offset_y", 0)
+    sys_obj.ceiling_ft = data.get("ceiling_ft", 0)
     sys_obj.pending_reactions = []
     sys_obj.legendary_queue = []
     sys_obj.lair_enabled = data.get("lair_enabled", False)

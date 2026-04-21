@@ -299,6 +299,24 @@ class TerrainObject:
         return self.props.get("blocks_los", False)
 
     @property
+    def los_top_ft(self) -> float:
+        """Top of this blocker in feet (for 3D LOS).
+
+        Priority:
+          * explicit ``los_height_ft`` prop (e.g. for spell clouds)
+          * positive ``elevation_ft`` (walls/trees/houses/pillars that
+            physically fill that height of space)
+          * fallback 100 ft (tall enough to treat as ceiling-reaching)
+        """
+        h = self.props.get("los_height_ft")
+        if h is not None:
+            return float(h)
+        elev = self.props.get("elevation_ft", 0)
+        if elev and elev > 0:
+            return float(elev)
+        return 100.0
+
+    @property
     def is_door(self) -> bool:
         return self.props.get("door", False)
 
@@ -403,9 +421,17 @@ def get_elevation_at(terrain_list: list, gx: int, gy: int) -> int:
     return 0
 
 
-def check_los_blocked(terrain_list: list, x1: int, y1: int, x2: int, y2: int) -> bool:
+def check_los_blocked(terrain_list: list, x1: int, y1: int, x2: int, y2: int,
+                        z1: float = 0.0, z2: float = 0.0) -> bool:
     """Check if line of sight is blocked between two grid positions.
     Uses Bresenham's line algorithm to trace cells between points.
+
+    3D LOS: each blocker has a top height (via terrain.los_top_ft). The
+    sightline is linearly interpolated between (x1,y1,z1) and (x2,y2,z2).
+    A blocker blocks only if its top height >= the sightline's elevation
+    at that cell. When z1 == z2 == 0 (ground-to-ground), this reduces
+    exactly to the original 2D behaviour.
+
     Returns True if LOS is blocked."""
     dx = abs(x2 - x1)
     dy = abs(y2 - y1)
@@ -414,11 +440,18 @@ def check_los_blocked(terrain_list: list, x1: int, y1: int, x2: int, y2: int) ->
     err = dx - dy
     cx, cy = x1, y1
 
+    # Total Chebyshev steps for linear z-interpolation
+    total_steps = max(dx, dy)
+    step_idx = 0
+
     while True:
         if (cx, cy) != (x1, y1) and (cx, cy) != (x2, y2):
+            frac = (step_idx / total_steps) if total_steps > 0 else 0.0
+            sightline_z = z1 + frac * (z2 - z1)
             for t in terrain_list:
                 if t.occupies(cx, cy) and t.blocks_los:
-                    return True
+                    if t.los_top_ft >= sightline_z:
+                        return True
         if cx == x2 and cy == y2:
             break
         e2 = 2 * err
@@ -428,6 +461,7 @@ def check_los_blocked(terrain_list: list, x1: int, y1: int, x2: int, y2: int) ->
         if e2 < dx:
             err += dx
             cy += sy
+        step_idx += 1
     return False
 
 
