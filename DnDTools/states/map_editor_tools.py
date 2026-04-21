@@ -149,6 +149,13 @@ def _handle_key(state, ev) -> None:
         state.world_map.remove_object(state.selected_object_id)
         state.selected_object_id = ""
         state._set_status("Objekti poistettu")
+    elif ev.key == pygame.K_DELETE and state.selected_path_id:
+        state.world_map.annotations = [
+            p for p in state.world_map.annotations
+            if p.id != state.selected_path_id
+        ]
+        state.selected_path_id = ""
+        state._set_status("Reitti poistettu")
     elif ev.key == pygame.K_LEFTBRACKET:
         state.brush_radius = max(0, state.brush_radius - 1)
     elif ev.key == pygame.K_RIGHTBRACKET:
@@ -261,8 +268,12 @@ def _tool_select_down(state, mp) -> None:
     obj = state.object_at_screen(*mp)
     if obj is None:
         state.selected_object_id = ""
+        # Fall back to annotation pick so the DM can inspect routes
+        path = state.annotation_at_screen(*mp, tolerance_px=8)
+        state.selected_path_id = path.id if path else ""
         return
     state.selected_object_id = obj.id
+    state.selected_path_id = ""
     # Prepare drag offset in %
     obj_px = (obj.x, obj.y)
     mouse_px = state.screen_to_pct(*mp)

@@ -134,6 +134,10 @@ def _draw_annotations(state, screen) -> None:
         pts = [state.pct_to_screen(x, y) for (x, y) in path.points]
         if len(pts) < 2:
             continue
+        if path.id == state.selected_path_id:
+            # Glow halo around the selected route
+            pygame.draw.lines(screen, (255, 255, 160), False, pts,
+                              max(3, path.thickness + 4))
         if path.dashed:
             _draw_dashed_polyline(screen, path.color, pts, path.thickness)
         else:
@@ -341,6 +345,16 @@ def _draw_detail_panel(state, screen) -> None:
     if state.selected_object_id:
         obj = state.world_map.find_object(state.selected_object_id)
     if obj is None:
+        # Prefer path summary when a path is selected, else the map overview
+        if state.selected_path_id:
+            path = next(
+                (p for p in state.world_map.annotations
+                 if p.id == state.selected_path_id),
+                None,
+            )
+            if path is not None:
+                _draw_path_summary(state, screen, path)
+                return
         _draw_map_summary(state, screen)
         return
 
@@ -441,6 +455,43 @@ def _draw_map_summary(state, screen) -> None:
     for line in hint_lines:
         s = fonts.tiny.render(line, True, COLORS["text_dim"])
         screen.blit(s, (x, y)); y += 15
+
+
+def _draw_path_summary(state, screen, path) -> None:
+    rect = state.detail_panel_rect
+    x = rect.x + 12
+    y = rect.y + 10
+    hdr = fonts.header.render(
+        path.name or f"Reitti ({path.path_type})",
+        True, COLORS["text_bright"])
+    screen.blit(hdr, (x, y)); y += hdr.get_height() + 4
+
+    miles = state.path_length_miles(path.points)
+    days = state.travel_days(miles) if miles > 0 else 0.0
+    hours = days * 24.0
+
+    info_lines = [
+        f"Tyyppi: {path.path_type}",
+        f"Pisteitä: {len(path.points)}",
+        f"Pituus: {miles:.2f} mailia",
+        f"Matka-aika: {days:.2f} vrk  ({hours:.1f} h)",
+        f"Vauhti: {state.world_map.travel_speed_miles_per_day:.0f} mi/vrk",
+        f"Paksuus: {path.thickness} px",
+        f"Katkoviiva: {'kyllä' if path.dashed else 'ei'}",
+    ]
+    for line in info_lines:
+        s = fonts.small.render(line, True, COLORS["text_main"])
+        screen.blit(s, (x, y)); y += 18
+
+    if path.notes:
+        y += 8
+        y = _draw_wrapped_text(screen, "Muistiinpanot:", path.notes,
+                               x, y, rect.width - 24, fonts.small)
+
+    hint = fonts.tiny.render(
+        "Muuta vauhtia: Mittakaava-painikkeella.  Poista: Del.",
+        True, COLORS["text_dim"])
+    screen.blit(hint, (x, rect.bottom - 22))
 
 
 def _draw_wrapped_text(screen, title, body, x, y, max_w, font) -> int:

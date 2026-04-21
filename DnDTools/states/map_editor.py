@@ -91,6 +91,21 @@ TOOL_PANEL_W   = 220
 DETAIL_PANEL_W = 320
 
 
+def _seg_dist_sq(a, b, p) -> float:
+    """Squared distance from point p to segment ab (all 2-tuples)."""
+    ax, ay = a
+    bx, by = b
+    px, py = p
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return (px - ax) ** 2 + (py - ay) ** 2
+    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+    t = max(0.0, min(1.0, t))
+    cx = ax + dx * t
+    cy = ay + dy * t
+    return (px - cx) ** 2 + (py - cy) ** 2
+
+
 class MapEditorState(GameState):
     """Interactive world map editor. Initialised by the campaign manager.
 
@@ -151,6 +166,7 @@ class MapEditorState(GameState):
         self.brush_radius: int = 0
         self.selected_object_id: str = ""
         self.hover_object_id: str = ""
+        self.selected_path_id: str = ""
         self.measure_points: List[Tuple[float, float]] = []   # in world %
         self.draw_points: List[Tuple[float, float]] = []       # in world %
         self._drag_object_id: str = ""
@@ -334,6 +350,21 @@ class MapEditorState(GameState):
         spd = self.world_map.travel_speed_miles_per_day or 1.0
         return miles / spd
 
+    def path_length_miles(self, points: List[Tuple[float, float]]) -> float:
+        """Aspect-aware polyline length in miles.  Sums segment distances in
+        % space after rescaling y by (h/w) before applying the map scale."""
+        if len(points) < 2:
+            return 0.0
+        ww, wh = self.world_size_px()
+        aspect = (wh / ww) if ww else 1.0
+        scale = max(self.world_map.scale_miles_per_pct, 0.0)
+        total = 0.0
+        for i in range(1, len(points)):
+            dx = points[i][0] - points[i - 1][0]
+            dy = (points[i][1] - points[i - 1][1]) * aspect
+            total += math.hypot(dx, dy)
+        return total * scale
+
     # ================================================================
     # Top bar buttons
     # ================================================================
@@ -490,6 +521,23 @@ class MapEditorState(GameState):
                 if (sx - osx) ** 2 + (sy - osy) ** 2 <= r * r:
                     return obj
         return None
+
+    def annotation_at_screen(self, sx: int, sy: int, tolerance_px: int = 6):
+        """Return the AnnotationPath whose polyline passes within tolerance_px
+        of the cursor, or None."""
+        best = None
+        best_d2 = tolerance_px * tolerance_px
+        for path in self.world_map.annotations:
+            pts_screen = []
+            for px, py in path.points:
+                wx, wy = self.pct_to_world(px, py)
+                pts_screen.append(self.world_to_screen(wx, wy))
+            for i in range(1, len(pts_screen)):
+                d2 = _seg_dist_sq(pts_screen[i - 1], pts_screen[i], (sx, sy))
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best = path
+        return best
 
     # ================================================================
     # Encounter launch from a map token
