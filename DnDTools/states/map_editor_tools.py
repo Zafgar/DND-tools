@@ -277,6 +277,8 @@ def _tool_select_down(state, mp) -> None:
     if last_id == obj.id and (now - last) < 350:
         if obj.linked_map_id:
             state.open_linked_map(obj)
+        elif obj.linked_encounter_id or (obj.unit_type and obj.unit_count > 0):
+            state.start_encounter_from_object(obj)
         else:
             _open_edit_modal(state, obj)
 

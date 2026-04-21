@@ -478,6 +478,127 @@ class MapEditorState(GameState):
         return None
 
     # ================================================================
+    # Encounter launch from a map token
+    # ================================================================
+    def start_encounter_from_object(self, obj: MapObject) -> bool:
+        """Build a battle roster and jump into BattleState.
+
+        Sources tried, in priority order:
+          1. ``callbacks["start_encounter"]`` — host override
+          2. ``obj.linked_encounter_id`` — name match against the campaign's
+             saved encounters; the matching encounter's slots are used
+          3. ``obj.unit_type`` + ``unit_count`` — ad-hoc horde built from the
+             monster library
+
+        Returns True if an encounter actually launched.
+        """
+        cb = self.callbacks.get("start_encounter")
+        if cb:
+            try:
+                cb(obj)
+                return True
+            except Exception as ex:
+                logging.warning(f"[MAP_EDITOR] start_encounter callback failed: {ex}")
+                return False
+
+        if self.campaign is None:
+            self._set_status("Encounter vaatii kampanjan.")
+            return False
+
+        slots = self._resolve_encounter_slots(obj)
+        if not slots:
+            self._set_status(
+                f"{obj.label or obj.object_type}: ei encounteria tai yksikköä."
+            )
+            return False
+
+        # Save current map before leaving (auto-resume when battle finishes)
+        try:
+            save_world_map(self.world_map)
+        except Exception:
+            pass
+
+        roster = self._build_roster_from_slots(slots)
+        if not roster:
+            self._set_status("Ei kelvollista taistelijaa rosteriin.")
+            return False
+
+        from states.game_states import BattleState
+        bs = BattleState(self.manager, roster)
+        self.manager.states["BATTLE"] = bs
+        self.manager.change_state("BATTLE")
+        self._set_status(f"Taistelu alkoi: {obj.label or obj.object_type}")
+        return True
+
+    def _resolve_encounter_slots(self, obj: MapObject):
+        """Return a list of (name, count, side, is_hero) tuples or []."""
+        # Match saved encounter by free-text id/name
+        eid = (obj.linked_encounter_id or "").strip().lower()
+        if eid:
+            for enc in self.campaign.encounters:
+                if enc.name.strip().lower() == eid:
+                    return [(s.creature_name, s.count, s.side, s.is_hero)
+                            for s in enc.slots]
+        # Ad-hoc unit horde
+        if obj.unit_type and obj.unit_count > 0:
+            side = "enemy"
+            if obj.object_type in ("party_token",) or (
+                obj.faction and obj.faction.lower() in ("party", "ally", "allies")
+            ):
+                side = "ally"
+            return [(obj.unit_type, int(obj.unit_count), side, False)]
+        return []
+
+    def _build_roster_from_slots(self, slots) -> list:
+        """Reuse library.get_monster to assemble an Entity roster including
+        the current party."""
+        from engine.entities import Entity
+        from data.library import library
+        from data.hero_import import import_hero
+        import copy as _copy
+
+        roster = []
+        # Party
+        px, py = 3, 2
+        for member in self.campaign.party:
+            if not getattr(member, "active", True):
+                continue
+            try:
+                stats = import_hero(member.hero_data)
+            except Exception:
+                continue
+            ent = Entity(stats, px, py, is_player=True)
+            if getattr(member, "current_hp", -1) >= 0:
+                ent.hp = member.current_hp
+            if getattr(member, "temp_hp", 0):
+                ent.temp_hp = member.temp_hp
+            for cond in getattr(member, "conditions", []) or []:
+                ent.add_condition(cond)
+            ent.exhaustion = getattr(member, "exhaustion", 0)
+            roster.append(ent)
+            py += 2
+
+        # Opposition / allies from slots — auto-place far side of the grid
+        ex, ey = 14, 3
+        for name, count, side, is_hero in slots:
+            if is_hero:
+                continue
+            for i in range(max(1, int(count))):
+                try:
+                    stats = _copy.deepcopy(library.get_monster(name))
+                except Exception:
+                    continue
+                if count > 1:
+                    stats.name = f"{name} {i + 1}"
+                ent = Entity(stats, ex, ey, is_player=(side == "ally"))
+                roster.append(ent)
+                ey += 2
+                if ey > 15:
+                    ey = 3
+                    ex += 2
+        return roster
+
+    # ================================================================
     # Status helper
     # ================================================================
     def _set_status(self, text: str, ttl: int = 180) -> None:
