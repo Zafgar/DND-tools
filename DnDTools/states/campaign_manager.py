@@ -13,6 +13,7 @@ import pygame
 import os
 import copy
 import re
+import logging
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
 from ui.components import Button, Panel, fonts, TabBar, Badge, Divider, draw_gradient_rect
 from engine.entities import Entity
@@ -380,6 +381,8 @@ class CampaignManagerState:
                                           self._toggle_services_view, color=COLORS["success"])
         self.btn_world_travel = Button(1118, SCREEN_HEIGHT - 60, 100, 45, "Travel",
                                         self._toggle_travel_view, color=COLORS["warning"])
+        self.btn_open_map_editor = Button(1226, SCREEN_HEIGHT - 60, 130, 45, "Karttaeditori",
+                                           self._open_map_editor, color=COLORS["accent"])
 
     def _load_world_from_campaign(self) -> World:
         """Load or create World from campaign's world_data."""
@@ -773,6 +776,55 @@ class CampaignManagerState:
         else:
             self.world_view = "quests"
             self.scroll_y = 0
+
+    def _open_map_editor(self):
+        """Launch MapEditorState on the campaign's primary world map.
+
+        Creates a top-level WorldMap the first time the DM opens the editor.
+        Subsequent openings reuse the persisted map file.
+        """
+        import os
+        from data.map_engine import (
+            WorldMap, MAPS_DIR,
+            save_world_map, load_world_map,
+        )
+
+        # Persist pending world edits before leaving the screen
+        try:
+            self.campaign.world_data = self._serialize_world()
+        except Exception as ex:
+            logging.warning(f"[MAP_EDITOR] Pre-save of world_data failed: {ex}")
+
+        wm = None
+        map_id = (self.campaign.active_map_id
+                  or self.campaign.primary_world_map_id)
+        if map_id:
+            path = os.path.join(MAPS_DIR, f"{map_id}.json")
+            if os.path.isfile(path):
+                try:
+                    wm = load_world_map(path)
+                except Exception as ex:
+                    logging.warning(f"[MAP_EDITOR] Load failed: {ex}")
+
+        if wm is None:
+            wm = WorldMap(
+                name=f"{self.campaign.name} — maailma",
+                map_type="world",
+            )
+            try:
+                save_world_map(wm)
+            except Exception as ex:
+                logging.warning(f"[MAP_EDITOR] Initial save failed: {ex}")
+            self.campaign.primary_world_map_id = wm.id
+            self.campaign.active_map_id = wm.id
+
+        self.manager.change_state(
+            "MAP_EDITOR",
+            world_map=wm,
+            campaign=self.campaign,
+            world=self.world,
+            back_state="CAMPAIGN",
+        )
 
     def _load_map_positions(self):
         """Load location map positions from world data."""
@@ -1173,6 +1225,7 @@ class CampaignManagerState:
                 self.btn_world_templates.handle_event(event)
                 self.btn_world_services.handle_event(event)
                 self.btn_world_travel.handle_event(event)
+                self.btn_open_map_editor.handle_event(event)
 
     def _handle_party_click(self, mp):
         mx, my = mp
@@ -2047,6 +2100,7 @@ class CampaignManagerState:
             self.btn_world_templates.draw(screen, mp)
             self.btn_world_services.draw(screen, mp)
             self.btn_world_travel.draw(screen, mp)
+            self.btn_open_map_editor.draw(screen, mp)
 
         # Modal overlay
         if self.modal:

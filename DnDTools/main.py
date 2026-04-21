@@ -40,6 +40,7 @@ from states.game_states import MenuState, BattleState, EncounterSetupState
 from states.hero_creator import HeroCreatorState
 from states.combat_roster import CombatRosterState
 from states.campaign_manager import CampaignManagerState
+from states.map_editor import MapEditorState
 
 # --- FLASK SERVER SETUP ---
 app = Flask(__name__)
@@ -90,6 +91,7 @@ class GameManager:
             "COMBAT_ROSTER": CombatRosterState(self),
             "CAMPAIGN": None,
             "BATTLE": None,
+            "MAP_EDITOR": None,
         }
         self.current_state = self.states["MENU"]
 
@@ -106,6 +108,19 @@ class GameManager:
         elif state_name == "CAMPAIGN":
             campaign = kwargs.get("campaign")
             self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)
+        elif state_name == "MAP_EDITOR":
+            world_map = kwargs.get("world_map")
+            if world_map is None:
+                logging.warning("MAP_EDITOR requires world_map kwarg; ignoring change.")
+                return
+            self.states["MAP_EDITOR"] = MapEditorState(
+                self,
+                world_map,
+                campaign=kwargs.get("campaign"),
+                world=kwargs.get("world"),
+                back_state=kwargs.get("back_state", ""),
+                callbacks=kwargs.get("callbacks"),
+            )
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
 

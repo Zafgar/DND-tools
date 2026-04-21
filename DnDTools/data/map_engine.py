@@ -1,11 +1,16 @@
 """
-World Map Engine — Phase 1 foundation for the interactive map editor.
+World Map Engine — tile/pixel-layer data model for the interactive map editor.
 
-Defines the tile-layer-object data model used by the WorldMap editor. Separate
-from the combat grid terrain (engine/terrain.py). Persists as JSON files in
-saves/maps/<map_id>.json, referenced by ID from a World or Campaign.
+Separate from the combat grid terrain (engine/terrain.py). Persists as JSON
+files in saves/maps/<map_id>.json. Each WorldMap is self-contained and can:
+  * Host an uploaded background image (e.g. an Inkarnate JPG) at any resolution.
+  * Carry terrain tile layers painted on top of the background.
+  * Hold objects (pins, tokens, treasures, traps, armies) with links to
+    Locations, NPCs, sub-maps and encounters.
+  * Store user-drawn annotation paths used for distance measurement or route
+    illustrations.
 
-See plan.md "Phase 1: Map Engine Foundation" for the reference spec.
+See plan.md and design discussion in claude/dnd-gm-assistant-tool-n03eS.
 """
 from __future__ import annotations
 
@@ -13,8 +18,9 @@ import json
 import os
 import time
 import uuid
+import math
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 
 # ----------------------------------------------------------------------
@@ -53,7 +59,7 @@ TERRAIN_BRUSHES: Dict[str, Dict] = {
 
 
 MAP_OBJECT_TYPES: Dict[str, Dict] = {
-    # Settlements
+    # Settlements — click to open sub-map / NPC panel
     "capital": {"icon": "*",  "size": 2.0, "color": (255, 215, 0)},
     "city":    {"icon": "O",  "size": 1.5, "color": (200, 200, 220)},
     "town":    {"icon": "o",  "size": 1.0, "color": (160, 160, 180)},
@@ -67,7 +73,8 @@ MAP_OBJECT_TYPES: Dict[str, Dict] = {
     "info_pin":      {"icon": "i", "size": 0.6, "color": (80, 160, 255)},
     "quest_marker":  {"icon": "!", "size": 0.8, "color": (255, 200, 40)},
     "danger_marker": {"icon": "x", "size": 0.8, "color": (200, 40, 40)},
-    "treasure":      {"icon": "$", "size": 0.6, "color": (255, 215, 0)},
+    "treasure":      {"icon": "$", "size": 0.7, "color": (255, 215, 0)},
+    "trap":          {"icon": "X", "size": 0.6, "color": (220, 100, 40)},
     "camp":          {"icon": "^", "size": 0.7, "color": (200, 140, 60)},
     # D&D-specific
     "temple":        {"icon": "+", "size": 0.9, "color": (255, 240, 180)},
@@ -75,39 +82,95 @@ MAP_OBJECT_TYPES: Dict[str, Dict] = {
     "shop":          {"icon": "$", "size": 0.6, "color": (200, 180, 40)},
     "guild":         {"icon": "G", "size": 0.8, "color": (160, 160, 200)},
     "dock":          {"icon": "&", "size": 0.8, "color": (80, 140, 200)},
+    # Drill-down entrances (click to open sub-map)
+    "cave":          {"icon": "O", "size": 0.8, "color": (60, 50, 45)},
+    "dungeon":       {"icon": "D", "size": 0.9, "color": (90, 40, 40)},
+    "portal_down":   {"icon": "v", "size": 0.8, "color": (160, 80, 200)},
+    "portal_up":     {"icon": "^", "size": 0.8, "color": (160, 80, 200)},
+    # Movable tokens
+    "party_token":   {"icon": "P", "size": 1.0, "color": (70, 180, 255)},
+    "npc_token":     {"icon": "N", "size": 0.8, "color": (255, 170, 70)},
+    "army_token":    {"icon": "A", "size": 1.2, "color": (220, 90, 90)},
+    "caravan":       {"icon": "C", "size": 0.9, "color": (220, 180, 80)},
 }
 
 
-MAP_TYPES: Tuple[str, ...] = ("world", "region", "town", "dungeon")
+# Object categories that count as "settlements" — their single-instance nature
+# is enforced by the kingdoms navigator so a city only exists in one place.
+SETTLEMENT_TYPES = ("capital", "city", "town", "village", "fort")
+# Object types that drill down into a sub-map when double-clicked.
+DRILLDOWN_TYPES = ("capital", "city", "town", "village", "fort",
+                   "cave", "dungeon", "portal_down", "portal_up")
+# Object types that represent a movable party/NPC/army token.
+TOKEN_TYPES = ("party_token", "npc_token", "army_token", "caravan")
+
+
+MAP_TYPES: Tuple[str, ...] = ("world", "region", "town", "dungeon", "plane")
 LAYER_TYPES: Tuple[str, ...] = ("surface", "underground", "plane")
 
 
 # ----------------------------------------------------------------------
-# Data classes
+# Helpers
 # ----------------------------------------------------------------------
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
+def _now_stamp() -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+
+# ----------------------------------------------------------------------
+# Data classes
+# ----------------------------------------------------------------------
+
 @dataclass
 class MapObject:
+    """A pin, token, building marker, treasure cache, trap… anything placed on
+    the map.  Position stored as world percentage (0-100) so it stays correct
+    regardless of map resolution or zoom."""
     id: str = ""
-    x: float = 0.0              # world percentage 0-100 (tile-independent)
+    x: float = 0.0
     y: float = 0.0
     object_type: str = "info_pin"
     icon: str = ""
     color: Tuple[int, int, int] = (200, 200, 200)
     size: float = 1.0
     label: str = ""
-    linked_location_id: str = ""
-    linked_info: str = ""
+    # Hover tooltip — short, shown while cursor is over the object.
+    hover_info: str = ""
+    # Long-form DM notes shown in the detail panel.
+    notes: str = ""
+    # Visibility / DM-only
+    visible: bool = True
+    dm_only: bool = False
+    hidden: bool = False           # Alias used for hidden traps / secret doors
+    discovered: bool = True        # When False, player view hides the marker
+    # Links
+    linked_location_id: str = ""   # World.locations id
+    linked_npc_ids: List[str] = field(default_factory=list)
+    linked_map_id: str = ""        # Drill-down to another WorldMap
+    linked_encounter_id: str = ""  # Quick-start encounter from this token
+    linked_info: str = ""          # Free-text extended info (legacy field)
+    # Treasure-specific
+    treasure_items: List[str] = field(default_factory=list)
+    treasure_gold: float = 0.0
+    # Trap-specific
+    trap_save: str = ""            # "DC 15 DEX"
+    trap_damage: str = ""          # "2d10 piercing"
+    lockpick_dc: int = 0
+    detect_dc: int = 0
+    # Token / army-specific
+    unit_count: int = 0
+    unit_type: str = ""            # "orcs", "knights", etc.
+    faction: str = ""              # Army allegiance
+    # Misc
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.id:
             self.id = _new_id("obj")
-        # Fill visual defaults from palette if caller didn't.
         proto = MAP_OBJECT_TYPES.get(self.object_type)
         if proto:
             if not self.icon:
@@ -116,6 +179,42 @@ class MapObject:
                 self.color = proto["color"]
             if self.size == 1.0 and proto["size"] != 1.0:
                 self.size = proto["size"]
+
+    # Convenience
+    @property
+    def is_drilldown(self) -> bool:
+        return bool(self.linked_map_id) or self.object_type in DRILLDOWN_TYPES
+
+    @property
+    def is_token(self) -> bool:
+        return self.object_type in TOKEN_TYPES
+
+
+@dataclass
+class AnnotationPath:
+    """A user-drawn polyline on the map — typically a road, river or party
+    travel trail.  Used for distance measurement (sum of segment lengths in
+    map %, times the map scale)."""
+    id: str = ""
+    name: str = ""
+    path_type: str = "route"       # route, road, river, secret, travel
+    color: Tuple[int, int, int] = (230, 190, 70)
+    thickness: int = 3
+    points: List[Tuple[float, float]] = field(default_factory=list)  # world %
+    dashed: bool = False
+    notes: str = ""
+
+    def __post_init__(self):
+        if not self.id:
+            self.id = _new_id("path")
+
+    def length_pct(self) -> float:
+        total = 0.0
+        for i in range(1, len(self.points)):
+            a = self.points[i - 1]
+            b = self.points[i]
+            total += math.hypot(b[0] - a[0], b[1] - a[1])
+        return total
 
 
 @dataclass
@@ -126,7 +225,7 @@ class MapLayer:
     depth: int = 0
     visible: bool = True
     opacity: float = 1.0
-    tiles: Dict[str, str] = field(default_factory=dict)  # "x,y" -> brush_key
+    tiles: Dict[str, str] = field(default_factory=dict)
     objects: List[MapObject] = field(default_factory=list)
     background_color: Tuple[int, int, int] = (30, 40, 55)
 
@@ -152,15 +251,12 @@ class MapLayer:
         self.tiles.pop(self._key(x, y), None)
 
     def paint_brush(self, cx: int, cy: int, brush_key: str, radius: int = 0) -> None:
-        """Paint a square brush of side (2*radius+1) centred on (cx,cy)."""
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
                 self.set_tile(cx + dx, cy + dy, brush_key)
 
     def flood_fill(self, x: int, y: int, brush_key: str,
                    width: int, height: int) -> int:
-        """4-connected flood fill starting at (x,y). Returns tiles changed.
-        Bounded by (width, height) of the map so it cannot run to infinity."""
         if not (0 <= x < width and 0 <= y < height):
             return 0
         target = self.get_tile(x, y)
@@ -189,18 +285,27 @@ class WorldMap:
     id: str = ""
     name: str = "New Map"
     map_type: str = "world"
-    parent_map_id: str = ""
+    parent_map_id: str = ""        # Drill-up: cave map -> its overworld map
+    owner_kingdom: str = ""        # Tarmaas / Fundarla / … for navigation
     width: int = 64
     height: int = 48
     tile_size: int = 24
     layers: List[MapLayer] = field(default_factory=list)
     active_layer_idx: int = 0
-    background_image: str = ""
+    background_image: str = ""     # Relative project path to uploaded JPG/PNG
+    bg_opacity: float = 1.0
     grid_visible: bool = True
     grid_color: Tuple[int, int, int] = (60, 60, 80)
+    # Scale calibration — lets the editor convert map-% distances to miles.
+    scale_miles_per_pct: float = 1.0   # 1% of map width == this many miles
+    travel_speed_miles_per_day: float = 24.0   # default overland march
+    # User-drawn annotation paths (routes, rivers, travel lines)
+    annotations: List[AnnotationPath] = field(default_factory=list)
+    # Notes / description
+    description: str = ""
     created: str = ""
     last_modified: str = ""
-    # Camera (not serialized)
+    # Camera (not serialized — transient view state)
     camera_x: float = 0.0
     camera_y: float = 0.0
     zoom: float = 1.0
@@ -236,6 +341,39 @@ class WorldMap:
             self.active_layer_idx = len(self.layers) - 1
         return True
 
+    # ---- object helpers ----
+    def all_objects(self) -> List[MapObject]:
+        out: List[MapObject] = []
+        for layer in self.layers:
+            out.extend(layer.objects)
+        return out
+
+    def find_object(self, obj_id: str) -> Optional[MapObject]:
+        for layer in self.layers:
+            for obj in layer.objects:
+                if obj.id == obj_id:
+                    return obj
+        return None
+
+    def remove_object(self, obj_id: str) -> bool:
+        for layer in self.layers:
+            for i, obj in enumerate(layer.objects):
+                if obj.id == obj_id:
+                    del layer.objects[i]
+                    return True
+        return False
+
+    # ---- geometry helpers ----
+    def pct_to_miles(self, dx_pct: float, dy_pct: float) -> float:
+        """Straight-line distance between two %-points converted to miles using
+        the map's scale calibration.  Treats the horizontal axis as reference."""
+        d = math.hypot(dx_pct, dy_pct)
+        return d * max(self.scale_miles_per_pct, 0.0)
+
+    def miles_to_travel_days(self, miles: float) -> float:
+        spd = self.travel_speed_miles_per_day or 1.0
+        return miles / spd
+
 
 # ----------------------------------------------------------------------
 # Serialization
@@ -246,44 +384,100 @@ MAPS_DIR = os.path.join(
 )
 
 
-def _now_stamp() -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+def _obj_to_dict(obj: MapObject) -> dict:
+    d = asdict(obj)
+    d["color"] = list(obj.color)
+    return d
+
+
+def _obj_from_dict(d: dict) -> MapObject:
+    return MapObject(
+        id=d.get("id", ""),
+        x=float(d.get("x", 0.0)),
+        y=float(d.get("y", 0.0)),
+        object_type=d.get("object_type", "info_pin"),
+        icon=d.get("icon", ""),
+        color=tuple(d.get("color", (200, 200, 200))),
+        size=float(d.get("size", 1.0)),
+        label=d.get("label", ""),
+        hover_info=d.get("hover_info", ""),
+        notes=d.get("notes", ""),
+        visible=bool(d.get("visible", True)),
+        dm_only=bool(d.get("dm_only", False)),
+        hidden=bool(d.get("hidden", False)),
+        discovered=bool(d.get("discovered", True)),
+        linked_location_id=d.get("linked_location_id", ""),
+        linked_npc_ids=list(d.get("linked_npc_ids", [])),
+        linked_map_id=d.get("linked_map_id", ""),
+        linked_encounter_id=d.get("linked_encounter_id", ""),
+        linked_info=d.get("linked_info", ""),
+        treasure_items=list(d.get("treasure_items", [])),
+        treasure_gold=float(d.get("treasure_gold", 0.0)),
+        trap_save=d.get("trap_save", ""),
+        trap_damage=d.get("trap_damage", ""),
+        lockpick_dc=int(d.get("lockpick_dc", 0)),
+        detect_dc=int(d.get("detect_dc", 0)),
+        unit_count=int(d.get("unit_count", 0)),
+        unit_type=d.get("unit_type", ""),
+        faction=d.get("faction", ""),
+        tags=list(d.get("tags", [])),
+    )
+
+
+def _path_to_dict(p: AnnotationPath) -> dict:
+    return {
+        "id": p.id, "name": p.name, "path_type": p.path_type,
+        "color": list(p.color), "thickness": p.thickness,
+        "points": [list(pt) for pt in p.points],
+        "dashed": p.dashed, "notes": p.notes,
+    }
+
+
+def _path_from_dict(d: dict) -> AnnotationPath:
+    return AnnotationPath(
+        id=d.get("id", ""), name=d.get("name", ""),
+        path_type=d.get("path_type", "route"),
+        color=tuple(d.get("color", (230, 190, 70))),
+        thickness=int(d.get("thickness", 3)),
+        points=[tuple(pt) for pt in d.get("points", [])],
+        dashed=bool(d.get("dashed", False)),
+        notes=d.get("notes", ""),
+    )
 
 
 def serialize_world_map(wm: WorldMap) -> dict:
     """Dump a WorldMap to a JSON-ready dict. Skips transient camera state."""
-    data = asdict(wm)
-    for key in WorldMap._TRANSIENT_FIELDS:
-        data.pop(key, None)
-    # Tuples become lists through asdict -> ensure consistent shape.
-    data["grid_color"] = list(wm.grid_color)
-    for i, layer_dict in enumerate(data["layers"]):
-        layer_dict["background_color"] = list(wm.layers[i].background_color)
-        for j, obj_dict in enumerate(layer_dict["objects"]):
-            obj_dict["color"] = list(wm.layers[i].objects[j].color)
-    return data
+    return {
+        "id": wm.id, "name": wm.name, "map_type": wm.map_type,
+        "parent_map_id": wm.parent_map_id,
+        "owner_kingdom": wm.owner_kingdom,
+        "width": wm.width, "height": wm.height, "tile_size": wm.tile_size,
+        "active_layer_idx": wm.active_layer_idx,
+        "background_image": wm.background_image,
+        "bg_opacity": wm.bg_opacity,
+        "grid_visible": wm.grid_visible,
+        "grid_color": list(wm.grid_color),
+        "scale_miles_per_pct": wm.scale_miles_per_pct,
+        "travel_speed_miles_per_day": wm.travel_speed_miles_per_day,
+        "description": wm.description,
+        "created": wm.created, "last_modified": wm.last_modified,
+        "layers": [
+            {
+                "id": l.id, "name": l.name, "layer_type": l.layer_type,
+                "depth": l.depth, "visible": l.visible, "opacity": l.opacity,
+                "tiles": dict(l.tiles),
+                "background_color": list(l.background_color),
+                "objects": [_obj_to_dict(o) for o in l.objects],
+            }
+            for l in wm.layers
+        ],
+        "annotations": [_path_to_dict(p) for p in wm.annotations],
+    }
 
 
 def deserialize_world_map(data: dict) -> WorldMap:
-    """Reconstruct a WorldMap from a dict produced by serialize_world_map()."""
     layers = []
     for ldata in data.get("layers", []):
-        objects = []
-        for odata in ldata.get("objects", []):
-            obj = MapObject(
-                id=odata.get("id", ""),
-                x=float(odata.get("x", 0.0)),
-                y=float(odata.get("y", 0.0)),
-                object_type=odata.get("object_type", "info_pin"),
-                icon=odata.get("icon", ""),
-                color=tuple(odata.get("color", (200, 200, 200))),
-                size=float(odata.get("size", 1.0)),
-                label=odata.get("label", ""),
-                linked_location_id=odata.get("linked_location_id", ""),
-                linked_info=odata.get("linked_info", ""),
-                tags=list(odata.get("tags", [])),
-            )
-            objects.append(obj)
         layers.append(MapLayer(
             id=ldata.get("id", ""),
             name=ldata.get("name", "Surface"),
@@ -292,31 +486,35 @@ def deserialize_world_map(data: dict) -> WorldMap:
             visible=bool(ldata.get("visible", True)),
             opacity=float(ldata.get("opacity", 1.0)),
             tiles=dict(ldata.get("tiles", {})),
-            objects=objects,
+            objects=[_obj_from_dict(od) for od in ldata.get("objects", [])],
             background_color=tuple(ldata.get("background_color", (30, 40, 55))),
         ))
 
-    wm = WorldMap(
+    return WorldMap(
         id=data.get("id", ""),
         name=data.get("name", "New Map"),
         map_type=data.get("map_type", "world"),
         parent_map_id=data.get("parent_map_id", ""),
+        owner_kingdom=data.get("owner_kingdom", ""),
         width=int(data.get("width", 64)),
         height=int(data.get("height", 48)),
         tile_size=int(data.get("tile_size", 24)),
         layers=layers or [MapLayer(name="Surface")],
         active_layer_idx=int(data.get("active_layer_idx", 0)),
         background_image=data.get("background_image", ""),
+        bg_opacity=float(data.get("bg_opacity", 1.0)),
         grid_visible=bool(data.get("grid_visible", True)),
         grid_color=tuple(data.get("grid_color", (60, 60, 80))),
+        scale_miles_per_pct=float(data.get("scale_miles_per_pct", 1.0)),
+        travel_speed_miles_per_day=float(data.get("travel_speed_miles_per_day", 24.0)),
+        description=data.get("description", ""),
         created=data.get("created", _now_stamp()),
         last_modified=data.get("last_modified", _now_stamp()),
+        annotations=[_path_from_dict(pd) for pd in data.get("annotations", [])],
     )
-    return wm
 
 
 def save_world_map(wm: WorldMap, directory: str = MAPS_DIR) -> str:
-    """Persist a WorldMap to <directory>/<id>.json. Returns the file path."""
     os.makedirs(directory, exist_ok=True)
     wm.last_modified = _now_stamp()
     path = os.path.join(directory, f"{wm.id}.json")
@@ -331,7 +529,26 @@ def load_world_map(path: str) -> WorldMap:
 
 
 def list_world_maps(directory: str = MAPS_DIR) -> List[str]:
-    """Return a sorted list of .json files in the maps directory."""
     if not os.path.isdir(directory):
         return []
     return sorted(f for f in os.listdir(directory) if f.endswith(".json"))
+
+
+def load_all_world_maps(directory: str = MAPS_DIR) -> Dict[str, WorldMap]:
+    """Load every saved map into an {id: WorldMap} dict."""
+    out: Dict[str, WorldMap] = {}
+    for fname in list_world_maps(directory):
+        try:
+            wm = load_world_map(os.path.join(directory, fname))
+            out[wm.id] = wm
+        except Exception:
+            continue
+    return out
+
+
+def delete_world_map(map_id: str, directory: str = MAPS_DIR) -> bool:
+    path = os.path.join(directory, f"{map_id}.json")
+    if os.path.isfile(path):
+        os.remove(path)
+        return True
+    return False
