@@ -252,7 +252,7 @@ def _draw_top_bar(state, screen) -> None:
     mp = pygame.mouse.get_pos()
     for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                 state.btn_grid, state.btn_scale, state.btn_layers,
-                state.btn_parent, state.btn_nav):
+                state.btn_parent, state.btn_nav, state.btn_army_sim):
         btn.draw(screen, mp)
     # Map name
     name = f"{state.world_map.name}  ({state.world_map.map_type})"

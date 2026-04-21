@@ -189,6 +189,10 @@ class MapEditorState(GameState):
         self._navigator = None
         self.navigator_open = False
 
+        # --- Army-vs-army picker state --------------------------------------
+        self.army_pick_mode: bool = False
+        self._army_pick_a = None
+
         # Centre camera on the map by default
         self._center_camera()
 
@@ -217,6 +221,67 @@ class MapEditorState(GameState):
             self._edit_modal = None
 
         self._edit_modal = NPCDetailModal(self.world, npc_ids, _close)
+
+    # ------------------------------------------------------------------
+    # Army-vs-army simulation: two-click picker on the canvas
+    # ------------------------------------------------------------------
+    def begin_army_battle_pick(self) -> None:
+        """Enter a mode where the next two army_token clicks on the canvas
+        feed into an abstract army-vs-army Monte Carlo simulation."""
+        self.army_pick_mode = True
+        self._army_pick_a = None
+        self._set_status(
+            "Valitse ensimmäinen armeija kartalta (paina ESC peruuttaaksesi)."
+        )
+
+    def cancel_army_pick(self) -> None:
+        self.army_pick_mode = False
+        self._army_pick_a = None
+        self._set_status("Armeijavalinta peruttu.")
+
+    def handle_army_pick_click(self, obj) -> bool:
+        """Called from the canvas click router when army_pick_mode is on.
+        Returns True if the click was consumed."""
+        if not self.army_pick_mode:
+            return False
+        if obj is None or obj.object_type != "army_token" or not obj.unit_type:
+            self._set_status("Napsauta armeijan yksikköä (army_token).")
+            return True
+        if self._army_pick_a is None:
+            self._army_pick_a = obj
+            self._set_status(
+                f"Ensimmäinen valittu: {obj.label or obj.unit_type}. "
+                "Valitse vastustaja."
+            )
+            return True
+        if obj.id == self._army_pick_a.id:
+            self._set_status("Valitse eri kohde vastustajaksi.")
+            return True
+        self._open_army_battle(self._army_pick_a, obj)
+        self.army_pick_mode = False
+        self._army_pick_a = None
+        return True
+
+    def _open_army_battle(self, obj_a, obj_b) -> None:
+        from data.army_sim import army_from_map_object
+        from states.map_editor_army_modal import ArmyBattleModal
+        from data.library import library
+
+        army_a = army_from_map_object(obj_a, library=library)
+        army_b = army_from_map_object(obj_b, library=library)
+        if army_a is None or army_b is None:
+            self._set_status(
+                "Yksikkötyyppiä ei löydy kirjastosta — tarkista unit_type."
+            )
+            return
+
+        def _close():
+            self._edit_modal = None
+
+        self._edit_modal = ArmyBattleModal(army_a, army_b, _close)
+        self._set_status(
+            f"Simulaatio: {army_a.name} vs {army_b.name}"
+        )
 
     # ================================================================
     # Layout
@@ -387,6 +452,8 @@ class MapEditorState(GameState):
         self.btn_layers   = mk("Kerrokset",  110, self._on_cycle_layer)
         self.btn_parent   = mk("^ Ylös",      90, self._on_go_parent)
         self.btn_nav      = mk("Kuningaskunnat", 150, self._toggle_navigator)
+        self.btn_army_sim = mk("Simuloi armeijat", 160, self.begin_army_battle_pick,
+                                COLORS["warning"])
         # Parent button only enabled if we have history or parent_map_id
         self._refresh_parent_button()
 

@@ -40,7 +40,7 @@ def route_events(state, events) -> None:
         # Top-bar buttons
         for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                     state.btn_grid, state.btn_scale, state.btn_layers,
-                    state.btn_parent, state.btn_nav):
+                    state.btn_parent, state.btn_nav, state.btn_army_sim):
             btn.handle_event(ev)
 
         # Navigator consumes its own events when open
@@ -137,6 +137,9 @@ def _handle_brush_picker_click(state, pos, start_y) -> None:
 
 def _handle_key(state, ev) -> None:
     if ev.key == pygame.K_ESCAPE:
+        if getattr(state, "army_pick_mode", False):
+            state.cancel_army_pick()
+            return
         state.measure_points = []
         state.draw_points = []
         state.selected_object_id = ""
@@ -266,6 +269,10 @@ def _handle_mouse_motion(state, ev, mp) -> None:
 
 def _tool_select_down(state, mp) -> None:
     obj = state.object_at_screen(*mp)
+    # Army-picker mode intercepts the first two army_token clicks
+    if getattr(state, "army_pick_mode", False):
+        if state.handle_army_pick_click(obj):
+            return
     if obj is None:
         state.selected_object_id = ""
         # Fall back to annotation pick so the DM can inspect routes
