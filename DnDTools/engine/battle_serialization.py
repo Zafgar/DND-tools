@@ -83,6 +83,7 @@ def get_state_dict(battle) -> dict:
             "elevation": e.elevation,
             "is_flying": e.is_flying,
             "is_climbing": e.is_climbing,
+            "actor_id": getattr(e, "actor_id", ""),
         }
         data["entities"].append(ent_data)
     return data
@@ -135,6 +136,7 @@ def _restore_entity_fields(e, ent_data):
     e.elevation = ent_data.get("elevation", 0)
     e.is_flying = ent_data.get("is_flying", False)
     e.is_climbing = ent_data.get("is_climbing", False)
+    e.actor_id = ent_data.get("actor_id", "")
 
 
 def _resolve_stats(ent_data, hero_map, heroes):

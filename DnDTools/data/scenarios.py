@@ -18,7 +18,11 @@ monsters (drawn from ``data.library``), ceiling, weather, and optional
 JPG background. Party members are not spawned here — the existing
 deployment phase places them on the scenario's ``party_spawns`` cells.
 """
-from dataclasses import dataclass, field
+import json
+import os
+import re
+import uuid
+from dataclasses import dataclass, field, asdict
 from typing import List, Tuple, Callable, Dict, Optional
 
 
@@ -460,13 +464,18 @@ _BY_ID: Dict[str, Scenario] = {s.id: s for s in SCENARIOS}
 
 
 def get_scenario(sid: str) -> Scenario:
-    if sid not in _BY_ID:
-        raise KeyError(f"Scenario '{sid}' not found")
-    return _BY_ID[sid]
+    if sid in _BY_ID:
+        return _BY_ID[sid]
+    _ensure_user_loaded()
+    for s in _USER_SCENARIOS:
+        if s.id == sid:
+            return s
+    raise KeyError(f"Scenario '{sid}' not found")
 
 
 def list_all() -> List[Scenario]:
-    return list(SCENARIOS)
+    _ensure_user_loaded()
+    return list(SCENARIOS) + list(_USER_SCENARIOS)
 
 
 def list_categories() -> Tuple[str, ...]:
@@ -474,12 +483,12 @@ def list_categories() -> Tuple[str, ...]:
 
 
 def list_by_category(category: str) -> List[Scenario]:
-    return [s for s in SCENARIOS if s.category == category]
+    return [s for s in list_all() if s.category == category]
 
 
 def list_by_level(level: int) -> List[Scenario]:
     """Scenarios that accommodate a party of ``level``."""
-    return [s for s in SCENARIOS
+    return [s for s in list_all()
             if s.recommended_level_min <= level <= s.recommended_level_max]
 
 
@@ -511,6 +520,185 @@ def scenario_monsters_as_entities(scenario: Scenario, existing_roster=None):
         ent.team = mon.team
         out.append(ent)
     return out
+
+
+# --------------------------------------------------------------------- #
+# User-authored scenarios (DM saves their own as reusable prefabs)
+# --------------------------------------------------------------------- #
+_USER_SCENARIOS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "saves", "user_scenarios",
+)
+_USER_SCENARIOS: List[Scenario] = []
+_USER_LOADED = False
+
+
+def _slugify(s: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s.strip().lower()).strip("_")
+    return s or f"scenario_{uuid.uuid4().hex[:8]}"
+
+
+def _scenario_to_dict(s: Scenario) -> dict:
+    """Convert a Scenario to a JSON-safe dict."""
+    return {
+        "id": s.id, "name": s.name, "category": s.category,
+        "description": s.description,
+        "recommended_party_size": s.recommended_party_size,
+        "recommended_level_min": s.recommended_level_min,
+        "recommended_level_max": s.recommended_level_max,
+        "weather": s.weather,
+        "ceiling_ft": s.ceiling_ft,
+        "background_image_path": s.background_image_path,
+        "tags": list(s.tags),
+        "tiles": [asdict(t) for t in s.tiles],
+        "monsters": [asdict(m) for m in s.monsters],
+        "party_spawns": [list(sp) for sp in s.party_spawns],
+        "lair_enabled": s.lair_enabled,
+    }
+
+
+def _scenario_from_dict(d: dict) -> Scenario:
+    return Scenario(
+        id=d.get("id", ""), name=d.get("name", ""),
+        category=d.get("category", "outdoor"),
+        description=d.get("description", ""),
+        recommended_party_size=int(d.get("recommended_party_size", 4)),
+        recommended_level_min=int(d.get("recommended_level_min", 1)),
+        recommended_level_max=int(d.get("recommended_level_max", 5)),
+        weather=d.get("weather", "Clear"),
+        ceiling_ft=int(d.get("ceiling_ft", 0)),
+        background_image_path=d.get("background_image_path", ""),
+        tags=tuple(d.get("tags", [])),
+        tiles=[ScenarioTile(**t) for t in d.get("tiles", [])],
+        monsters=[ScenarioMonster(**m) for m in d.get("monsters", [])],
+        party_spawns=[tuple(sp) for sp in d.get("party_spawns", [])],
+        lair_enabled=bool(d.get("lair_enabled", False)),
+    )
+
+
+def _ensure_user_loaded():
+    global _USER_LOADED
+    if _USER_LOADED:
+        return
+    _USER_LOADED = True
+    if not os.path.isdir(_USER_SCENARIOS_DIR):
+        return
+    for fname in sorted(os.listdir(_USER_SCENARIOS_DIR)):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(_USER_SCENARIOS_DIR, fname),
+                      encoding="utf-8") as f:
+                _USER_SCENARIOS.append(_scenario_from_dict(json.load(f)))
+        except (json.JSONDecodeError, OSError, TypeError):
+            continue
+
+
+def save_user_scenario(scenario: Scenario, directory: str = None) -> str:
+    """Write ``scenario`` to JSON under ``directory`` (defaults to the
+    project-standard saves/user_scenarios/). Assigns an id if missing
+    and adds it to the in-memory user catalog. Returns the file path."""
+    _ensure_user_loaded()
+    directory = directory or _USER_SCENARIOS_DIR
+    os.makedirs(directory, exist_ok=True)
+    if not scenario.id:
+        scenario.id = _slugify(scenario.name) or f"user_{uuid.uuid4().hex[:8]}"
+    path = os.path.join(directory, f"{scenario.id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_scenario_to_dict(scenario), f, indent=2, ensure_ascii=False)
+
+    # Refresh in-memory catalog: replace if same id, else append
+    for i, existing in enumerate(_USER_SCENARIOS):
+        if existing.id == scenario.id:
+            _USER_SCENARIOS[i] = scenario
+            return path
+    _USER_SCENARIOS.append(scenario)
+    return path
+
+
+def delete_user_scenario(scenario_id: str,
+                          directory: str = None) -> bool:
+    _ensure_user_loaded()
+    directory = directory or _USER_SCENARIOS_DIR
+    path = os.path.join(directory, f"{scenario_id}.json")
+    if os.path.isfile(path):
+        os.remove(path)
+    for i, s in enumerate(_USER_SCENARIOS):
+        if s.id == scenario_id:
+            del _USER_SCENARIOS[i]
+            return True
+    return False
+
+
+def list_user_scenarios() -> List[Scenario]:
+    _ensure_user_loaded()
+    return list(_USER_SCENARIOS)
+
+
+def reset_user_cache_for_tests():
+    """Drop the in-memory cache so the next call reloads from disk."""
+    global _USER_LOADED
+    _USER_SCENARIOS.clear()
+    _USER_LOADED = False
+
+
+def scenario_from_battle(battle, name: str, category: str = "outdoor",
+                          description: str = "",
+                          recommended_level_min: int = 1,
+                          recommended_level_max: int = 5,
+                          tags: Tuple[str, ...] = ()) -> Scenario:
+    """Snapshot the current ``BattleSystem`` as a Scenario.
+
+    * Terrain → ScenarioTile list (preserving elevation overrides)
+    * Non-player Entities → ScenarioMonster list (at int-rounded grid
+      positions). Entities' stats are referenced by *base name* so
+      `library.get_monster()` can resolve them on load.
+    * Player Entities' positions become ``party_spawns``.
+    * ceiling_ft, weather, lair_enabled, background_image_path are
+      copied from the battle.
+    """
+    tiles: List[ScenarioTile] = []
+    for t in battle.terrain:
+        tile_elev = t.elevation if t.elevation != t.props.get(
+            "elevation_ft", 0) else -1
+        tiles.append(ScenarioTile(
+            terrain_type=t.terrain_type,
+            x=int(t.grid_x), y=int(t.grid_y),
+            w=int(t.width), h=int(t.height),
+            elevation=int(tile_elev) if tile_elev != -1 else -1,
+        ))
+
+    monsters: List[ScenarioMonster] = []
+    spawns: List[Tuple[int, int]] = []
+    for e in battle.entities:
+        if e.is_lair or e.is_summon:
+            continue
+        x, y = int(round(e.grid_x)), int(round(e.grid_y))
+        if e.is_player:
+            spawns.append((x, y))
+        else:
+            monsters.append(ScenarioMonster(
+                name=e.stats.name, x=x, y=y,
+                team=getattr(e, "team", "") or "Red",
+            ))
+
+    return Scenario(
+        id=_slugify(name),
+        name=name,
+        category=category if category in CATEGORIES else "outdoor",
+        description=description or f"Captured battle: {name}",
+        recommended_level_min=max(1, recommended_level_min),
+        recommended_level_max=max(recommended_level_min,
+                                    recommended_level_max),
+        weather=battle.weather,
+        ceiling_ft=int(getattr(battle, "ceiling_ft", 0)),
+        background_image_path=getattr(battle, "background_image_path", ""),
+        tags=tuple(tags),
+        tiles=tiles,
+        monsters=monsters,
+        party_spawns=spawns or [(2, 5), (2, 7), (3, 9), (3, 11)],
+        lair_enabled=bool(getattr(battle, "lair_enabled", False)),
+    )
 
 
 def apply_scenario_to_battle(scenario: Scenario, battle):

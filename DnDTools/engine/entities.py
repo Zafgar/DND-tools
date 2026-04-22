@@ -19,6 +19,11 @@ class Entity:
         self.lair_owner = None  # Reference to the entity that owns this lair action
         self.last_lair_action: str = ""  # MM: can't reuse same lair action two rounds in a row
         self.team = ""  # Team name for multi-team combat (e.g. "Blue", "Red", "Green", "Gold")
+        # Link back to the shared ActorRegistry entry. Combat Entities
+        # are ephemeral (spawned for an encounter), but when the DM
+        # wants the same NPC that walks the world map to appear here,
+        # they set actor_id so portraits/names/notes stay consistent.
+        self.actor_id: str = ""
 
         # Dynamic HP
         self.hp = stats.hit_points

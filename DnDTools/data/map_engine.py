@@ -92,6 +92,11 @@ MAP_OBJECT_TYPES: Dict[str, Dict] = {
     "npc_token":     {"icon": "N", "size": 0.8, "color": (255, 170, 70)},
     "army_token":    {"icon": "A", "size": 1.2, "color": (220, 90, 90)},
     "caravan":       {"icon": "C", "size": 0.9, "color": (220, 180, 80)},
+    # Vehicles that can carry passengers (Actor ids stored in
+    # passenger_actor_ids). Useful for ships, airships, caravans.
+    "ship":          {"icon": "S", "size": 1.3, "color": (120, 180, 220)},
+    "airship":       {"icon": "Z", "size": 1.4, "color": (180, 200, 240)},
+    "wagon":         {"icon": "W", "size": 0.9, "color": (180, 140, 80)},
 }
 
 
@@ -102,7 +107,10 @@ SETTLEMENT_TYPES = ("capital", "city", "town", "village", "fort")
 DRILLDOWN_TYPES = ("capital", "city", "town", "village", "fort",
                    "cave", "dungeon", "portal_down", "portal_up")
 # Object types that represent a movable party/NPC/army token.
-TOKEN_TYPES = ("party_token", "npc_token", "army_token", "caravan")
+TOKEN_TYPES = ("party_token", "npc_token", "army_token", "caravan",
+                "ship", "airship", "wagon")
+# Subset of tokens that carry passengers (linked via passenger_actor_ids).
+VEHICLE_TYPES = ("caravan", "ship", "airship", "wagon")
 
 
 MAP_TYPES: Tuple[str, ...] = ("world", "region", "town", "dungeon", "plane")
@@ -169,6 +177,12 @@ class MapObject:
     follow_path_id: str = ""
     path_progress_miles: float = 0.0
     travel_speed_mult: float = 1.0
+    # Link to the shared Actor registry so the same token (hero, NPC,
+    # vehicle) keeps its identity across world/town/battle views.
+    actor_id: str = ""
+    # Vehicle manifest: Actor ids of the passengers currently aboard.
+    # Only meaningful when object_type is in VEHICLE_TYPES.
+    passenger_actor_ids: List[str] = field(default_factory=list)
     # Misc
     tags: List[str] = field(default_factory=list)
 
@@ -427,6 +441,8 @@ def _obj_from_dict(d: dict) -> MapObject:
         follow_path_id=d.get("follow_path_id", ""),
         path_progress_miles=float(d.get("path_progress_miles", 0.0)),
         travel_speed_mult=float(d.get("travel_speed_mult", 1.0)),
+        actor_id=d.get("actor_id", ""),
+        passenger_actor_ids=list(d.get("passenger_actor_ids", [])),
         tags=list(d.get("tags", [])),
     )
 
