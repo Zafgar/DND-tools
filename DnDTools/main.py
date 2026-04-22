@@ -82,6 +82,14 @@ class GameManager:
         pygame.key.set_repeat(400, 50)  # Enable key repeat: 400ms delay, 50ms interval
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("D&D 5e AI Encounter Manager – Endgame Edition")
+
+        # Seed the Novus Somnium starter campaign on first run. Idempotent:
+        # existing campaigns (including user edits) are left alone.
+        try:
+            from data.novus_somnium import ensure_default_campaign
+            ensure_default_campaign()
+        except Exception as ex:
+            logging.warning(f"[Novus Somnium] seed failed: {ex}")
         self.clock = pygame.time.Clock()
         self.running = True
         self.states = {
