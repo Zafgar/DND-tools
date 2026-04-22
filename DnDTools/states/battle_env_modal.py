@@ -79,11 +79,21 @@ class BattleEnvironmentModal:
                 color=COLORS["panel"],
             ))
 
+        # Save-as-Scenario button (Phase 6d)
+        self.btn_save_scenario = Button(
+            self.x + 20, self.y + self.HEIGHT - 55,
+            200, 40, "Save as scenario...",
+            self._open_save_scenario, color=COLORS["accent"],
+        )
+
         # Close button
         self.btn_close = Button(
             self.x + self.WIDTH - 115, self.y + self.HEIGHT - 55,
             95, 40, "Close", self.close, color=COLORS["panel"],
         )
+
+        # Child modal, lazy
+        self._save_modal = None
 
     # ------------------------------------------------------------------ #
     # Actions
@@ -155,16 +165,29 @@ class BattleEnvironmentModal:
             f"[ENV] Ceiling set to {'open sky' if ft == 0 else f'{ft} ft'}."
         )
 
+    def _open_save_scenario(self):
+        from states.save_scenario_modal import SaveScenarioModal
+        if self._save_modal is None:
+            self._save_modal = SaveScenarioModal(
+                self.battle, log_callback=self.log
+            )
+        self._save_modal.open()
+
     # ------------------------------------------------------------------ #
     # Events
     # ------------------------------------------------------------------ #
     def handle_event(self, event) -> bool:
         if not self.is_open:
             return False
+        # Child modal (save-as-scenario) eats events while open
+        if self._save_modal is not None and self._save_modal.is_open:
+            self._save_modal.handle_event(event)
+            return True
         for b in (self.btn_load_bg, self.btn_clear_bg,
                    self.btn_alpha_down, self.btn_alpha_up,
                    self.btn_w_down, self.btn_w_up,
                    self.btn_h_down, self.btn_h_up,
+                   self.btn_save_scenario,
                    self.btn_close, *self.ceiling_btns):
             b.handle_event(event)
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -259,7 +282,12 @@ class BattleEnvironmentModal:
         self._blit_wrapped(screen, hint, self.x + 20, self.y + 370,
                             self.WIDTH - 40, fonts.tiny, COLORS["text_dim"])
 
+        self.btn_save_scenario.draw(screen, mp)
         self.btn_close.draw(screen, mp)
+
+        # Child modal on top
+        if self._save_modal is not None:
+            self._save_modal.draw(screen)
 
     def _label(self, screen, txt, x, y):
         s = fonts.body_bold.render(txt, True, COLORS["text"])
