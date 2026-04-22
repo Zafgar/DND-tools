@@ -169,6 +169,9 @@ class MapObject:
     follow_path_id: str = ""
     path_progress_miles: float = 0.0
     travel_speed_mult: float = 1.0
+    # Link to the shared Actor registry so the same token (hero, NPC,
+    # vehicle) keeps its identity across world/town/battle views.
+    actor_id: str = ""
     # Misc
     tags: List[str] = field(default_factory=list)
 
@@ -427,6 +430,7 @@ def _obj_from_dict(d: dict) -> MapObject:
         follow_path_id=d.get("follow_path_id", ""),
         path_progress_miles=float(d.get("path_progress_miles", 0.0)),
         travel_speed_mult=float(d.get("travel_speed_mult", 1.0)),
+        actor_id=d.get("actor_id", ""),
         tags=list(d.get("tags", [])),
     )
 
