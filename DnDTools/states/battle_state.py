@@ -750,6 +750,41 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self.autosave_turn_counter = 0
             self._perform_autosave()
 
+    def _pick_battle_background(self):
+        """Shift+B: open a native file dialog to pick a JPG/PNG background
+        for the current battle map. Selecting an empty path or cancelling
+        clears the existing background."""
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:
+                pass
+            path = filedialog.askopenfilename(
+                title="Select battle-map background image",
+                filetypes=[
+                    ("Image files", "*.jpg *.jpeg *.png *.bmp *.webp"),
+                    ("All files", "*.*"),
+                ],
+            )
+            root.destroy()
+        except Exception as ex:
+            self._log(f"[BG] File picker unavailable: {ex}")
+            return
+        if not path:
+            if self.battle.background_image_path:
+                self.battle.set_background_image("")
+                self._log("[BG] Battle background cleared.")
+            return
+        ok = self.battle.set_background_image(path)
+        if ok:
+            self._log(f"[BG] Battle background set: {os.path.basename(path)}")
+        else:
+            self._log(f"[BG] Could not load image: {path}")
+
     def _perform_autosave(self):
         """Autosave current battle state and sync to campaign."""
         try:

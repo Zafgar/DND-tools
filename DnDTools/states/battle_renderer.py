@@ -513,6 +513,9 @@ class BattleRendererMixin:
         grid_bg = pygame.Rect(0, TOP_BAR_H, GRID_W, SCREEN_HEIGHT - TOP_BAR_H)
         screen.fill(COLORS["bg_dark"], grid_bg)
 
+        # Painted background image (JPG/PNG) — beneath grid lines & terrain
+        self._draw_battle_background(screen, grid_bg)
+
         # Draw grid lines with alternating subtle tones
         start_x = int(self.camera_x // gsz) * gsz
         sx = start_x - self.camera_x
@@ -537,6 +540,59 @@ class BattleRendererMixin:
                 pygame.draw.line(screen, color, (0, int(sy)), (GRID_W, int(sy)), 1)
             sy += gsz
             row_idx += 1
+
+    # --- Battle background image (JPG/PNG beneath terrain) ---
+    def _draw_battle_background(self, screen, grid_bg_rect):
+        """Draw the battle's background image (if any) beneath the grid and
+        terrain. Image is scaled so that background_world_cells_w x cells_h
+        maps onto world cells, and placed at background_offset_(x,y) in world
+        pixels. Respects camera_x/camera_y scrolling and background_alpha."""
+        battle = self.battle
+        path = getattr(battle, "background_image_path", "")
+        if not path:
+            if hasattr(self, "_bg_img_cache"):
+                self._bg_img_cache = None
+            return
+        # Resolve absolute path
+        abs_path = path
+        if not os.path.isabs(abs_path):
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            abs_path = os.path.join(base_dir, path)
+        if not os.path.isfile(abs_path):
+            return
+
+        gsz = battle.grid_size
+        target_w = max(1, int(battle.background_world_cells_w * gsz))
+        target_h = max(1, int(battle.background_world_cells_h * gsz))
+        alpha = max(0, min(255, int(battle.background_alpha)))
+
+        cache_key = (abs_path, target_w, target_h, alpha)
+        cached = getattr(self, "_bg_img_cache", None)
+        if cached is None or cached[0] != cache_key:
+            try:
+                raw = pygame.image.load(abs_path)
+            except pygame.error:
+                self._bg_img_cache = (cache_key, None)
+                return
+            scaled = pygame.transform.smoothscale(
+                raw.convert_alpha(), (target_w, target_h)
+            )
+            if alpha < 255:
+                scaled.set_alpha(alpha)
+            self._bg_img_cache = (cache_key, scaled)
+            cached = self._bg_img_cache
+        surf = cached[1]
+        if surf is None:
+            return
+
+        # World → screen placement (respects pan)
+        ox = battle.background_offset_x - self.camera_x
+        oy = battle.background_offset_y - self.camera_y + TOP_BAR_H
+        # Clip to grid viewport so it doesn't bleed over the top bar/panel
+        prev_clip = screen.get_clip()
+        screen.set_clip(grid_bg_rect)
+        screen.blit(surf, (int(ox), int(oy)))
+        screen.set_clip(prev_clip)
 
     # --- Terrain tiles ---
     def _draw_terrain(self, screen):

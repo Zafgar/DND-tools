@@ -1647,9 +1647,83 @@ class TacticalAI:
                         best_score = shove_value
                         best_steps = [shove_step]
 
+            # --- SHOVE-TO-HAZARD (push into lava / off cliff / into pit) ---
+            if not target.has_condition("Grappled"):
+                hazard_score = self._score_shove_to_hazard(entity, target, battle)
+                if hazard_score > 0:
+                    hazard_score *= success_chance
+                    if hazard_score > best_score:
+                        shove_step = self._try_shove_action(
+                            entity, target, prone=False, battle=battle
+                        )
+                        if shove_step:
+                            best_score = hazard_score
+                            best_steps = [shove_step]
+
         if best_steps and best_score > 0:
             return (best_score, best_steps)
         return None
+
+    def _score_shove_to_hazard(self, entity, target, battle) -> float:
+        """Estimate the damage value of shoving ``target`` 5 ft away from
+        ``entity`` without actually moving anyone. Handles:
+          * Lava / fire / acid / spikes ground hazards (full hazard damage)
+          * Gaps / chasms (fall damage + gap hazard)
+          * Cliff edges (drop of 10+ feet from platform)
+        Returns 0 if the push would only land on ordinary ground.
+        """
+        from engine.terrain import calculate_fall_damage
+        from engine.dice import average_damage
+
+        dx = target.grid_x - entity.grid_x
+        dy = target.grid_y - entity.grid_y
+        step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
+        step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
+        if abs(dx) > abs(dy) * 1.2:
+            step_y = 0
+        elif abs(dy) > abs(dx) * 1.2:
+            step_x = 0
+        if step_x == 0 and step_y == 0:
+            return 0.0
+
+        nx = int(target.grid_x + step_x)
+        ny = int(target.grid_y + step_y)
+
+        if battle.is_occupied(nx, ny, exclude=target):
+            return 0.0
+        t = battle.get_terrain_at(nx, ny)
+
+        score = 0.0
+        # Gap / chasm — huge score (fall + possible lava chasm)
+        if t is not None and getattr(t, "is_gap", False) and not target.is_flying:
+            fall_ft = abs(t.elevation) + target.elevation
+            score += calculate_fall_damage(fall_ft) if fall_ft >= 10 else 0
+            if t.is_hazard:
+                score += average_damage(t.hazard_damage)
+            # Flat bonus for a guaranteed "removed from the fight" outcome
+            score += 20
+            return score
+
+        # Wall / impassable — no push possible
+        if t is not None and not t.passable:
+            return 0.0
+
+        # Platform edge: pushed to a tile that drops >=10 ft
+        dest_elev = battle.get_elevation_at(nx, ny)
+        drop = target.elevation - dest_elev
+        if drop >= 10 and not target.is_flying:
+            score += calculate_fall_damage(drop)
+
+        # Ground hazard at destination
+        if t is not None and t.is_hazard:
+            avg = average_damage(t.hazard_damage)
+            # Lava-tier hazards are catastrophic (10d10 fire)
+            if t.terrain_type in ("lava", "lava_chasm"):
+                score += avg * 1.5  # effectively a kill
+            else:
+                score += avg
+
+        return score
 
     def _evaluate_best_single_attack(self, entity, enemies, allies, battle):
         """Evaluate and return best single attack with EV scoring."""
@@ -2296,12 +2370,16 @@ class TacticalAI:
                 attacker=entity, target=target, action_name="Grapple"
             )
 
-    def _try_shove_action(self, entity, target, prone=True):
+    def _try_shove_action(self, entity, target, prone=True, battle=None):
         """
         PHB p.195-196 Shove:
         - Contested Athletics vs Athletics/Acrobatics
         - Target must be no more than one size larger
         - On success: knock prone OR push 5ft
+
+        When ``prone=False`` and ``battle`` is provided, the push is actually
+        applied via ``battle.push_entity`` so destination hazards / gaps /
+        cliff falls trigger automatically.
         """
         from engine.rules import can_shove, resolve_shove
 
@@ -2317,17 +2395,26 @@ class TacticalAI:
                 attacker=entity, target=target, action_name="Shove",
                 applies_condition="Prone"
             )
-        elif success and not prone:
-            # Push 5ft away from shover
+        if success and not prone and battle is not None:
+            info = battle.push_entity(target, entity.grid_x, entity.grid_y,
+                                       distance=5)
+            extra = []
+            if info["fell_into_gap"]:
+                extra.append(f"pushed into {info['destination_type'] or 'a gap'}")
+            elif info["hazard_damage"] > 0:
+                extra.append(f"took {info['hazard_damage']} hazard damage at destination")
+            elif info["fell_from"] >= 10:
+                extra.append(f"fell {info['fell_from']} ft off the platform")
+            if extra:
+                msg = msg + " — " + "; ".join(extra)
             return ActionStep(
                 step_type="attack", description=msg,
                 attacker=entity, target=target, action_name="Shove"
             )
-        else:
-            return ActionStep(
-                step_type="attack", description=msg,
-                attacker=entity, target=target, action_name="Shove"
-            )
+        return ActionStep(
+            step_type="attack", description=msg,
+            attacker=entity, target=target, action_name="Shove"
+        )
 
     def _try_aoe_spell(self, entity, enemies, allies, battle):
         """Cast best AoE spell with optimal targeting.

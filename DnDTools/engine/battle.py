@@ -32,6 +32,21 @@ class BattleSystem:
         self.terrain: List[TerrainObject] = []
         self.weather = "Clear"  # Clear, Rain, Fog, Ash
 
+        # Optional JPG/PNG background image painted beneath the terrain
+        # (so imported real-world battle maps can provide art while the
+        # DM still paints walls/hazards on top for the AI to read).
+        self.background_image_path: str = ""
+        self.background_alpha: int = 200            # 0-255
+        self.background_world_cells_w: int = 40     # image width in grid cells
+        self.background_world_cells_h: int = 40     # image height in grid cells
+        self.background_offset_x: int = 0           # world px offset
+        self.background_offset_y: int = 0           # world px offset
+
+        # Global ceiling (feet). 0 = outdoor (no ceiling); a positive
+        # value caps how high flying creatures may go. Used to model
+        # indoor encounters (10ft corridor, 15ft cave, etc.).
+        self.ceiling_ft: int = 0
+
         # Pending OA reactions: list of (reactor, mover)
         self.pending_reactions: List[tuple] = []
 
@@ -765,7 +780,10 @@ class BattleSystem:
         if best_bonus == 0:
             ax, ay = int(attacker.grid_x), int(attacker.grid_y)
             tx, ty = int(target.grid_x), int(target.grid_y)
-            if check_los_blocked(self.terrain, ax, ay, tx, ty):
+            # 3D LOS — use eye-level ≈ top of the model (elevation + 5 ft)
+            az = float(attacker.elevation) + 5.0
+            tz = float(target.elevation) + 5.0
+            if check_los_blocked(self.terrain, ax, ay, tx, ty, az, tz):
                 best_bonus = max(best_bonus, 2)  # At minimum half cover if LOS obstructed
 
         return best_bonus
@@ -788,9 +806,10 @@ class BattleSystem:
                 # Still blocked by full cover (terrain LOS blocking)
                 x1, y1 = int(e1.grid_x), int(e1.grid_y)
                 x2, y2 = int(e2.grid_x), int(e2.grid_y)
-                if check_los_blocked(self.terrain, x1, y1, x2, y2):
-                    if not (e1.is_flying and e1.elevation >= 15):
-                        return False
+                z1 = float(e1.elevation) + 5.0
+                z2 = float(e2.elevation) + 5.0
+                if check_los_blocked(self.terrain, x1, y1, x2, y2, z1, z2):
+                    return False
                 return True
 
         # Invisible target: can't see unless truesight
@@ -799,11 +818,11 @@ class BattleSystem:
 
         x1, y1 = int(e1.grid_x), int(e1.grid_y)
         x2, y2 = int(e2.grid_x), int(e2.grid_y)
+        z1 = float(e1.elevation) + 5.0
+        z2 = float(e2.elevation) + 5.0
 
         # Check terrain LOS blocking (walls, full cover)
-        if check_los_blocked(self.terrain, x1, y1, x2, y2):
-            if e1.is_flying and e1.elevation >= 15:
-                return True  # Can see over most walls from high altitude
+        if check_los_blocked(self.terrain, x1, y1, x2, y2, z1, z2):
             return False
 
         # Darkness check: target in darkness terrain (heavily obscured)
@@ -1109,6 +1128,11 @@ class BattleSystem:
         if entity.is_flying:
             # Flying entity: stays at current elevation or terrain elevation, whichever is higher
             entity.elevation = max(entity.elevation, new_ground)
+            # Indoor ceiling cap (Phase 4c): enforce max altitude
+            if self.ceiling_ft > 0:
+                cap = self.ceiling_ft - 5
+                if entity.elevation > cap:
+                    entity.elevation = max(new_ground, cap)
         elif entity.is_climbing:
             # Climbing: entity reaches the terrain's elevation
             entity.elevation = new_ground
@@ -1143,6 +1167,164 @@ class BattleSystem:
 
         entity.grid_x = float(new_x)
         entity.grid_y = float(new_y)
+
+    # ------------------------------------------------------------------ #
+    # Forced movement (shove / telekinesis / thunderwave etc.)
+    # ------------------------------------------------------------------ #
+    def push_entity(self, target: Entity, from_x: float, from_y: float,
+                     distance: int = 5) -> dict:
+        """Push ``target`` ``distance`` feet straight away from (from_x, from_y).
+
+        Handles:
+          * Destination occupied or blocked by an impassable (non-gap) wall:
+            stops at the last free cell along the push line.
+          * Destination is a gap/chasm: the target falls in (unless flying)
+            and takes gap hazard + fall damage via move_entity_with_elevation.
+          * Destination is a ground hazard (lava / spikes / fire / acid):
+            full hazard damage applied, one-shot (simulates being thrown
+            into it rather than walking through).
+          * Destination is a lower tile (platform edge): fall damage applies
+            if drop is >= 10 ft.
+
+        Returns a summary dict with ``moved_cells``, ``final_cell``,
+        ``fell_into_gap``, ``fell_from``, ``hazard_damage``,
+        ``destination_type`` — the AI uses it for scoring.
+        """
+        result = {
+            "moved_cells": 0,
+            "final_cell": (int(target.grid_x), int(target.grid_y)),
+            "fell_into_gap": False,
+            "fell_from": 0,
+            "hazard_damage": 0,
+            "destination_type": "",
+        }
+        if target.hp <= 0 or distance <= 0:
+            return result
+
+        cells = max(1, int(round(distance / 5.0)))
+        dx = target.grid_x - from_x
+        dy = target.grid_y - from_y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist <= 0:
+            return result
+        step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
+        step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
+        # Snap to nearest cardinal if diagonal dominance is not clear
+        if abs(dx) > abs(dy) * 1.2:
+            step_y = 0
+        elif abs(dy) > abs(dx) * 1.2:
+            step_x = 0
+
+        last_x, last_y = target.grid_x, target.grid_y
+        cur_x, cur_y = last_x, last_y
+        pushed = 0
+        for _ in range(cells):
+            nx = cur_x + step_x
+            ny = cur_y + step_y
+            t = self.get_terrain_at(int(nx), int(ny))
+            if self.is_occupied(nx, ny, exclude=target):
+                break
+            # Gap / hazard stops the push AT the gap (target gets shoved in)
+            if t is not None and t.is_gap:
+                pushed += 1
+                cur_x, cur_y = nx, ny
+                break
+            if t is not None and not t.passable and not (t.is_gap):
+                # Impassable wall/pillar — target stops at previous cell
+                break
+            pushed += 1
+            cur_x, cur_y = nx, ny
+            # Ground hazard: continue past, but we mark it
+            if t is not None and t.is_hazard:
+                # Stop at first big hazard (lava-tier) — no walking through
+                if t.terrain_type in ("lava", "fire", "acid", "lava_chasm"):
+                    break
+
+        if pushed == 0:
+            return result
+
+        # Apply destination effects via move_entity_with_elevation so the
+        # existing fall / gap / hazard handling fires consistently.
+        old_elev = target.elevation
+        before_hp = target.hp
+        self.move_entity_with_elevation(target, cur_x, cur_y)
+        t_final = self.get_terrain_at(int(cur_x), int(cur_y))
+
+        # Forced-movement ground hazard: a shove into lava/fire/acid/spikes
+        # triggers hazard damage immediately (unlike walking, which only
+        # charges on turn events).
+        if (t_final is not None and t_final.is_hazard
+                and not t_final.is_gap and target.hp > 0):
+            from engine.dice import roll_dice
+            hdmg = roll_dice(t_final.hazard_damage)
+            dealt, _ = target.take_damage(hdmg, t_final.hazard_damage_type)
+            self.log(
+                f"  [SHOVE HAZARD] {target.name} pushed into {t_final.label}: "
+                f"{dealt} {t_final.hazard_damage_type} damage!"
+            )
+
+        after_hp = target.hp
+        # fell_from = how many feet the target actually descended due to
+        # the push (platform edge → ground, or stayed on a gap).
+        fell_from = max(0, old_elev - target.elevation)
+        result.update({
+            "moved_cells": pushed,
+            "final_cell": (int(cur_x), int(cur_y)),
+            "fell_into_gap": bool(t_final and t_final.is_gap),
+            "fell_from": fell_from,
+            "hazard_damage": max(0, before_hp - after_hp),
+            "destination_type": t_final.terrain_type if t_final else "",
+        })
+        return result
+
+    # ------------------------------------------------------------------ #
+    # Ceiling (indoor flight cap)                                          #
+    # ------------------------------------------------------------------ #
+    def max_fly_altitude(self, ground_elev: int = 0) -> int:
+        """Return the highest elevation (ft) a flying creature may reach
+        above ``ground_elev``. If no ceiling is set, returns a very large
+        number (effectively unlimited)."""
+        if self.ceiling_ft <= 0:
+            return 10_000
+        # The ceiling is measured in ft above global zero, so even on a
+        # platform the entity still can't go above ceiling_ft total.
+        return max(ground_elev, self.ceiling_ft - 5)
+
+    def clamp_fly_altitude(self, entity: Entity):
+        """If entity is flying above the ceiling, pull it down to the cap."""
+        if self.ceiling_ft <= 0 or not entity.is_flying:
+            return
+        cap = self.ceiling_ft - 5
+        if entity.elevation > cap:
+            entity.elevation = max(0, cap)
+            self.log(f"  [CEILING] {entity.name} caps at {entity.elevation}ft "
+                     f"(ceiling {self.ceiling_ft}ft).")
+
+    # ------------------------------------------------------------------ #
+    # Battle background image                                              #
+    # ------------------------------------------------------------------ #
+    def set_background_image(self, path: str, alpha: int = 200,
+                              cells_w: int = 40, cells_h: int = 40,
+                              offset_x: int = 0, offset_y: int = 0) -> bool:
+        """Configure a JPG/PNG background image. path may be empty to clear.
+        Returns True if accepted (path empty, or the file exists)."""
+        if not path:
+            self.background_image_path = ""
+            return True
+        import os as _os
+        abs_path = path
+        if not _os.path.isabs(abs_path):
+            base_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+            abs_path = _os.path.join(base_dir, path)
+        if not _os.path.isfile(abs_path):
+            return False
+        self.background_image_path = path
+        self.background_alpha = max(0, min(255, int(alpha)))
+        self.background_world_cells_w = max(1, int(cells_w))
+        self.background_world_cells_h = max(1, int(cells_h))
+        self.background_offset_x = int(offset_x)
+        self.background_offset_y = int(offset_y)
+        return True
 
     # ------------------------------------------------------------------ #
     # Manual DM operations                                                 #
