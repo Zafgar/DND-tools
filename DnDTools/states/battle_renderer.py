@@ -369,6 +369,8 @@ class BattleRendererMixin:
             self.effect_modal.draw(screen, mp)
         if self.conditions_modal:
             self.conditions_modal.draw(screen, mp)
+        if self._env_modal is not None:
+            self._env_modal.draw(screen)
         
         self._draw_hover_info(screen, mp)
 
@@ -989,7 +991,7 @@ class BattleRendererMixin:
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_add_entity):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_env, self.btn_add_entity):
             b.draw(screen, mp)
         # Auto mode button always visible next to AUTO
         self.btn_auto_mode.draw(screen, mp)

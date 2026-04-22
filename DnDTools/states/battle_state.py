@@ -307,7 +307,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
         self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
         self.btn_save_map = Button(696, SCREEN_HEIGHT-65, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
+        self.btn_env     = Button(783, SCREEN_HEIGHT-65, 60, 35, "ENV",     self._open_env_modal,       color=COLORS["panel"])
         self.map_save_menu_open = False
+        self._env_modal = None
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
         self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
@@ -749,6 +751,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.autosave_turn_counter >= 3:
             self.autosave_turn_counter = 0
             self._perform_autosave()
+
+    def _open_env_modal(self):
+        """Open the Battle Environment modal (background + ceiling settings)."""
+        from states.battle_env_modal import BattleEnvironmentModal
+        if self._env_modal is None:
+            self._env_modal = BattleEnvironmentModal(self.battle, self._log)
+        self._env_modal.open()
 
     def _pick_battle_background(self):
         """Shift+B: open a native file dialog to pick a JPG/PNG background
