@@ -930,11 +930,18 @@ class BattleSystem:
 
     def get_terrain_movement_cost(self, x: float, y: float, entity: Entity = None) -> float:
         """Returns movement multiplier: 1.0 normal, 2.0 difficult, 2.0 climbing.
-        Flying entities ignore difficult terrain."""
+        Flying entities ignore difficult terrain. Aquatic entities (swim
+        speed / amphibious / water_breathing) ignore the water penalty."""
         if entity and entity.is_flying:
             return 1.0
         t = self.get_terrain_at(int(x), int(y))
         if t:
+            # Water: aquatic creatures move at full speed; everyone else
+            # pays the PHB p.182 swim penalty (half speed).
+            if t.terrain_type in ("water", "deep_water"):
+                if entity and entity.is_aquatic:
+                    return 1.0
+                return 2.0
             if t.is_difficult:
                 return 2.0
             if t.is_climbable and entity and entity.is_climbing:

@@ -154,6 +154,15 @@ class Entity:
         return False
 
     @property
+    def is_aquatic(self) -> bool:
+        """Creature can move through water without the swimming penalty.
+        True for anything with a swim speed, or an amphibious / water
+        breathing feature."""
+        if self.stats.swim_speed > 0:
+            return True
+        return self.has_feature("amphibious") or self.has_feature("water_breathing")
+
+    @property
     def effective_fly_speed(self) -> int:
         """Fly speed in feet (0 if can't fly)."""
         if "Fly" in self.active_effects:
