@@ -483,6 +483,56 @@ def list_by_level(level: int) -> List[Scenario]:
             if s.recommended_level_min <= level <= s.recommended_level_max]
 
 
+def scenario_monsters_as_entities(scenario: Scenario, existing_roster=None):
+    """Build a list of Entity instances from the scenario's monster list,
+    disambiguating names against any monsters already in ``existing_roster``
+    (e.g. ``Wolf`` → ``Wolf 2`` → ``Wolf 3`` when five appear).
+
+    Pure logic — safe to use without pygame.
+    """
+    import copy as _copy
+    from engine.entities import Entity
+    from data.library import library
+
+    existing_roster = existing_roster or []
+    out = []
+    for mon in scenario.monsters:
+        try:
+            stats = _copy.deepcopy(library.get_monster(mon.name))
+        except ValueError:
+            continue
+        same = sum(
+            1 for e in list(existing_roster) + out
+            if not e.is_player and e.name.startswith(stats.name)
+        )
+        if same > 0:
+            stats.name = f"{stats.name} {same + 1}"
+        ent = Entity(stats, mon.x, mon.y, is_player=False)
+        ent.team = mon.team
+        out.append(ent)
+    return out
+
+
+def apply_scenario_to_battle(scenario: Scenario, battle):
+    """Apply the scenario's terrain, weather, ceiling, lair, and optional
+    background image to an existing ``BattleSystem``. Monsters are NOT
+    added — use ``scenario_monsters_as_entities`` for that."""
+    from engine.terrain import TerrainObject
+    for tile in scenario.tiles:
+        kwargs = {"terrain_type": tile.terrain_type,
+                  "grid_x": tile.x, "grid_y": tile.y,
+                  "width": tile.w, "height": tile.h}
+        if tile.elevation >= 0:
+            kwargs["elevation"] = tile.elevation
+        battle.terrain.append(TerrainObject(**kwargs))
+    battle.weather = scenario.weather
+    battle.ceiling_ft = scenario.ceiling_ft
+    if scenario.lair_enabled:
+        battle.lair_enabled = True
+    if scenario.background_image_path:
+        battle.set_background_image(scenario.background_image_path)
+
+
 # --------------------------------------------------------------------- #
 # Loader
 # --------------------------------------------------------------------- #

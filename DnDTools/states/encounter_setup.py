@@ -70,7 +70,14 @@ class EncounterSetupState(GameState):
                    self._import_heroes_file, color=COLORS["spell"]),
             Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-330, 230, 45, "Export Heroes (JSON)",
                    self._export_heroes_file, color=COLORS["neutral"]),
+            Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-385, 230, 45, "Load Scenario...",
+                   self._open_scenario_picker, color=COLORS["accent"]),
         ]
+
+        # Scenario picker modal (lazy — created on first open)
+        self._scenario_picker = None
+        # Pending scenario to apply on _start_battle (terrain/ceiling/bg)
+        self._pending_scenario = None
 
         # Hero import/export directories
         self.heroes_dir = os.path.join(os.path.dirname(__file__), "..", "heroes")
@@ -282,13 +289,43 @@ class EncounterSetupState(GameState):
             return
         from states.battle_state import BattleState
         self.manager.states["BATTLE"] = BattleState(self.manager, list(self.roster))
-        self.manager.states["BATTLE"].battle.current_plane = self.planes[self.current_plane_idx]
+        battle = self.manager.states["BATTLE"].battle
+        battle.current_plane = self.planes[self.current_plane_idx]
         # Pass lair enabled setting to battle system
-        self.manager.states["BATTLE"].battle.lair_enabled = self.lair_active
+        battle.lair_enabled = self.lair_active
+
+        # Apply any scenario terrain / ceiling / background the DM picked
+        if self._pending_scenario is not None:
+            from data.scenarios import apply_scenario_to_battle
+            apply_scenario_to_battle(self._pending_scenario, battle)
+            self._pending_scenario = None
         self.importing = False  # Stop syncing setup
         self.manager.change_state("BATTLE")
 
+    def _open_scenario_picker(self):
+        from states.scenario_picker_modal import ScenarioPickerModal
+        if self._scenario_picker is None:
+            self._scenario_picker = ScenarioPickerModal(
+                on_load=self._apply_scenario_pick
+            )
+        self._scenario_picker.open()
+
+    def _apply_scenario_pick(self, scenario):
+        """DM confirmed a scenario — append its monsters to the roster
+        and stash the terrain/ceiling/bg for _start_battle to apply."""
+        from data.scenarios import scenario_monsters_as_entities
+        self.roster.extend(
+            scenario_monsters_as_entities(scenario, self.roster)
+        )
+        self._pending_scenario = scenario
+
     def handle_events(self, events):
+        # Scenario modal intercepts all events when open
+        if self._scenario_picker is not None and self._scenario_picker.is_open:
+            for event in events:
+                self._scenario_picker.handle_event(event)
+            return
+
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if pygame.Rect(160, 75, 250, 30).collidepoint(event.pos):
@@ -420,6 +457,18 @@ class EncounterSetupState(GameState):
             b.draw(screen, mp)
         self.btn_plane.draw(screen, mp)
         self.btn_lair.draw(screen, mp)
+
+        # Pending-scenario badge (reminder before Start Battle)
+        if self._pending_scenario is not None:
+            msg = fonts.small.render(
+                f"Scenario loaded: {self._pending_scenario.name}",
+                True, COLORS["accent"],
+            )
+            screen.blit(msg, (SCREEN_WIDTH - 270, SCREEN_HEIGHT - 420))
+
+        # Modal on top
+        if self._scenario_picker is not None:
+            self._scenario_picker.draw(screen)
 
     def _draw_win_probability_bar(self, screen, win_prob_cache, x, y, w, h):
         """Draw the win probability bar on the UI (setup screen version)."""

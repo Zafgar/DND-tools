@@ -87,6 +87,12 @@ class BattleEventsMixin:
         except ValueError:
             curr = None
 
+        # Environment modal intercepts everything while open
+        if self._env_modal is not None and self._env_modal.is_open:
+            for event in events:
+                self._env_modal.handle_event(event)
+            return
+
         for event in events:
             # Spell Targeting Interception
             if self.spell_targeting:
@@ -625,6 +631,7 @@ class BattleEventsMixin:
                 self.btn_advisor.handle_event(event)
                 self.btn_maps.handle_event(event)
                 self.btn_save_map.handle_event(event)
+                self.btn_env.handle_event(event)
                 self.btn_add_entity.handle_event(event)
 
                 # Map browser clicks
