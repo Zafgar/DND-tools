@@ -575,11 +575,20 @@ class AdvanceTimeModal:
         self.on_close()
 
     def _go(self) -> None:
-        from data.map_travel import advance_followers
-        moved = advance_followers(self.state.world_map, self.days)
-        self.state._set_status(
-            f"Edistetty {self.days:.1f} pv — siirrettiin {moved} yksikköä."
-        )
+        from data.map_travel import advance_followers_events
+        events = advance_followers_events(self.state.world_map, self.days)
+        moved = len(events)
+        arrivals = [e for e in events if e["arrived"]]
+        if arrivals:
+            names = ", ".join(e["label"] for e in arrivals)
+            self.state._set_status(
+                f"Edistetty {self.days:.1f} pv — {moved} yksikköä liikkui, "
+                f"SAAPUI: {names}."
+            )
+        else:
+            self.state._set_status(
+                f"Edistetty {self.days:.1f} pv — siirrettiin {moved} yksikköä."
+            )
 
     def handle_event(self, ev: pygame.event.Event) -> None:
         if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
