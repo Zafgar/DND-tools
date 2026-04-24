@@ -183,6 +183,10 @@ class MapObject:
     # Vehicle manifest: Actor ids of the passengers currently aboard.
     # Only meaningful when object_type is in VEHICLE_TYPES.
     passenger_actor_ids: List[str] = field(default_factory=list)
+    # Settlements (and other waypoints) the token has already crossed
+    # while travelling along its current path. Keeps `advance_followers`
+    # from re-emitting "passed Arenhold" on every subsequent step.
+    visited_waypoint_ids: List[str] = field(default_factory=list)
     # Misc
     tags: List[str] = field(default_factory=list)
 
@@ -443,6 +447,7 @@ def _obj_from_dict(d: dict) -> MapObject:
         travel_speed_mult=float(d.get("travel_speed_mult", 1.0)),
         actor_id=d.get("actor_id", ""),
         passenger_actor_ids=list(d.get("passenger_actor_ids", [])),
+        visited_waypoint_ids=list(d.get("visited_waypoint_ids", [])),
         tags=list(d.get("tags", [])),
     )
 
