@@ -219,7 +219,9 @@ class AnnotationPath:
     map %, times the map scale)."""
     id: str = ""
     name: str = ""
-    path_type: str = "route"       # route, road, river, secret, travel
+    path_type: str = "route"       # route, road, river, secret, travel,
+                                    # sea_route (ship-only), air_route
+                                    # (flying-only)
     color: Tuple[int, int, int] = (230, 190, 70)
     thickness: int = 3
     points: List[Tuple[float, float]] = field(default_factory=list)  # world %
