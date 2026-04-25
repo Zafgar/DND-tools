@@ -609,6 +609,41 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         flash = ImpactFlash(entity.grid_x, entity.grid_y, damage_type, is_heal)
         self.impact_flashes.append(flash)
 
+    def _spawn_attack_vfx_for_step(self, step, target):
+        """Phase 8b: spawn the appropriate Projectile / SlashTrail / Beam /
+        SpellAura for an attack step. Called once per resolved hit so
+        the projectile lands just before the damage flash.
+
+        Falls back to no-op when battle_vfx import fails (headless tests
+        without pygame), and silently skips when step has no usable
+        attacker/target/action."""
+        if step is None or step.attacker is None or target is None:
+            return
+        try:
+            from states.battle_vfx import make_attack_vfx, make_spell_vfx, HealAura
+        except ImportError:
+            return
+        is_spell = step.step_type == "spell" or step.spell is not None
+        is_heal_step = (step.damage_type == "healing"
+                        or (step.spell is not None
+                             and getattr(step.spell, "heals", "")))
+        if is_heal_step:
+            self.impact_flashes.append(HealAura(target.grid_x, target.grid_y))
+            return
+        if is_spell:
+            vfx = make_spell_vfx(step.attacker, target, step.spell)
+        else:
+            # Best-effort lookup of the action data — match by name
+            action = None
+            for a in step.attacker.stats.actions:
+                if a.name == step.action_name:
+                    action = a
+                    break
+            vfx = make_attack_vfx(step.attacker, target, action,
+                                    damage_type=step.damage_type or "")
+        if vfx is not None:
+            self.impact_flashes.append(vfx)
+
     def _save_undo_snapshot(self):
         """Save current state to undo stack."""
         state = self.battle.get_state_dict()
@@ -1052,7 +1087,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
         # Track attack results
         is_attack = step.step_type in ("attack", "multiattack", "bonus_attack", "legendary", "reaction") or (step.step_type == "spell" and step.attack_roll > 0)
-        
+
+        # Phase 8b: animated arrow / slash / spell beam at the moment of
+        # resolution. Fires for both hits and (non-healed) spell saves
+        # so AoE auras still appear.
+        if outcome in ("hit", "crit", "fail"):
+            self._spawn_attack_vfx_for_step(step, target)
+
         if is_attack:
             is_hit = outcome in ("hit", "crit", "fail")
             if step.attacker:
