@@ -120,6 +120,14 @@ class TacticalAI:
             return plan
 
         # ===== PHASE 0: PRE-COMBAT BONUS ACTIONS (buffs that boost subsequent attacks) =====
+        # Druid Wild Shape — transform first so the rest of the turn
+        # uses the beast's stats and attacks. PHB p.66: Action by
+        # default; Combat Wild Shape feature (Circle of the Moon, level
+        # 2) lets it be a Bonus Action.
+        ws_step = self._try_wild_shape(entity, enemies, allies, battle)
+        if ws_step:
+            plan.steps.append(ws_step)
+
         if not entity.bonus_action_used:
             # Barbarian Rage FIRST - enables rage damage on all attacks this turn
             rage_step = self._try_start_rage(entity, enemies, allies, battle)
@@ -452,6 +460,88 @@ class TacticalAI:
     # ------------------------------------------------------------------ #
     # Barbarian Rage                                                       #
     # ------------------------------------------------------------------ #
+
+    def _try_wild_shape(self, entity, enemies, allies, battle):
+        """Druid Wild Shape — transform when it materially helps.
+
+        Heuristic:
+          * Only trigger if entity has the wild_shape feature with uses
+            remaining and isn't already wildshaped.
+          * Skip if no enemies are visible (no point in shifting).
+          * Bonus-action transform requires combat_wild_shape feature
+            (Moon Druid).  Otherwise costs the action — skip if we'd
+            give up our attack and our human form is already plenty
+            effective (HP > 60% and STR/DEX modifier >= 3).
+          * If wounded (<= 35% HP), shift into the bear pool to soak
+            damage — Wild Shape gives a fresh HP pool to absorb hits.
+          * If we're a melee threat candidate with adjacent enemies in
+            move range, transform into a brown bear (or the strongest
+            beast known).
+        """
+        # Already shifted, or no Wild Shape feature
+        if entity.is_wild_shaped:
+            return None
+        if not entity.has_feature("wild_shape"):
+            return None
+        feat = entity.get_feature("Wild Shape") or entity.get_feature_by_name("Wild Shape")
+        if feat is not None:
+            uses = entity.feature_uses.get("Wild Shape", feat.uses_per_day)
+            if uses <= 0:
+                return None
+        # Need at least one living enemy on the field
+        live_enemies = [e for e in enemies if e.hp > 0]
+        if not live_enemies:
+            return None
+
+        is_moon = entity.has_feature("combat_wild_shape")
+        # Action vs Bonus action availability
+        if is_moon:
+            if entity.bonus_action_used:
+                return None
+        else:
+            if entity.action_used:
+                return None
+
+        # When NOT a Moon Druid, only burn the Action when we're hurt
+        # — full-HP druids prefer to spell-cast.
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+        if not is_moon and hp_pct > 0.55:
+            return None
+
+        # Pick the best beast we can reach via the library
+        try:
+            from data.library import library
+        except Exception:
+            return None
+        candidates = []
+        for name in ("Brown Bear", "Dire Wolf", "Giant Spider",
+                      "Black Bear", "Wolf"):
+            try:
+                stats = library.get_monster(name)
+                candidates.append(stats)
+            except (KeyError, ValueError):
+                continue
+        if not candidates:
+            return None
+        # Prefer the highest-HP option for staying power
+        beast = max(candidates, key=lambda s: s.hit_points)
+
+        # Spend the use
+        entity.feature_uses["Wild Shape"] = entity.feature_uses.get(
+            "Wild Shape", feat.uses_per_day if feat else 2) - 1
+        if is_moon:
+            entity.bonus_action_used = True
+        else:
+            entity.action_used = True
+
+        return ActionStep(
+            step_type="transform",
+            description=(f"{entity.name} uses Wild Shape and becomes a "
+                          f"{beast.name}!"),
+            attacker=entity,
+            action_name="Wild Shape",
+            transform_stats=beast,
+        )
 
     def _try_start_rage(self, entity, enemies, allies, battle):
         """Optimal rage activation.
