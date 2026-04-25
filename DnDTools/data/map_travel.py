@@ -47,6 +47,95 @@ def polyline_total_miles(points: List[Tuple[float, float]],
                                         scale_miles_per_pct))
 
 
+# ----------------------------------------------------------------------
+# Flight distance (as the crow flies) — uses the same aspect-aware
+# % metric as roads but with no polyline detour.
+# ----------------------------------------------------------------------
+
+def flight_distance_miles(world_map,
+                            x1_pct: float, y1_pct: float,
+                            x2_pct: float, y2_pct: float) -> float:
+    """Great-circle / straight-line distance between two map points
+    in miles. Uses the world-map's pixel aspect so a 1% step on the
+    short side counts the same regardless of map orientation."""
+    ww = world_map.width * world_map.tile_size
+    wh = world_map.height * world_map.tile_size
+    return polyline_total_miles(
+        [(x1_pct, y1_pct), (x2_pct, y2_pct)],
+        ww, wh, max(world_map.scale_miles_per_pct, 0.0),
+    )
+
+
+def flight_time_days(world_map, x1_pct: float, y1_pct: float,
+                       x2_pct: float, y2_pct: float,
+                       fly_speed_miles_per_day: float) -> float:
+    """Days needed to fly directly between the two points at the given
+    speed. Returns float('inf') when fly_speed is non-positive."""
+    if fly_speed_miles_per_day <= 0:
+        return float("inf")
+    miles = flight_distance_miles(world_map, x1_pct, y1_pct, x2_pct, y2_pct)
+    return miles / float(fly_speed_miles_per_day)
+
+
+def flight_time_hours(world_map, x1_pct: float, y1_pct: float,
+                        x2_pct: float, y2_pct: float,
+                        fly_speed_mph: float,
+                        hours_per_day: float = 8.0) -> float:
+    """Hours of in-flight time. ``fly_speed_mph`` and ``hours_per_day``
+    let callers separate how fast the creature flies from how many
+    hours per day it can sustain that speed."""
+    if fly_speed_mph <= 0:
+        return float("inf")
+    miles = flight_distance_miles(world_map, x1_pct, y1_pct, x2_pct, y2_pct)
+    return miles / float(fly_speed_mph)
+
+
+# ----------------------------------------------------------------------
+# Map scale editor — small validated mutators so the DM can tune the
+# world's "1% = N miles" without poking the field directly.
+# ----------------------------------------------------------------------
+
+def set_map_scale(world_map, miles_per_pct: float) -> bool:
+    """Set ``world_map.scale_miles_per_pct`` to a positive value.
+    Returns True iff accepted."""
+    try:
+        v = float(miles_per_pct)
+    except (TypeError, ValueError):
+        return False
+    if v <= 0 or v != v:  # reject non-positive and NaN
+        return False
+    world_map.scale_miles_per_pct = v
+    return True
+
+
+def set_travel_speed_per_day(world_map, miles_per_day: float) -> bool:
+    """Set ``world_map.travel_speed_miles_per_day``. Reject 0/negative."""
+    try:
+        v = float(miles_per_day)
+    except (TypeError, ValueError):
+        return False
+    if v <= 0 or v != v:
+        return False
+    world_map.travel_speed_miles_per_day = v
+    return True
+
+
+def map_scale_summary(world_map) -> dict:
+    """Compact dict summarising the scale / pace settings — handy for
+    a status panel."""
+    spd = float(world_map.travel_speed_miles_per_day or 0.0)
+    return {
+        "miles_per_pct": float(world_map.scale_miles_per_pct or 0.0),
+        "travel_miles_per_day": spd,
+        "miles_per_pct_per_day": (spd / world_map.scale_miles_per_pct
+                                  if world_map.scale_miles_per_pct
+                                  else 0.0),
+        "world_size_miles": (
+            float(world_map.scale_miles_per_pct or 0.0) * 100.0,
+        ),
+    }
+
+
 def point_at_miles(points: List[Tuple[float, float]],
                     world_w_px: int, world_h_px: int,
                     scale_miles_per_pct: float,
@@ -79,7 +168,75 @@ def point_at_miles(points: List[Tuple[float, float]],
 # Travel events + world-engine hooks
 # ----------------------------------------------------------------------
 
-def advance_followers_events(world_map, days: float) -> list:
+# ----------------------------------------------------------------------
+# Waypoint detection — settlements lying on (or near) a token's route.
+# ----------------------------------------------------------------------
+
+DEFAULT_WAYPOINT_TOLERANCE_PCT = 1.5
+
+
+def nearby_settlements(world_map, x_pct: float, y_pct: float,
+                        tolerance_pct: float = DEFAULT_WAYPOINT_TOLERANCE_PCT
+                        ) -> list:
+    """Return settlements (MapObjects whose ``object_type`` is in
+    :data:`data.map_engine.SETTLEMENT_TYPES`) whose position is within
+    ``tolerance_pct`` of ``(x_pct, y_pct)`` on the world map. Sorted
+    nearest-first."""
+    from data.map_engine import SETTLEMENT_TYPES
+    out = []
+    tol2 = tolerance_pct * tolerance_pct
+    for layer in world_map.layers:
+        for obj in layer.objects:
+            if obj.object_type not in SETTLEMENT_TYPES:
+                continue
+            dx = obj.x - x_pct
+            dy = obj.y - y_pct
+            d2 = dx * dx + dy * dy
+            if d2 <= tol2:
+                out.append((d2, obj))
+    out.sort(key=lambda t: t[0])
+    return [o for _, o in out]
+
+
+def clear_waypoints(obj) -> None:
+    """Forget which settlements the token has crossed — typically called
+    when the DM swaps the token onto a new route."""
+    obj.visited_waypoint_ids = []
+
+
+def _detect_passed_waypoints(world_map, obj, path,
+                              miles_before: float, miles_after: float,
+                              ww: int, wh: int, scale: float,
+                              tolerance_pct: float) -> list:
+    """Walk the polyline between ``miles_before`` and ``miles_after`` in
+    small steps and collect any settlements whose tolerance circle the
+    sub-segment touches. New entries are appended to
+    ``obj.visited_waypoint_ids``."""
+    if miles_after <= miles_before:
+        return []
+    span = miles_after - miles_before
+    # Step at most a quarter of the tolerance per probe so a settlement
+    # cannot be skipped over even when the token covers many miles in one
+    # advance call. At least one probe per advance.
+    step_miles = max(0.1, tolerance_pct * 0.5)
+    steps = max(1, int(span / step_miles) + 1)
+    fresh: list = []
+    seen_this_call: set = set()
+    for i in range(1, steps + 1):
+        m = miles_before + (span * i / steps)
+        x_pct, y_pct = point_at_miles(path.points, ww, wh, scale, m)
+        for s in nearby_settlements(world_map, x_pct, y_pct, tolerance_pct):
+            if (s.id not in obj.visited_waypoint_ids
+                    and s.id not in seen_this_call):
+                obj.visited_waypoint_ids.append(s.id)
+                seen_this_call.add(s.id)
+                fresh.append(s)
+    return fresh
+
+
+def advance_followers_events(world_map, days: float,
+                               waypoint_tolerance_pct: float =
+                               DEFAULT_WAYPOINT_TOLERANCE_PCT) -> list:
     """Move every MapObject on ``world_map`` whose ``follow_path_id``
     resolves to an annotation path forward by ``days`` travel-days.
 
@@ -127,6 +284,10 @@ def advance_followers_events(world_map, days: float) -> list:
             obj.x = x_pct
             obj.y = y_pct
             arrived = miles_before < total and miles_after >= total - 1e-6
+            passed = _detect_passed_waypoints(
+                world_map, obj, path, miles_before, miles_after,
+                ww, wh, scale, waypoint_tolerance_pct,
+            )
             events.append({
                 "obj_id": obj.id,
                 "label": obj.label or obj.id,
@@ -137,6 +298,11 @@ def advance_followers_events(world_map, days: float) -> list:
                 "total_miles": total,
                 "fraction": (miles_after / total) if total > 0 else 0.0,
                 "arrived": arrived,
+                "waypoints_passed": [
+                    {"id": s.id, "label": s.label or s.id,
+                     "object_type": s.object_type}
+                    for s in passed
+                ],
             })
     return events
 

@@ -579,16 +579,17 @@ class AdvanceTimeModal:
         events = advance_followers_events(self.state.world_map, self.days)
         moved = len(events)
         arrivals = [e for e in events if e["arrived"]]
+        crossings = []
+        for e in events:
+            for wp in e.get("waypoints_passed", []):
+                crossings.append(f"{e['label']} → {wp['label']}")
+        msg = f"Edistetty {self.days:.1f} pv — {moved} yksikköä liikkui."
+        if crossings:
+            msg += "  Kulki: " + "; ".join(crossings) + "."
         if arrivals:
             names = ", ".join(e["label"] for e in arrivals)
-            self.state._set_status(
-                f"Edistetty {self.days:.1f} pv — {moved} yksikköä liikkui, "
-                f"SAAPUI: {names}."
-            )
-        else:
-            self.state._set_status(
-                f"Edistetty {self.days:.1f} pv — siirrettiin {moved} yksikköä."
-            )
+            msg += f"  SAAPUI: {names}."
+        self.state._set_status(msg)
 
     def handle_event(self, ev: pygame.event.Event) -> None:
         if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
