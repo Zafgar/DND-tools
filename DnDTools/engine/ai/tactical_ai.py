@@ -331,6 +331,11 @@ class TacticalAI:
             plan.skip_reason = f"{entity.name} expires"
             return plan
 
+        # Find Familiar — separate behaviour: Help an ally, or skitter
+        # to a safe square. Familiars are 1 HP and shouldn't attack.
+        if getattr(entity, "summon_spell_name", "") == "Find Familiar":
+            return self._handle_familiar_turn(entity, battle, plan)
+
         enemies = battle.get_enemies_of(entity)
         target = self._pick_target(entity, enemies, battle)
         if not target:
@@ -356,6 +361,71 @@ class TacticalAI:
             plan.skipped = True
             plan.skip_reason = "Cannot reach target"
 
+        return plan
+
+    def _handle_familiar_turn(self, entity, battle, plan):
+        """A familiar (Find Familiar summon) doesn't fight — it Helps.
+
+        PHB p.240 / DMG familiars: 1 HP, can't take Attack action. Best
+        moves are:
+          1) If adjacent to an enemy that an ally is also fighting →
+             take the Help action (grant ally advantage on next attack).
+          2) Otherwise: stay near the owner; if a hostile creature is
+             within reach, dodge and re-orbit to a safer square.
+        """
+        owner = entity.summon_owner
+        enemies = battle.get_enemies_of(entity)
+        allies = [a for a in battle.get_allies_of(entity)
+                  if a is not entity and a.hp > 0 and not a.is_summon]
+
+        # Find an enemy adjacent to BOTH the familiar and at least one
+        # ally — the textbook Help-action sweet spot.
+        help_target = None
+        helped_ally = None
+        for foe in enemies:
+            if foe.hp <= 0:
+                continue
+            if not battle.is_adjacent(entity, foe):
+                continue
+            for ally in allies:
+                if battle.is_adjacent(ally, foe):
+                    help_target = foe
+                    helped_ally = ally
+                    break
+            if help_target:
+                break
+
+        if help_target and helped_ally:
+            step = ActionStep(
+                step_type="reaction",
+                description=(f"[FAMILIAR] {entity.name} takes the Help "
+                              f"action vs {help_target.name} — "
+                              f"{helped_ally.name} has advantage on "
+                              f"its next attack."),
+                attacker=entity,
+                target=help_target,
+                action_name="Help",
+                applies_condition="Help (advantage)",
+            )
+            plan.steps.append(step)
+            return plan
+
+        # No useful Help target — orbit owner. Move one cell toward
+        # owner if not already adjacent, then declare dodge.
+        if owner is not None and not battle.is_adjacent(entity, owner):
+            step = self._move_summon_to_target(entity, owner, battle)
+            if step is not None:
+                step.description = (f"[FAMILIAR] {entity.name} returns "
+                                      f"to {owner.name}'s side.")
+                plan.steps.append(step)
+
+        plan.steps.append(ActionStep(
+            step_type="reaction",
+            description=f"[FAMILIAR] {entity.name} takes the Dodge action.",
+            attacker=entity,
+            action_name="Dodge",
+            applies_condition="Dodging",
+        ))
         return plan
 
     def _move_summon_to_target(self, entity, target, battle):
