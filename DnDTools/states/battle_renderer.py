@@ -122,6 +122,42 @@ class BattleRendererMixin:
                 # Dark fill
                 pygame.draw.circle(screen, COLORS["bg_dark"], (cx, cy), radius - 3)
 
+                # Procedural character (Phase 9c) — drawn inside the
+                # ring so the team colour stays visible. Uses a small
+                # offscreen surface, masked to the ring.
+                try:
+                    from states.character_art import (
+                        draw_character, kind_for_entity,
+                    )
+                    char_size = (radius - 3) * 2
+                    char_surf = pygame.Surface(
+                        (char_size, char_size), pygame.SRCALPHA
+                    )
+                    state_name = "idle"
+                    if getattr(entity, "_anim_state", None):
+                        state_name = entity._anim_state
+                    phase = (pygame.time.get_ticks() / 1200.0) % 1.0
+                    draw_character(
+                        char_surf, char_size, char_size,
+                        kind=kind_for_entity(entity),
+                        color=inner,
+                        state=state_name,
+                        phase=phase,
+                    )
+                    # Circular mask
+                    mask = pygame.Surface(
+                        (char_size, char_size), pygame.SRCALPHA
+                    )
+                    pygame.draw.circle(mask, (255, 255, 255, 255),
+                                        (char_size // 2, char_size // 2),
+                                        char_size // 2)
+                    char_surf.blit(mask, (0, 0),
+                                    special_flags=pygame.BLEND_RGBA_MIN)
+                    screen.blit(char_surf, (cx - char_size // 2,
+                                             cy - char_size // 2))
+                except Exception:
+                    pass  # Fall through to legacy ring rendering
+
                 if entity.is_player:
                     # Class-colored inner fill (subtle radial gradient effect)
                     dim_inner = tuple(max(0, c // 4) for c in inner)
