@@ -1958,6 +1958,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     self._terrain_elev_click(gx, gy)
                 elif button == 3:
                     self._terrain_elev_click(gx, gy, decrease=True)
+            elif self.terrain_tool == "prefab":
+                if button == 1:
+                    self._drop_prefab_at(gx, gy, replace=False)
+                elif button == 3:
+                    # Right-click on a prefab tool erases the cell
+                    # (same convention as paint tool).
+                    self.battle.remove_terrain_at(gx, gy)
 
     # --- Terrain Move Tool ---
     def _terrain_move_start(self, gx, gy):
@@ -2512,14 +2519,37 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log("[TERRAIN] Terrain mode OFF.")
 
     def _cycle_terrain_tool(self):
-        """Cycle through terrain tools: paint -> move -> rect -> elev."""
-        tools = ["paint", "move", "rect", "elev"]
+        """Cycle through terrain tools: paint -> move -> rect -> elev -> prefab."""
+        tools = ["paint", "move", "rect", "elev", "prefab"]
         idx = tools.index(self.terrain_tool) if self.terrain_tool in tools else 0
         self.terrain_tool = tools[(idx + 1) % len(tools)]
         self.terrain_rect_start = None
         self.terrain_rect_preview = []
         self.terrain_drag_obj = None
         self._log(f"[TERRAIN] Tool: {self.terrain_tool.upper()}")
+
+    # --- Prefab drop tool (Phase 7f) ---
+    # The DM picks a prefab key (default "small_hut" until a UI lets
+    # them choose) and clicking the grid drops the prefab at that anchor.
+    _prefab_selected_key = "small_hut"
+
+    def _set_prefab(self, key: str):
+        from data.battle_prefabs import PREFABS
+        if key in PREFABS:
+            self._prefab_selected_key = key
+            self._log(f"[TERRAIN] Prefab: {PREFABS[key].name}")
+
+    def _drop_prefab_at(self, gx: int, gy: int, *, replace: bool = False):
+        from data.battle_prefabs import apply_prefab, get_prefab
+        try:
+            prefab = get_prefab(self._prefab_selected_key)
+        except KeyError:
+            self._log(f"[TERRAIN] Unknown prefab "
+                      f"{self._prefab_selected_key!r}.")
+            return
+        n = apply_prefab(self.battle, prefab, int(gx), int(gy),
+                          replace_existing=replace)
+        self._log(f"[TERRAIN] Dropped {prefab.name} ({n} tiles).")
 
     # --- Map Save/Load (terrain only) ---
     def _toggle_map_save_menu(self):
