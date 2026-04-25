@@ -242,6 +242,23 @@ _spells = {
                                   summon_name="Spiritual Weapon", summon_hp=0, summon_ac=99,
                                   summon_damage_dice="1d8", summon_damage_type="force",
                                   summon_attack_bonus=0, summon_duration_rounds=10),
+
+    "Find Familiar": SpellInfo("Find Familiar", level=1, school="Conjuration",
+                                action_type="action", range=10, targets="self",
+                                duration="Until dismissed",
+                                ritual=True,
+                                components="V,S,M",
+                                description=(
+                                    "Summon a tiny familiar (cat, owl, hawk, raven, "
+                                    "spider, rat, frog, octopus, seahorse, quipper, "
+                                    "weasel). Familiar shares your senses, can take "
+                                    "the Help action, and delivers touch spells. PHB "
+                                    "p.240 — 1-hour ritual cast in practice."
+                                ),
+                                summon_name="Familiar", summon_hp=1, summon_ac=11,
+                                summon_damage_dice="", summon_damage_type="",
+                                summon_attack_bonus=0,
+                                summon_duration_rounds=999),
     
     "Web": SpellInfo("Web", level=2, action_type="action", range=60, aoe_radius=20, aoe_shape="cube",
                      save_ability="Dexterity", applies_condition="Restrained", concentration=True, duration="1 hour", targets="aoe",
