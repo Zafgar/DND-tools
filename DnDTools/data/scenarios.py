@@ -454,6 +454,142 @@ SCENARIOS: List[Scenario] = [
         ],
         party_spawns=_PARTY_WEST,
     ),
+
+    # ============= URBAN — prefab-driven (Phase 7g) =============
+    Scenario(
+        id="tavern_brawl",
+        name="Tavern Brawl",
+        category="urban",
+        description="A drunken thug-led brawl in a crowded tavern. "
+                    "Tables and a hearth break up the lines of sight.",
+        recommended_level_min=1, recommended_level_max=3,
+        ceiling_ft=12,
+        tags=("indoor", "brawl", "tavern"),
+        # Outline of the tavern_common prefab (anchor 8,3)
+        tiles=_scatter("wall",
+                        [(x, 3) for x in range(8, 14)] +
+                        [(x, 7) for x in range(8, 14)] +
+                        [(8, 4), (8, 5), (8, 6), (13, 4), (13, 5), (13, 6)])
+              + _scatter("door", [(10, 3), (11, 3)])
+              + _scatter("fire", [(9, 5)])
+              + _scatter("table", [(10, 5), (11, 5), (10, 6), (11, 6),
+                                     (12, 4), (12, 5), (12, 6)]),
+        monsters=[
+            ScenarioMonster("Thug", 11, 6),
+            ScenarioMonster("Thug", 12, 6),
+            ScenarioMonster("Bandit", 11, 4),
+            ScenarioMonster("Bandit", 12, 4),
+        ],
+        party_spawns=[(2, 5), (2, 6), (3, 5), (3, 6)],
+    ),
+
+    # ============= DUNGEON — vault heist =============
+    Scenario(
+        id="vault_heist",
+        name="Vault Heist",
+        category="dungeon",
+        description="The party reaches the locked vault — but flame "
+                    "skeletons have already been animating its guards.",
+        recommended_level_min=4, recommended_level_max=6,
+        ceiling_ft=15,
+        tags=("indoor", "vault", "undead"),
+        tiles=_walls_rect(0, 2, 26, 13)
+              # Vault chamber against the east wall (4x4)
+              + _scatter("wall", [(20, y) for y in range(4, 9)])
+              + _scatter("wall", [(x, 9) for x in range(20, 26)])
+              + _scatter("wall", [(x, 4) for x in range(20, 26)])
+              + _scatter("door_locked", [(20, 6)])
+              + _scatter("crate", [(22, 5), (23, 5), (22, 7), (23, 7)])
+              + _scatter("pillar", [(20, 4), (24, 8)])
+              # Approach corridor decoration
+              + _scatter("rubble", [(8, 7), (9, 8), (12, 6)])
+              + _scatter("fire", [(11, 5), (11, 11)]),
+        monsters=[
+            ScenarioMonster("Skeleton", 14, 6),
+            ScenarioMonster("Skeleton", 14, 9),
+            ScenarioMonster("Flameskull", 17, 7),
+            ScenarioMonster("Flameskull", 22, 7),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
+
+    # ============= OUTDOOR — caravan ambush =============
+    Scenario(
+        id="caravan_ambush",
+        name="Caravan Ambush",
+        category="outdoor",
+        description="A wagon circle is overrun while travellers "
+                    "huddle around the fire. Bandits flank from the trees.",
+        recommended_level_min=2, recommended_level_max=4,
+        tags=("outdoor", "ambush", "wagon_circle"),
+        tiles=_scatter("crate", [(10, 6), (14, 6), (10, 10), (14, 10),
+                                   (12, 6), (10, 8), (14, 8), (12, 10)])
+              + _scatter("fire", [(12, 8)])
+              + _scatter("tree", [(5, 4), (5, 12), (18, 3), (19, 13),
+                                    (22, 7), (22, 9)])
+              + _scatter("difficult", [(7, 7), (8, 9), (16, 7), (17, 9)]),
+        monsters=[
+            ScenarioMonster("Bandit", 5, 7),
+            ScenarioMonster("Bandit", 5, 9),
+            ScenarioMonster("Bandit", 19, 7),
+            ScenarioMonster("Bandit", 19, 9),
+            ScenarioMonster("Thug", 22, 8),
+        ],
+        party_spawns=[(11, 7), (11, 9), (13, 7), (13, 9)],
+    ),
+
+    # ============= CAVE — ruined watchtower =============
+    Scenario(
+        id="ruined_watchtower",
+        name="Ruined Watchtower",
+        category="cave",
+        description="A collapsed watchtower haunts the woods. Rubble "
+                    "and a 15ft platform inside the broken walls.",
+        recommended_level_min=3, recommended_level_max=5,
+        ceiling_ft=20,
+        tags=("ruin", "tower", "undead"),
+        # Ruined tower outline (3x3 at 14,5) + rubble inside
+        tiles=_scatter("wall", [(14, 5), (15, 5), (16, 5),
+                                  (14, 7), (16, 7)])
+              + _scatter("rubble", [(14, 6), (15, 6), (16, 6)])
+              + _scatter("platform_15", [(15, 6)])
+              + _scatter("rubble", [(8, 5), (9, 9), (11, 11), (18, 11)])
+              + _scatter("tree", [(5, 4), (5, 12), (20, 3), (20, 13)]),
+        monsters=[
+            ScenarioMonster("Skeleton", 15, 4),
+            ScenarioMonster("Skeleton", 15, 8),
+            ScenarioMonster("Wight", 18, 7),
+            ScenarioMonster("Specter", 21, 6),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
+
+    # ============= URBAN — shrine defense =============
+    Scenario(
+        id="shrine_defense",
+        name="Shrine Defense",
+        category="urban",
+        description="The party defends a small temple shrine while "
+                    "cultists pour through the doors. Two braziers and "
+                    "a central altar.",
+        recommended_level_min=3, recommended_level_max=5,
+        ceiling_ft=20,
+        tags=("indoor", "defense", "altar"),
+        tiles=_walls_rect(5, 3, 18, 11)
+              + _scatter("door", [(5, 7), (5, 9), (22, 7), (22, 9)])
+              + _scatter("table", [(13, 8)])               # altar
+              + _scatter("fire", [(11, 8), (15, 8)])       # braziers
+              + _scatter("pillar", [(9, 5), (9, 11),
+                                      (18, 5), (18, 11)]),
+        monsters=[
+            ScenarioMonster("Cultist", 7, 6),
+            ScenarioMonster("Cultist", 7, 10),
+            ScenarioMonster("Cultist", 21, 6),
+            ScenarioMonster("Cultist", 21, 10),
+            ScenarioMonster("Acolyte", 7, 8),
+        ],
+        party_spawns=[(13, 6), (13, 10), (12, 8), (14, 8)],
+    ),
 ]
 
 
