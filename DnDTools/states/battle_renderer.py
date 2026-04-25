@@ -616,7 +616,14 @@ class BattleRendererMixin:
             if t.is_spell_terrain:
                 self._draw_spell_terrain_vfx(s, t, rw, rh, ticks)
             else:
-                s.fill((r, g, b, 200))
+                # Procedural decoration: brick walls, layered tree
+                # canopies, ripple bands for water, animated lava cracks,
+                # etc. Falls back to a flat fill for tile types we
+                # haven't painted yet.
+                from states.terrain_art import decorate_tile
+                if not decorate_tile(s, t.terrain_type, rw, rh,
+                                       (r, g, b), ticks=ticks):
+                    s.fill((r, g, b, 200))
 
             screen.blit(s, (rx, ry))
             # Border color: brighter for elevated, darker for lowered
