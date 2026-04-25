@@ -120,6 +120,14 @@ class TacticalAI:
             return plan
 
         # ===== PHASE 0: PRE-COMBAT BONUS ACTIONS (buffs that boost subsequent attacks) =====
+        # Druid Wild Shape — transform first so the rest of the turn
+        # uses the beast's stats and attacks. PHB p.66: Action by
+        # default; Combat Wild Shape feature (Circle of the Moon, level
+        # 2) lets it be a Bonus Action.
+        ws_step = self._try_wild_shape(entity, enemies, allies, battle)
+        if ws_step:
+            plan.steps.append(ws_step)
+
         if not entity.bonus_action_used:
             # Barbarian Rage FIRST - enables rage damage on all attacks this turn
             rage_step = self._try_start_rage(entity, enemies, allies, battle)
@@ -331,6 +339,11 @@ class TacticalAI:
             plan.skip_reason = f"{entity.name} expires"
             return plan
 
+        # Find Familiar — separate behaviour: Help an ally, or skitter
+        # to a safe square. Familiars are 1 HP and shouldn't attack.
+        if getattr(entity, "summon_spell_name", "") == "Find Familiar":
+            return self._handle_familiar_turn(entity, battle, plan)
+
         enemies = battle.get_enemies_of(entity)
         target = self._pick_target(entity, enemies, battle)
         if not target:
@@ -358,6 +371,71 @@ class TacticalAI:
 
         return plan
 
+    def _handle_familiar_turn(self, entity, battle, plan):
+        """A familiar (Find Familiar summon) doesn't fight — it Helps.
+
+        PHB p.240 / DMG familiars: 1 HP, can't take Attack action. Best
+        moves are:
+          1) If adjacent to an enemy that an ally is also fighting →
+             take the Help action (grant ally advantage on next attack).
+          2) Otherwise: stay near the owner; if a hostile creature is
+             within reach, dodge and re-orbit to a safer square.
+        """
+        owner = entity.summon_owner
+        enemies = battle.get_enemies_of(entity)
+        allies = [a for a in battle.get_allies_of(entity)
+                  if a is not entity and a.hp > 0 and not a.is_summon]
+
+        # Find an enemy adjacent to BOTH the familiar and at least one
+        # ally — the textbook Help-action sweet spot.
+        help_target = None
+        helped_ally = None
+        for foe in enemies:
+            if foe.hp <= 0:
+                continue
+            if not battle.is_adjacent(entity, foe):
+                continue
+            for ally in allies:
+                if battle.is_adjacent(ally, foe):
+                    help_target = foe
+                    helped_ally = ally
+                    break
+            if help_target:
+                break
+
+        if help_target and helped_ally:
+            step = ActionStep(
+                step_type="reaction",
+                description=(f"[FAMILIAR] {entity.name} takes the Help "
+                              f"action vs {help_target.name} — "
+                              f"{helped_ally.name} has advantage on "
+                              f"its next attack."),
+                attacker=entity,
+                target=help_target,
+                action_name="Help",
+                applies_condition="Help (advantage)",
+            )
+            plan.steps.append(step)
+            return plan
+
+        # No useful Help target — orbit owner. Move one cell toward
+        # owner if not already adjacent, then declare dodge.
+        if owner is not None and not battle.is_adjacent(entity, owner):
+            step = self._move_summon_to_target(entity, owner, battle)
+            if step is not None:
+                step.description = (f"[FAMILIAR] {entity.name} returns "
+                                      f"to {owner.name}'s side.")
+                plan.steps.append(step)
+
+        plan.steps.append(ActionStep(
+            step_type="reaction",
+            description=f"[FAMILIAR] {entity.name} takes the Dodge action.",
+            attacker=entity,
+            action_name="Dodge",
+            applies_condition="Dodging",
+        ))
+        return plan
+
     def _move_summon_to_target(self, entity, target, battle):
         """Simple movement for summons - teleport adjacent to target."""
         # Spiritual Weapon can move 20ft as part of its bonus action
@@ -382,6 +460,88 @@ class TacticalAI:
     # ------------------------------------------------------------------ #
     # Barbarian Rage                                                       #
     # ------------------------------------------------------------------ #
+
+    def _try_wild_shape(self, entity, enemies, allies, battle):
+        """Druid Wild Shape — transform when it materially helps.
+
+        Heuristic:
+          * Only trigger if entity has the wild_shape feature with uses
+            remaining and isn't already wildshaped.
+          * Skip if no enemies are visible (no point in shifting).
+          * Bonus-action transform requires combat_wild_shape feature
+            (Moon Druid).  Otherwise costs the action — skip if we'd
+            give up our attack and our human form is already plenty
+            effective (HP > 60% and STR/DEX modifier >= 3).
+          * If wounded (<= 35% HP), shift into the bear pool to soak
+            damage — Wild Shape gives a fresh HP pool to absorb hits.
+          * If we're a melee threat candidate with adjacent enemies in
+            move range, transform into a brown bear (or the strongest
+            beast known).
+        """
+        # Already shifted, or no Wild Shape feature
+        if entity.is_wild_shaped:
+            return None
+        if not entity.has_feature("wild_shape"):
+            return None
+        feat = entity.get_feature("Wild Shape") or entity.get_feature_by_name("Wild Shape")
+        if feat is not None:
+            uses = entity.feature_uses.get("Wild Shape", feat.uses_per_day)
+            if uses <= 0:
+                return None
+        # Need at least one living enemy on the field
+        live_enemies = [e for e in enemies if e.hp > 0]
+        if not live_enemies:
+            return None
+
+        is_moon = entity.has_feature("combat_wild_shape")
+        # Action vs Bonus action availability
+        if is_moon:
+            if entity.bonus_action_used:
+                return None
+        else:
+            if entity.action_used:
+                return None
+
+        # When NOT a Moon Druid, only burn the Action when we're hurt
+        # — full-HP druids prefer to spell-cast.
+        hp_pct = entity.hp / max(entity.max_hp, 1)
+        if not is_moon and hp_pct > 0.55:
+            return None
+
+        # Pick the best beast we can reach via the library
+        try:
+            from data.library import library
+        except Exception:
+            return None
+        candidates = []
+        for name in ("Brown Bear", "Dire Wolf", "Giant Spider",
+                      "Black Bear", "Wolf"):
+            try:
+                stats = library.get_monster(name)
+                candidates.append(stats)
+            except (KeyError, ValueError):
+                continue
+        if not candidates:
+            return None
+        # Prefer the highest-HP option for staying power
+        beast = max(candidates, key=lambda s: s.hit_points)
+
+        # Spend the use
+        entity.feature_uses["Wild Shape"] = entity.feature_uses.get(
+            "Wild Shape", feat.uses_per_day if feat else 2) - 1
+        if is_moon:
+            entity.bonus_action_used = True
+        else:
+            entity.action_used = True
+
+        return ActionStep(
+            step_type="transform",
+            description=(f"{entity.name} uses Wild Shape and becomes a "
+                          f"{beast.name}!"),
+            attacker=entity,
+            action_name="Wild Shape",
+            transform_stats=beast,
+        )
 
     def _try_start_rage(self, entity, enemies, allies, battle):
         """Optimal rage activation.
