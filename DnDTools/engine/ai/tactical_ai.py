@@ -4742,14 +4742,23 @@ class TacticalAI:
                         acx, acy = get_center(a)
                         if math.hypot(ccx - acx, ccy - acy) * 5 <= radius_ft:
                             score -= 3
+                # Phase 10d: also penalise self-hit. Sculpt Spells
+                # (Evoker) lets the caster carve a hole — skip the
+                # penalty there.
+                if not entity.has_feature("sculpt_spells"):
+                    if math.hypot(ccx - ecx, ccy - ecy) * 5 <= radius_ft:
+                        score -= 5
 
                 if score > best_score:
                     best_score = score
                     best_cluster = cluster
                     best_aim_point = (ccx, ccy)
 
-        # Don't use AoE if we'd hit more allies than enemies
-        if best_score <= 0:
+        # Reject only when no enemy is in the chosen cluster — a
+        # negative score (because the only viable aim still self-hits
+        # or grazes an ally) is acceptable as long as we still hit
+        # someone hostile.
+        if not best_cluster:
             return None
 
         return best_cluster, best_aim_point
