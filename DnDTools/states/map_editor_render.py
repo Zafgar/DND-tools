@@ -270,7 +270,10 @@ def _draw_tool_panel(state, screen) -> None:
     pygame.draw.rect(screen, COLORS["panel_dark"], rect)
     pygame.draw.line(screen, COLORS["border"], (rect.right, rect.y),
                      (rect.right, rect.bottom))
-    py = rect.y + 8
+    # Clip + apply Phase 11b scroll so long lists are scrollable.
+    prev_clip = screen.get_clip()
+    screen.set_clip(rect)
+    py = rect.y + 8 - state.tool_panel_scroll
     mp = pygame.mouse.get_pos()
     for i, (key, label) in enumerate(TOOLS_ORDER):
         row = pygame.Rect(rect.x + 8, py + i * 32, rect.width - 16, 28)
@@ -284,13 +287,26 @@ def _draw_tool_panel(state, screen) -> None:
         screen.blit(lbl, (row.x + 8, row.y + 4))
 
     section_y = py + len(TOOLS_ORDER) * 32 + 16
+    end_y = section_y
     if state.tool == TOOL_PLACE_OBJECT:
-        _draw_object_picker(state, screen, section_y)
+        end_y = _draw_object_picker(state, screen, section_y)
     elif state.tool in (TOOL_PAINT_TILE, TOOL_FILL_TILE):
-        _draw_brush_picker(state, screen, section_y)
+        end_y = _draw_brush_picker(state, screen, section_y)
+    state.tool_panel_content_h = (end_y + state.tool_panel_scroll) - rect.y
+    # Tiny scroll indicator if content overflows.
+    if state.tool_panel_content_h > rect.height:
+        bar_h = max(20, int(rect.height * rect.height
+                             / state.tool_panel_content_h))
+        ratio = state.tool_panel_scroll / max(1,
+                state.tool_panel_content_h - rect.height)
+        bar_y = rect.y + int(ratio * (rect.height - bar_h))
+        pygame.draw.rect(screen, COLORS.get("accent", (180, 180, 220)),
+                         (rect.right - 4, bar_y, 3, bar_h),
+                         border_radius=2)
+    screen.set_clip(prev_clip)
 
 
-def _draw_object_picker(state, screen, start_y) -> None:
+def _draw_object_picker(state, screen, start_y) -> int:
     rect = state.tool_panel_rect
     yy = start_y
     hdr = fonts.small_bold.render("Objektityypit", True, COLORS["text_dim"])
@@ -311,9 +327,10 @@ def _draw_object_picker(state, screen, start_y) -> None:
             screen.blit(name, (row.x + 22, row.y + 4))
             yy += 24
         yy += 6
+    return yy
 
 
-def _draw_brush_picker(state, screen, start_y) -> None:
+def _draw_brush_picker(state, screen, start_y) -> int:
     rect = state.tool_panel_rect
     yy = start_y
     hdr = fonts.small_bold.render(
@@ -330,6 +347,7 @@ def _draw_brush_picker(state, screen, start_y) -> None:
         name = fonts.tiny.render(key, True, COLORS["text_main"])
         screen.blit(name, (row.x + 24, row.y + 3))
         yy += 22
+    return yy
 
 
 # ================================================================

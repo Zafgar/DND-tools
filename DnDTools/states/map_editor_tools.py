@@ -55,6 +55,19 @@ def route_events(state, events) -> None:
                 _handle_tool_panel_click(state, ev.pos)
                 continue
 
+        # Tool palette scroll (Phase 11b) — wheel events while the
+        # cursor is over the left panel scroll its long object-type
+        # list instead of zooming the canvas.
+        if ev.type == pygame.MOUSEWHEEL:
+            if state.tool_panel_rect.collidepoint(pygame.mouse.get_pos()):
+                max_scroll = max(0, state.tool_panel_content_h
+                                 - state.tool_panel_rect.height + 40)
+                state.tool_panel_scroll = max(
+                    0,
+                    min(state.tool_panel_scroll - ev.y * 30, max_scroll),
+                )
+                continue
+
         # Keyboard
         if ev.type == pygame.KEYDOWN:
             _handle_key(state, ev)
@@ -81,7 +94,8 @@ def route_events(state, events) -> None:
 def _handle_tool_panel_click(state, pos) -> None:
     x, y = pos
     px = state.tool_panel_rect.x
-    py = state.tool_panel_rect.y + 8
+    # Apply Phase 11b scroll so click rows match drawn rows.
+    py = state.tool_panel_rect.y + 8 - state.tool_panel_scroll
 
     # Tool buttons — 30px tall rows
     for i, (key, label) in enumerate(TOOLS_ORDER):

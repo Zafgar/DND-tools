@@ -188,6 +188,11 @@ class MapEditorState(GameState):
         # --- Kingdoms navigator (lazy) ---------------------------------------
         self._navigator = None
         self.navigator_open = False
+        # Phase 11b: tool panel scroll state — without this the
+        # object-type list silently clips when there are many entries
+        # (the user reported "couldn't scroll down at all").
+        self.tool_panel_scroll = 0
+        self.tool_panel_content_h = 0
 
         # --- Army-vs-army picker state --------------------------------------
         self.army_pick_mode: bool = False
@@ -770,6 +775,32 @@ class MapEditorState(GameState):
     def update(self) -> None:
         if self._status_timer > 0:
             self._status_timer -= 1
+
+        # Phase 11d: WASD / arrow keys pan the canvas while the user
+        # is NOT typing in a search/text field. Keeps zoom unchanged.
+        try:
+            keys = pygame.key.get_pressed()
+        except pygame.error:
+            return
+        # Don't steal keystrokes from the search field
+        if self._navigator is not None and self._navigator.search_active:
+            return
+        # Pan speed scales with zoom so it feels consistent
+        pan = 12.0 / max(self.zoom, 0.1)
+        dx = dy = 0.0
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            dx -= pan
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            dx += pan
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
+            dy -= pan
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            # Ctrl+S is save; ignore S while Ctrl held
+            if not (keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]):
+                dy += pan
+        if dx or dy:
+            self.camera_x += dx
+            self.camera_y += dy
 
     def draw(self, screen) -> None:
         from states.map_editor_render import render_editor
