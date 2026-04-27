@@ -227,6 +227,15 @@ class AnnotationPath:
     points: List[Tuple[float, float]] = field(default_factory=list)  # world %
     dashed: bool = False
     notes: str = ""
+    # Settlements (or other MapObjects) the path threads through.
+    # When set, the path's ``points`` are derived from the waypoint
+    # objects' (x%, y%) — moving / deleting a waypoint in the editor
+    # auto-updates the polyline. Free-form drawn paths leave this
+    # empty and rely on ``points`` directly.
+    waypoint_object_ids: List[str] = field(default_factory=list)
+    # 0..1 base opacity for rendering; the editor brightens when the
+    # path is selected so you can still see it over a dark JPG.
+    opacity: float = 0.85
 
     def __post_init__(self):
         if not self.id:
@@ -460,6 +469,8 @@ def _path_to_dict(p: AnnotationPath) -> dict:
         "color": list(p.color), "thickness": p.thickness,
         "points": [list(pt) for pt in p.points],
         "dashed": p.dashed, "notes": p.notes,
+        "waypoint_object_ids": list(p.waypoint_object_ids),
+        "opacity": float(p.opacity),
     }
 
 
@@ -472,6 +483,8 @@ def _path_from_dict(d: dict) -> AnnotationPath:
         points=[tuple(pt) for pt in d.get("points", [])],
         dashed=bool(d.get("dashed", False)),
         notes=d.get("notes", ""),
+        waypoint_object_ids=list(d.get("waypoint_object_ids", [])),
+        opacity=float(d.get("opacity", 0.85)),
     )
 
 
