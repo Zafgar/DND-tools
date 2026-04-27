@@ -188,6 +188,9 @@ class MapEditorState(GameState):
         # --- Kingdoms navigator (lazy) ---------------------------------------
         self._navigator = None
         self.navigator_open = False
+        # Phase 11c: drag-onto-map palette (lazily created on first open)
+        self._location_palette = None
+        self.location_palette_open = False
         # Phase 11b: tool panel scroll state — without this the
         # object-type list silently clips when there are many entries
         # (the user reported "couldn't scroll down at all").
@@ -212,6 +215,27 @@ class MapEditorState(GameState):
         if self.navigator_open:
             self._get_navigator()
             self._set_status("Kuningaskunnat auki")
+
+    def _get_location_palette(self):
+        if self._location_palette is None:
+            from states.location_palette_widget import LocationPaletteWidget
+            self._location_palette = LocationPaletteWidget(
+                self, on_close=lambda: setattr(
+                    self, "location_palette_open", False),
+            )
+        return self._location_palette
+
+    def toggle_location_palette(self) -> None:
+        """Open / close the campaign-locations drag palette
+        (Phase 11c)."""
+        self.location_palette_open = not self.location_palette_open
+        if self.location_palette_open:
+            pal = self._get_location_palette()
+            pal.open()
+            self._set_status("Sijaintipaletti auki — klikkaa lisätäksesi")
+        else:
+            if self._location_palette is not None:
+                self._location_palette.close()
 
     def open_npc_modal(self, npc_ids) -> None:
         """Open a read-only NPC profile view. Accepts a string or list."""
@@ -467,6 +491,7 @@ class MapEditorState(GameState):
         self.btn_layers   = mk("Kerrokset",  110, self._on_cycle_layer)
         self.btn_parent   = mk("^ Ylös",      90, self._on_go_parent)
         self.btn_nav      = mk("Kuningaskunnat", 150, self._toggle_navigator)
+        self.btn_palette  = mk("Sijainnit", 110, self.toggle_location_palette)
         self.btn_army_sim = mk("Simuloi armeijat", 160, self.begin_army_battle_pick,
                                 COLORS["warning"])
         self.btn_advance  = mk("Edistä päivä", 130, self.open_advance_time_modal,
@@ -782,8 +807,12 @@ class MapEditorState(GameState):
             keys = pygame.key.get_pressed()
         except pygame.error:
             return
-        # Don't steal keystrokes from the search field
+        # Don't steal keystrokes from search fields
         if self._navigator is not None and self._navigator.search_active:
+            return
+        if (self._location_palette is not None
+                and self._location_palette.is_open
+                and self._location_palette.search_active):
             return
         # Pan speed scales with zoom so it feels consistent
         pan = 12.0 / max(self.zoom, 0.1)
