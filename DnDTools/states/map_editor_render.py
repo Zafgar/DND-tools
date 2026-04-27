@@ -29,6 +29,9 @@ def render_editor(state, screen) -> None:
     _draw_tool_panel(state, screen)
     if state.navigator_open and state._navigator is not None:
         state._navigator.draw(screen)
+    elif (state.location_palette_open
+            and state._location_palette is not None):
+        state._location_palette.draw(screen)
     else:
         _draw_detail_panel(state, screen)
     _draw_bottom_bar(state, screen)
@@ -252,8 +255,8 @@ def _draw_top_bar(state, screen) -> None:
     mp = pygame.mouse.get_pos()
     for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                 state.btn_grid, state.btn_scale, state.btn_layers,
-                state.btn_parent, state.btn_nav, state.btn_army_sim,
-                state.btn_advance):
+                state.btn_parent, state.btn_nav, state.btn_palette,
+                state.btn_army_sim, state.btn_advance):
         btn.draw(screen, mp)
     # Map name
     name = f"{state.world_map.name}  ({state.world_map.map_type})"

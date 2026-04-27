@@ -40,13 +40,19 @@ def route_events(state, events) -> None:
         # Top-bar buttons
         for btn in (state.btn_back, state.btn_save, state.btn_load_img,
                     state.btn_grid, state.btn_scale, state.btn_layers,
-                    state.btn_parent, state.btn_nav, state.btn_army_sim,
-                    state.btn_advance):
+                    state.btn_parent, state.btn_nav, state.btn_palette,
+                    state.btn_army_sim, state.btn_advance):
             btn.handle_event(ev)
 
         # Navigator consumes its own events when open
         if state.navigator_open and state._navigator is not None:
             if state._navigator.handle_event(ev):
+                continue
+
+        # Phase 11c: location palette (drag-onto-map) consumes events
+        # while open
+        if state.location_palette_open and state._location_palette is not None:
+            if state._location_palette.handle_event(ev):
                 continue
 
         # Tool palette click (left panel)
