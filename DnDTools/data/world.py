@@ -106,6 +106,10 @@ class NPC:
     tags: List[str] = field(default_factory=list)
     # Location
     location_id: str = ""             # Where this NPC currently is
+    # Phase 11e: link into the shared ActorRegistry so the same NPC
+    # has consistent identity across town/world/battle views. Empty
+    # until the DM explicitly registers the NPC as an Actor.
+    actor_id: str = ""
     # Stat sheet linking
     stat_source: str = ""             # "monster:Bandit", "hero:MyHero", "custom", or ""
     custom_stats: dict = field(default_factory=dict)  # Serialized CreatureStats if custom

@@ -367,6 +367,23 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.auto_battle = not self.auto_battle
         self.auto_battle_paused = False
         if self.auto_battle:
+            # Phase 11a: if the DM hits AUTO before clicking START
+            # COMBAT, auto-start so the toggle isn't a silent no-op.
+            if not self.battle.combat_started:
+                if not self.battle.entities:
+                    self._log("[SYSTEM] Auto-Battle aborted — "
+                               "no entities on the field.")
+                    self.auto_battle = False
+                    return
+                try:
+                    self.battle.start_combat()
+                    self._log("[SYSTEM] Auto-Battle: combat auto-started "
+                               "(no manual START COMBAT needed).")
+                except Exception as ex:
+                    self._log(f"[SYSTEM] Auto-Battle could not start "
+                               f"combat: {ex}.")
+                    self.auto_battle = False
+                    return
             self.btn_auto.color = COLORS["success"]
             self.btn_auto.text = "STOP"
             self.btn_pause.color = COLORS["warning"]
@@ -1974,12 +1991,31 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         
         self.dmg_modal_open = False
     def _paint_terrain_at(self, pos, button):
+        # Phase 11a: defensive wrapper — if any individual paint
+        # operation raises (bad prefab, mis-set selected type) we log
+        # it and keep the editor responsive instead of crashing the
+        # entire battle state.
+        try:
+            self._paint_terrain_at_unchecked(pos, button)
+        except Exception as ex:
+            self._log(f"[TERRAIN] Paint failed: {ex!r}")
+            # Reset transient drag/rect state so the user isn't stuck
+            self.terrain_rect_start = None
+            self.terrain_rect_preview = []
+            self.terrain_drag_obj = None
+
+    def _paint_terrain_at_unchecked(self, pos, button):
         mx, raw_my = pos
         if mx < GRID_W and raw_my >= TOP_BAR_H:
             gx, gy = self._screen_to_grid(mx, raw_my)
             gx, gy = int(gx), int(gy)
             if self.terrain_tool == "paint":
                 if button == 1:  # Paint
+                    if self.terrain_selected_type not in TERRAIN_TYPES:
+                        self._log(f"[TERRAIN] Unknown type "
+                                   f"{self.terrain_selected_type!r}; "
+                                   f"falling back to 'wall'.")
+                        self.terrain_selected_type = "wall"
                     t = TerrainObject(self.terrain_selected_type, gx, gy)
                     self.battle.add_terrain(t)
                 elif button == 3:  # Erase
