@@ -14,7 +14,7 @@ import pygame
 
 from data.map_engine import MapObject, AnnotationPath, TERRAIN_BRUSHES
 from states.map_editor import (
-    TOOL_SELECT, TOOL_PLACE_OBJECT, TOOL_PAINT_TILE, TOOL_ERASE_TILE,
+    TOOL_SELECT, TOOL_RECT_SELECT, TOOL_PLACE_OBJECT, TOOL_PAINT_TILE, TOOL_ERASE_TILE,
     TOOL_FILL_TILE, TOOL_MEASURE_LINE, TOOL_MEASURE_PATH, TOOL_DRAW_PATH,
     TOOL_DELETE, TOOLS_ORDER, OBJECT_TYPE_GROUPS,
 )
@@ -53,6 +53,11 @@ def route_events(state, events) -> None:
         # while open
         if state.location_palette_open and state._location_palette is not None:
             if state._location_palette.handle_event(ev):
+                continue
+
+        # Phase 13b: bulk-edit modal consumes events while open
+        if state.bulk_edit_open and state._bulk_edit_modal is not None:
+            if state._bulk_edit_modal.handle_event(ev):
                 continue
 
         # Tool palette click (left panel)
@@ -210,6 +215,17 @@ def _handle_zoom(state, ev, mp) -> None:
 # Mouse button handling
 # ----------------------------------------------------------------------
 
+def _open_bulk_edit_modal(state) -> None:
+    """Lazy-instantiate and open the bulk-edit modal (Phase 13b)."""
+    if state._bulk_edit_modal is None:
+        from states.bulk_edit_modal import BulkEditModal
+        state._bulk_edit_modal = BulkEditModal(
+            state, on_close=lambda: setattr(state, "bulk_edit_open", False),
+        )
+    state._bulk_edit_modal.open()
+    state.bulk_edit_open = True
+
+
 def _handle_mouse_down(state, ev, mp) -> None:
     # Middle button or space+left starts pan
     keys = pygame.key.get_pressed()
@@ -236,6 +252,11 @@ def _handle_mouse_down(state, ev, mp) -> None:
     # Tool-specific left-click
     if state.tool == TOOL_SELECT:
         _tool_select_down(state, mp)
+    elif state.tool == TOOL_RECT_SELECT:
+        # Phase 13b: start a rectangle drag
+        px, py = state.screen_to_pct(*mp)
+        state.rect_select_start = (px, py)
+        state.rect_select_end = (px, py)
     elif state.tool == TOOL_PLACE_OBJECT:
         _tool_place(state, mp)
     elif state.tool == TOOL_DELETE:
@@ -259,6 +280,27 @@ def _handle_mouse_up(state, ev, _mp) -> None:
         state._dragging_pan = False
     if ev.button == 1 and state._drag_object_id:
         state._drag_object_id = ""
+    if (ev.button == 1 and state.tool == TOOL_RECT_SELECT
+            and state.rect_select_start is not None):
+        from data.map_bulk_ops import select_in_rect
+        x1, y1 = state.rect_select_start
+        x2, y2 = state.rect_select_end or (x1, y1)
+        state.selected_object_ids = select_in_rect(
+            state.world_map, x1, y1, x2, y2,
+        )
+        state.rect_select_start = None
+        state.rect_select_end = None
+        n = len(state.selected_object_ids)
+        if n > 0:
+            state._set_status(
+                f"Valittu {n} objektia — Enter avaa muokkauksen, "
+                f"Esc tyhjentää"
+            )
+            # Open the bulk-edit modal automatically when there's a
+            # non-trivial selection.
+            _open_bulk_edit_modal(state)
+        else:
+            state._set_status("Ei valintoja")
 
 
 def _handle_mouse_motion(state, ev, mp) -> None:
@@ -267,6 +309,13 @@ def _handle_mouse_motion(state, ev, mp) -> None:
         dy = mp[1] - state._pan_anchor[1]
         state.camera_x = state._pan_cam_start[0] - dx / state.zoom
         state.camera_y = state._pan_cam_start[1] - dy / state.zoom
+        return
+
+    # Phase 13b: track rectangle-select drag end
+    if (state.tool == TOOL_RECT_SELECT and ev.buttons[0]
+            and state.rect_select_start is not None
+            and state.canvas_rect.collidepoint(mp)):
+        state.rect_select_end = state.screen_to_pct(*mp)
         return
 
     if state._drag_object_id:

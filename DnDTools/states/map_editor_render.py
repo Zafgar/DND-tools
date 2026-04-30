@@ -36,6 +36,10 @@ def render_editor(state, screen) -> None:
         _draw_detail_panel(state, screen)
     _draw_bottom_bar(state, screen)
     _draw_hover_tooltip(state, screen)
+    # Phase 13b: rectangle-select highlight + bulk-edit modal
+    _draw_rect_select_overlay(state, screen)
+    if state.bulk_edit_open and state._bulk_edit_modal is not None:
+        state._bulk_edit_modal.draw(screen)
     if state._edit_modal is not None:
         state._edit_modal.draw(screen)
 
@@ -554,6 +558,37 @@ def _draw_bottom_bar(state, screen) -> None:
     if state._status_timer > 0 and state._status_text:
         s = fonts.small.render(state._status_text, True, COLORS["text_bright"])
         screen.blit(s, (rect.width // 2 - s.get_width() // 2, rect.y + 4))
+
+
+def _draw_rect_select_overlay(state, screen) -> None:
+    """Phase 13b: paint the in-progress rectangle + ring already-selected
+    objects with a bright highlight."""
+    # Active drag rectangle
+    if (state.rect_select_start is not None
+            and state.rect_select_end is not None):
+        x1_pct, y1_pct = state.rect_select_start
+        x2_pct, y2_pct = state.rect_select_end
+        x1, y1 = state.pct_to_screen(x1_pct, y1_pct)
+        x2, y2 = state.pct_to_screen(x2_pct, y2_pct)
+        rx, ry = min(x1, x2), min(y1, y2)
+        rw, rh = abs(x2 - x1), abs(y2 - y1)
+        if rw > 0 and rh > 0:
+            surf = pygame.Surface((rw, rh), pygame.SRCALPHA)
+            surf.fill((180, 180, 240, 60))
+            screen.blit(surf, (rx, ry))
+            pygame.draw.rect(screen, COLORS.get("accent",
+                                                  (180, 180, 240)),
+                              (rx, ry, rw, rh), 2)
+    # Highlight ring around already-selected objects
+    sel = state.selected_object_ids
+    if sel:
+        for layer in state.world_map.layers:
+            for obj in layer.objects:
+                if obj.id in sel:
+                    sx, sy = state.pct_to_screen(obj.x, obj.y)
+                    pygame.draw.circle(screen, COLORS.get("success",
+                                                            (90, 200, 120)),
+                                       (sx, sy), 14, 2)
 
 
 def _draw_hover_tooltip(state, screen) -> None:

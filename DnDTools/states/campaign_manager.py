@@ -383,6 +383,17 @@ class CampaignManagerState:
                                         self._toggle_travel_view, color=COLORS["warning"])
         self.btn_open_map_editor = Button(1226, SCREEN_HEIGHT - 60, 130, 45, "Karttaeditori",
                                            self._open_map_editor, color=COLORS["accent"])
+        # Phase 13a: bulk-import campaign data from a Markdown / text
+        # file (Phase 12a). Sits at the right end of the World tab
+        # action row.
+        self.btn_import_text = Button(1360, SCREEN_HEIGHT - 60, 130, 45,
+                                        "Tuo tekstistä...",
+                                        self._import_text_file,
+                                        color=COLORS["spell"])
+        # Status string set by _import_text_file so the user sees what
+        # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
+        self._import_status: str = ""
+        self._import_status_timer: int = 0
 
     def _load_world_from_campaign(self) -> World:
         """Load or create World from campaign's world_data."""
@@ -873,6 +884,102 @@ class CampaignManagerState:
             self._status_timer = 240
             self._map_bg_surface = None
 
+    def _import_text_file(self):
+        """Phase 13a: open a native file picker for a Markdown / text
+        notes file and run it through ``data.text_import.import_text``
+        + ``data.import_link.link_all`` so locations, NPCs, quests
+        and notes are merged into the campaign in one click.
+
+        Idempotent — re-importing the same file updates instead of
+        duplicating. Status is shown via _import_status for ~5s.
+        """
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:
+                pass
+            path = filedialog.askopenfilename(
+                title="Choose a Markdown / text file to import",
+                filetypes=[
+                    ("Text files", "*.md *.markdown *.txt"),
+                    ("All files", "*.*"),
+                ],
+            )
+            root.destroy()
+        except Exception as ex:
+            self._import_status = f"File picker unavailable: {ex}"
+            self._import_status_timer = 300
+            logging.warning(f"[IMPORT] picker error: {ex}")
+            return
+        if not path:
+            return
+        try:
+            from data.text_import import import_file
+            from data.import_link import link_all
+            report = import_file(self.world, path)
+        except OSError as ex:
+            self._import_status = f"Failed to read file: {ex}"
+            self._import_status_timer = 300
+            return
+        # Second pass — auto-link to actor registry + place settlement
+        # tokens onto the campaign's primary world map.
+        link_report = None
+        try:
+            from data.actors import get_registry
+            registry = get_registry()
+            world_map = self._get_primary_world_map()
+            link_report = link_all(self.world, world_map, registry)
+        except Exception as ex:
+            logging.warning(f"[IMPORT] link pass failed: {ex}")
+        bits = [report.summary()]
+        if link_report:
+            link_summary = link_report.summary()
+            if link_summary != "no links":
+                bits.append(link_summary)
+        self._import_status = "Tuotu: " + " · ".join(bits)
+        self._import_status_timer = 300
+        # Push to disk so the merged data survives a crash
+        try:
+            from data.campaign import save_campaign
+            self.campaign.world_data = self._serialize_world(self.world)
+            save_campaign(self.campaign)
+        except Exception as ex:
+            logging.warning(f"[IMPORT] auto-save failed: {ex}")
+
+    def _get_primary_world_map(self):
+        """Return the campaign's primary WorldMap, or None when none
+        is configured / loadable."""
+        wm_id = getattr(self.campaign, "primary_world_map_id", "")
+        if not wm_id:
+            return None
+        try:
+            from data.map_engine import (
+                MAPS_DIR, load_world_map,
+            )
+            import os as _os
+            path = _os.path.join(MAPS_DIR, f"{wm_id}.json")
+            if _os.path.isfile(path):
+                return load_world_map(path)
+        except Exception:
+            return None
+        return None
+
+    def _serialize_world(self, world) -> dict:
+        """Best-effort World → dict for campaign.world_data."""
+        try:
+            from data.serialization import serialize
+            return serialize(world)
+        except Exception:
+            try:
+                from dataclasses import asdict
+                return asdict(world)
+            except Exception:
+                return {}
+
     def _pick_image_file(self):
         """Open a native file picker for selecting an image. Returns path or ''."""
         try:
@@ -1226,6 +1333,7 @@ class CampaignManagerState:
                 self.btn_world_services.handle_event(event)
                 self.btn_world_travel.handle_event(event)
                 self.btn_open_map_editor.handle_event(event)
+                self.btn_import_text.handle_event(event)
 
     def _handle_party_click(self, mp):
         mx, my = mp
@@ -2101,6 +2209,14 @@ class CampaignManagerState:
             self.btn_world_services.draw(screen, mp)
             self.btn_world_travel.draw(screen, mp)
             self.btn_open_map_editor.draw(screen, mp)
+            self.btn_import_text.draw(screen, mp)
+            # Phase 13a: status line for text-import results
+            if self._import_status_timer > 0:
+                self._import_status_timer -= 1
+                msg = fonts.small.render(self._import_status, True,
+                                            COLORS.get("success",
+                                                         (90, 200, 120)))
+                screen.blit(msg, (20, SCREEN_HEIGHT - 90))
 
         # Modal overlay
         if self.modal:
