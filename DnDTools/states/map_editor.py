@@ -58,9 +58,11 @@ TOOL_MEASURE_LINE  = "measure_line"
 TOOL_MEASURE_PATH  = "measure_path"
 TOOL_DRAW_PATH     = "draw_path"
 TOOL_DELETE        = "delete"
+TOOL_RECT_SELECT   = "rect_select"  # Phase 13b: drag rectangle, bulk-edit
 
 TOOLS_ORDER = [
     (TOOL_SELECT,       "Valitse"),
+    (TOOL_RECT_SELECT,  "Valitse alue"),
     (TOOL_PLACE_OBJECT, "Lisää objekti"),
     (TOOL_DRAW_PATH,    "Piirrä reitti"),
     (TOOL_MEASURE_LINE, "Mittaa (suora)"),
@@ -191,6 +193,15 @@ class MapEditorState(GameState):
         # Phase 11c: drag-onto-map palette (lazily created on first open)
         self._location_palette = None
         self.location_palette_open = False
+        # Phase 13b: rectangle-select / bulk-edit state.
+        # ``selected_object_ids`` is the live multi-selection.
+        # ``rect_select_start`` is the (x_pct, y_pct) corner during a
+        # drag, ``rect_select_end`` the current other corner.
+        self.selected_object_ids: set = set()
+        self.rect_select_start = None
+        self.rect_select_end = None
+        self._bulk_edit_modal = None
+        self.bulk_edit_open = False
         # Phase 11b: tool panel scroll state — without this the
         # object-type list silently clips when there are many entries
         # (the user reported "couldn't scroll down at all").
