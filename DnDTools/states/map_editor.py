@@ -585,13 +585,61 @@ class MapEditorState(GameState):
     # Map navigation (drill-down)
     # ================================================================
     def open_linked_map(self, obj: MapObject) -> None:
-        """Follow obj.linked_map_id into a sub-map, pushing current id onto
-        the history stack so the '^' button can pop back."""
+        """Follow obj.linked_map_id into a sub-map, pushing current id
+        onto the history stack so the '^' button can pop back.
+
+        Phase 14e: when the object is a settlement / drill-down kind
+        but doesn't have a linked map yet, auto-create a child
+        WorldMap so the DM can immediately start placing town
+        buildings on it. Uses the object's label as the new map's
+        name and parents it to the current map."""
         target = obj.linked_map_id
+        if not target and obj.object_type in DRILLDOWN_TYPES:
+            new_id = self._create_child_map_for(obj)
+            if new_id:
+                obj.linked_map_id = new_id
+                target = new_id
+                self._set_status(
+                    f"Luotiin alikartta: "
+                    f"{obj.label or obj.object_type}"
+                )
         if not target:
-            self._set_status(f"{obj.label or obj.object_type}: ei linkitettyä karttaa")
+            self._set_status(
+                f"{obj.label or obj.object_type}: ei linkitettyä karttaa"
+            )
             return
         self._switch_to_map_by_id(target, push_history=True)
+
+    def _create_child_map_for(self, obj: MapObject) -> str:
+        """Auto-create a child WorldMap rooted at this object. Returns
+        the new map id or empty string on failure."""
+        try:
+            from data.map_engine import (
+                WorldMap, MapLayer, save_world_map, _new_id,
+            )
+        except Exception:
+            return ""
+        kind_to_map_type = {
+            "capital": "town", "city": "town", "town": "town",
+            "village": "town", "fort": "town",
+            "cave": "dungeon", "dungeon": "dungeon",
+            "portal_down": "plane", "portal_up": "plane",
+        }
+        map_type = kind_to_map_type.get(obj.object_type, "region")
+        new_id = _new_id("map")
+        wm = WorldMap(
+            id=new_id,
+            name=(obj.label or obj.object_type).title(),
+            map_type=map_type,
+            parent_map_id=self.world_map.id,
+            width=64, height=48, tile_size=24,
+            layers=[MapLayer(id="L0", name="Surface")],
+        )
+        try:
+            save_world_map(wm)
+        except Exception:
+            return ""
+        return new_id
 
     def _switch_to_map_by_id(self, map_id: str, *, push_history: bool) -> None:
         from data.map_engine import MAPS_DIR

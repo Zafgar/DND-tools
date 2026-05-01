@@ -86,6 +86,43 @@ class ShopItem:
 
 
 @dataclass
+class Shop:
+    """A merchant the party can buy from / sell to.
+
+    Lives in ``World.shops`` keyed by id; can be linked to a
+    ``location_id`` (where it sits) and an ``owner_npc_id`` (who runs
+    it). Inventory is a list of :class:`ShopItem`. Gold tracks the
+    owner's current cash on hand for restocking / payments.
+    """
+    id: str = ""
+    name: str = "New Shop"
+    shop_type: str = "general"         # general, tavern, smithy, …
+    location_id: str = ""              # Settlement / location this is in
+    owner_npc_id: str = ""             # NPC who runs the shop
+    description: str = ""
+    notes: str = ""
+    inventory: List[ShopItem] = field(default_factory=list)
+    gold: float = 100.0                # Owner's cash on hand
+    sell_markup: float = 1.0           # Multiplier on base prices (1.5 = 50% markup)
+    buy_markup: float = 0.5            # What the shop pays when buying from PCs
+    tags: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Service:
+    """A non-item service: inn rooms, smithy repair, healing, etc."""
+    id: str = ""
+    name: str = "New Service"
+    service_type: str = "lodging"      # lodging, repair, healing, training, …
+    location_id: str = ""              # Where you can buy this
+    npc_id: str = ""                   # Optional provider NPC
+    description: str = ""
+    price_gp: float = 0.0
+    notes: str = ""
+    tags: List[str] = field(default_factory=list)
+
+
+@dataclass
 class NPC:
     """A non-player character with full profile."""
     id: str = ""                      # Unique ID
@@ -264,6 +301,11 @@ class World:
     locations: Dict[str, Location] = field(default_factory=dict)  # id -> Location
     npcs: Dict[str, NPC] = field(default_factory=dict)            # id -> NPC
     quests: Dict[str, Quest] = field(default_factory=dict)        # id -> Quest
+    # Phase 14a: shops + services as first-class campaign data so the
+    # town view (Phase 14d) and buy/sell helpers (Phase 14b) have a
+    # single source of truth instead of inferring them from NPC notes.
+    shops: Dict[str, "Shop"] = field(default_factory=dict)        # id -> Shop
+    services: Dict[str, "Service"] = field(default_factory=dict)  # id -> Service
     next_id: int = 1                  # Auto-increment for IDs
     # Map data
     map_routes: List[MapRoute] = field(default_factory=list)
@@ -410,6 +452,76 @@ def _deserialize_npc(d: dict) -> NPC:
         alive=d.get("alive", True), active=d.get("active", True),
     )
 
+def _serialize_shop_item(it: ShopItem) -> dict:
+    return {
+        "item_name": it.item_name,
+        "base_price_gp": it.base_price_gp,
+        "current_price_gp": it.current_price_gp,
+        "quantity": it.quantity,
+        "notes": it.notes,
+    }
+
+
+def _deserialize_shop_item(d: dict) -> ShopItem:
+    return ShopItem(
+        item_name=d.get("item_name", ""),
+        base_price_gp=float(d.get("base_price_gp", 0.0)),
+        current_price_gp=float(d.get("current_price_gp", 0.0)),
+        quantity=int(d.get("quantity", -1)),
+        notes=d.get("notes", ""),
+    )
+
+
+def _serialize_shop(s: Shop) -> dict:
+    return {
+        "id": s.id, "name": s.name, "shop_type": s.shop_type,
+        "location_id": s.location_id, "owner_npc_id": s.owner_npc_id,
+        "description": s.description, "notes": s.notes,
+        "inventory": [_serialize_shop_item(i) for i in s.inventory],
+        "gold": s.gold, "sell_markup": s.sell_markup,
+        "buy_markup": s.buy_markup, "tags": list(s.tags),
+    }
+
+
+def _deserialize_shop(d: dict) -> Shop:
+    return Shop(
+        id=d.get("id", ""), name=d.get("name", "New Shop"),
+        shop_type=d.get("shop_type", "general"),
+        location_id=d.get("location_id", ""),
+        owner_npc_id=d.get("owner_npc_id", ""),
+        description=d.get("description", ""),
+        notes=d.get("notes", ""),
+        inventory=[_deserialize_shop_item(x)
+                    for x in d.get("inventory", [])],
+        gold=float(d.get("gold", 100.0)),
+        sell_markup=float(d.get("sell_markup", 1.0)),
+        buy_markup=float(d.get("buy_markup", 0.5)),
+        tags=list(d.get("tags", [])),
+    )
+
+
+def _serialize_service(s: Service) -> dict:
+    return {
+        "id": s.id, "name": s.name, "service_type": s.service_type,
+        "location_id": s.location_id, "npc_id": s.npc_id,
+        "description": s.description, "price_gp": s.price_gp,
+        "notes": s.notes, "tags": list(s.tags),
+    }
+
+
+def _deserialize_service(d: dict) -> Service:
+    return Service(
+        id=d.get("id", ""), name=d.get("name", "New Service"),
+        service_type=d.get("service_type", "lodging"),
+        location_id=d.get("location_id", ""),
+        npc_id=d.get("npc_id", ""),
+        description=d.get("description", ""),
+        price_gp=float(d.get("price_gp", 0.0)),
+        notes=d.get("notes", ""),
+        tags=list(d.get("tags", [])),
+    )
+
+
 def _serialize_route(r: MapRoute) -> dict:
     return {
         "from_id": r.from_id, "to_id": r.to_id, "route_type": r.route_type,
@@ -533,6 +645,8 @@ def save_world(world: World, filepath: str = ""):
         "locations": {k: _serialize_location(v) for k, v in world.locations.items()},
         "npcs": {k: _serialize_npc(v) for k, v in world.npcs.items()},
         "quests": {k: _serialize_quest(v) for k, v in world.quests.items()},
+        "shops": {k: _serialize_shop(v) for k, v in world.shops.items()},
+        "services": {k: _serialize_service(v) for k, v in world.services.items()},
         "next_id": world.next_id,
         "map_routes": [_serialize_route(r) for r in world.map_routes],
         "map_pins": [_serialize_pin(p) for p in world.map_pins],
@@ -562,6 +676,8 @@ def load_world(filepath: str) -> World:
         locations={k: _deserialize_location(v) for k, v in data.get("locations", {}).items()},
         npcs={k: _deserialize_npc(v) for k, v in data.get("npcs", {}).items()},
         quests={k: _deserialize_quest(v) for k, v in data.get("quests", {}).items()},
+        shops={k: _deserialize_shop(v) for k, v in data.get("shops", {}).items()},
+        services={k: _deserialize_service(v) for k, v in data.get("services", {}).items()},
         next_id=data.get("next_id", 1),
         map_routes=[_deserialize_route(r) for r in data.get("map_routes", [])],
         map_pins=[_deserialize_pin(p) for p in data.get("map_pins", [])],
