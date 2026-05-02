@@ -213,6 +213,12 @@ class CampaignManagerState:
         self.selected_location_id = ""
         self.selected_npc_id = ""
         self.world_view = "locations"  # "locations", "npcs", "shop_detail"
+        # Phase 16: lazy-instantiated widgets (town view / shop panel
+        # / relationship matrix). Each widget has its own is_open flag
+        # and opens via the matching toggle below.
+        self._town_view_widget = None
+        self._shop_panel_widget = None
+        self._rel_matrix_widget = None
         self.npc_search = ""
         self.npc_search_active = False
         self.world_location_expanded: set = set()  # Expanded location IDs in tree
@@ -390,6 +396,26 @@ class CampaignManagerState:
                                         "Tuo tekstistä...",
                                         self._import_text_file,
                                         color=COLORS["spell"])
+        # Phase 16: secondary action row above the main one — opens
+        # the new town / shop / relationship widgets for whichever
+        # entity the DM has selected.
+        self.btn_open_town = Button(20, SCREEN_HEIGHT - 115, 170, 45,
+                                       "Avaa kaupunki",
+                                       self._open_town_view,
+                                       color=COLORS["accent"])
+        self.btn_open_shop = Button(200, SCREEN_HEIGHT - 115, 140, 45,
+                                       "Avaa kauppa",
+                                       self._open_selected_shop,
+                                       color=COLORS["legendary"])
+        self.btn_open_rels = Button(350, SCREEN_HEIGHT - 115, 140, 45,
+                                       "Suhteet",
+                                       self._open_relationship_matrix,
+                                       color=COLORS["spell"])
+        self.btn_npc_portrait = Button(500, SCREEN_HEIGHT - 115,
+                                          160, 45,
+                                          "NPC-portretti...",
+                                          self._pick_npc_portrait,
+                                          color=COLORS["warning"])
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -884,6 +910,119 @@ class CampaignManagerState:
             self._status_timer = 240
             self._map_bg_surface = None
 
+    def _open_town_view(self):
+        """Phase 16a: open the TownViewWidget for the currently
+        selected location (or the campaign's current_area)."""
+        loc_id = (self.selected_location_id
+                   or self._location_id_for_name(self.campaign.current_area))
+        if not loc_id or loc_id not in self.world.locations:
+            self._import_status = "Valitse ensin sijainti."
+            self._import_status_timer = 240
+            return
+        from states.town_view_widget import TownViewWidget
+        self._town_view_widget = TownViewWidget(
+            self.world, loc_id,
+            on_pick=self._on_town_pick,
+            on_close=lambda: setattr(self, "_town_view_open", False),
+        )
+        self._town_view_widget.open()
+        self._town_view_open = True
+
+    def _open_selected_shop(self):
+        """Phase 16b: open the ShopPanelWidget for the currently
+        selected shop. World shop selection happens either via the
+        town view's shop tab (sets self.selected_shop_id) or via the
+        legacy shop list."""
+        shop_id = getattr(self, "selected_shop_id", "")
+        shop = self.world.shops.get(shop_id) if shop_id else None
+        if shop is None:
+            # Fallback: pick any shop at the selected location.
+            for sh in self.world.shops.values():
+                if sh.location_id == self.selected_location_id:
+                    shop = sh
+                    break
+        if shop is None:
+            self._import_status = "Valitse ensin kauppa."
+            self._import_status_timer = 240
+            return
+        from states.shop_panel_widget import ShopPanelWidget
+        self._shop_panel_widget = ShopPanelWidget(
+            shop, self.campaign,
+            on_close=lambda: setattr(self, "_shop_panel_open", False),
+        )
+        self._shop_panel_widget.open()
+        self._shop_panel_open = True
+
+    def _pick_npc_portrait(self):
+        """Phase 16d: file picker → import the chosen image into
+        saves/portraits/ and store the relative path on the
+        currently-selected NPC."""
+        npc = self.world.npcs.get(self.selected_npc_id)
+        if npc is None:
+            self._import_status = "Valitse ensin NPC."
+            self._import_status_timer = 240
+            return
+        src = self._pick_image_file()
+        if not src:
+            return
+        try:
+            from data.portrait_loader import import_portrait_file
+            rel = import_portrait_file(src, name_hint=npc.name)
+        except Exception as ex:
+            self._import_status = f"Portrait failed: {ex}"
+            self._import_status_timer = 240
+            return
+        if not rel:
+            self._import_status = "Kuvan tuonti epäonnistui."
+            self._import_status_timer = 240
+            return
+        npc.portrait_path = rel
+        self._import_status = f"Portretti asetettu: {os.path.basename(rel)}"
+        self._import_status_timer = 240
+
+    def _open_relationship_matrix(self):
+        """Phase 16c: open the RelationshipMatrixWidget for the
+        currently selected NPC."""
+        npc_id = self.selected_npc_id
+        npc = self.world.npcs.get(npc_id) if npc_id else None
+        if npc is None:
+            self._import_status = "Valitse ensin NPC."
+            self._import_status_timer = 240
+            return
+        from states.relationship_matrix_widget import RelationshipMatrixWidget
+        self._rel_matrix_widget = RelationshipMatrixWidget(
+            npc, self.campaign,
+            on_close=lambda: setattr(self, "_rel_matrix_open", False),
+        )
+        self._rel_matrix_widget.open()
+        self._rel_matrix_open = True
+
+    def _on_town_pick(self, kind: str, oid: str):
+        """Town view → row click. ``kind`` is one of
+        'location'/'npc'/'shop'/'service'."""
+        if kind == "location":
+            self.selected_location_id = oid
+            if self._town_view_widget is not None:
+                self._town_view_widget.set_location(oid)
+        elif kind == "npc":
+            self.selected_npc_id = oid
+            self.world_view = "npcs"
+        elif kind == "shop":
+            self.selected_shop_id = oid
+            self._open_selected_shop()
+        elif kind == "service":
+            self.selected_service_id = oid
+
+    def _location_id_for_name(self, name: str) -> str:
+        """Best-effort map a location name → id for current_area
+        compatibility."""
+        if not name:
+            return ""
+        for lid, loc in self.world.locations.items():
+            if loc.name == name:
+                return lid
+        return ""
+
     def _import_text_file(self):
         """Phase 13a: open a native file picker for a Markdown / text
         notes file and run it through ``data.text_import.import_text``
@@ -1334,6 +1473,26 @@ class CampaignManagerState:
                 self.btn_world_travel.handle_event(event)
                 self.btn_open_map_editor.handle_event(event)
                 self.btn_import_text.handle_event(event)
+                # Phase 16: secondary row
+                self.btn_open_town.handle_event(event)
+                self.btn_open_shop.handle_event(event)
+                self.btn_open_rels.handle_event(event)
+                self.btn_npc_portrait.handle_event(event)
+                # Phase 16: widget event interception (when open they
+                # consume mouse / wheel / keyboard so clicks don't
+                # fall through to the campaign manager underneath)
+                if (getattr(self, "_town_view_open", False)
+                        and self._town_view_widget is not None):
+                    if self._town_view_widget.handle_event(event):
+                        return
+                if (getattr(self, "_shop_panel_open", False)
+                        and self._shop_panel_widget is not None):
+                    if self._shop_panel_widget.handle_event(event):
+                        return
+                if (getattr(self, "_rel_matrix_open", False)
+                        and self._rel_matrix_widget is not None):
+                    if self._rel_matrix_widget.handle_event(event):
+                        return
 
     def _handle_party_click(self, mp):
         mx, my = mp
@@ -2210,6 +2369,21 @@ class CampaignManagerState:
             self.btn_world_travel.draw(screen, mp)
             self.btn_open_map_editor.draw(screen, mp)
             self.btn_import_text.draw(screen, mp)
+            # Phase 16: secondary action row
+            self.btn_open_town.draw(screen, mp)
+            self.btn_open_shop.draw(screen, mp)
+            self.btn_open_rels.draw(screen, mp)
+            self.btn_npc_portrait.draw(screen, mp)
+            # Phase 16: widgets always paint last so they stack on top
+            if (getattr(self, "_town_view_open", False)
+                    and self._town_view_widget is not None):
+                self._town_view_widget.draw(screen)
+            if (getattr(self, "_shop_panel_open", False)
+                    and self._shop_panel_widget is not None):
+                self._shop_panel_widget.draw(screen)
+            if (getattr(self, "_rel_matrix_open", False)
+                    and self._rel_matrix_widget is not None):
+                self._rel_matrix_widget.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1

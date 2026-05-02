@@ -141,6 +141,10 @@ class NPC:
     attitude: str = "neutral"         # Overall default attitude
     notes: str = ""                   # DM notes
     tags: List[str] = field(default_factory=list)
+    # Phase 16d: project-relative portrait JPG/PNG path. Empty when
+    # the DM hasn't assigned one — UI falls back to the procedural
+    # character art (Phase 9c).
+    portrait_path: str = ""
     # Location
     location_id: str = ""             # Where this NPC currently is
     # Phase 11e: link into the shared ActorRegistry so the same NPC
@@ -415,6 +419,8 @@ def _serialize_npc(npc: NPC) -> dict:
         "backstory": npc.backstory, "occupation": npc.occupation,
         "attitude": npc.attitude, "notes": npc.notes, "tags": npc.tags,
         "title": npc.title, "faction": npc.faction, "alignment": npc.alignment,
+        "portrait_path": npc.portrait_path,
+        "actor_id": getattr(npc, "actor_id", ""),
         "location_id": npc.location_id,
         "stat_source": npc.stat_source,
         "custom_stats": npc.custom_stats,
@@ -437,6 +443,8 @@ def _deserialize_npc(d: dict) -> NPC:
         title=d.get("title", ""), faction=d.get("faction", ""), alignment=d.get("alignment", ""),
         attitude=d.get("attitude", "neutral"),
         notes=d.get("notes", ""), tags=d.get("tags", []),
+        portrait_path=d.get("portrait_path", ""),
+        actor_id=d.get("actor_id", ""),
         location_id=d.get("location_id", ""),
         stat_source=d.get("stat_source", ""),
         custom_stats=d.get("custom_stats", {}),
