@@ -84,6 +84,9 @@ class PartyMember:
     exhaustion: int = 0
     death_saves: Dict[str, int] = field(default_factory=lambda: {"success": 0, "failure": 0})
     custom_items: List[str] = field(default_factory=list)  # Extra item names beyond class defaults
+    # Phase 15a: PC carries personal gold separately from any
+    # shared party purse (see Campaign.party_gold below).
+    gold: float = 0.0
     # Relationships with NPCs and other heroes
     relationships: List[HeroRelationship] = field(default_factory=list)
     # Hyperlinks to external resources (character sheet, backstory doc, etc.)
@@ -99,6 +102,11 @@ class Campaign:
     last_modified: str = ""
     # Party
     party: List[PartyMember] = field(default_factory=list)
+    # Phase 15a: shared party purse + group-loot inventory. Useful
+    # for parties that pool gold ("Mä laitan kymppi yhteiseen
+    # kassaan, ostetaan keto-ravintoa") or carry common loot.
+    party_gold: float = 0.0
+    party_inventory: List[str] = field(default_factory=list)
     # World state
     time_of_day: str = "day"      # day, dawn, dusk, night
     current_area: str = ""
@@ -150,6 +158,8 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "created": campaign.created,
         "last_modified": campaign.last_modified,
         "party": [serialize(m) for m in campaign.party],
+        "party_gold": campaign.party_gold,
+        "party_inventory": list(campaign.party_inventory),
         "time_of_day": campaign.time_of_day,
         "current_area": campaign.current_area,
         "session_number": campaign.session_number,
@@ -180,6 +190,8 @@ def load_campaign(filepath: str) -> Campaign:
         created=data.get("created", ""),
         last_modified=data.get("last_modified", ""),
         party=[deserialize(PartyMember, m) for m in data.get("party", [])],
+        party_gold=float(data.get("party_gold", 0.0)),
+        party_inventory=list(data.get("party_inventory", [])),
         time_of_day=data.get("time_of_day", "day"),
         current_area=data.get("current_area", ""),
         session_number=data.get("session_number", 1),

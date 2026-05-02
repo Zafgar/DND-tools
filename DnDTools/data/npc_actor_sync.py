@@ -156,6 +156,25 @@ def search_locations(world: World, query: str = "",
     return out[:limit]
 
 
+def search_party_members(campaign, query: str = "",
+                            *, limit: int = 50) -> list:
+    """Filter Campaign.party by hero name. Returns PartyMember
+    instances; the caller pulls the hero name from
+    ``member.hero_data.get("name", "")``."""
+    q = _norm(query)
+    out = []
+    for member in (getattr(campaign, "party", []) or []):
+        hero_data = getattr(member, "hero_data", {}) or {}
+        name = hero_data.get("name", "")
+        if not q:
+            out.append(member)
+            continue
+        if q in _norm(name):
+            out.append(member)
+    out.sort(key=lambda m: (m.hero_data.get("name", "") or "").lower())
+    return out[:limit]
+
+
 def search_actors_for_npc_link(world: World,
                                   registry: ActorRegistry,
                                   query: str = "",
