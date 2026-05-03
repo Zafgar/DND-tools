@@ -193,6 +193,11 @@ class MapEditorState(GameState):
         # Phase 11c: drag-onto-map palette (lazily created on first open)
         self._location_palette = None
         self.location_palette_open = False
+        # Phase 17b: town view widget shown when DM drills into a
+        # settlement-typed map object that has a linked campaign
+        # Location.
+        self._town_view_widget = None
+        self._town_view_open = False
         # Phase 13b: rectangle-select / bulk-edit state.
         # ``selected_object_ids`` is the live multi-selection.
         # ``rect_select_start`` is the (x_pct, y_pct) corner during a
@@ -609,6 +614,36 @@ class MapEditorState(GameState):
             )
             return
         self._switch_to_map_by_id(target, push_history=True)
+        # Phase 17b: when the drilled-into object has a linked
+        # campaign Location, auto-open the Town view so the DM lands
+        # on the NPC / shop list, not just an empty grid.
+        if obj.linked_location_id and self.world is not None:
+            self._open_town_view_for(obj.linked_location_id)
+
+    def _open_town_view_for(self, location_id: str) -> None:
+        """Phase 17b: lazy-instantiate + open the TownViewWidget for
+        ``location_id``. Safe to call when the editor doesn't have a
+        world / pygame isn't available — in that case it no-ops."""
+        if self.world is None:
+            return
+        try:
+            from states.town_view_widget import TownViewWidget
+        except Exception:
+            return
+        if (self._location_palette is not None
+                and self._location_palette.is_open):
+            self._location_palette.close()
+        if not hasattr(self, "_town_view_widget") or \
+                self._town_view_widget is None:
+            self._town_view_widget = TownViewWidget(
+                self.world, location_id,
+                on_close=lambda: setattr(
+                    self, "_town_view_open", False),
+            )
+        else:
+            self._town_view_widget.set_location(location_id)
+        self._town_view_widget.open()
+        self._town_view_open = True
 
     def _create_child_map_for(self, obj: MapObject) -> str:
         """Auto-create a child WorldMap rooted at this object. Returns

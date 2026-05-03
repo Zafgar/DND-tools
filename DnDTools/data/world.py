@@ -844,14 +844,33 @@ def delete_location(world: World, location_id: str, recursive: bool = True):
 
 
 def delete_npc(world: World, npc_id: str):
-    """Delete an NPC from the world."""
+    """Delete an NPC from the world.
+
+    Phase 17d: also scrubs dangling references in shops, services
+    and other locations so future queries don't return zombie
+    pointers. (Map tokens / actor registry need their own contexts
+    and are handled by ``data.cascade_delete.delete_npc``.)
+    """
     npc = world.npcs.get(npc_id)
     if not npc:
         return
-    # Remove from location
+    # Remove from owner location
     loc = world.locations.get(npc.location_id)
     if loc and npc_id in loc.npc_ids:
         loc.npc_ids.remove(npc_id)
+    # Phase 17d: scrub from every other location's npc_ids list as
+    # well — defensive, in case the npc was attached in two places.
+    for other in world.locations.values():
+        if npc_id in (other.npc_ids or []):
+            other.npc_ids = [x for x in other.npc_ids if x != npc_id]
+    # Phase 17d: clear shop ownership so the shop survives instead of
+    # holding a zombie owner_npc_id.
+    for shop in getattr(world, "shops", {}).values():
+        if shop.owner_npc_id == npc_id:
+            shop.owner_npc_id = ""
+    for svc in getattr(world, "services", {}).values():
+        if svc.npc_id == npc_id:
+            svc.npc_id = ""
     del world.npcs[npc_id]
 
 

@@ -357,6 +357,13 @@ class CampaignManagerState:
                                          self._add_encounter, color=COLORS["danger"])
         self.btn_launch_encounter = Button(220, SCREEN_HEIGHT - 60, 200, 45, "Launch Combat",
                                             self._launch_encounter, color=COLORS["success"])
+        # Phase 17e: open the bundled / user-saved scenario picker
+        # and import the picked scenario as a CampaignEncounter.
+        self.btn_pick_scenario = Button(430, SCREEN_HEIGHT - 60, 220, 45,
+                                          "+ Lisää skenaariosta...",
+                                          self._open_scenario_picker_for_campaign,
+                                          color=COLORS["accent"])
+        self._campaign_scenario_picker = None
 
         # Area tab buttons
         self.btn_new_area = Button(20, SCREEN_HEIGHT - 60, 160, 45, "+ New Area",
@@ -554,6 +561,54 @@ class CampaignManagerState:
         )
         self.campaign.encounters.append(enc)
         self.selected_encounter_idx = len(self.campaign.encounters) - 1
+
+    def _open_scenario_picker_for_campaign(self):
+        """Phase 17e: open the bundled scenario picker; on confirm,
+        materialise the picked scenario as a CampaignEncounter so the
+        DM can launch it with the existing 'Launch Combat' button."""
+        try:
+            from states.scenario_picker_modal import ScenarioPickerModal
+        except Exception as ex:
+            self._import_status = f"Picker unavailable: {ex}"
+            self._import_status_timer = 240
+            return
+        if self._campaign_scenario_picker is None:
+            self._campaign_scenario_picker = ScenarioPickerModal(
+                on_load=self._adopt_scenario_as_encounter,
+            )
+        self._campaign_scenario_picker.open()
+
+    def _adopt_scenario_as_encounter(self, scenario):
+        """Phase 17e: turn a Scenario into a CampaignEncounter.
+        Aggregates monsters by name into EncounterSlot rows,
+        copies the description + tags, and selects the new
+        encounter so 'Launch Combat' fires it."""
+        from collections import Counter
+        slots: List[EncounterSlot] = []
+        counts = Counter(m.name for m in scenario.monsters)
+        for name, count in counts.most_common():
+            slots.append(EncounterSlot(
+                creature_name=name, count=int(count),
+                side="enemy", is_hero=False,
+            ))
+        diff_hint = ""
+        if scenario.recommended_level_max:
+            diff_hint = f"Lv {scenario.recommended_level_min}-" \
+                          f"{scenario.recommended_level_max}"
+        enc = CampaignEncounter(
+            name=scenario.name,
+            description=(scenario.description or
+                          f"Scenario: {scenario.id}"),
+            area_name=self.campaign.current_area,
+            slots=slots,
+            difficulty_hint=diff_hint,
+            notes=f"Imported from scenario {scenario.id}",
+        )
+        self.campaign.encounters.append(enc)
+        self.selected_encounter_idx = len(self.campaign.encounters) - 1
+        self._import_status = (f"Lisätty skenaario: "
+                                f"{scenario.name} ({len(slots)} slottia)")
+        self._import_status_timer = 240
 
     def _add_monster_to_encounter(self, monster_name, is_hero=False, side="enemy"):
         if self.selected_encounter_idx < 0:
@@ -1456,6 +1511,13 @@ class CampaignManagerState:
             elif self.active_tab == 1:
                 self.btn_new_encounter.handle_event(event)
                 self.btn_launch_encounter.handle_event(event)
+                self.btn_pick_scenario.handle_event(event)
+                # Phase 17e: campaign scenario picker eats events
+                # while open
+                if (self._campaign_scenario_picker is not None
+                        and self._campaign_scenario_picker.is_open):
+                    self._campaign_scenario_picker.handle_event(event)
+                    return
             elif self.active_tab == 2:
                 self.btn_new_area.handle_event(event)
             elif self.active_tab == 3:
@@ -2352,6 +2414,9 @@ class CampaignManagerState:
         elif self.active_tab == 1:
             self.btn_new_encounter.draw(screen, mp)
             self.btn_launch_encounter.draw(screen, mp)
+            self.btn_pick_scenario.draw(screen, mp)
+            if self._campaign_scenario_picker is not None:
+                self._campaign_scenario_picker.draw(screen)
         elif self.active_tab == 2:
             self.btn_new_area.draw(screen, mp)
         elif self.active_tab == 3:
@@ -3496,6 +3561,29 @@ class CampaignManagerState:
             return
         y = 70
         panel_w = SCREEN_WIDTH - start_x - 30
+
+        # Phase 17c: portrait box on the right of the name area when
+        # the NPC has a portrait_path. Falls back silently when the
+        # file is missing or pygame can't load it.
+        portrait_drawn = False
+        portrait_path = getattr(npc, "portrait_path", "")
+        if portrait_path:
+            try:
+                from data.portrait_loader import load_portrait
+                surf = load_portrait(portrait_path,
+                                       target_w=96, target_h=96)
+            except Exception:
+                surf = None
+            if surf is not None:
+                portrait_x = start_x + panel_w - 110
+                portrait_y = y
+                # Subtle frame
+                pygame.draw.rect(screen, COLORS.get("border_light",
+                                                       (110, 110, 140)),
+                                  (portrait_x - 2, portrait_y - 2,
+                                   100, 100), 1, border_radius=4)
+                screen.blit(surf, (portrait_x, portrait_y))
+                portrait_drawn = True
 
         # Name (editable)
         hdr = fonts.header.render(npc.name, True, COLORS["accent"])
