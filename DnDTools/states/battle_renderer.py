@@ -80,7 +80,28 @@ class BattleRendererMixin:
         pygame.draw.circle(shadow_surf, (0, 0, 0, 30), (shadow_size//2, shadow_size//2), radius + 5)
         screen.blit(shadow_surf, (cx - shadow_size//2, cy - shadow_size//2))
 
-        img = self._get_token_image(entity.name)
+        # Phase 17a: prefer the linked Actor's portrait when one
+        # exists. The actor_id is set when the entity comes from a
+        # campaign NPC; falling through finds the legacy
+        # name-keyed token cache.
+        img = None
+        actor = None
+        actor_name = ""
+        actor_id = getattr(entity, "actor_id", "")
+        if actor_id:
+            try:
+                from data.actors import get_registry
+                from data.portrait_loader import load_portrait
+                actor = get_registry().get(actor_id)
+                if actor is not None:
+                    actor_name = actor.name or ""
+                    if actor.portrait_path:
+                        img = load_portrait(actor.portrait_path,
+                                              radius * 2, radius * 2)
+            except Exception:
+                actor = None
+        if img is None:
+            img = self._get_token_image(entity.name)
         if img:
             scaled = pygame.transform.smoothscale(img, (radius*2, radius*2))
             mask_surf = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
@@ -177,12 +198,21 @@ class BattleRendererMixin:
                     screen.blit(highlight, (cx - radius, cy - radius))
 
             # Creature type icon + initials
-            if entity.is_player:
-                # Show class abbreviation for players
+            # Phase 17a: when the entity has a linked Actor, prefer
+            # its first 3 letters as the badge text so "Captain Arys
+            # Tarn" shows "ARY" instead of the generic creature
+            # icon.
+            badge_from_actor = ""
+            if actor_name:
+                stripped = actor_name.strip()
+                if stripped:
+                    badge_from_actor = stripped[:3].upper()
+            if badge_from_actor:
+                display_text = badge_from_actor
+            elif entity.is_player:
                 cls_name = entity.stats.character_class[:3].upper() if entity.stats.character_class else entity.name[:2].upper()
                 display_text = cls_name
             else:
-                # Show creature type icon for monsters
                 display_text = type_icon
 
             ts = fonts.small_bold.render(display_text, True, (0, 0, 0))

@@ -60,6 +60,12 @@ def route_events(state, events) -> None:
             if state._bulk_edit_modal.handle_event(ev):
                 continue
 
+        # Phase 17b: town view widget consumes events while open
+        if (state._town_view_open
+                and state._town_view_widget is not None):
+            if state._town_view_widget.handle_event(ev):
+                continue
+
         # Tool palette click (left panel)
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             if state.tool_panel_rect.collidepoint(ev.pos):

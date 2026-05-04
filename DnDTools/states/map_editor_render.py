@@ -40,6 +40,10 @@ def render_editor(state, screen) -> None:
     _draw_rect_select_overlay(state, screen)
     if state.bulk_edit_open and state._bulk_edit_modal is not None:
         state._bulk_edit_modal.draw(screen)
+    # Phase 17b: town view shown over the right detail panel when
+    # the DM has drilled into a settlement.
+    if state._town_view_open and state._town_view_widget is not None:
+        state._town_view_widget.draw(screen)
     if state._edit_modal is not None:
         state._edit_modal.draw(screen)
 
