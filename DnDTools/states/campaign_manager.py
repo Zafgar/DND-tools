@@ -364,6 +364,8 @@ class CampaignManagerState:
                                           self._open_scenario_picker_for_campaign,
                                           color=COLORS["accent"])
         self._campaign_scenario_picker = None
+        # Phase 18e: Quest giver NPC picker (lazy)
+        self._quest_giver_picker = None
 
         # Area tab buttons
         self.btn_new_area = Button(20, SCREEN_HEIGHT - 60, 160, 45, "+ New Area",
@@ -1518,6 +1520,11 @@ class CampaignManagerState:
                         and self._campaign_scenario_picker.is_open):
                     self._campaign_scenario_picker.handle_event(event)
                     return
+                # Phase 18e: quest giver picker
+                if (self._quest_giver_picker is not None
+                        and self._quest_giver_picker.is_open):
+                    self._quest_giver_picker.handle_event(event)
+                    return
             elif self.active_tab == 2:
                 self.btn_new_area.handle_event(event)
             elif self.active_tab == 3:
@@ -2417,6 +2424,9 @@ class CampaignManagerState:
             self.btn_pick_scenario.draw(screen, mp)
             if self._campaign_scenario_picker is not None:
                 self._campaign_scenario_picker.draw(screen)
+            if (self._quest_giver_picker is not None
+                    and self._quest_giver_picker.is_open):
+                self._quest_giver_picker.draw(screen)
         elif self.active_tab == 2:
             self.btn_new_area.draw(screen, mp)
         elif self.active_tab == 3:
@@ -2471,6 +2481,26 @@ class CampaignManagerState:
         y = 70 + self.scroll_y
         is_night = self.campaign.time_of_day in ("night", "dusk")
 
+        # Phase 18c: party purse + inventory header line (always
+        # visible so it's easy to track shared resources).
+        purse_y = y
+        gold_shared = float(getattr(self.campaign,
+                                       "party_gold", 0.0) or 0.0)
+        gold_pcs = sum(
+            float(getattr(m, "gold", 0.0) or 0.0)
+            for m in (self.campaign.party or [])
+        )
+        inv_n = len(getattr(self.campaign, "party_inventory",
+                              []) or [])
+        purse = (f"Yhteinen kassa: {gold_shared:.0f} gp · "
+                  f"PC:t: {gold_pcs:.0f} gp · "
+                  f"Yhteinen inventaario: {inv_n} esinettä")
+        screen.blit(fonts.small.render(
+            purse, True,
+            COLORS.get("legendary", (220, 200, 80))),
+            (40, purse_y))
+        y += 24
+
         if not self.campaign.party:
             txt = fonts.header.render("No heroes in party. Click '+ Add Hero' to begin.", True, COLORS["text_dim"])
             screen.blit(txt, (40, y))
@@ -2523,6 +2553,15 @@ class CampaignManagerState:
             # AC
             ac_txt = fonts.small.render(f"AC {ac}", True, COLORS["text_main"])
             screen.blit(ac_txt, (bar_x + bar_w + 15, y + 8))
+
+            # Phase 18c: per-PC gold pouch right next to AC
+            pc_gold = float(getattr(member, "gold", 0.0) or 0.0)
+            if pc_gold:
+                gold_txt = fonts.small.render(
+                    f"{pc_gold:.0f} gp", True,
+                    COLORS.get("legendary", (220, 200, 80)),
+                )
+                screen.blit(gold_txt, (bar_x + bar_w + 70, y + 8))
 
             # Temp HP
             if member.temp_hp > 0:
@@ -6665,10 +6704,28 @@ class CampaignManagerState:
         pbt = fonts.tiny.render("Pick", True, COLORS["accent"])
         screen.blit(pbt, (pick_btn.x + 12, pick_btn.y + 3))
         if is_pick_hover and pygame.mouse.get_pressed()[0]:
-            npc_list = list(self.world.npcs.keys())
-            if npc_list:
-                cur_idx = npc_list.index(quest.giver_npc_id) if quest.giver_npc_id in npc_list else -1
-                quest.giver_npc_id = npc_list[(cur_idx + 1) % len(npc_list)]
+            # Phase 18e: open the searchable NPC picker rather than
+            # cycling blindly through every NPC. The picker anchors
+            # right under the "Pick" button.
+            try:
+                from states.npc_link_picker import NPCLinkPicker
+            except Exception:
+                NPCLinkPicker = None
+            if NPCLinkPicker is not None and not (
+                    self._quest_giver_picker is not None
+                    and self._quest_giver_picker.is_open):
+                def _on_pick(npc_id):
+                    if npc_id is not None:
+                        quest.giver_npc_id = npc_id
+                self._quest_giver_picker = NPCLinkPicker(
+                    self.world, on_pick=_on_pick,
+                )
+                anchor = pygame.Rect(start_x + 100, y - 2,
+                                       260, 22)
+                self._quest_giver_picker.open(
+                    anchor_rect=anchor,
+                    selected_id=quest.giver_npc_id or None,
+                )
         # Clear
         if quest.giver_npc_id:
             clr = pygame.Rect(pick_btn.right + 5, y - 2, 20, 20)
