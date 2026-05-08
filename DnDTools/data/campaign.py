@@ -109,6 +109,12 @@ class Campaign:
     party_inventory: List[str] = field(default_factory=list)
     # World state
     time_of_day: str = "day"      # day, dawn, dusk, night
+    # Phase 19e: in-game calendar — separate from real-world session
+    # number. Ticks forward when the DM advances time; rolls
+    # ``time_of_day`` through dawn → day → dusk → night → next day.
+    in_game_day: int = 1
+    in_game_month: int = 1
+    in_game_year: int = 1
     current_area: str = ""
     session_number: int = 1
     # Encounters & Areas
@@ -161,6 +167,9 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "party_gold": campaign.party_gold,
         "party_inventory": list(campaign.party_inventory),
         "time_of_day": campaign.time_of_day,
+        "in_game_day": campaign.in_game_day,
+        "in_game_month": campaign.in_game_month,
+        "in_game_year": campaign.in_game_year,
         "current_area": campaign.current_area,
         "session_number": campaign.session_number,
         "encounters": [serialize(e) for e in campaign.encounters],
@@ -193,6 +202,9 @@ def load_campaign(filepath: str) -> Campaign:
         party_gold=float(data.get("party_gold", 0.0)),
         party_inventory=list(data.get("party_inventory", [])),
         time_of_day=data.get("time_of_day", "day"),
+        in_game_day=int(data.get("in_game_day", 1)),
+        in_game_month=int(data.get("in_game_month", 1)),
+        in_game_year=int(data.get("in_game_year", 1)),
         current_area=data.get("current_area", ""),
         session_number=data.get("session_number", 1),
         encounters=[deserialize(CampaignEncounter, e) for e in data.get("encounters", [])],
