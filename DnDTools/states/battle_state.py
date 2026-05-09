@@ -246,6 +246,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.report_modal_open = False
         self.report_scroll = 0
         self.win_prob_cache = None             # Cached win probability result
+        # Phase 20b: loot panel state (auto-opens after a player win)
+        self._loot_panel = None
+        self._loot_panel_open = False
         self.pending_saves = []                # For manual end-of-turn saves
         self.save_modal_open = False
         self.dm_suggestion_cache = None        # Cached DM advisor suggestion
@@ -2547,6 +2550,33 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log(f"=== COMBAT OVER: {winner_str} ===")
             # Sync battle results back to campaign (if launched from campaign)
             self._sync_to_campaign()
+            # Phase 20b: when players win, auto-open the loot panel
+            # so the DM can credit gold/items to the campaign.
+            if result == "players":
+                self._open_loot_panel_if_possible()
+
+    def _open_loot_panel_if_possible(self):
+        """Phase 20b: lazy-instantiate the LootPanelWidget after a
+        winning battle, scoped to the current campaign + dead
+        non-player entities."""
+        try:
+            from engine.campaign_bridge import get_campaign_from_manager
+            from states.loot_panel_widget import LootPanelWidget
+        except Exception as ex:
+            self._log(f"[LOOT] panel unavailable: {ex}")
+            return
+        campaign = get_campaign_from_manager(self.manager)
+        if campaign is None:
+            return
+        # Pick up only the freshly-defeated enemies; loot helper
+        # filters players / summons / lairs / still-alive entities.
+        self._loot_panel = LootPanelWidget(
+            campaign,
+            entities=list(self.battle.entities),
+            on_close=lambda: setattr(self, "_loot_panel_open", False),
+        )
+        self._loot_panel.open()
+        self._loot_panel_open = True
 
     def _sync_to_campaign(self):
         """Sync battle results (HP, conditions, slots) back to the active campaign."""

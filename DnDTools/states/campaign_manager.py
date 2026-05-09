@@ -333,6 +333,12 @@ class CampaignManagerState:
                                self._save_campaign, color=COLORS["success"])
         self.btn_rules = Button(SCREEN_WIDTH - 250, 15, 110, 35, "Rules",
                                 self._open_variant_rules_modal, color=COLORS["accent"])
+        # Phase 20a: dashboard banner toggle
+        self.btn_dashboard = Button(SCREEN_WIDTH - 380, 15, 120, 35,
+                                       "Yleiskatsaus",
+                                       self._toggle_dashboard,
+                                       color=COLORS["spell"])
+        self._dashboard_widget = None
 
         # Time of day buttons
         self.time_buttons = []
@@ -343,6 +349,24 @@ class CampaignManagerState:
                        lambda v=val: self._set_time(v),
                        color=COLORS["panel"])
             )
+
+        # Phase 20e: calendar advance buttons (in-game day + time
+        # cycler). Live just below the time-of-day buttons.
+        self.btn_advance_tod = Button(
+            SCREEN_WIDTH - 490, 55, 165, 30,
+            "Edistä aikaa", self._cmd_advance_tod,
+            color=COLORS["accent"],
+        )
+        self.btn_advance_day = Button(
+            SCREEN_WIDTH - 320, 55, 105, 30,
+            "+ 1 päivä", self._cmd_advance_day,
+            color=COLORS["spell"],
+        )
+        self.btn_advance_week = Button(
+            SCREEN_WIDTH - 210, 55, 105, 30,
+            "+ 7 päivää", self._cmd_advance_week,
+            color=COLORS["legendary"],
+        )
 
         # Party tab buttons
         self.btn_add_hero = Button(20, SCREEN_HEIGHT - 60, 160, 45, "+ Add Hero",
@@ -366,6 +390,9 @@ class CampaignManagerState:
         self._campaign_scenario_picker = None
         # Phase 18e: Quest giver NPC picker (lazy)
         self._quest_giver_picker = None
+        # Phase 20d: Quest multi-pickers
+        self._quest_npc_picker = None
+        self._quest_loc_picker = None
 
         # Area tab buttons
         self.btn_new_area = Button(20, SCREEN_HEIGHT - 60, 160, 45, "+ New Area",
@@ -425,6 +452,13 @@ class CampaignManagerState:
                                           "NPC-portretti...",
                                           self._pick_npc_portrait,
                                           color=COLORS["warning"])
+        # Phase 20c: one-click "create NPC + Actor + portrait"
+        self.btn_quick_npc = Button(670, SCREEN_HEIGHT - 115,
+                                       150, 45,
+                                       "+ Pika-NPC",
+                                       self._open_quick_npc_modal,
+                                       color=COLORS["success"])
+        self._quick_npc_modal = None
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -483,11 +517,48 @@ class CampaignManagerState:
     def _set_time(self, tod):
         self.campaign.time_of_day = tod
 
+    def _cmd_advance_tod(self):
+        """Phase 20e: cycle dawn → day → dusk → night → next day."""
+        from data.campaign_calendar import (
+            advance_time_of_day, format_date,
+        )
+        info = advance_time_of_day(self.campaign)
+        self._import_status = format_date(self.campaign)
+        self._import_status_timer = 240
+
+    def _cmd_advance_day(self):
+        from data.campaign_calendar import advance_days, format_date
+        advance_days(self.campaign, 1)
+        self._import_status = format_date(self.campaign)
+        self._import_status_timer = 240
+
+    def _cmd_advance_week(self):
+        from data.campaign_calendar import advance_days, format_date
+        advance_days(self.campaign, 7)
+        self._import_status = format_date(self.campaign)
+        self._import_status_timer = 240
+
     def _save_campaign(self):
         self.campaign.world_data = self._serialize_world()
         path = save_campaign(self.campaign)
         self._status_msg = f"Saved to {os.path.basename(path)}"
         self._status_timer = 120
+
+    def _toggle_dashboard(self):
+        """Phase 20a: open/close the campaign dashboard banner."""
+        from states.campaign_dashboard_widget import CampaignDashboardWidget
+        if (self._dashboard_widget is not None
+                and self._dashboard_widget.is_open):
+            self._dashboard_widget.close()
+            return
+        if self._dashboard_widget is None:
+            self._dashboard_widget = CampaignDashboardWidget(
+                self.campaign, self.world,
+            )
+        # Refresh the data refs in case the campaign was reloaded
+        self._dashboard_widget.campaign = self.campaign
+        self._dashboard_widget.world = self.world
+        self._dashboard_widget.open()
 
     def _open_variant_rules_modal(self):
         """Open DMG optional variant rules toggle modal (flanking, gritty, etc.)."""
@@ -1010,6 +1081,25 @@ class CampaignManagerState:
         self._shop_panel_widget.open()
         self._shop_panel_open = True
 
+    def _open_quick_npc_modal(self):
+        """Phase 20c: small modal for one-click NPC creation."""
+        from states.quick_create_npc_modal import QuickCreateNPCModal
+        self._quick_npc_modal = QuickCreateNPCModal(
+            self.world,
+            default_location_id=self.selected_location_id or "",
+            on_created=self._on_quick_npc_created,
+            on_close=lambda: setattr(self, "_quick_npc_modal_open",
+                                          False),
+        )
+        self._quick_npc_modal.open()
+        self._quick_npc_modal_open = True
+
+    def _on_quick_npc_created(self, npc_id: str):
+        self.selected_npc_id = npc_id
+        self.world_view = "npcs"
+        self._import_status = f"NPC luotu: {npc_id}"
+        self._import_status_timer = 240
+
     def _pick_npc_portrait(self):
         """Phase 16d: file picker → import the chosen image into
         saves/portraits/ and store the relative path on the
@@ -1346,8 +1436,17 @@ class CampaignManagerState:
             self.btn_back.handle_event(event)
             self.btn_save.handle_event(event)
             self.btn_rules.handle_event(event)
+            self.btn_dashboard.handle_event(event)
+            # Phase 20a: dashboard widget eats events while open
+            if (self._dashboard_widget is not None
+                    and self._dashboard_widget.is_open):
+                if self._dashboard_widget.handle_event(event):
+                    continue
             for tb in self.time_buttons:
                 tb.handle_event(event)
+            self.btn_advance_tod.handle_event(event)
+            self.btn_advance_day.handle_event(event)
+            self.btn_advance_week.handle_event(event)
 
             # Scroll / Map zoom
             if event.type == pygame.MOUSEWHEEL:
@@ -1525,6 +1624,15 @@ class CampaignManagerState:
                         and self._quest_giver_picker.is_open):
                     self._quest_giver_picker.handle_event(event)
                     return
+                # Phase 20d: quest multi-pickers
+                if (self._quest_npc_picker is not None
+                        and self._quest_npc_picker.is_open):
+                    self._quest_npc_picker.handle_event(event)
+                    return
+                if (self._quest_loc_picker is not None
+                        and self._quest_loc_picker.is_open):
+                    self._quest_loc_picker.handle_event(event)
+                    return
             elif self.active_tab == 2:
                 self.btn_new_area.handle_event(event)
             elif self.active_tab == 3:
@@ -1547,6 +1655,12 @@ class CampaignManagerState:
                 self.btn_open_shop.handle_event(event)
                 self.btn_open_rels.handle_event(event)
                 self.btn_npc_portrait.handle_event(event)
+                self.btn_quick_npc.handle_event(event)
+                # Phase 20c: quick-NPC modal eats events while open
+                if (self._quick_npc_modal is not None
+                        and self._quick_npc_modal.is_open):
+                    if self._quick_npc_modal.handle_event(event):
+                        return
                 # Phase 16: widget event interception (when open they
                 # consume mouse / wheel / keyboard so clicks don't
                 # fall through to the campaign manager underneath)
@@ -2370,6 +2484,7 @@ class CampaignManagerState:
         self.btn_back.draw(screen, mp)
         self.btn_save.draw(screen, mp)
         self.btn_rules.draw(screen, mp)
+        self.btn_dashboard.draw(screen, mp)
         self.tabs.draw(screen, mp)
         for tb in self.time_buttons:
             # Highlight active time
@@ -2378,6 +2493,20 @@ class CampaignManagerState:
             else:
                 tb.color = COLORS["panel"]
             tb.draw(screen, mp)
+        # Phase 20e: in-game date label + advance buttons
+        try:
+            from data.campaign_calendar import format_date
+            date_str = format_date(self.campaign)
+        except Exception:
+            date_str = ""
+        if date_str:
+            screen.blit(fonts.small.render(
+                date_str, True,
+                COLORS.get("text_dim", (160, 160, 160))),
+                (SCREEN_WIDTH - 490, 90))
+        self.btn_advance_tod.draw(screen, mp)
+        self.btn_advance_day.draw(screen, mp)
+        self.btn_advance_week.draw(screen, mp)
 
         # Status message
         if hasattr(self, '_status_timer') and self._status_timer > 0:
@@ -2427,6 +2556,12 @@ class CampaignManagerState:
             if (self._quest_giver_picker is not None
                     and self._quest_giver_picker.is_open):
                 self._quest_giver_picker.draw(screen)
+            if (self._quest_npc_picker is not None
+                    and self._quest_npc_picker.is_open):
+                self._quest_npc_picker.draw(screen)
+            if (self._quest_loc_picker is not None
+                    and self._quest_loc_picker.is_open):
+                self._quest_loc_picker.draw(screen)
         elif self.active_tab == 2:
             self.btn_new_area.draw(screen, mp)
         elif self.active_tab == 3:
@@ -2449,6 +2584,10 @@ class CampaignManagerState:
             self.btn_open_shop.draw(screen, mp)
             self.btn_open_rels.draw(screen, mp)
             self.btn_npc_portrait.draw(screen, mp)
+            self.btn_quick_npc.draw(screen, mp)
+            if (self._quick_npc_modal is not None
+                    and self._quick_npc_modal.is_open):
+                self._quick_npc_modal.draw(screen)
             # Phase 16: widgets always paint last so they stack on top
             if (getattr(self, "_town_view_open", False)
                     and self._town_view_widget is not None):
@@ -2474,6 +2613,13 @@ class CampaignManagerState:
         # Variant rules modal overlay
         if self.variant_rules_modal:
             self.variant_rules_modal.draw(screen, mp)
+
+        # Phase 20a: dashboard banner — paints last so it sits above
+        # any tab content but below modal dialogs which already
+        # returned earlier.
+        if (self._dashboard_widget is not None
+                and self._dashboard_widget.is_open):
+            self._dashboard_widget.draw(screen)
 
     # ---- Party Tab Drawing ----
 
@@ -6735,6 +6881,101 @@ class CampaignManagerState:
             screen.blit(xt, (clr.x + 5, clr.y + 3))
             if is_clr and pygame.mouse.get_pressed()[0]:
                 quest.giver_npc_id = ""
+        y += 24
+
+        # Phase 20d: linked NPCs (multi-pick) — chips + "+ Lisää" button
+        nl = fonts.small_bold.render("Linkitetyt NPC:t:",
+                                          True, COLORS["text_dim"])
+        screen.blit(nl, (start_x, y))
+        x_chip = start_x + 130
+        for nid in list(getattr(quest, "npc_ids", []) or []):
+            npc = self.world.npcs.get(nid)
+            label = npc.name if npc else nid
+            chip = fonts.tiny.render(label, True, COLORS["text_main"])
+            chip_w = chip.get_width() + 18
+            chip_rect = pygame.Rect(x_chip, y - 1, chip_w, 18)
+            pygame.draw.rect(screen, COLORS["panel"], chip_rect,
+                              border_radius=8)
+            screen.blit(chip, (chip_rect.x + 4, chip_rect.y + 1))
+            # Click to remove
+            if (chip_rect.collidepoint(mp)
+                    and pygame.mouse.get_pressed()[0]):
+                quest.npc_ids.remove(nid)
+            x_chip += chip_w + 4
+        # + button
+        add_btn = pygame.Rect(x_chip, y - 1, 28, 18)
+        pygame.draw.rect(screen,
+                          COLORS["accent_dim"]
+                          if add_btn.collidepoint(mp) else COLORS["panel"],
+                          add_btn, border_radius=8)
+        screen.blit(fonts.tiny.render("+ NPC", True, COLORS["accent"]),
+                    (add_btn.x + 2, add_btn.y + 1))
+        if (add_btn.collidepoint(mp)
+                and pygame.mouse.get_pressed()[0]
+                and not (self._quest_npc_picker is not None
+                          and self._quest_npc_picker.is_open)):
+            try:
+                from states.multi_pick_helpers import MultiNPCPicker
+                from states.multi_pick_helpers import toggle_in_list
+            except Exception:
+                MultiNPCPicker = None
+            if MultiNPCPicker is not None:
+                lst = quest.npc_ids if quest.npc_ids is not None else []
+                quest.npc_ids = lst
+                self._quest_npc_picker = MultiNPCPicker(
+                    self.world,
+                    on_pick=lambda nid: toggle_in_list(nid or "", lst),
+                )
+                anchor = pygame.Rect(start_x, y + 18, 260, 22)
+                self._quest_npc_picker.open(anchor_rect=anchor)
+        y += 24
+
+        # Phase 20d: linked Locations (multi-pick) — chips + "+ Lisää"
+        ll = fonts.small_bold.render("Linkitetyt paikat:",
+                                          True, COLORS["text_dim"])
+        screen.blit(ll, (start_x, y))
+        x_chip = start_x + 130
+        for lid in list(getattr(quest, "location_ids", []) or []):
+            loc = self.world.locations.get(lid)
+            label = loc.name if loc else lid
+            chip = fonts.tiny.render(label, True, COLORS["text_main"])
+            chip_w = chip.get_width() + 18
+            chip_rect = pygame.Rect(x_chip, y - 1, chip_w, 18)
+            pygame.draw.rect(screen, COLORS["panel"], chip_rect,
+                              border_radius=8)
+            screen.blit(chip, (chip_rect.x + 4, chip_rect.y + 1))
+            if (chip_rect.collidepoint(mp)
+                    and pygame.mouse.get_pressed()[0]):
+                quest.location_ids.remove(lid)
+            x_chip += chip_w + 4
+        add_btn = pygame.Rect(x_chip, y - 1, 36, 18)
+        pygame.draw.rect(screen,
+                          COLORS["accent_dim"]
+                          if add_btn.collidepoint(mp) else COLORS["panel"],
+                          add_btn, border_radius=8)
+        screen.blit(fonts.tiny.render("+ Paikka", True,
+                                          COLORS["accent"]),
+                    (add_btn.x + 2, add_btn.y + 1))
+        if (add_btn.collidepoint(mp)
+                and pygame.mouse.get_pressed()[0]
+                and not (self._quest_loc_picker is not None
+                          and self._quest_loc_picker.is_open)):
+            try:
+                from states.multi_pick_helpers import (
+                    MultiLocationPicker, toggle_in_list,
+                )
+            except Exception:
+                MultiLocationPicker = None
+            if MultiLocationPicker is not None:
+                lst = (quest.location_ids
+                        if quest.location_ids is not None else [])
+                quest.location_ids = lst
+                self._quest_loc_picker = MultiLocationPicker(
+                    self.world,
+                    on_pick=lambda lid: toggle_in_list(lid or "", lst),
+                )
+                anchor = pygame.Rect(start_x, y + 18, 260, 22)
+                self._quest_loc_picker.open(anchor_rect=anchor)
         y += 24
 
         # Objectives

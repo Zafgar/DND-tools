@@ -455,6 +455,11 @@ class BattleRendererMixin:
         # Battle Report Modal (on top of everything)
         if self.report_modal_open:
             self._draw_battle_report_modal(screen)
+        # Phase 20b: loot panel sits ABOVE the report so the DM can
+        # award loot before / instead of dismissing the report.
+        if (getattr(self, "_loot_panel_open", False)
+                and self._loot_panel is not None):
+            self._loot_panel.draw(screen)
 
         if self.save_modal_open:
             self._draw_save_modal(screen, mp)

@@ -138,6 +138,12 @@ class BattleEventsMixin:
                     self.conditions_modal.handle_event(event)
                     continue
 
+                # Phase 20b: loot panel handles its own events first
+                if (getattr(self, "_loot_panel_open", False)
+                        and self._loot_panel is not None):
+                    if self._loot_panel.handle_event(event):
+                        continue
+
                 # Battle Report Modal handling
                 if self.report_modal_open:
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
