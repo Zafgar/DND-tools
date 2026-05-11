@@ -82,6 +82,39 @@ class TacticalAI:
         return score
 
     def calculate_turn(self, entity: "Entity", battle: "BattleSystem") -> TurnPlan:
+        """Wrap the actual planner with a wall-clock guard — if any
+        branch loops longer than ``_TURN_BUDGET_SEC`` we abort and
+        return a "skip turn" plan rather than hang the whole battle
+        thread. Logs the offending entity name to the battle log so
+        the DM can investigate."""
+        import time as _time
+        start = _time.monotonic()
+        budget = getattr(self, "_TURN_BUDGET_SEC", 4.0)
+        try:
+            plan = self._calculate_turn_inner(entity, battle)
+        except Exception as ex:
+            try:
+                battle.log(
+                    f"[AI ERROR] {entity.name}: {ex!r} — skipping turn."
+                )
+            except Exception:
+                pass
+            plan = TurnPlan(entity=entity)
+            plan.skipped = True
+            plan.skip_reason = f"AI error: {ex!r}"
+        elapsed = _time.monotonic() - start
+        if elapsed > budget:
+            try:
+                battle.log(
+                    f"[AI WARN] {entity.name} planning took "
+                    f"{elapsed:.1f}s (budget {budget:.1f}s)"
+                )
+            except Exception:
+                pass
+        return plan
+
+    def _calculate_turn_inner(self, entity: "Entity",
+                                  battle: "BattleSystem") -> TurnPlan:
         """Optimal turn planning with god-mode knowledge.
 
         Turn order optimized for maximum effectiveness:
@@ -1170,9 +1203,18 @@ class TacticalAI:
             return False
         return True
 
-    def _find_path(self, start, end, battle, entity, allow_jump=True):
+    def _find_path(self, start, end, battle, entity, allow_jump=True,
+                     *, max_iterations: int = 600,
+                     return_partial: bool = True):
         """A* Pathfinding to find optimal path around obstacles.
-        allow_jump: if True, consider jumping across gaps/chasms."""
+        allow_jump: if True, consider jumping across gaps/chasms.
+
+        Phase 21a: caps explored nodes at ``max_iterations`` so an
+        unreachable target can't lock the AI in an infinite loop
+        (root cause of the Phase 9d Bone Devil + tavern_brawl
+        deadlocks). When the cap is hit, ``return_partial=True``
+        returns the closest-to-end node walked so far so the AI
+        still makes progress rather than freezing the turn."""
         def heuristic(a, b):
             return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
@@ -1187,8 +1229,23 @@ class TacticalAI:
             return []
 
         visited = set()
+        # Best-so-far tracking for partial-path fallback
+        best_node = start
+        best_h = heuristic(start, end)
+        iterations = 0
 
         while open_set:
+            iterations += 1
+            if iterations > max_iterations:
+                # Hit the cap — reconstruct closest-to-end path
+                if not return_partial or best_node == start:
+                    return None
+                path = []
+                cur = best_node
+                while cur in came_from:
+                    path.append(cur)
+                    cur = came_from[cur]
+                return path[::-1]
             _, current = heapq.heappop(open_set)
 
             if current == end:
@@ -1201,6 +1258,12 @@ class TacticalAI:
             if current in visited:
                 continue
             visited.add(current)
+
+            # Track the closest-to-target node we've reached
+            h_cur = heuristic(current, end)
+            if h_cur < best_h:
+                best_h = h_cur
+                best_node = current
 
             cx, cy = current
             for dx in [-1, 0, 1]:

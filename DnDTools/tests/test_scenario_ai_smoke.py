@@ -163,15 +163,15 @@ class TestScenarioPlanningSmoke(unittest.TestCase):
     def test_rooftop_heist(self):
         self._smoke_one(scenarios.get_scenario("rooftop_heist"))
 
-    @unittest.expectedFailure  # AI deadlock with Bone Devil — Phase 10 fix
     def test_devil_incursion(self):
+        # Phase 21a/b fixed the Bone Devil A* loop.
         self._smoke_one(scenarios.get_scenario("devil_incursion"))
 
     def test_elemental_rift(self):
         self._smoke_one(scenarios.get_scenario("elemental_rift"))
 
-    @unittest.expectedFailure  # AI deadlock for PC outside the tavern walls
     def test_tavern_brawl(self):
+        # Phase 21a/b fixed the unreachable-PC path loop.
         self._smoke_one(scenarios.get_scenario("tavern_brawl"))
 
     def test_vault_heist(self):
