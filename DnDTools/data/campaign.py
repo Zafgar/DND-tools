@@ -128,6 +128,9 @@ class Campaign:
     # See data/kingdoms.py for the shape; empty by default until populated via
     # ensure_kingdoms_on_campaign() on first open.
     kingdoms_data: List[Dict] = field(default_factory=list)
+    # Phase 22d — organisations (guilds, churches, brotherhoods).
+    # Rehydrated via data/organizations.ensure_organisations_on_campaign().
+    organisations_data: List[Dict] = field(default_factory=list)
     # Interactive map editor references.
     primary_world_map_id: str = ""      # Top-level "world" map id
     active_map_id: str = ""             # Last-opened map id (resume)
@@ -177,6 +180,7 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "notes": [serialize(n) for n in campaign.notes],
         "world_data": campaign.world_data,
         "kingdoms_data": campaign.kingdoms_data,
+        "organisations_data": campaign.organisations_data,
         "primary_world_map_id": campaign.primary_world_map_id,
         "active_map_id": campaign.active_map_id,
         "settings": campaign.settings,
@@ -212,6 +216,7 @@ def load_campaign(filepath: str) -> Campaign:
         notes=[deserialize(CampaignNote, n) for n in data.get("notes", [])],
         world_data=data.get("world_data", {}),
         kingdoms_data=data.get("kingdoms_data", []),
+        organisations_data=data.get("organisations_data", []),
         primary_world_map_id=data.get("primary_world_map_id", ""),
         active_map_id=data.get("active_map_id", ""),
         settings=data.get("settings", {}),

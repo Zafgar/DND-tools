@@ -206,7 +206,7 @@ def seed_novus_somnium_actors(registry=None):
 # Top-level build + seed
 # --------------------------------------------------------------------- #
 def build_novus_somnium() -> Campaign:
-    return Campaign(
+    camp = Campaign(
         name=NOVUS_SOMNIUM_NAME,
         description=(
             "A small frontier setting on the Greysea coast: the trade "
@@ -221,6 +221,17 @@ def build_novus_somnium() -> Campaign:
         current_area="Arenhold, the Port-City",
         session_number=1,
     )
+    # Phase 22 — pre-seed the living-world structures (5 kingdoms +
+    # the Brotherhood of Glorious Sun) so the on-disk save already
+    # carries them and the DM can browse them without first opening
+    # the navigator.
+    from data import kingdoms as _kg
+    from data import organizations as _orgs
+    _kg.ensure_kingdoms_on_campaign(camp)
+    _kg.sync_kingdoms_to_campaign(camp)
+    _orgs.ensure_organisations_on_campaign(camp)
+    _orgs.sync_organisations_to_campaign(camp)
+    return camp
 
 
 def ensure_default_campaign(campaigns_dir: Optional[str] = None,
