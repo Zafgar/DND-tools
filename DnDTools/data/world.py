@@ -106,6 +106,13 @@ class Shop:
     sell_markup: float = 1.0           # Multiplier on base prices (1.5 = 50% markup)
     buy_markup: float = 0.5            # What the shop pays when buying from PCs
     tags: List[str] = field(default_factory=list)
+    # Phase 23a — coin breakdown (cp/sp/ep/gp/pp) and bank role.
+    # When empty, the legacy ``gold`` float is treated as the source of
+    # truth (helpers in data/wealth.py do the conversion).
+    wealth: Dict[str, int] = field(default_factory=dict)
+    is_bank: bool = False              # Is this shop a bank / counting-house?
+    bank_holdings_gp: float = 0.0      # Customer deposits held (separate from
+                                       # the owner's own ``gold``/``wealth``).
 
 
 @dataclass
@@ -165,6 +172,9 @@ class NPC:
     shop_items: List[ShopItem] = field(default_factory=list)
     inventory_items: List[str] = field(default_factory=list)  # Non-shop personal items
     gold: float = 0.0
+    # Phase 23a — coin breakdown. When empty, ``gold`` is the source of
+    # truth (the wealth helpers in data/wealth.py handle the conversion).
+    wealth: Dict[str, int] = field(default_factory=dict)
     # Status
     alive: bool = True
     active: bool = True               # False = removed from play but kept in records
@@ -430,6 +440,7 @@ def _serialize_npc(npc: NPC) -> dict:
         "target_party_level": npc.target_party_level,
         "shop_items": [_serialize_shop_item(si) for si in npc.shop_items],
         "inventory_items": npc.inventory_items, "gold": npc.gold,
+        "wealth": dict(getattr(npc, "wealth", {}) or {}),
         "alive": npc.alive, "active": npc.active,
     }
 
@@ -457,6 +468,7 @@ def _deserialize_npc(d: dict) -> NPC:
         shop_items=[_deserialize_shop_item(si) for si in d.get("shop_items", [])],
         inventory_items=d.get("inventory_items", []),
         gold=d.get("gold", 0),
+        wealth=dict(d.get("wealth", {}) or {}),
         alive=d.get("alive", True), active=d.get("active", True),
     )
 
@@ -488,6 +500,8 @@ def _serialize_shop(s: Shop) -> dict:
         "inventory": [_serialize_shop_item(i) for i in s.inventory],
         "gold": s.gold, "sell_markup": s.sell_markup,
         "buy_markup": s.buy_markup, "tags": list(s.tags),
+        "wealth": dict(s.wealth),
+        "is_bank": s.is_bank, "bank_holdings_gp": s.bank_holdings_gp,
     }
 
 
@@ -505,6 +519,9 @@ def _deserialize_shop(d: dict) -> Shop:
         sell_markup=float(d.get("sell_markup", 1.0)),
         buy_markup=float(d.get("buy_markup", 0.5)),
         tags=list(d.get("tags", [])),
+        wealth=dict(d.get("wealth", {}) or {}),
+        is_bank=bool(d.get("is_bank", False)),
+        bank_holdings_gp=float(d.get("bank_holdings_gp", 0.0) or 0.0),
     )
 
 

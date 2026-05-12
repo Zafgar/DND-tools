@@ -459,6 +459,21 @@ class CampaignManagerState:
                                        self._open_quick_npc_modal,
                                        color=COLORS["success"])
         self._quick_npc_modal = None
+        # Phase 23b/c — living-world navigators.
+        self.btn_open_kingdoms = Button(830, SCREEN_HEIGHT - 115,
+                                           170, 45,
+                                           "Valtakunnat",
+                                           self._open_kingdom_navigator,
+                                           color=COLORS["accent"])
+        self.btn_open_orgs = Button(1010, SCREEN_HEIGHT - 115,
+                                       180, 45,
+                                       "Organisaatiot",
+                                       self._open_organisation_panel,
+                                       color=COLORS["spell"])
+        self._kingdom_nav_widget = None
+        self._kingdom_nav_open = False
+        self._org_panel_widget = None
+        self._org_panel_open = False
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1144,6 +1159,40 @@ class CampaignManagerState:
         self._rel_matrix_widget.open()
         self._rel_matrix_open = True
 
+    def _open_kingdom_navigator(self):
+        """Phase 23b: open the kingdom navigator widget."""
+        from states.kingdom_navigator_widget import KingdomNavigatorWidget
+        self._kingdom_nav_widget = KingdomNavigatorWidget(
+            self.campaign, self.world,
+            on_close=lambda: setattr(self, "_kingdom_nav_open", False),
+            on_npc_click=self._jump_to_npc,
+        )
+        self._kingdom_nav_widget.open()
+        self._kingdom_nav_open = True
+
+    def _open_organisation_panel(self):
+        """Phase 23c: open the organisation panel widget."""
+        from states.organisation_panel_widget import OrganisationPanelWidget
+        self._org_panel_widget = OrganisationPanelWidget(
+            self.campaign,
+            on_close=lambda: setattr(self, "_org_panel_open", False),
+            on_npc_click=self._jump_to_npc,
+        )
+        self._org_panel_widget.open()
+        self._org_panel_open = True
+
+    def _jump_to_npc(self, npc_id: str) -> None:
+        """Widget callback: navigate to an NPC's sheet from the
+        kingdom / organisation panel."""
+        if not npc_id or npc_id not in self.world.npcs:
+            return
+        self.active_tab = 4
+        self.world_view = "npcs"
+        self.selected_npc_id = npc_id
+        # Close the currently open navigator so the NPC sheet is visible.
+        self._kingdom_nav_open = False
+        self._org_panel_open = False
+
     def _on_town_pick(self, kind: str, oid: str):
         """Town view → row click. ``kind`` is one of
         'location'/'npc'/'shop'/'service'."""
@@ -1656,6 +1705,9 @@ class CampaignManagerState:
                 self.btn_open_rels.handle_event(event)
                 self.btn_npc_portrait.handle_event(event)
                 self.btn_quick_npc.handle_event(event)
+                # Phase 23b/c — living-world navigators.
+                self.btn_open_kingdoms.handle_event(event)
+                self.btn_open_orgs.handle_event(event)
                 # Phase 20c: quick-NPC modal eats events while open
                 if (self._quick_npc_modal is not None
                         and self._quick_npc_modal.is_open):
@@ -1675,6 +1727,14 @@ class CampaignManagerState:
                 if (getattr(self, "_rel_matrix_open", False)
                         and self._rel_matrix_widget is not None):
                     if self._rel_matrix_widget.handle_event(event):
+                        return
+                if (getattr(self, "_kingdom_nav_open", False)
+                        and self._kingdom_nav_widget is not None):
+                    if self._kingdom_nav_widget.handle_event(event):
+                        return
+                if (getattr(self, "_org_panel_open", False)
+                        and self._org_panel_widget is not None):
+                    if self._org_panel_widget.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2585,6 +2645,8 @@ class CampaignManagerState:
             self.btn_open_rels.draw(screen, mp)
             self.btn_npc_portrait.draw(screen, mp)
             self.btn_quick_npc.draw(screen, mp)
+            self.btn_open_kingdoms.draw(screen, mp)
+            self.btn_open_orgs.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -2598,6 +2660,12 @@ class CampaignManagerState:
             if (getattr(self, "_rel_matrix_open", False)
                     and self._rel_matrix_widget is not None):
                 self._rel_matrix_widget.draw(screen)
+            if (getattr(self, "_kingdom_nav_open", False)
+                    and self._kingdom_nav_widget is not None):
+                self._kingdom_nav_widget.draw(screen)
+            if (getattr(self, "_org_panel_open", False)
+                    and self._org_panel_widget is not None):
+                self._org_panel_widget.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
