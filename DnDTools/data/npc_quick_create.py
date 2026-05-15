@@ -41,7 +41,8 @@ def quick_create_npc(world: World, *,
                        tags: Optional[List[str]] = None,
                        portrait_src_path: Optional[str] = None,
                        portrait_name_hint: Optional[str] = None,
-                       registry: Optional[ActorRegistry] = None
+                       registry: Optional[ActorRegistry] = None,
+                       wealth_tier: str = "",
                        ) -> QuickCreateResult:
     """Create an NPC, link an Actor, and (optionally) import a
     portrait. Returns the bookkeeping ids in :class:`QuickCreateResult`.
@@ -112,5 +113,15 @@ def quick_create_npc(world: World, *,
                     actor.portrait_path = rel
         else:
             rep.warnings.append("portrait import returned empty path")
+
+    # 4. Phase 24d — seed coins matching the requested wealth tier.
+    if wealth_tier:
+        try:
+            from data.wealth import (
+                suggest_coins_for_wealth_tier, set_npc_coins,
+            )
+            set_npc_coins(npc, suggest_coins_for_wealth_tier(wealth_tier))
+        except Exception as ex:
+            rep.warnings.append(f"wealth seed failed: {ex}")
 
     return rep

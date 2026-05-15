@@ -4040,6 +4040,66 @@ class CampaignManagerState:
             self._draw_npc_shop_info(screen, mp, npc, start_x, y)
             y += 200  # Reserve space
 
+        # ---- Phase 24c: Organisations the NPC belongs to ----
+        from data import organizations as _orgs
+        npc_orgs = _orgs.organisations_for_npc(self.campaign, npc.id)
+        if not npc_orgs and npc.name:
+            npc_orgs = _orgs.organisations_for_npc_name(
+                self.campaign, npc.name)
+        y += 5
+        org_label = fonts.small_bold.render(
+            f"Organisaatiot ({len(npc_orgs)}):", True, COLORS["text_dim"])
+        screen.blit(org_label, (start_x, y))
+        y += 18
+        if npc_orgs:
+            for o in npc_orgs[:6]:
+                # Look up the member entry to display rank+role
+                m = (o.member_for_npc(npc.id)
+                       if npc.id
+                       else next((mm for mm in o.members
+                                     if mm.active
+                                     and mm.npc_name == npc.name), None))
+                rank_label = ""
+                if m and m.rank_key:
+                    rank = o.rank(m.rank_key)
+                    rank_label = rank.name if rank else m.rank_key
+                bits = [o.name]
+                if rank_label:
+                    bits.append(rank_label)
+                chip_text = " · ".join(bits)
+                chip_w = fonts.tiny.size(chip_text)[0] + 16
+                chip_rect = pygame.Rect(start_x, y, chip_w, 20)
+                pygame.draw.rect(screen, o.color or COLORS["panel"],
+                                  chip_rect, border_radius=10)
+                if chip_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                    self.selected_npc_id = npc.id  # preserve current
+                    self._open_organisation_panel()
+                    if (self._org_panel_widget is not None
+                            and o.key):
+                        self._org_panel_widget.selected_key = o.key
+                screen.blit(fonts.tiny.render(
+                    chip_text, True, (20, 20, 30)),
+                    (chip_rect.x + 8, chip_rect.y + 4))
+                y += 24
+        else:
+            screen.blit(fonts.tiny.render(
+                "(ei jäsenyyksiä)", True, COLORS["text_muted"]),
+                (start_x + 10, y))
+            y += 18
+
+        # ---- Phase 24c: Wealth (coins) chip row ----
+        from data.wealth import npc_coins
+        c = npc_coins(npc)
+        if c.total_cp() > 0:
+            wealth_text = f"Varallisuus: {c.short()}  "\
+                           f"({c.total_gp():.2f} gp)"
+        else:
+            wealth_text = "Varallisuus: —"
+        screen.blit(fonts.small.render(
+            wealth_text, True, COLORS["text_dim"]),
+            (start_x, y))
+        y += 22
+
         # ---- Relationships panel ----
         y += 5
         rel_label = fonts.small_bold.render("Relationships:", True, COLORS["text_dim"])

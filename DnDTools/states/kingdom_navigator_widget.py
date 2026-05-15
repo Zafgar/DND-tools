@@ -73,8 +73,56 @@ class KingdomNavigatorWidget:
                                   self._close,
                                   color=COLORS.get("panel_dark",
                                                      (40, 40, 60)))
+        # Phase 24a/b — editor toggles, set up by host before each
+        # event/draw pass so the navigator can defer to nested modals.
+        self.btn_edit_relations = Button(
+            0, 0, 200, 28, "Muokkaa suhteita",
+            self._open_kingdom_relations,
+            color=COLORS.get("warning", (220, 180, 80)))
+        self.btn_edit_city_relations = Button(
+            0, 0, 200, 28, "Kaupungit ↔ kaupungit",
+            self._open_city_relations,
+            color=COLORS.get("warning", (220, 180, 80)))
+        self.btn_edit_demo = Button(
+            0, 0, 160, 24, "Muokkaa demografiaa",
+            self._open_demographics_editor,
+            color=COLORS.get("legendary", (170, 110, 220)))
+        self._rel_modal = None
+        self._demo_modal = None
         self._city_rects: List[Tuple[pygame.Rect, kg.CityEntry]] = []
         self._kingdom_rects: List[Tuple[pygame.Rect, kg.KingdomEntry]] = []
+
+    # ------------------------------------------------------------------ #
+    # Modal openers
+    # ------------------------------------------------------------------ #
+    def _open_kingdom_relations(self) -> None:
+        from states.relations_matrix_modal import RelationsMatrixModal
+        self._rel_modal = RelationsMatrixModal(
+            self.campaign, scope="kingdom",
+            on_close=lambda: setattr(self, "_rel_modal", None),
+        )
+        self._rel_modal.open()
+
+    def _open_city_relations(self) -> None:
+        if not self.selected_kingdom_key:
+            return
+        from states.relations_matrix_modal import RelationsMatrixModal
+        self._rel_modal = RelationsMatrixModal(
+            self.campaign, scope="city",
+            parent_kingdom_key=self.selected_kingdom_key,
+            on_close=lambda: setattr(self, "_rel_modal", None),
+        )
+        self._rel_modal.open()
+
+    def _open_demographics_editor(self) -> None:
+        c = self._city()
+        if c is None:
+            return
+        from states.demographics_editor_modal import DemographicsEditorModal
+        self._demo_modal = DemographicsEditorModal(
+            c, on_close=lambda: setattr(self, "_demo_modal", None),
+        )
+        self._demo_modal.open()
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -107,6 +155,13 @@ class KingdomNavigatorWidget:
     def handle_event(self, event) -> bool:
         if not self.is_open:
             return False
+        # Phase 24 — nested modals consume events first
+        if self._rel_modal is not None and self._rel_modal.is_open:
+            if self._rel_modal.handle_event(event):
+                return True
+        if self._demo_modal is not None and self._demo_modal.is_open:
+            if self._demo_modal.handle_event(event):
+                return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             if self.selected_city_key:
@@ -121,9 +176,12 @@ class KingdomNavigatorWidget:
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_close.rect.collidepoint(event.pos):
-                self.btn_close.handle_event(event)
-                return True
+            for btn in (self.btn_close, self.btn_edit_relations,
+                          self.btn_edit_city_relations,
+                          self.btn_edit_demo):
+                if btn.rect.collidepoint(event.pos):
+                    btn.handle_event(event)
+                    return True
             for rect, k in self._kingdom_rects:
                 if rect.collidepoint(event.pos):
                     if self.selected_kingdom_key != k.key:
@@ -186,6 +244,14 @@ class KingdomNavigatorWidget:
         self.btn_close.rect.y = rect.y + 14
         self.btn_close.draw(screen, mp)
 
+        # Phase 24b — relations editor toolbar
+        self.btn_edit_relations.rect.x = rect.x + 220
+        self.btn_edit_relations.rect.y = rect.y + 14
+        self.btn_edit_relations.draw(screen, mp)
+        self.btn_edit_city_relations.rect.x = rect.x + 430
+        self.btn_edit_city_relations.rect.y = rect.y + 14
+        self.btn_edit_city_relations.draw(screen, mp)
+
         # Two-column layout
         left = pygame.Rect(rect.x + 16, rect.y + 80,
                             320, rect.height - 100)
@@ -195,6 +261,12 @@ class KingdomNavigatorWidget:
 
         self._draw_kingdom_list(screen, left, mp)
         self._draw_kingdom_detail(screen, right, mp)
+
+        # Phase 24 — overlay editor modals on top
+        if self._rel_modal is not None and self._rel_modal.is_open:
+            self._rel_modal.draw(screen)
+        if self._demo_modal is not None and self._demo_modal.is_open:
+            self._demo_modal.draw(screen)
 
     # ----- kingdom list ------------------------------------------------
     def _draw_kingdom_list(self, screen, area, mp) -> None:
@@ -385,6 +457,10 @@ class KingdomNavigatorWidget:
         screen.set_clip(prev_clip)
 
     def _draw_city_detail(self, screen, drow, c, k) -> None:
+        # Phase 24a — "Muokkaa demografiaa" button (place top-right of card)
+        self.btn_edit_demo.rect.x = drow.right - 170
+        self.btn_edit_demo.rect.y = drow.y + 6
+        self.btn_edit_demo.draw(screen, pygame.mouse.get_pos())
         # Demographics chips
         demo = c.demographics or {}
         if not demo and c.biome:
