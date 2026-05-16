@@ -22,7 +22,7 @@ from data.town_economy import (
 
 
 class ShopPanelWidget:
-    WIDTH = 480
+    WIDTH = 520
     ROW_H = 32
 
     def __init__(self, shop, campaign,
@@ -263,6 +263,57 @@ class ShopPanelWidget:
                 "(Inventaario tyhjä — käytä Lisää-toimintoa.)", True,
                 COLORS.get("text_dim", (160, 160, 160))),
                 (rect.x + 12, body_top + 8))
+
+        # Phase 27b — commissions strip below the inventory
+        commissions = getattr(self.shop, "commissions", None) or []
+        if commissions:
+            y += 8
+            screen.blit(fonts.small_bold.render(
+                f"Tilaukset ({len(commissions)}):", True,
+                COLORS.get("text_bright", (240, 240, 240))),
+                (rect.x + 12, y))
+            y += 20
+            kind_col = {"in_progress": COLORS.get("accent",
+                                                       (110, 130, 220)),
+                          "ready":       COLORS.get("success",
+                                                       (90, 200, 120)),
+                          "delivered":   COLORS.get("text_dim",
+                                                       (160, 160, 160)),
+                          "cancelled":   COLORS.get("danger",
+                                                       (220, 100, 90))}
+            for c in commissions[:8]:
+                crow = pygame.Rect(rect.x + 12, y,
+                                     rect.width - 24, 30)
+                pygame.draw.rect(screen,
+                                  COLORS.get("panel_dark",
+                                              (32, 32, 42)),
+                                  crow, border_radius=4)
+                tag_w = 80
+                tag = pygame.Rect(crow.right - tag_w - 6,
+                                    crow.y + 4, tag_w, 22)
+                pygame.draw.rect(screen,
+                                  kind_col.get(c.status,
+                                                 (140, 140, 150)),
+                                  tag, border_radius=10)
+                screen.blit(fonts.tiny.render(c.status, True,
+                                                  (20, 20, 30)),
+                              (tag.x + 8, tag.y + 4))
+                screen.blit(fonts.small_bold.render(
+                    c.item_name, True,
+                    COLORS.get("text_bright", (240, 240, 240))),
+                    (crow.x + 8, crow.y + 2))
+                remaining = max(0.0, c.price_gp - c.deposit_paid_gp)
+                sub = (f"{c.price_gp:.0f} gp  ·  "
+                        f"käsiraha {c.deposit_paid_gp:.0f} gp  ·  "
+                        f"jää {remaining:.0f} gp")
+                if c.due_in_days > 0:
+                    sub += f"  ·  {c.due_in_days} pv"
+                screen.blit(fonts.tiny.render(
+                    sub, True,
+                    COLORS.get("text_dim", (170, 170, 180))),
+                    (crow.x + 8, crow.y + 16))
+                y += 34
+
         self.content_h = (y + self.scroll) - body_top
         screen.set_clip(prev_clip)
 

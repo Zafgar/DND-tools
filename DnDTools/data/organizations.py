@@ -74,6 +74,42 @@ class OrganisationMember:
 
 
 @dataclass
+class OrganisationOperation:
+    """Phase 27d — a recorded operation the organisation runs.
+
+    Each entry has a kind ("recruit", "sabotage", "extort",
+    "conversion", "raid", "intelligence", "ritual", "diplomacy",
+    "other"), a target city/kingdom, severity (1=low / 5=catastrophic),
+    a status (planned / active / completed / aborted), a timestamp
+    (e.g. ``"S3 D5"``), an optional ``npc_member_id`` (whose handler
+    among the members) and a free-form description.
+
+    The organisation panel renders these as a chronological timeline.
+    """
+    id: str = ""
+    name: str = ""
+    kind: str = "other"          # see OPERATION_KINDS
+    target_city_key: str = ""
+    target_kingdom_key: str = ""
+    severity: int = 1            # 1..5
+    status: str = "planned"      # planned, active, completed, aborted
+    timestamp: str = ""
+    description: str = ""
+    npc_member_id: str = ""
+    quest_id: str = ""           # Optional Quest link
+
+
+OPERATION_KINDS: List[str] = [
+    "recruit", "sabotage", "extort", "conversion", "raid",
+    "intelligence", "ritual", "diplomacy", "other",
+]
+
+OPERATION_STATUSES: List[str] = [
+    "planned", "active", "completed", "aborted",
+]
+
+
+@dataclass
 class Organisation:
     key: str
     name: str
@@ -89,6 +125,7 @@ class Organisation:
     ranks: List[OrganisationRank] = field(default_factory=list)
     roles: List[OrganisationRole] = field(default_factory=list)
     members: List[OrganisationMember] = field(default_factory=list)
+    operations: List[OrganisationOperation] = field(default_factory=list)
     relations: Dict[str, str] = field(default_factory=dict)  # org_key → attitude
     color: tuple = (160, 160, 160)
     tags: List[str] = field(default_factory=list)
@@ -175,6 +212,32 @@ def _member_to_dict(m: OrganisationMember) -> Dict:
     }
 
 
+def _operation_from_dict(d: Dict) -> OrganisationOperation:
+    return OrganisationOperation(
+        id=d.get("id", ""), name=d.get("name", ""),
+        kind=d.get("kind", "other"),
+        target_city_key=d.get("target_city_key", ""),
+        target_kingdom_key=d.get("target_kingdom_key", ""),
+        severity=int(d.get("severity", 1) or 1),
+        status=d.get("status", "planned"),
+        timestamp=d.get("timestamp", ""),
+        description=d.get("description", ""),
+        npc_member_id=d.get("npc_member_id", ""),
+        quest_id=d.get("quest_id", ""),
+    )
+
+
+def _operation_to_dict(op: OrganisationOperation) -> Dict:
+    return {
+        "id": op.id, "name": op.name, "kind": op.kind,
+        "target_city_key": op.target_city_key,
+        "target_kingdom_key": op.target_kingdom_key,
+        "severity": op.severity, "status": op.status,
+        "timestamp": op.timestamp, "description": op.description,
+        "npc_member_id": op.npc_member_id, "quest_id": op.quest_id,
+    }
+
+
 def _org_from_dict(d: Dict) -> Organisation:
     color = d.get("color", (160, 160, 160))
     if isinstance(color, list):
@@ -193,6 +256,8 @@ def _org_from_dict(d: Dict) -> Organisation:
         ranks=[_rank_from_dict(r) for r in d.get("ranks", [])],
         roles=[_role_from_dict(r) for r in d.get("roles", [])],
         members=[_member_from_dict(m) for m in d.get("members", [])],
+        operations=[_operation_from_dict(op)
+                      for op in d.get("operations", []) or []],
         relations=dict(d.get("relations", {}) or {}),
         color=color if isinstance(color, tuple) else (160, 160, 160),
         tags=list(d.get("tags", []) or []),
@@ -211,6 +276,7 @@ def _org_to_dict(o: Organisation) -> Dict:
         "ranks": [_rank_to_dict(r) for r in o.ranks],
         "roles": [_role_to_dict(r) for r in o.roles],
         "members": [_member_to_dict(m) for m in o.members],
+        "operations": [_operation_to_dict(op) for op in o.operations],
         "relations": dict(o.relations),
         "color": list(o.color),
         "tags": list(o.tags),
@@ -290,6 +356,31 @@ def _brotherhood_of_glorious_sun() -> Organisation:
             notes="Quiet chapter inside Smardu's mining guilds.",
         ),
     ]
+    operations = [
+        OrganisationOperation(
+            id="op_recruit_frand", name="Frandin värväyskenttä",
+            kind="recruit", target_city_key="frand",
+            target_kingdom_key="tarmaas", severity=2, status="active",
+            timestamp="S1 D1",
+            description="Lightbringer Vela rekrytoi kaupungin "
+                        "köyhälistöstä \"valon palvelijoiksi\".",
+        ),
+        OrganisationOperation(
+            id="op_smardu_quiet", name="Smardun hiljainen sijoittuminen",
+            kind="intelligence", target_kingdom_key="smardu",
+            severity=2, status="planned", timestamp="S1 D1",
+            description="Lightbringer Doran solutaa Brotherhoodin "
+                        "tukijoita kääpiöiden kaivosseuroihin.",
+        ),
+        OrganisationOperation(
+            id="op_dawn_ritual", name="Aamunkoiton rituaali",
+            kind="ritual", target_kingdom_key="oblitus",
+            severity=5, status="planned", timestamp="S1 D1",
+            description="Radiant Mavrek valmistelee suurriittiä "
+                        "Oblituksen autiomaassa — pysäytys olisi "
+                        "kampanjan pääkliimaksia.",
+        ),
+    ]
     return Organisation(
         key="brotherhood_of_glorious_sun",
         name="Brotherhood of Glorious Sun",
@@ -306,6 +397,7 @@ def _brotherhood_of_glorious_sun() -> Organisation:
         operating_kingdoms=["tarmaas", "smardu", "oblitus"],
         operating_cities=["frand"],
         ranks=ranks, roles=roles, members=members,
+        operations=operations,
         relations={},
         color=(200, 160, 60),
         tags=["antagonist", "religion", "secret_society"],
@@ -420,6 +512,52 @@ def add_member(campaign, org_key: str, *, npc_id: str = "",
     )
     o.members.append(m)
     return m
+
+
+def add_operation(campaign, org_key: str, *, name: str,
+                    kind: str = "other", target_city_key: str = "",
+                    target_kingdom_key: str = "",
+                    severity: int = 1, status: str = "planned",
+                    timestamp: str = "", description: str = "",
+                    npc_member_id: str = "",
+                    quest_id: str = "") -> Optional[OrganisationOperation]:
+    o = find_organisation(campaign, org_key)
+    if o is None:
+        return None
+    op = OrganisationOperation(
+        id=f"op_{len(o.operations) + 1}", name=name, kind=kind,
+        target_city_key=target_city_key,
+        target_kingdom_key=target_kingdom_key,
+        severity=max(1, min(5, int(severity))),
+        status=status, timestamp=timestamp,
+        description=description, npc_member_id=npc_member_id,
+        quest_id=quest_id,
+    )
+    o.operations.append(op)
+    return op
+
+
+def operations_in_city(campaign, city_key: str
+                         ) -> List[OrganisationOperation]:
+    """Every active or planned operation that targets a city."""
+    out: List[OrganisationOperation] = []
+    for o in ensure_organisations_on_campaign(campaign):
+        for op in o.operations:
+            if op.target_city_key == city_key and op.status in (
+                    "planned", "active"):
+                out.append(op)
+    return out
+
+
+def operations_in_kingdom(campaign, kingdom_key: str
+                            ) -> List[OrganisationOperation]:
+    out: List[OrganisationOperation] = []
+    for o in ensure_organisations_on_campaign(campaign):
+        for op in o.operations:
+            if op.target_kingdom_key == kingdom_key and op.status in (
+                    "planned", "active"):
+                out.append(op)
+    return out
 
 
 def remove_member(campaign, org_key: str, npc_id: str = "",

@@ -476,6 +476,13 @@ class CampaignManagerState:
                                              "Tehtäväpäiväkirja",
                                              self._open_quest_log,
                                              color=COLORS["warning"])
+        # Phase 27c — one-form quick quest creator.
+        self.btn_quick_quest = Button(1390, SCREEN_HEIGHT - 115,
+                                          130, 45,
+                                          "+ Pika-quest",
+                                          self._open_quick_quest_modal,
+                                          color=COLORS["success"])
+        self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
         self._org_panel_widget = None
@@ -1189,6 +1196,26 @@ class CampaignManagerState:
         self._org_panel_widget.open()
         self._org_panel_open = True
 
+    def _open_quick_quest_modal(self):
+        """Phase 27c: open the quick-quest creator modal."""
+        from states.quick_create_quest_modal import QuickCreateQuestModal
+        self._quick_quest_modal = QuickCreateQuestModal(
+            self.world,
+            default_giver_npc_id=self.selected_npc_id,
+            default_location_id=self.selected_location_id,
+            on_close=lambda: setattr(self,
+                                          "_quick_quest_modal", None),
+            on_created=self._on_quest_created,
+        )
+        self._quick_quest_modal.open()
+
+    def _on_quest_created(self, quest_id: str) -> None:
+        self._import_status = "Tehtävä luotu."
+        self._import_status_timer = 240
+        self._open_quest_log()
+        if self._quest_log_widget is not None:
+            self._quest_log_widget.selected_quest_id = quest_id
+
     def _open_quest_log(self):
         """Phase 26: open the quest-log widget."""
         from states.quest_log_widget import QuestLogWidget
@@ -1750,6 +1777,12 @@ class CampaignManagerState:
                 self.btn_open_orgs.handle_event(event)
                 # Phase 26 — quest log
                 self.btn_open_quest_log.handle_event(event)
+                # Phase 27c — quick quest
+                self.btn_quick_quest.handle_event(event)
+                if (self._quick_quest_modal is not None
+                        and self._quick_quest_modal.is_open):
+                    if self._quick_quest_modal.handle_event(event):
+                        return
                 # Phase 20c: quick-NPC modal eats events while open
                 if (self._quick_npc_modal is not None
                         and self._quick_npc_modal.is_open):
@@ -2031,6 +2064,16 @@ class CampaignManagerState:
             self.selected_location_id = ""
             self.selected_token_id = ""
             return
+
+        # Phase 27a — quest pin click (overlay banners on top of locations)
+        if (not self._map_route_mode and not self._map_pin_mode
+                and getattr(self, "_quest_pin_rects", None)):
+            for rect, qid in self._quest_pin_rects:
+                if rect.collidepoint(mp):
+                    self._open_quest_log()
+                    if self._quest_log_widget is not None:
+                        self._quest_log_widget.selected_quest_id = qid
+                    return
 
         # Check if clicking on a location node
         clicked_loc_id = ""
@@ -2694,6 +2737,7 @@ class CampaignManagerState:
             self.btn_open_kingdoms.draw(screen, mp)
             self.btn_open_orgs.draw(screen, mp)
             self.btn_open_quest_log.draw(screen, mp)
+            self.btn_quick_quest.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -2716,6 +2760,9 @@ class CampaignManagerState:
             if (getattr(self, "_quest_log_open", False)
                     and self._quest_log_widget is not None):
                 self._quest_log_widget.draw(screen)
+            if (self._quick_quest_modal is not None
+                    and self._quick_quest_modal.is_open):
+                self._quick_quest_modal.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
@@ -5332,6 +5379,44 @@ class CampaignManagerState:
                 br = pygame.Rect(px + size - 2, py - size - 2, bw, bh)
                 pygame.draw.rect(screen, COLORS["player"], br, border_radius=bh // 2)
                 screen.blit(bt, (br.x + 3, br.y + 1))
+
+        # --- Phase 27a: Quest pin overlay ---
+        # For every location with active quests pinned to it, paint a
+        # small banner so the DM can see at a glance where work waits.
+        from data import quest_log as _ql
+        self._quest_pin_rects = []
+        for loc_id, pos in self._location_map_positions.items():
+            quests_here = _ql.quests_pinned_at(self.world, loc_id)
+            if not quests_here:
+                continue
+            px, py = self._map_to_screen(pos[0], pos[1], grid_area)
+            if (px < grid_area.x - 30 or px > grid_area.right + 30
+                    or py < grid_area.y - 30
+                    or py > grid_area.bottom + 30):
+                continue
+            # Stack a tiny coloured pin per quest, capped at 3.
+            for i, q in enumerate(quests_here[:3]):
+                col = _ql.map_pin_colour_for_quest(q)
+                bx = px + 12 + i * 12
+                by = py - 14
+                tri = [(bx, by + 12), (bx - 5, by + 2), (bx + 5, by + 2)]
+                pygame.draw.polygon(screen, col, tri)
+                pygame.draw.polygon(screen, (0, 0, 0), tri, 1)
+                screen.blit(fonts.tiny.render("!", True, (20, 20, 30)),
+                              (bx - 2, by + 1))
+                rect = pygame.Rect(bx - 7, by, 14, 16)
+                self._quest_pin_rects.append((rect, q.id))
+            # +N badge if more than 3 quests
+            if len(quests_here) > 3:
+                bx = px + 12 + 3 * 12
+                by = py - 14
+                badge = pygame.Rect(bx - 6, by + 2, 14, 12)
+                pygame.draw.rect(screen, (60, 60, 80), badge,
+                                  border_radius=6)
+                screen.blit(fonts.tiny.render(
+                    f"+{len(quests_here) - 3}", True,
+                    COLORS["text_bright"]),
+                    (badge.x + 2, badge.y))
 
         # --- Draw map pins ---
         hovered_pin_id = ""
