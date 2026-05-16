@@ -470,10 +470,18 @@ class CampaignManagerState:
                                        "Organisaatiot",
                                        self._open_organisation_panel,
                                        color=COLORS["spell"])
+        # Phase 26 — quest log browser.
+        self.btn_open_quest_log = Button(1200, SCREEN_HEIGHT - 115,
+                                             180, 45,
+                                             "Tehtäväpäiväkirja",
+                                             self._open_quest_log,
+                                             color=COLORS["warning"])
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
         self._org_panel_widget = None
         self._org_panel_open = False
+        self._quest_log_widget = None
+        self._quest_log_open = False
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1181,6 +1189,38 @@ class CampaignManagerState:
         self._org_panel_widget.open()
         self._org_panel_open = True
 
+    def _open_quest_log(self):
+        """Phase 26: open the quest-log widget."""
+        from states.quest_log_widget import QuestLogWidget
+        self._quest_log_widget = QuestLogWidget(
+            self.campaign, self.world,
+            on_close=lambda: setattr(self, "_quest_log_open", False),
+            on_npc_click=self._jump_to_npc,
+            on_shop_click=self._jump_to_shop,
+            on_location_click=self._jump_to_location,
+        )
+        self._quest_log_widget.open()
+        self._quest_log_open = True
+
+    def _jump_to_shop(self, shop_id: str) -> None:
+        if not shop_id or shop_id not in getattr(self.world, "shops", {}):
+            return
+        self.active_tab = 4
+        self.selected_shop_id = shop_id
+        self._quest_log_open = False
+        try:
+            self._open_selected_shop()
+        except Exception:
+            pass
+
+    def _jump_to_location(self, location_id: str) -> None:
+        if not location_id:
+            return
+        self.active_tab = 4
+        self.selected_location_id = location_id
+        self.world_view = "locations"
+        self._quest_log_open = False
+
     def _jump_to_npc(self, npc_id: str) -> None:
         """Widget callback: navigate to an NPC's sheet from the
         kingdom / organisation panel."""
@@ -1708,6 +1748,8 @@ class CampaignManagerState:
                 # Phase 23b/c — living-world navigators.
                 self.btn_open_kingdoms.handle_event(event)
                 self.btn_open_orgs.handle_event(event)
+                # Phase 26 — quest log
+                self.btn_open_quest_log.handle_event(event)
                 # Phase 20c: quick-NPC modal eats events while open
                 if (self._quick_npc_modal is not None
                         and self._quick_npc_modal.is_open):
@@ -1735,6 +1777,10 @@ class CampaignManagerState:
                 if (getattr(self, "_org_panel_open", False)
                         and self._org_panel_widget is not None):
                     if self._org_panel_widget.handle_event(event):
+                        return
+                if (getattr(self, "_quest_log_open", False)
+                        and self._quest_log_widget is not None):
+                    if self._quest_log_widget.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2647,6 +2693,7 @@ class CampaignManagerState:
             self.btn_quick_npc.draw(screen, mp)
             self.btn_open_kingdoms.draw(screen, mp)
             self.btn_open_orgs.draw(screen, mp)
+            self.btn_open_quest_log.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -2666,6 +2713,9 @@ class CampaignManagerState:
             if (getattr(self, "_org_panel_open", False)
                     and self._org_panel_widget is not None):
                 self._org_panel_widget.draw(screen)
+            if (getattr(self, "_quest_log_open", False)
+                    and self._quest_log_widget is not None):
+                self._quest_log_widget.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
@@ -4099,6 +4149,38 @@ class CampaignManagerState:
             wealth_text, True, COLORS["text_dim"]),
             (start_x, y))
         y += 22
+
+        # ---- Phase 26: Quests linked to this NPC ----
+        from data import quest_log as _ql
+        linked_quests = _ql.quests_for_npc(self.world, npc.id)
+        if linked_quests:
+            screen.blit(fonts.small_bold.render(
+                f"Tehtävät ({len(linked_quests)}):",
+                True, COLORS["text_dim"]),
+                (start_x, y))
+            y += 18
+            for q in linked_quests[:6]:
+                chip_text = f"{q.name} · {q.status}"
+                chip_w = fonts.tiny.size(chip_text)[0] + 16
+                chip_rect = pygame.Rect(start_x, y, chip_w, 20)
+                # Reuse status palette
+                col = {"active": COLORS["accent"],
+                        "completed": COLORS["success"],
+                        "failed": COLORS["danger"],
+                        "on_hold": COLORS["warning"]}.get(
+                    q.status, COLORS["panel"])
+                pygame.draw.rect(screen, col, chip_rect,
+                                  border_radius=10)
+                if (chip_rect.collidepoint(mp)
+                        and pygame.mouse.get_pressed()[0]):
+                    self.selected_npc_id = npc.id
+                    self._open_quest_log()
+                    if self._quest_log_widget is not None:
+                        self._quest_log_widget.selected_quest_id = q.id
+                screen.blit(fonts.tiny.render(
+                    chip_text, True, (20, 20, 30)),
+                    (chip_rect.x + 8, chip_rect.y + 4))
+                y += 24
 
         # ---- Relationships panel ----
         y += 5
