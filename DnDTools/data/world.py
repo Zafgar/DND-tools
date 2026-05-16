@@ -196,6 +196,24 @@ class QuestObjective:
 
 
 @dataclass
+class QuestLogEntry:
+    """Phase 26 — one chronological line in a quest's history.
+
+    Built additively as the DM plays: "PC paid blacksmith 30 gp for a
+    custom sword", "delivered courier letter to Frand", "kill count for
+    Bone Devil now 2/3". Renders to the quest log widget.
+    """
+    timestamp: str = ""               # Session "S3 D5" or wall-clock string
+    kind: str = "note"                # note, transaction, kill, deliver, complete
+    description: str = ""
+    gold_delta: float = 0.0           # Movement (+received, -paid)
+    npc_id: str = ""                  # Linked NPC for clickable jump
+    shop_id: str = ""
+    monster_name: str = ""            # Monster keyword for the killed creature
+    item_name: str = ""               # Item delivered / received
+
+
+@dataclass
 class Quest:
     """A quest/mission that can be tracked, linked to NPCs and locations."""
     id: str = ""                      # Unique ID
@@ -209,6 +227,10 @@ class Quest:
     turn_in_npc_id: str = ""          # NPC to turn in to (if different)
     location_ids: List[str] = field(default_factory=list)     # Related locations
     npc_ids: List[str] = field(default_factory=list)          # Related NPCs
+    # Phase 26 — broader entity links
+    shop_ids: List[str] = field(default_factory=list)         # Related shops/services
+    monster_names: List[str] = field(default_factory=list)    # Monsters to kill (free-form names)
+    map_pin_location_id: str = ""     # Primary location to pin on the world map
     # Objectives
     objectives: List[QuestObjective] = field(default_factory=list)
     # Rewards
@@ -216,6 +238,8 @@ class Quest:
     reward_gold: float = 0.0
     reward_items: List[str] = field(default_factory=list)     # Item names
     reward_notes: str = ""            # Custom reward description
+    # Phase 26 — running history
+    log: List[QuestLogEntry] = field(default_factory=list)
     # Meta
     notes: str = ""                   # DM notes
     tags: List[str] = field(default_factory=list)
@@ -618,15 +642,40 @@ def _deserialize_quest_objective(d: dict) -> QuestObjective:
         target_item=d.get("target_item", ""),
     )
 
+def _serialize_quest_log_entry(e: QuestLogEntry) -> dict:
+    return {
+        "timestamp": e.timestamp, "kind": e.kind,
+        "description": e.description,
+        "gold_delta": e.gold_delta, "npc_id": e.npc_id,
+        "shop_id": e.shop_id, "monster_name": e.monster_name,
+        "item_name": e.item_name,
+    }
+
+
+def _deserialize_quest_log_entry(d: dict) -> QuestLogEntry:
+    return QuestLogEntry(
+        timestamp=d.get("timestamp", ""), kind=d.get("kind", "note"),
+        description=d.get("description", ""),
+        gold_delta=float(d.get("gold_delta", 0.0) or 0.0),
+        npc_id=d.get("npc_id", ""), shop_id=d.get("shop_id", ""),
+        monster_name=d.get("monster_name", ""),
+        item_name=d.get("item_name", ""),
+    )
+
+
 def _serialize_quest(q: Quest) -> dict:
     return {
         "id": q.id, "name": q.name, "description": q.description,
         "status": q.status, "priority": q.priority, "quest_type": q.quest_type,
         "giver_npc_id": q.giver_npc_id, "turn_in_npc_id": q.turn_in_npc_id,
         "location_ids": q.location_ids, "npc_ids": q.npc_ids,
+        "shop_ids": list(q.shop_ids),
+        "monster_names": list(q.monster_names),
+        "map_pin_location_id": q.map_pin_location_id,
         "objectives": [_serialize_quest_objective(o) for o in q.objectives],
         "reward_xp": q.reward_xp, "reward_gold": q.reward_gold,
         "reward_items": q.reward_items, "reward_notes": q.reward_notes,
+        "log": [_serialize_quest_log_entry(e) for e in q.log],
         "notes": q.notes, "tags": q.tags,
         "created": q.created, "completed_date": q.completed_date,
         "session_given": q.session_given, "level_range": q.level_range,
@@ -641,10 +690,15 @@ def _deserialize_quest(d: dict) -> Quest:
         giver_npc_id=d.get("giver_npc_id", ""),
         turn_in_npc_id=d.get("turn_in_npc_id", ""),
         location_ids=d.get("location_ids", []), npc_ids=d.get("npc_ids", []),
+        shop_ids=list(d.get("shop_ids", []) or []),
+        monster_names=list(d.get("monster_names", []) or []),
+        map_pin_location_id=d.get("map_pin_location_id", ""),
         objectives=[_deserialize_quest_objective(o) for o in d.get("objectives", [])],
         reward_xp=d.get("reward_xp", 0), reward_gold=d.get("reward_gold", 0),
         reward_items=d.get("reward_items", []),
         reward_notes=d.get("reward_notes", ""),
+        log=[_deserialize_quest_log_entry(e)
+              for e in d.get("log", []) or []],
         notes=d.get("notes", ""), tags=d.get("tags", []),
         created=d.get("created", ""), completed_date=d.get("completed_date", ""),
         session_given=d.get("session_given", 0), level_range=d.get("level_range", ""),

@@ -46,6 +46,53 @@ class ShopPanelWidget:
         self.btn_sell = Button(0, 0, 90, 28, "Myy 1",
                                  self._sell_one,
                                  color=COLORS.get("warning", (220, 180, 80)))
+        # Phase 25 — preset filler. The button cycles through the
+        # presets available for this shop's type; clicking it merges
+        # those items into the inventory.
+        self._preset_idx = 0
+        self.btn_preset = Button(0, 0, 250, 28,
+                                    self._preset_button_label(),
+                                    self._apply_preset,
+                                    color=COLORS.get("accent",
+                                                       (110, 130, 220)))
+        self.btn_preset_cycle = Button(0, 0, 28, 28, "↻",
+                                          self._cycle_preset,
+                                          color=COLORS.get("panel",
+                                                             (60, 60, 80)))
+
+    def _current_preset_key(self) -> str:
+        from data.shop_preset_library import list_presets_for
+        keys = list_presets_for(self.shop.shop_type)
+        if not keys:
+            return ""
+        return keys[self._preset_idx % len(keys)]
+
+    def _preset_button_label(self) -> str:
+        key = self._current_preset_key()
+        if not key:
+            return f"(ei pohjaa tyypille “{self.shop.shop_type}”)"
+        return f"Lisää PHB-pohja: {key}"
+
+    def _cycle_preset(self):
+        from data.shop_preset_library import list_presets_for
+        keys = list_presets_for(self.shop.shop_type)
+        if keys:
+            self._preset_idx = (self._preset_idx + 1) % len(keys)
+            self.btn_preset.text = self._preset_button_label()
+
+    def _apply_preset(self):
+        from data.shop_preset_library import apply_preset_to_shop
+        key = self._current_preset_key()
+        if not key:
+            self._status = (f"Ei pohjia tyypille “{self.shop.shop_type}”.")
+            return
+        added = apply_preset_to_shop(self.shop, key)
+        if added:
+            self._status = f"Lisätty {added} riviä pohjasta {key}."
+        else:
+            self._status = (f"Pohja {key} sulautui jo olemassa "
+                              f"olevaan inventaarioon (vain määriä "
+                              f"kasvatettiin).")
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -122,7 +169,8 @@ class ShopPanelWidget:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not rect.collidepoint(event.pos):
                 return False
-            for btn in (self.btn_close, self.btn_buy, self.btn_sell):
+            for btn in (self.btn_close, self.btn_buy, self.btn_sell,
+                          self.btn_preset, self.btn_preset_cycle):
                 if btn.rect.collidepoint(event.pos):
                     btn.handle_event(event)
                     return True
@@ -225,6 +273,14 @@ class ShopPanelWidget:
         self.btn_sell.rect.x = rect.x + 110
         self.btn_sell.rect.y = rect.bottom - 70
         self.btn_sell.draw(screen, mp)
+        # Phase 25 — preset filler row
+        self.btn_preset.rect.x = rect.x + 12
+        self.btn_preset.rect.y = rect.bottom - 105
+        self.btn_preset.text = self._preset_button_label()
+        self.btn_preset.draw(screen, mp)
+        self.btn_preset_cycle.rect.x = rect.x + 270
+        self.btn_preset_cycle.rect.y = rect.bottom - 105
+        self.btn_preset_cycle.draw(screen, mp)
         # Status line
         if self._status:
             col = (COLORS.get("warning", (220, 180, 80))
