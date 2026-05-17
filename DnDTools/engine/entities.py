@@ -495,10 +495,15 @@ class Entity:
     # HP / Damage                                                          #
     # ------------------------------------------------------------------ #
 
-    def take_damage(self, amount: int, damage_type: str = "", is_magical: bool = False) -> tuple[int, bool]:
+    def take_damage(self, amount: int, damage_type: str = "", is_magical: bool = False,
+                     source=None) -> tuple[int, bool]:
         """
         Apply damage. Returns (damage_dealt, broke_concentration).
         Respects temp HP, resistances, immunities, vulnerabilities, rage.
+
+        ``source`` (optional) — the attacker, used for feat-driven
+        modifiers (Elemental Adept bypassing resistance, Mage Slayer
+        forcing disadvantage on concentration saves).
         """
         dtype_lower = damage_type.lower()
         if dtype_lower in [x.lower() for x in self.stats.damage_immunities]:
@@ -526,6 +531,13 @@ class Entity:
                         is_resistant = True
 
         is_vulnerable = dtype_lower in [x.lower() for x in self.stats.damage_vulnerabilities]
+
+        # Phase 30 — Elemental Adept (XGtE) lets the caster ignore
+        # resistance to one damage type.
+        if is_resistant and source is not None:
+            from engine.feat_effects import caster_ignores_resistance
+            if caster_ignores_resistance(source, damage_type):
+                is_resistant = False
 
         # PHB p.197: If resistance AND vulnerability apply, they cancel out
         if is_resistant and is_vulnerable:
@@ -581,9 +593,23 @@ class Entity:
             con_bonus = self.get_save_bonus("Constitution")
             roll = random.randint(1, 20) + con_bonus
             # War Caster: advantage on concentration saves
-            if self.has_feature("war_caster"):
+            has_adv = self.has_feature("war_caster")
+            # Phase 30 — Mage Slayer: target has disadvantage on
+            # concentration saves caused by damage from an adjacent
+            # Mage Slayer.
+            has_dis = False
+            if source is not None:
+                from engine.feat_effects import \
+                    mage_slayer_concentration_disadvantage
+                if mage_slayer_concentration_disadvantage(source, self):
+                    has_dis = True
+            # Advantage and disadvantage cancel.
+            if has_adv and not has_dis:
                 roll2 = random.randint(1, 20) + con_bonus
                 roll = max(roll, roll2)
+            elif has_dis and not has_adv:
+                roll2 = random.randint(1, 20) + con_bonus
+                roll = min(roll, roll2)
             if roll < dc:
                 self.drop_concentration()
                 broke_conc = True
@@ -814,6 +840,9 @@ class Entity:
                 mult = get_grapple_drag_speed_multiplier(self, grappled)
                 worst_mult = min(worst_mult, mult)
             speed *= worst_mult
+        # Phase 30: Mobile feat — +10 ft when not heavily encumbered.
+        from engine.feat_effects import mobile_speed_bonus
+        speed += mobile_speed_bonus(self)
         return speed
 
     # ------------------------------------------------------------------ #
@@ -858,6 +887,15 @@ class Entity:
 
     def get_save_bonus(self, ability: str) -> int:
         base = self.stats.saving_throws.get(ability, self.get_modifier(ability))
+        # Phase 30 — Resilient: proficiency in the chosen save.  Only
+        # add when the stats dict doesn't already reflect it (so we
+        # don't double-stack with class proficiencies).
+        from engine.feat_effects import resilient_save_proficiency
+        prof_ability = resilient_save_proficiency(self)
+        if prof_ability and prof_ability == ability.lower():
+            already = ability in self.stats.saving_throws
+            if not already:
+                base += getattr(self.stats, "proficiency_bonus", 2)
         # Equipment save bonuses (Cloak of Protection, Ring of Protection, etc.)
         base += self.get_equipment_save_bonus()
         # Bless: +1d4 to saves
