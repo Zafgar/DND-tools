@@ -369,30 +369,119 @@ _LR_MODERATE_CONDITIONS = {
 
 def _should_use_legendary_resistance(entity, applies_condition: str, damage_dice: str) -> bool:
     """Strategic LR decision. Always use for save-or-suck, conserve for minor effects."""
+    use, _reason = lr_decision_with_reason(
+        entity, applies_condition, damage_dice)
+    return use
+
+
+def lr_decision_with_reason(entity, applies_condition: str,
+                              damage_dice: str,
+                              spell_name: str = "",
+                              spell_level: int = 0,
+                              battle=None
+                              ) -> tuple:
+    """Phase 32 — boss-grade Legendary Resistance decision.
+
+    Returns ``(should_use, reason)`` so the DM advisor can render
+    "Burn LR because Stunned would lock the boss out of a turn" or
+    "Save LR — 1d4 thunder vs 200 HP doesn't matter".
+
+    Strategic factors:
+
+      * Severity of the condition (always-use vs moderate vs minor).
+      * LR remaining vs upcoming threats — when LR is at 1, conserve
+        unless the effect is catastrophic.
+      * Damage scale relative to current HP.
+      * Spell level / "boss-encounter killers" — boss should always
+        burn LR on Polymorph, Banishment, Hold Monster, Imprisonment
+        regardless of LR remaining.
+      * Battle context: if it's the boss's turn coming soon (more PCs
+        have acted than not), conserve more aggressively.
+    """
     lr_left = entity.legendary_resistances_left
 
-    # Severe conditions: always use LR
+    # The "encounter-ending" save list — boss treats these as auto-burn
+    # regardless of LR count.
+    encounter_killers = {
+        "Polymorph", "True Polymorph",
+        "Banishment",
+        "Hold Monster", "Hold Person",
+        "Imprisonment",
+        "Power Word Stun", "Power Word Kill",
+        "Maze",
+        "Feeblemind",
+        "Dominate Monster", "Dominate Person",
+        "Plane Shift",
+        "Wish",
+    }
+    if spell_name in encounter_killers:
+        return True, (f"{spell_name} is an encounter-killer — "
+                       f"always burn LR")
+
+    # Always-use conditions: locked out of own turn or removed from
+    # battle. Worth one LR every time.
     if applies_condition in _LR_ALWAYS_USE_CONDITIONS:
-        return True
+        if applies_condition in ("Stunned", "Paralyzed"):
+            return True, (f"{applies_condition} costs the boss a "
+                           f"full turn — burn LR")
+        if applies_condition in ("Banished", "Polymorphed",
+                                    "Dominated"):
+            return True, (f"{applies_condition} removes the boss "
+                           f"from the fight — burn LR")
+        return True, (f"{applies_condition} is incapacitating — "
+                       f"burn LR")
 
-    # Moderate conditions: use if 2+ LR left
+    # Moderate conditions: hurt but survivable. Worth LR only when we
+    # have at least 2 left (or there are clear party threats lined up).
     if applies_condition in _LR_MODERATE_CONDITIONS:
-        return lr_left >= 2
+        if lr_left >= 2:
+            return True, (f"{applies_condition} is significant and "
+                           f"LR={lr_left} — burn one")
+        if applies_condition in ("Restrained", "Blinded"):
+            # These hurt offensive output enough to merit a final LR
+            return True, (f"{applies_condition} cripples offence — "
+                           f"burn last LR")
+        return False, (f"{applies_condition} is recoverable; LR={lr_left}"
+                        f" — save for worse")
 
-    # Any other named condition: use if 3+ LR left
+    # Any other named condition: stricter threshold (3+ LR remaining)
     if applies_condition:
-        return lr_left >= 3
+        if lr_left >= 3:
+            return True, (f"{applies_condition} costs little to "
+                           f"prevent at LR={lr_left}")
+        return False, (f"{applies_condition} is minor; conserve LR")
 
-    # Damage-only save (no condition): only use LR if damage would be
-    # lethal or near-lethal (> 40% of remaining HP)
+    # Pure damage save: burn LR only when the hit is lethal.
     if damage_dice:
         from engine.dice import average_damage
         avg = average_damage(damage_dice)
-        if avg >= entity.hp * 0.4:
-            return True
+        hp_now = max(1, entity.hp)
+        if avg >= hp_now * 0.6:
+            return True, (f"~{int(avg)} damage vs {hp_now} HP would "
+                           f"be lethal — burn LR")
+        if avg >= hp_now * 0.4:
+            if lr_left >= 2:
+                return True, (f"~{int(avg)} dmg is 40%+ of HP and "
+                               f"LR={lr_left} — burn one")
+            return False, (f"~{int(avg)} dmg hurts but LR={lr_left}; "
+                            f"absorb it")
+        return False, (f"~{int(avg)} dmg is minor vs {hp_now} HP")
 
-    # Minor effect with no condition and low damage: conserve LR
-    return False
+    return False, "minor effect — conserve LR"
+
+
+def lr_advisor_summary(entity, spell_or_action_name: str,
+                         applies_condition: str,
+                         damage_dice: str) -> str:
+    """One-line tooltip for the DM screen: shows recommendation +
+    reason, plus the LR counter so the DM can override knowingly."""
+    use, reason = lr_decision_with_reason(
+        entity, applies_condition, damage_dice,
+        spell_name=spell_or_action_name)
+    verdict = "USE" if use else "SAVE"
+    return (f"[LR Advisor] {entity.name} ({entity.legendary_resistances_left}"
+             f"/{entity.stats.legendary_resistance_count} left) "
+             f"→ {verdict}. {reason}")
 
 
 # ============================================================
@@ -507,7 +596,8 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
                       disadvantage: bool = False,
                       applies_condition: str = "",
                       damage_dice: str = "",
-                      damage_type: str = "") -> Tuple[bool, int, str]:
+                      damage_type: str = "",
+                      spell_name: str = "") -> Tuple[bool, int, str]:
     """
     Make a saving throw for an entity.
 
@@ -605,10 +695,13 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
     # Legendary Resistance on failure (MM p.11: creature CHOOSES to succeed)
     # Strategic usage: save LR for dangerous effects, don't burn on minor damage
     if not success and can_use_legendary_resistance(entity):
-        should_use_lr = _should_use_legendary_resistance(
-            entity, applies_condition, damage_dice)
+        should_use_lr, lr_reason = lr_decision_with_reason(
+            entity, applies_condition, damage_dice,
+            spell_name=spell_name, battle=battle)
         if should_use_lr:
             msg = use_legendary_resistance(entity)
+            if lr_reason:
+                msg = f"{msg} [{lr_reason}]"
             return True, total, msg
 
     status = "SUCCESS" if success else "FAIL"

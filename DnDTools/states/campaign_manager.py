@@ -489,6 +489,9 @@ class CampaignManagerState:
         self._org_panel_open = False
         self._quest_log_widget = None
         self._quest_log_open = False
+        # Phase 32 — feat picker modal
+        self._feat_picker_modal = None
+        self._feat_picker_open = False
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1196,6 +1199,20 @@ class CampaignManagerState:
         self._org_panel_widget.open()
         self._org_panel_open = True
 
+    def _open_feat_picker(self, npc):
+        """Phase 32: open the feat picker modal for ``npc``."""
+        from states.feat_picker_modal import FeatPickerModal
+        self._feat_picker_modal = FeatPickerModal(
+            npc,
+            on_close=lambda: setattr(self,
+                                          "_feat_picker_open", False),
+            on_saved=lambda: setattr(self,
+                                          "_import_status",
+                                          "Featit tallennettu."),
+        )
+        self._feat_picker_modal.open()
+        self._feat_picker_open = True
+
     def _open_quick_quest_modal(self):
         """Phase 27c: open the quick-quest creator modal."""
         from states.quick_create_quest_modal import QuickCreateQuestModal
@@ -1814,6 +1831,10 @@ class CampaignManagerState:
                 if (getattr(self, "_quest_log_open", False)
                         and self._quest_log_widget is not None):
                     if self._quest_log_widget.handle_event(event):
+                        return
+                if (getattr(self, "_feat_picker_open", False)
+                        and self._feat_picker_modal is not None):
+                    if self._feat_picker_modal.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2763,6 +2784,9 @@ class CampaignManagerState:
             if (self._quick_quest_modal is not None
                     and self._quick_quest_modal.is_open):
                 self._quick_quest_modal.draw(screen)
+            if (getattr(self, "_feat_picker_open", False)
+                    and self._feat_picker_modal is not None):
+                self._feat_picker_modal.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
@@ -4143,7 +4167,28 @@ class CampaignManagerState:
         if not npc_orgs and npc.name:
             npc_orgs = _orgs.organisations_for_npc_name(
                 self.campaign, npc.name)
+        # Phase 32 — Feat picker button
         y += 5
+        feat_count = 0
+        try:
+            feat_count = len(
+                (npc.custom_stats or {}).get("features", []))
+        except Exception:
+            feat_count = 0
+        feat_btn = pygame.Rect(start_x, y, 200, 24)
+        is_hov = feat_btn.collidepoint(mp)
+        pygame.draw.rect(screen,
+                          COLORS.get("legendary", (170, 110, 220))
+                          if is_hov else COLORS.get("panel",
+                                                       (60, 60, 80)),
+                          feat_btn, border_radius=4)
+        screen.blit(fonts.small.render(
+            f"Featit ({feat_count}) — muokkaa…", True,
+            COLORS["text_bright"]),
+            (feat_btn.x + 8, feat_btn.y + 4))
+        if is_hov and pygame.mouse.get_pressed()[0]:
+            self._open_feat_picker(npc)
+        y += 30
         org_label = fonts.small_bold.render(
             f"Organisaatiot ({len(npc_orgs)}):", True, COLORS["text_dim"])
         screen.blit(org_label, (start_x, y))
