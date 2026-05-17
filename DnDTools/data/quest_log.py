@@ -214,3 +214,130 @@ def objective_progress(quest: Quest) -> str:
         return ""
     done = sum(1 for o in objs if o.completed)
     return f"{done}/{len(objs)}"
+
+
+# --------------------------------------------------------------------- #
+# Phase 27a — map-pin auto-overlay support
+# --------------------------------------------------------------------- #
+
+def quests_pinned_at(world: World, location_id: str,
+                      *, statuses=("active", "on_hold")) -> List[Quest]:
+    """Return every quest whose ``map_pin_location_id`` matches the
+    given location and whose status is one we render on the map.
+
+    The world-map view calls this for each visible location so it can
+    paint a small banner next to the node.
+    """
+    if not location_id or not world:
+        return []
+    out: List[Quest] = []
+    for q in world.quests.values():
+        if statuses and q.status not in statuses:
+            continue
+        if q.map_pin_location_id == location_id:
+            out.append(q)
+    return out
+
+
+# --------------------------------------------------------------------- #
+# Phase 27b — shop commission helpers
+# --------------------------------------------------------------------- #
+
+def commission_party(shop, item_name: str, price_gp: float,
+                       *, deposit_gp: float = 0.0,
+                       due_in_days: int = 0,
+                       description: str = "",
+                       linked_quest=None,
+                       campaign=None):
+    """Record a party commission with this shop and (optionally) log a
+    transaction line on a linked quest.  Returns the new
+    :class:`ShopCommission`.
+    """
+    from data.world import ShopCommission
+    cid = f"comm_{len(shop.commissions) + 1}"
+    while any(c.id == cid for c in shop.commissions):
+        cid = f"{cid}_x"
+    c = ShopCommission(
+        id=cid, item_name=item_name, price_gp=float(price_gp),
+        deposit_paid_gp=float(deposit_gp),
+        due_in_days=int(due_in_days),
+        description=description, customer_is_party=True,
+        linked_quest_id=getattr(linked_quest, "id", "") or "",
+    )
+    shop.commissions.append(c)
+    if linked_quest is not None and deposit_gp > 0:
+        pay_npc(linked_quest, shop.owner_npc_id, deposit_gp,
+                  description=f"Käsiraha: {item_name}",
+                  campaign=campaign)
+        if shop.id and shop.id not in linked_quest.shop_ids:
+            linked_quest.shop_ids.append(shop.id)
+    return c
+
+
+def mark_commission_ready(shop, commission_id: str,
+                            *, linked_quest=None,
+                            campaign=None) -> bool:
+    """Flip a commission to ``"ready"``.  When a linked quest is given,
+    drop a log line so the DM remembers."""
+    for c in shop.commissions:
+        if c.id == commission_id:
+            c.status = "ready"
+            if linked_quest is not None:
+                log_event(linked_quest, kind="note",
+                            description=f"{c.item_name} valmis "
+                                         f"{shop.name}-kaupasta.",
+                            shop_id=shop.id, item_name=c.item_name,
+                            campaign=campaign)
+            return True
+    return False
+
+
+def deliver_commission(shop, commission_id: str,
+                         *, linked_quest=None,
+                         campaign=None) -> bool:
+    """Mark a commission delivered and (when a quest is linked) charge
+    the remainder of the price to the party.
+    """
+    for c in shop.commissions:
+        if c.id != commission_id:
+            continue
+        remainder = max(0.0, c.price_gp - c.deposit_paid_gp)
+        c.status = "delivered"
+        c.deposit_paid_gp = c.price_gp
+        if linked_quest is not None:
+            if remainder > 0:
+                pay_npc(linked_quest, shop.owner_npc_id, remainder,
+                          description=f"Maksu lopusta: {c.item_name}",
+                          campaign=campaign)
+            deliver_item(linked_quest, c.item_name,
+                            description=f"Vastaanotettu {c.item_name} "
+                                         f"({shop.name}).",
+                            campaign=campaign)
+        return True
+    return False
+
+
+def cancel_commission(shop, commission_id: str) -> bool:
+    for c in shop.commissions:
+        if c.id == commission_id:
+            c.status = "cancelled"
+            return True
+    return False
+
+
+def active_commissions(shop) -> List:
+    return [c for c in shop.commissions
+             if c.status in ("in_progress", "ready")]
+
+
+def map_pin_colour_for_quest(quest: Quest) -> tuple:
+    """Banner colour by priority — urgent reds, high yellows, the rest
+    grey-blue.  Returned as a 3-tuple suitable for pygame."""
+    pri = (getattr(quest, "priority", "normal") or "normal").lower()
+    if pri == "urgent":
+        return (220, 80, 70)
+    if pri == "high":
+        return (220, 170, 70)
+    if pri == "low":
+        return (120, 130, 140)
+    return (110, 180, 240)

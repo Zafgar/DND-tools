@@ -280,4 +280,78 @@ class OrganisationPanelWidget:
                     (row.x + 8, row.y + 3))
                 self._member_rects.append((row, m))
                 y += self.MEMBER_ROW_H + 4
+
+        # Phase 27d — operations timeline
+        if o.operations:
+            y += 10
+            screen.blit(fonts.small_bold.render(
+                f"Operaatiot ({len(o.operations)})", True,
+                COLORS.get("text_bright", (240, 240, 250))),
+                (body_rect.x + 6, y))
+            y += 22
+            kind_col = {
+                "recruit":      (110, 180, 240),
+                "sabotage":     (220, 130, 90),
+                "extort":       (210, 180, 90),
+                "conversion":   (190, 130, 220),
+                "raid":         (220, 80, 70),
+                "intelligence": (90, 180, 200),
+                "ritual":       (220, 80, 220),
+                "diplomacy":    (90, 200, 120),
+                "other":        (160, 160, 170),
+            }
+            status_col = {
+                "planned":   COLORS.get("text_dim", (170, 170, 180)),
+                "active":    COLORS.get("accent", (110, 130, 220)),
+                "completed": COLORS.get("success", (90, 200, 120)),
+                "aborted":   COLORS.get("danger", (220, 100, 90)),
+            }
+            for op in o.operations:
+                row = pygame.Rect(body_rect.x + 14, y,
+                                    body_rect.width - 20, 44)
+                pygame.draw.rect(screen,
+                                  COLORS.get("panel_dark", (32, 32, 42)),
+                                  row, border_radius=4)
+                # Kind pip (left edge)
+                pip = pygame.Rect(row.x, row.y, 4, row.height)
+                pygame.draw.rect(screen,
+                                  kind_col.get(op.kind,
+                                                 (160, 160, 170)),
+                                  pip)
+                # Severity dots
+                for i in range(5):
+                    cx = row.right - 12 - i * 10
+                    dot_col = ((220, 90, 70)
+                                  if i < op.severity
+                                  else (60, 60, 80))
+                    pygame.draw.circle(screen, dot_col, (cx, row.y + 12),
+                                        4)
+                screen.blit(fonts.small_bold.render(
+                    op.name or op.kind, True,
+                    COLORS.get("text_bright", (240, 240, 250))),
+                    (row.x + 12, row.y + 4))
+                bits = [op.kind]
+                if op.target_city_key:
+                    bits.append(f"@ {op.target_city_key}")
+                elif op.target_kingdom_key:
+                    bits.append(f"@ {op.target_kingdom_key}")
+                if op.timestamp:
+                    bits.append(op.timestamp)
+                screen.blit(fonts.tiny.render(
+                    "  ·  ".join(bits), True,
+                    COLORS.get("text_dim", (180, 180, 190))),
+                    (row.x + 12, row.y + 22))
+                # Status chip
+                sw = fonts.tiny.size(op.status)[0] + 12
+                schip = pygame.Rect(row.right - sw - 60,
+                                      row.y + 22, sw, 16)
+                pygame.draw.rect(screen,
+                                  status_col.get(op.status,
+                                                   (140, 140, 150)),
+                                  schip, border_radius=8)
+                screen.blit(fonts.tiny.render(
+                    op.status, True, (20, 20, 30)),
+                    (schip.x + 6, schip.y + 1))
+                y += 48
+
         screen.set_clip(prev_clip)

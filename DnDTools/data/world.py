@@ -86,6 +86,32 @@ class ShopItem:
 
 
 @dataclass
+class ShopCommission:
+    """Phase 27b — a custom order the party (or another NPC) has
+    placed with this shop.
+
+    Use cases: "the blacksmith is forging a +1 longsword for the
+    fighter (200 gp, half down, ready in 5 days)", "the alchemist
+    is brewing potions of greater healing for the Brotherhood at
+    discount" etc.  The DM sees these on the shop sheet.
+    """
+    id: str = ""
+    item_name: str = ""
+    customer_npc_id: str = ""        # If commissioned by an NPC.
+    customer_is_party: bool = False  # If commissioned by the PCs.
+    description: str = ""
+    price_gp: float = 0.0
+    deposit_paid_gp: float = 0.0
+    due_in_days: int = 0             # Game days until ready
+    status: str = "in_progress"      # in_progress, ready, delivered, cancelled
+    linked_quest_id: str = ""        # Optional Quest this fulfils
+    notes: str = ""
+
+
+COMMISSION_STATUSES = ["in_progress", "ready", "delivered", "cancelled"]
+
+
+@dataclass
 class Shop:
     """A merchant the party can buy from / sell to.
 
@@ -113,6 +139,8 @@ class Shop:
     is_bank: bool = False              # Is this shop a bank / counting-house?
     bank_holdings_gp: float = 0.0      # Customer deposits held (separate from
                                        # the owner's own ``gold``/``wealth``).
+    # Phase 27b — custom commissions (PC-ordered or NPC-ordered work)
+    commissions: List[ShopCommission] = field(default_factory=list)
 
 
 @dataclass
@@ -516,6 +544,33 @@ def _deserialize_shop_item(d: dict) -> ShopItem:
     )
 
 
+def _serialize_commission(c: ShopCommission) -> dict:
+    return {
+        "id": c.id, "item_name": c.item_name,
+        "customer_npc_id": c.customer_npc_id,
+        "customer_is_party": c.customer_is_party,
+        "description": c.description,
+        "price_gp": c.price_gp, "deposit_paid_gp": c.deposit_paid_gp,
+        "due_in_days": c.due_in_days, "status": c.status,
+        "linked_quest_id": c.linked_quest_id, "notes": c.notes,
+    }
+
+
+def _deserialize_commission(d: dict) -> ShopCommission:
+    return ShopCommission(
+        id=d.get("id", ""), item_name=d.get("item_name", ""),
+        customer_npc_id=d.get("customer_npc_id", ""),
+        customer_is_party=bool(d.get("customer_is_party", False)),
+        description=d.get("description", ""),
+        price_gp=float(d.get("price_gp", 0.0) or 0.0),
+        deposit_paid_gp=float(d.get("deposit_paid_gp", 0.0) or 0.0),
+        due_in_days=int(d.get("due_in_days", 0) or 0),
+        status=d.get("status", "in_progress"),
+        linked_quest_id=d.get("linked_quest_id", ""),
+        notes=d.get("notes", ""),
+    )
+
+
 def _serialize_shop(s: Shop) -> dict:
     return {
         "id": s.id, "name": s.name, "shop_type": s.shop_type,
@@ -526,6 +581,7 @@ def _serialize_shop(s: Shop) -> dict:
         "buy_markup": s.buy_markup, "tags": list(s.tags),
         "wealth": dict(s.wealth),
         "is_bank": s.is_bank, "bank_holdings_gp": s.bank_holdings_gp,
+        "commissions": [_serialize_commission(c) for c in s.commissions],
     }
 
 
@@ -546,6 +602,8 @@ def _deserialize_shop(d: dict) -> Shop:
         wealth=dict(d.get("wealth", {}) or {}),
         is_bank=bool(d.get("is_bank", False)),
         bank_holdings_gp=float(d.get("bank_holdings_gp", 0.0) or 0.0),
+        commissions=[_deserialize_commission(c)
+                       for c in d.get("commissions", []) or []],
     )
 
 
