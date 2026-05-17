@@ -3459,11 +3459,25 @@ class TacticalAI:
         if crit_auto:
             is_crit, is_hit = True, True
         else:
+            # Phase 30 — Defensive Duelist: target may spend their
+            # reaction to add proficiency bonus to AC against this
+            # melee attack if it would convert a hit into a miss.
+            is_melee = action.range <= 5
+            from engine.feat_effects import defensive_duelist_ac_bonus
+            effective_ac = defensive_duelist_ac_bonus(
+                target, total, effective_ac, is_melee)
             is_hit = total >= effective_ac and not is_fumble
 
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
         dmg += dmg_mod
+
+        # Phase 30 — Savage Attacker (PHB): once per turn, reroll a
+        # weapon attack's damage dice and take the higher total. We
+        # only apply it for melee weapons (range ≤ 5).
+        if action.range <= 5 and not is_crit:
+            from engine.feat_effects import savage_attacker_reroll
+            dmg = savage_attacker_reroll(entity, dmg_str, dmg)
 
         # Brutal Critical (Barbarian): extra weapon dice on crit
         if is_crit and entity.has_feature("brutal_critical"):

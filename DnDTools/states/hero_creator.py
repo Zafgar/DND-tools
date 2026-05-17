@@ -1462,13 +1462,27 @@ class HeroCreatorState(GameState):
         # Saving throws (use effective scores with racial ASI applied)
         saving_throws = {}
         prof_saves = SAVING_THROW_PROF.get(char_class, ())
+        # Phase 30 — Resilient feat adds proficiency in one save.
+        # mechanic_value is the ability abbreviation ("CON", "WIS", …).
+        resilient_save_abbr = ""
+        for fn in self.selected_feats:
+            fo = FEATS_BY_NAME.get(fn)
+            if fo and fo.mechanic == "resilient" and fo.mechanic_value:
+                resilient_save_abbr = fo.mechanic_value.upper()
+                break
+        _abbr_to_full = {
+            "STR": "strength", "DEX": "dexterity", "CON": "constitution",
+            "INT": "intelligence", "WIS": "wisdom", "CHA": "charisma",
+        }
+        resilient_save = _abbr_to_full.get(resilient_save_abbr, "")
         for ab in ABILITY_NAMES:
             eff_score = self._get_effective_score(ab)
             mod = calc_modifier(eff_score)
-            if ab in prof_saves:
+            is_prof = (ab in prof_saves) or (ab == resilient_save)
+            if is_prof:
                 mod += prof
             display_name = ab.capitalize()
-            if mod != 0 or ab in prof_saves:
+            if mod != 0 or is_prof:
                 saving_throws[display_name] = mod
 
         # Spellcasting
