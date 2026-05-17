@@ -110,6 +110,11 @@ TERRAIN_TYPES = {
     "wall_fire": {"color": (255, 60, 0),   "passable": True,
                   "hazard_damage": "5d8", "damage_type": "fire", "label": "Wall of Fire", "icon": "FF",
                   "blocks_los": True},
+    "wall_wind": {"color": (180, 220, 240), "passable": True,
+                  "label": "Wall of Wind", "icon": "WW",
+                  "blocks_ranged": True,
+                  "description": "Blocks gases, ranged weapons & small flying "
+                                  "creatures. Doesn't block sight."},
     "wall_thorns":{"color": (40, 100, 40), "passable": True, "difficult": True,
                   "hazard_damage": "2d4", "damage_type": "piercing","label": "Wall of Thorns", "icon": "TT",
                   "blocks_los": True},

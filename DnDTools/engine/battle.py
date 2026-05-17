@@ -981,6 +981,91 @@ class BattleSystem:
     def remove_terrain_at(self, gx: int, gy: int):
         self.terrain = [t for t in self.terrain if not t.occupies(gx, gy)]
 
+    def targets_in_aoe(self, caster, center_x, center_y,
+                        radius_ft, shape="sphere", *,
+                        exclude_caster=False):
+        """Phase 29 — shared AoE target resolver used by the GM-click
+        manual cast path and (going forward) anything else that needs
+        to apply an AoE.
+
+        ``caster`` is the entity who cast the spell (origin for cone
+        and line). ``center_x/center_y`` is where they clicked.
+
+        Shape rules (PHB pp. 204-205):
+
+          * ``sphere`` / ``cylinder`` — every creature within
+            ``radius_ft`` of the clicked point.
+          * ``cube`` — every creature within ``radius_ft / 2`` on each
+            axis from the centre (treated as edge-length = radius).
+          * ``cone`` — origin = caster, opens toward the clicked
+            point, half-angle 30° (60° total spread).
+          * ``line`` — origin = caster, runs toward the clicked
+            point, 5 ft wide.
+
+        ``exclude_caster=True`` filters the caster out (used for
+        cones/lines where the caster is the *origin* and shouldn't be
+        damaged by their own spell).
+        """
+        import math as _math
+        targets = []
+        caster_cx = (caster.grid_x + caster.size_in_squares / 2.0
+                       if caster else 0.0)
+        caster_cy = (caster.grid_y + caster.size_in_squares / 2.0
+                       if caster else 0.0)
+        radius_sq = radius_ft / 5.0
+        # Cone/line direction = caster → click; pre-compute axis.
+        if shape in ("cone", "line"):
+            dx = center_x - caster_cx
+            dy = center_y - caster_cy
+            length = _math.hypot(dx, dy)
+            if length == 0:
+                # User clicked on themselves — pick an arbitrary axis
+                # so we still hit something rather than nothing.
+                dx, dy, length = 1.0, 0.0, 1.0
+            ax, ay = dx / length, dy / length
+        else:
+            ax = ay = 0.0
+        for ent in self.entities:
+            if ent.hp <= 0:
+                continue
+            if exclude_caster and ent is caster:
+                continue
+            tx = ent.grid_x + ent.size_in_squares / 2.0
+            ty = ent.grid_y + ent.size_in_squares / 2.0
+            if shape == "cube":
+                half = radius_sq  # treat radius as half-edge
+                if abs(tx - center_x) <= half and abs(ty - center_y) <= half:
+                    targets.append(ent)
+            elif shape == "cone":
+                ex = tx - caster_cx
+                ey = ty - caster_cy
+                dist = _math.hypot(ex, ey)
+                if dist > radius_sq or dist == 0:
+                    if dist == 0 and not exclude_caster:
+                        targets.append(ent)
+                    continue
+                # Project onto axis; require >0 (in front) and within
+                # 30° half-angle (cos(30°) ~= 0.866 of length).
+                proj = (ex * ax + ey * ay) / dist
+                if proj >= _math.cos(_math.radians(30)):
+                    targets.append(ent)
+            elif shape == "line":
+                ex = tx - caster_cx
+                ey = ty - caster_cy
+                # Along-axis distance (parallel)
+                along = ex * ax + ey * ay
+                if along < 0 or along > radius_sq:
+                    continue
+                # Perpendicular distance (1-square wide line = ±0.5)
+                perp = abs(ex * (-ay) + ey * ax)
+                if perp <= 0.6:  # half-square + small fudge
+                    targets.append(ent)
+            else:
+                # Default: sphere / cylinder
+                if _math.hypot(tx - center_x, ty - center_y) <= radius_sq:
+                    targets.append(ent)
+        return targets
+
     def spawn_spell_terrain(self, spell, caster, center_x, center_y):
         """Create persistent terrain tiles for a spell's area of effect."""
         import math
