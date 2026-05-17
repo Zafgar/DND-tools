@@ -3695,6 +3695,66 @@ class TacticalAI:
                         entity.bonus_action_used = True
                         return [step]
 
+        # --- Phase 30/31: Polearm Master butt-end bonus attack ---
+        # When wielding a glaive/halberd/quarterstaff/spear/pike, PHB
+        # grants a 1d4 + STR mod bonus action attack with the butt end.
+        if entity.has_feature("polearm_master") and not entity.bonus_action_used:
+            from engine.feat_effects import polearm_butt_attack_dice
+            # Find the weapon that was used this turn (first attack step
+            # with a melee weapon).
+            polearm_action = None
+            for s in (plan.steps if plan else []):
+                if (s.step_type in ("attack", "multiattack")
+                        and s.action and s.action.range <= 10):
+                    dice = polearm_butt_attack_dice(entity, s.action.name)
+                    if dice:
+                        polearm_action = s.action
+                        break
+            if polearm_action:
+                target = self._pick_target(entity, enemies, battle)
+                if target and battle.is_adjacent(entity, target):
+                    # Build a 1d4 + STR mod butt-end attack
+                    from data.models import Action as _Action
+                    str_mod = entity.get_modifier("strength")
+                    butt = _Action(
+                        name=f"{polearm_action.name} (butt)",
+                        attack_bonus=polearm_action.attack_bonus,
+                        damage_dice="1d4", damage_bonus=str_mod,
+                        damage_type=polearm_action.damage_type or "bludgeoning",
+                        range=5,
+                    )
+                    step = self._execute_attack(entity, butt, target, battle)
+                    step.step_type = "bonus_attack"
+                    step.action_name = butt.name
+                    self._apply_class_attack_bonuses(
+                        entity, step, target, allies, battle,
+                        first_attack=False)
+                    entity.bonus_action_used = True
+                    return [step]
+
+        # --- Phase 30/31: Shield Master bonus action shove ---
+        # PHB p.170: if you took the Attack action this turn and have a
+        # shield, you can use your bonus action to try to shove.
+        if entity.has_feature("shield_master") and not entity.bonus_action_used:
+            attacked_this_turn = any(
+                s.step_type in ("attack", "multiattack")
+                for s in (plan.steps if plan else [])
+            )
+            if attacked_this_turn:
+                target = self._pick_target(entity, enemies, battle)
+                if target and battle.is_adjacent(entity, target):
+                    shove_step = self._try_shove_action(entity, target,
+                                                          prone=True,
+                                                          battle=battle)
+                    if shove_step:
+                        shove_step.step_type = "bonus_attack"
+                        shove_step.description = (
+                            f"{entity.name} uses Shield Master to "
+                            f"shove {target.name} prone."
+                        )
+                        entity.bonus_action_used = True
+                        return [shove_step]
+
         # --- 4. Bonus action attacks (Offhand, PAM, etc.) ---
         for ba in entity.stats.bonus_actions:
             if not ba.damage_dice:
