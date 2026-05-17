@@ -380,6 +380,18 @@ _spells = {
                               concentration=True, duration="1 minute",
                               creates_terrain="wall_fire"),
 
+    "Wind Wall": SpellInfo("Wind Wall", level=3, action_type="action", range=120,
+                            aoe_radius=50, aoe_shape="line", targets="aoe",
+                            damage_dice="3d8", damage_type="bludgeoning",
+                            save_ability="Strength", half_on_save=True,
+                            concentration=True, duration="1 minute",
+                            creates_terrain="wall_wind",
+                            description="A wall of strong wind. Small or smaller "
+                                         "flying creatures take 3d8 bludgeoning "
+                                         "(STR half). Blocks gases, arrows and "
+                                         "small ranged weapons. 50ft long, 15ft "
+                                         "high, 1ft thick."),
+
     "Polymorph": SpellInfo("Polymorph", level=4, action_type="action", range=60, targets="single",
                            save_ability="Wisdom", concentration=True, duration="1 hour",
                            description="Transform target into beast of CR ≤ target's CR/level. Uses beast's stats but keeps INT/WIS/CHA. "

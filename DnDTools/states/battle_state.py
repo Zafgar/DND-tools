@@ -2172,35 +2172,62 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         caster = self.spell_caster
         spell = self.spell_targeting
         gx, gy = self._screen_to_grid(mx, my)
-        
+
         # Validate Range
         dist_ft = math.hypot(gx - caster.grid_x, gy - caster.grid_y) * 5
-        if dist_ft > spell.range + 5: # Small buffer
+        if dist_ft > spell.range + 5:  # Small buffer
             self._log("[TARGETING] Out of range!")
             return
 
-        # Identify Targets
+        # Phase 29 — refuse double-concentration before doing anything
+        # destructive. The GM can manually drop the old one first.
+        if spell.concentration and caster.concentrating_on \
+                and caster.concentrating_on.name != spell.name:
+            self._log(
+                f"[CONCENTRATION] {caster.name} is already "
+                f"concentrating on {caster.concentrating_on.name}. "
+                f"Drop it first via the entity menu before casting "
+                f"{spell.name}.")
+            return
+
+        # Phase 29 — debit the spell slot up front. Cantrips and innate
+        # spells handle themselves inside cast_spell().
+        if not caster.cast_spell(spell):
+            self._log(f"[CAST] {caster.name} has no slot for {spell.name}.")
+            return
+
+        # Phase 29 — honour the spell's AoE shape (sphere/cone/line/cube),
+        # not just sphere. Cone and line exclude the caster (origin).
         targets = []
         aoe_center = None
-        
         if spell.aoe_radius > 0:
-            # AoE Logic
             aoe_center = (gx, gy)
-            # Simple sphere check for now
-            for ent in self.battle.entities:
-                if ent.hp <= 0: continue
-                d = math.hypot(ent.grid_x - gx, ent.grid_y - gy) * 5
-                if d <= spell.aoe_radius:
-                    targets.append(ent)
+            shape = spell.aoe_shape or "sphere"
+            exclude_caster = shape in ("cone", "line")
+            targets = self.battle.targets_in_aoe(
+                caster, gx, gy, spell.aoe_radius,
+                shape=shape, exclude_caster=exclude_caster,
+            )
         else:
-            # Single Target
             t = self.battle.get_entity_at(gx, gy)
             if t and t.hp > 0:
                 targets.append(t)
 
         if not targets and spell.aoe_radius == 0:
+            # Refund the slot — the GM clicked nothing.
+            if spell.level > 0 and not spell.innate:
+                caster.restore_spell_slot(spell.level)
             self._log("[TARGETING] No target selected.")
             return
+
+        # Phase 29 — start concentration after we know the cast will
+        # actually fire. Log the dropped previous spell so the DM sees
+        # the swap.
+        if spell.concentration:
+            dropped = caster.start_concentration(spell)
+            if dropped:
+                self._log(f"  -> {caster.name} stops concentrating "
+                          f"on {dropped.name}.")
 
         # Roll Damage/Healing
         dmg = roll_dice(spell.damage_dice)
