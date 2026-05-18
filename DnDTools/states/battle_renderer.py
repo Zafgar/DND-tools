@@ -1421,6 +1421,15 @@ class BattleRendererMixin:
             if sel.legendary_resistances_left > 0:
                 self.ui_click_zones.append((r, lambda: self._use_legendary_resistance_manual(sel)))
             y += 20
+            # Phase 35 — LR advisor hint (when a pending save event is
+            # queued, the battle state can stash it onto the renderer).
+            pending = getattr(self, "_lr_advisor_hint", "")
+            if pending:
+                tip = fonts.tiny.render(
+                    pending[:80], True,
+                    COLORS.get("text_dim", (170, 170, 180)))
+                screen.blit(tip, (x0, y))
+                y += 16
 
         # Class Resources (collapsible)
         if sel.stats.character_class:

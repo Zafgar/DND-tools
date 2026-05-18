@@ -559,4 +559,168 @@ monsters = [
         legendary_action_count=3,
         legendary_resistance_count=3,
         challenge_rating=19.0, xp=22000, proficiency_bonus=6),
+
+    # ------------------------------------------------------------------ #
+    # CR 30 — Tarrasque (MM p.286) — earth-shaker, no LR but huge HP &  #
+    # legendary actions; immune to most casting via Reflective Carapace #
+    # ------------------------------------------------------------------ #
+    CreatureStats(name="Tarrasque", size="Gargantuan",
+        creature_type="Monstrosity",
+        armor_class=25, hit_points=676, hit_dice="33d20+330",
+        speed=40,
+        abilities=AbilityScores(strength=30, dexterity=11,
+                                  constitution=30, intelligence=3,
+                                  wisdom=11, charisma=11),
+        actions=[
+            Action("Multiattack", "Bite + 2 Claws + Tail + Horns",
+                    0, "", 0, "", reach=15, is_multiattack=True,
+                    multiattack_count=5,
+                    multiattack_targets=["Bite", "Claw", "Claw",
+                                          "Tail", "Horns"]),
+            Action("Bite", "Melee", 19, "4d12+10", 0, "piercing",
+                    reach=10,
+                    applies_condition="Grappled",
+                    condition_dc=20, condition_save="Strength"),
+            Action("Claw", "Melee", 19, "4d8+10", 0, "slashing",
+                    reach=15),
+            Action("Horns", "Melee", 19, "4d10+10", 0, "piercing",
+                    reach=10),
+            Action("Tail", "Melee", 19, "4d6+10", 0, "bludgeoning",
+                    reach=20,
+                    applies_condition="Prone",
+                    condition_dc=20, condition_save="Strength"),
+            Action("Swallow",
+                    "Replaces Bite on a grappled Large or smaller. "
+                    "Target takes 6d6 acid each turn inside, escape "
+                    "DC 20 STR.",
+                    0, "6d6", 0, "acid"),
+            # Legendary actions
+            Action("Move", "Half movement",
+                    0, "", 0, "", action_type="legendary"),
+            Action("Chomp", "Bite attack (legendary, 2 cost)",
+                    19, "4d12+10", 0, "piercing",
+                    reach=10, action_type="legendary"),
+            Action("Tail Sweep",
+                    "Tail attack (legendary, 2 cost)",
+                    19, "4d6+10", 0, "bludgeoning",
+                    reach=20, action_type="legendary"),
+        ],
+        saving_throws={"Intelligence": 5, "Wisdom": 9, "Charisma": 9},
+        damage_resistances=[
+            "bludgeoning piercing slashing (non-magic)"
+        ],
+        damage_immunities=["fire", "poison"],
+        condition_immunities=["Charmed", "Frightened", "Paralyzed",
+                                "Poisoned"],
+        features=[
+            Feature("Legendary Resistance",
+                     "3/day automatic save success",
+                     "legendary_resist", uses_per_day=3),
+            Feature("Magic Resistance",
+                     "Advantage on saves against spells and other "
+                     "magical effects."),
+            Feature("Reflective Carapace",
+                     "Any time the tarrasque is targeted by a magic "
+                     "missile spell, line, or ray, roll d6. On 1-5 "
+                     "the tarrasque is unaffected. On 6 the spell "
+                     "reflects back on the caster, using its DC."),
+            Feature("Siege Monster",
+                     "Doubles damage to objects and structures."),
+            Feature("Move", "Legendary Action (1 cost): move up to "
+                              "half its speed",
+                     feature_type="legendary", legendary_cost=1),
+            Feature("Chomp",
+                     "Legendary Action (2 cost): make one Bite "
+                     "attack or use Swallow",
+                     feature_type="legendary", legendary_cost=2),
+            Feature("Tail Sweep",
+                     "Legendary Action (2 cost): make one Tail "
+                     "attack",
+                     feature_type="legendary", legendary_cost=2),
+        ],
+        legendary_action_count=3,
+        legendary_resistance_count=3,
+        challenge_rating=30.0, xp=155000, proficiency_bonus=9),
+
+    # ------------------------------------------------------------------ #
+    # CR 21 — Solar (MM p.18) — top-tier angelic boss                   #
+    # ------------------------------------------------------------------ #
+    CreatureStats(name="Solar", size="Large", creature_type="Celestial",
+        armor_class=21, hit_points=243, hit_dice="18d10+144",
+        speed=50, fly_speed=150,
+        abilities=AbilityScores(strength=26, dexterity=22,
+                                  constitution=26, intelligence=25,
+                                  wisdom=25, charisma=30),
+        actions=[
+            Action("Multiattack", "x2 Slaying Longsword",
+                    0, "", 0, "", reach=10, is_multiattack=True,
+                    multiattack_count=2,
+                    multiattack_targets=["Slaying Longsword",
+                                          "Slaying Longsword"]),
+            Action("Slaying Longsword",
+                    "Melee +15, 1d8+8 slashing + 6d8 radiant",
+                    15, "1d8", 8, "slashing", reach=10),
+            Action("Slaying Bow",
+                    "Ranged +13, 2d6+8 piercing + 6d8 radiant. "
+                    "If target is below 100 HP, save DC 15 CON or "
+                    "be reduced to 0 HP.",
+                    13, "2d6", 8, "piercing",
+                    range=150, long_range=600,
+                    condition_dc=15, condition_save="Constitution"),
+            Action("Flying Sword",
+                    "Detached blade with own actions, attack +15",
+                    15, "1d8", 8, "slashing", range=120),
+            Action("Healing Touch",
+                    "4/day touch heals 40 HP and removes one disease/"
+                    "poison/charm/frightened.",
+                    0, "40", 0, "healing", range=0),
+            Action("Searing Burst",
+                    "Legendary Action (2 cost): 10-ft radius, all "
+                    "creatures DC 23 DEX save or 14d6 fire half.",
+                    0, "14d6", 0, "fire", range=120,
+                    aoe_radius=10, aoe_shape="sphere",
+                    action_type="legendary",
+                    condition_dc=23, condition_save="Dexterity"),
+            Action("Blinding Gaze",
+                    "Legendary Action (1 cost): single target DC 15 "
+                    "CON save or be Blinded until end of next turn.",
+                    0, "", 0, "", range=120,
+                    action_type="legendary",
+                    applies_condition="Blinded",
+                    condition_dc=15, condition_save="Constitution"),
+        ],
+        saving_throws={"Intelligence": 14, "Wisdom": 14,
+                         "Charisma": 17},
+        damage_resistances=[
+            "radiant", "bludgeoning piercing slashing (non-magic)"
+        ],
+        damage_immunities=["necrotic", "poison"],
+        condition_immunities=["Charmed", "Exhaustion", "Frightened",
+                                "Poisoned"],
+        features=[
+            Feature("Legendary Resistance",
+                     "3/day automatic save success",
+                     "legendary_resist", uses_per_day=3),
+            Feature("Angelic Weapons",
+                     "Solar's weapon attacks are magical; melee "
+                     "deals an extra 6d8 radiant, ranged extra 6d8."),
+            Feature("Divine Awareness",
+                     "Knows when it hears a lie."),
+            Feature("Innate Spellcasting",
+                     "At will: detect evil and good, invisibility; "
+                     "3/day: blade barrier, dispel evil and good, "
+                     "resurrection, commune, control weather; "
+                     "1/day: holy aura."),
+            Feature("Magic Resistance",
+                     "Advantage on saves against spells."),
+            Feature("Searing Burst",
+                     "Legendary Action (2 cost)",
+                     feature_type="legendary", legendary_cost=2),
+            Feature("Blinding Gaze",
+                     "Legendary Action (1 cost)",
+                     feature_type="legendary", legendary_cost=1),
+        ],
+        legendary_action_count=3,
+        legendary_resistance_count=3,
+        challenge_rating=21.0, xp=33000, proficiency_bonus=7),
 ]
