@@ -236,3 +236,86 @@ def resilient_save_proficiency(entity) -> Optional[str]:
     if not f or not f.mechanic_value:
         return None
     return _ABBR_TO_FULL.get(f.mechanic_value.upper())
+
+
+# --------------------------------------------------------------------- #
+# Phase 33 — Monk features.  Most monk features are already wired
+# (martial_arts, flurry_of_blows, patient_defense, stunning_strike,
+# ki resource).  These two were data-only:
+#
+#   Step of the Wind — bonus action: spend 1 ki to take Dash or
+#   Disengage; jump distance doubled this turn (PHB p.78).
+#   Deflect Missiles — reaction: when hit by a ranged weapon attack,
+#   reduce damage by 1d10 + DEX mod + monk level; if reduced to 0
+#   damage can spend 1 ki to throw the missile back (PHB p.78).
+# --------------------------------------------------------------------- #
+
+def has_ki_resource(entity, cost: int = 1) -> bool:
+    """True when the entity has the monk Ki feature and at least
+    ``cost`` ki points remaining."""
+    if not entity.has_feature("ki"):
+        return False
+    return getattr(entity, "ki_points_left", 0) >= cost
+
+
+def step_of_wind_available(entity) -> bool:
+    """The monk can spend 1 ki as a bonus action to take Dash or
+    Disengage. Requires the feature, an unspent bonus action, and a
+    ki point."""
+    if not entity.has_feature("step_of_wind"):
+        return False
+    if getattr(entity, "bonus_action_used", False):
+        return False
+    return has_ki_resource(entity, cost=1)
+
+
+def use_step_of_wind(entity) -> bool:
+    """Spend 1 ki and the bonus action. Caller handles the speed
+    bonus / Disengage flag. Returns True on success."""
+    if not step_of_wind_available(entity):
+        return False
+    entity.ki_points_left -= 1
+    entity.bonus_action_used = True
+    return True
+
+
+def deflect_missiles_reduction(entity) -> int:
+    """Damage reduction when Deflect Missiles fires.  PHB p.78:
+    1d10 + DEX mod + monk level. Returns 0 when not available."""
+    if not entity.has_feature("deflect_missiles"):
+        return 0
+    if getattr(entity, "reaction_used", False):
+        return 0
+    feat = entity.get_feature("deflect_missiles")
+    monk_level = 1
+    if feat and feat.mechanic_value:
+        try:
+            monk_level = int(feat.mechanic_value)
+        except ValueError:
+            monk_level = max(1, getattr(entity.stats,
+                                          "character_level", 1))
+    else:
+        monk_level = max(1, getattr(entity.stats,
+                                      "character_level", 1))
+    dex_mod = entity.get_modifier("dexterity")
+    return random.randint(1, 10) + dex_mod + monk_level
+
+
+def apply_deflect_missiles(entity, damage: int,
+                              damage_type: str = "",
+                              is_ranged_weapon: bool = False) -> int:
+    """Wrap an incoming ranged-weapon damage value with the
+    Deflect Missiles reduction. Burns the reaction when it fires."""
+    if not is_ranged_weapon:
+        return damage
+    if damage <= 0:
+        return damage
+    if not entity.has_feature("deflect_missiles"):
+        return damage
+    if getattr(entity, "reaction_used", False):
+        return damage
+    reduction = deflect_missiles_reduction(entity)
+    if reduction <= 0:
+        return damage
+    entity.reaction_used = True
+    return max(0, damage - reduction)

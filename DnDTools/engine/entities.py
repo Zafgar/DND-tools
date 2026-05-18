@@ -496,7 +496,7 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def take_damage(self, amount: int, damage_type: str = "", is_magical: bool = False,
-                     source=None) -> tuple[int, bool]:
+                     source=None, is_ranged_weapon: bool = False) -> tuple[int, bool]:
         """
         Apply damage. Returns (damage_dealt, broke_concentration).
         Respects temp HP, resistances, immunities, vulnerabilities, rage.
@@ -504,7 +504,16 @@ class Entity:
         ``source`` (optional) — the attacker, used for feat-driven
         modifiers (Elemental Adept bypassing resistance, Mage Slayer
         forcing disadvantage on concentration saves).
+        ``is_ranged_weapon`` (optional) — when True, the monk
+        Deflect Missiles reaction may reduce the incoming damage.
         """
+        # Phase 33 — Deflect Missiles reaction (monk PHB p.78).  Runs
+        # before all the resistance/immunity math so the reduced value
+        # flows through the normal pipeline.
+        if is_ranged_weapon and amount > 0:
+            from engine.feat_effects import apply_deflect_missiles
+            amount = apply_deflect_missiles(self, amount, damage_type,
+                                              is_ranged_weapon=True)
         dtype_lower = damage_type.lower()
         if dtype_lower in [x.lower() for x in self.stats.damage_immunities]:
             return 0, False
