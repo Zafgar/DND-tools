@@ -13,8 +13,10 @@ class MonsterLibrary:
     def __init__(self):
         self._monsters: dict[str, CreatureStats] = {}
         self._load_json_monsters()
-        if not self._monsters:
-            self._load_python_monsters()
+        # Phase 37 — always load Python modules so additions made
+        # there (new bosses, lore enrichments) merge with JSON. JSON
+        # entries win on key clash; Python supplies the gaps.
+        self._load_python_monsters()
 
     def _load_json_monsters(self):
         """Load monsters from JSON files in data/monsters/json/."""
@@ -57,7 +59,10 @@ class MonsterLibrary:
                         cr2_list, cr3_list, cr4_list, cr5_list, cr67_list,
                         cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list]:
                 for m in lst:
-                    self._monsters[m.name.lower()] = m
+                    # Don't overwrite a JSON-loaded entry; Python is
+                    # a fallback / supplement for the JSON catalogue.
+                    if m.name.lower() not in self._monsters:
+                        self._monsters[m.name.lower()] = m
         except ImportError as ex:
             print(f"Warning: Failed to load Python monster modules: {ex}")
 
