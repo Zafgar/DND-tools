@@ -261,3 +261,12 @@ class CreatureStats:
     bardic_inspiration_count: int = 0
     # Base AC for unarmored defense calculations
     base_ac_unarmored: bool = False   # True = uses unarmored defense formula
+    # Phase 37 — Lore & DM-facing flavor (visible in the Monster Lore
+    # modal before / during / after combat).
+    lore: str = ""                    # 2-4 sentence bio for the DM.
+    tactics: str = ""                 # How the creature fights (DM hints).
+    loot_table: str = ""              # Free-form loot suggestions
+                                       # ("treasure hoard 17+", "1d4 holy
+                                       # gems worth 100 gp each", etc.)
+    habitat: str = ""                 # "Mountain", "Underdark", "Abyss"
+    sources: str = ""                 # "MM p.286", "VGM p.135"

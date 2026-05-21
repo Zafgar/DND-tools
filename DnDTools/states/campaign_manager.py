@@ -492,6 +492,9 @@ class CampaignManagerState:
         # Phase 32 — feat picker modal
         self._feat_picker_modal = None
         self._feat_picker_open = False
+        # Phase 37 — monster lore modal
+        self._monster_lore_modal = None
+        self._monster_lore_open = False
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1199,6 +1202,50 @@ class CampaignManagerState:
         self._org_panel_widget.open()
         self._org_panel_open = True
 
+    def _open_monster_lore(self, npc):
+        """Phase 37: open the Monster Lore modal for ``npc``.
+
+        Looks up the matching monster stat block via stat_source
+        ("monster:Bandit" etc.); falls back to constructing a
+        minimal block from ``custom_stats`` for custom NPCs.
+        """
+        from data.models import CreatureStats, AbilityScores
+        from states.monster_lore_modal import MonsterLoreModal
+
+        stats = None
+        # stat_source = "monster:Adult Red Dragon"
+        src = getattr(npc, "stat_source", "") or ""
+        if src.startswith("monster:"):
+            mon_name = src.split(":", 1)[1]
+            try:
+                from data.library import library
+                stats = library.get_monster(mon_name)
+            except Exception:
+                stats = None
+        if stats is None:
+            # Build a minimal block from custom_stats so the modal
+            # still shows the NPC's name + lore.
+            cs = npc.custom_stats or {}
+            stats = CreatureStats(
+                name=npc.name or "(NPC)",
+                size=cs.get("size", "Medium"),
+                creature_type=cs.get("creature_type", "Humanoid"),
+                hit_points=cs.get("hit_points", 0),
+                armor_class=cs.get("armor_class", 10),
+                speed=cs.get("speed", 30),
+                abilities=AbilityScores(),
+                lore=cs.get("lore", "") or npc.backstory,
+                tactics=cs.get("tactics", ""),
+                loot_table=cs.get("loot_table", ""),
+            )
+        self._monster_lore_modal = MonsterLoreModal(
+            stats,
+            on_close=lambda: setattr(
+                self, "_monster_lore_open", False),
+        )
+        self._monster_lore_modal.open()
+        self._monster_lore_open = True
+
     def _open_feat_picker(self, npc):
         """Phase 32: open the feat picker modal for ``npc``."""
         from states.feat_picker_modal import FeatPickerModal
@@ -1835,6 +1882,10 @@ class CampaignManagerState:
                 if (getattr(self, "_feat_picker_open", False)
                         and self._feat_picker_modal is not None):
                     if self._feat_picker_modal.handle_event(event):
+                        return
+                if (getattr(self, "_monster_lore_open", False)
+                        and self._monster_lore_modal is not None):
+                    if self._monster_lore_modal.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2787,6 +2838,9 @@ class CampaignManagerState:
             if (getattr(self, "_feat_picker_open", False)
                     and self._feat_picker_modal is not None):
                 self._feat_picker_modal.draw(screen)
+            if (getattr(self, "_monster_lore_open", False)
+                    and self._monster_lore_modal is not None):
+                self._monster_lore_modal.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
@@ -4188,6 +4242,19 @@ class CampaignManagerState:
             (feat_btn.x + 8, feat_btn.y + 4))
         if is_hov and pygame.mouse.get_pressed()[0]:
             self._open_feat_picker(npc)
+        # Phase 37 — Lore / Info button
+        lore_btn = pygame.Rect(start_x + 210, y, 160, 24)
+        is_lore_hov = lore_btn.collidepoint(mp)
+        pygame.draw.rect(screen,
+                          COLORS.get("accent", (110, 130, 220))
+                          if is_lore_hov
+                          else COLORS.get("panel", (60, 60, 80)),
+                          lore_btn, border_radius=4)
+        screen.blit(fonts.small.render(
+            "Lore / Info…", True, COLORS["text_bright"]),
+            (lore_btn.x + 8, lore_btn.y + 4))
+        if is_lore_hov and pygame.mouse.get_pressed()[0]:
+            self._open_monster_lore(npc)
         y += 30
         org_label = fonts.small_bold.render(
             f"Organisaatiot ({len(npc_orgs)}):", True, COLORS["text_dim"])
