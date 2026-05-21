@@ -3445,7 +3445,27 @@ class TacticalAI:
             atk_mod = -5
             dmg_mod = 10
 
-        total, nat, is_crit, is_fumble, roll_str = roll_attack(action.attack_bonus + atk_mod, adv, dis)
+        # Phase 38 — magic-weapon bonus (+1 / +2 / +3 from items like
+        # Longsword +1). The Item's weapon_bonus stacks onto BOTH the
+        # attack roll and the damage roll, per PHB Magic Items rules.
+        # We resolve the equipped weapon early so its bonus rides on
+        # the roll itself rather than as a post-roll fix-up.
+        magic_atk_bonus = 0
+        magic_dmg_bonus = 0
+        early_weapon = None
+        for item in entity.items:
+            if item.equipped and item.item_type == "weapon":
+                if (item.name == action.name
+                        or (item.weapon_damage_dice
+                            and item.weapon_damage_dice in action.damage_dice)):
+                    early_weapon = item
+                    break
+        if early_weapon and early_weapon.weapon_bonus:
+            magic_atk_bonus = int(early_weapon.weapon_bonus)
+            magic_dmg_bonus = int(early_weapon.weapon_bonus)
+
+        total, nat, is_crit, is_fumble, roll_str = roll_attack(
+            action.attack_bonus + atk_mod + magic_atk_bonus, adv, dis)
         
         # Add dynamic bonuses (Bless, etc.)
         effect_bonus = entity.get_attack_bonus_effects()
@@ -3471,6 +3491,8 @@ class TacticalAI:
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
         dmg += dmg_mod
+        # Phase 38 — magic-weapon damage bonus (+1 / +2 / +3).
+        dmg += magic_dmg_bonus
 
         # Phase 30 — Savage Attacker (PHB): once per turn, reroll a
         # weapon attack's damage dice and take the higher total. We

@@ -301,7 +301,14 @@ class Entity:
         return bonus
 
     def equip_item(self, item: Item) -> bool:
-        """Equip an item, unequipping any item in the same slot."""
+        """Equip an item, unequipping any item in the same slot.
+
+        Phase 38 — enforces:
+          * Two-handed main-hand weapons clear the off-hand slot.
+          * A weapon equipped into the off-hand clears main-hand if
+            the main-hand was two-handed.
+          * PHB attunement cap of 3 simultaneous attuned items.
+        """
         if item not in self.items:
             return False
         slot = item.slot
@@ -320,9 +327,36 @@ class Entity:
         for other in self.items:
             if other is not item and other.equipped and other.slot == slot:
                 other.equipped = False
-        item.equipped = True
+        # Two-handed weapon ↔ off-hand exclusivity (PHB p.146)
+        is_two_handed = ("two-handed" in (item.weapon_properties or [])
+                          or "Two-Handed" in (item.weapon_properties or []))
+        if slot == "main_hand" and is_two_handed:
+            for other in self.items:
+                if (other is not item and other.equipped
+                        and other.slot == "off_hand"):
+                    other.equipped = False
+        elif slot == "off_hand":
+            for other in self.items:
+                if (other is not item and other.equipped
+                        and other.slot == "main_hand"):
+                    other_two = ("two-handed" in
+                                  (other.weapon_properties or [])
+                                  or "Two-Handed" in
+                                  (other.weapon_properties or []))
+                    if other_two:
+                        other.equipped = False
+        # Attunement cap (PHB p.138: max 3 attuned items)
         if item.requires_attunement:
+            already_attuned = sum(
+                1 for it in self.items
+                if it is not item and it.attuned)
+            if already_attuned >= 3:
+                # Refuse to equip; UI can prompt DM to unattune
+                # something first.
+                item.equipped = False
+                return False
             item.attuned = True
+        item.equipped = True
         return True
 
     def unequip_item(self, item: Item):
@@ -840,6 +874,14 @@ class Entity:
         # Exhaustion 5: speed 0
         if self.exhaustion >= 5:
             return 0.0
+        # Phase 38 — Heavy armor STR requirement (PHB p.144). Wearing
+        # heavy armor with too little STR drops speed by 10 ft.
+        armor = self.get_equipped_armor()
+        if (armor and armor.strength_required
+                and armor.strength_required > 0
+                and self.get_effective_ability("strength")
+                < armor.strength_required):
+            speed = max(0.0, speed - 10)
         # Grapple drag: half speed while dragging a creature
         # (unless grappled creature is 2+ sizes smaller)
         if self.grappling:
@@ -852,6 +894,8 @@ class Entity:
         # Phase 30: Mobile feat — +10 ft when not heavily encumbered.
         from engine.feat_effects import mobile_speed_bonus
         speed += mobile_speed_bonus(self)
+        # Phase 38: equipment speed bonuses (Boots of Speed +30, etc.).
+        speed += self.get_equipment_speed_bonus()
         return speed
 
     # ------------------------------------------------------------------ #
