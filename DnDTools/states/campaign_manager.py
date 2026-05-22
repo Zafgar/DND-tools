@@ -482,6 +482,12 @@ class CampaignManagerState:
                                           "+ Pika-quest",
                                           self._open_quick_quest_modal,
                                           color=COLORS["success"])
+        # Phase 39 — NPC search / directory
+        self.btn_npc_search = Button(670, SCREEN_HEIGHT - 60,
+                                         120, 45,
+                                         "🔍 NPC-haku",
+                                         self._open_npc_search,
+                                         color=COLORS["accent"])
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
@@ -495,6 +501,11 @@ class CampaignManagerState:
         # Phase 37 — monster lore modal
         self._monster_lore_modal = None
         self._monster_lore_open = False
+        # Phase 39 — NPC search + detail modals
+        self._npc_search_modal = None
+        self._npc_search_open = False
+        self._npc_detail_modal = None
+        self._npc_detail_open = False
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1202,6 +1213,49 @@ class CampaignManagerState:
         self._org_panel_widget.open()
         self._org_panel_open = True
 
+    def _open_npc_search(self):
+        """Phase 39: open the NPC search modal."""
+        from states.npc_search_modal import NpcSearchModal
+        self._npc_search_modal = NpcSearchModal(
+            self.world, self.campaign,
+            on_close=lambda: setattr(self, "_npc_search_open",
+                                          False),
+            on_select=self._jump_to_npc,
+            on_open_detail=self._open_npc_detail,
+        )
+        self._npc_search_modal.open()
+        self._npc_search_open = True
+
+    def _open_npc_detail(self, npc):
+        """Phase 39: open the NPC detail modal."""
+        from states.npc_detail_modal import NpcDetailModal
+        self._npc_detail_modal = NpcDetailModal(
+            self.world, self.campaign, npc,
+            on_close=lambda: setattr(self, "_npc_detail_open",
+                                          False),
+            on_navigate_npc=self._jump_to_npc_via_detail,
+            on_open_org=self._jump_to_organisation,
+        )
+        self._npc_detail_modal.open()
+        self._npc_detail_open = True
+
+    def _jump_to_npc_via_detail(self, npc_id: str):
+        """Detail-modal callback: switch its target NPC to the one
+        the user clicked in the links section."""
+        new_npc = self.world.npcs.get(npc_id)
+        if new_npc is None:
+            return
+        # Replace the detail modal with the new NPC so the DM can
+        # walk through a chain of related NPCs without closing.
+        self._open_npc_detail(new_npc)
+
+    def _jump_to_organisation(self, org_key: str):
+        """Detail-modal callback: open the organisation panel
+        focused on the clicked organisation."""
+        self._open_organisation_panel()
+        if self._org_panel_widget is not None and org_key:
+            self._org_panel_widget.selected_key = org_key
+
     def _open_monster_lore(self, npc):
         """Phase 37: open the Monster Lore modal for ``npc``.
 
@@ -1843,6 +1897,8 @@ class CampaignManagerState:
                 self.btn_open_quest_log.handle_event(event)
                 # Phase 27c — quick quest
                 self.btn_quick_quest.handle_event(event)
+                # Phase 39 — NPC search
+                self.btn_npc_search.handle_event(event)
                 if (self._quick_quest_modal is not None
                         and self._quick_quest_modal.is_open):
                     if self._quick_quest_modal.handle_event(event):
@@ -1886,6 +1942,14 @@ class CampaignManagerState:
                 if (getattr(self, "_monster_lore_open", False)
                         and self._monster_lore_modal is not None):
                     if self._monster_lore_modal.handle_event(event):
+                        return
+                if (getattr(self, "_npc_detail_open", False)
+                        and self._npc_detail_modal is not None):
+                    if self._npc_detail_modal.handle_event(event):
+                        return
+                if (getattr(self, "_npc_search_open", False)
+                        and self._npc_search_modal is not None):
+                    if self._npc_search_modal.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2810,6 +2874,7 @@ class CampaignManagerState:
             self.btn_open_orgs.draw(screen, mp)
             self.btn_open_quest_log.draw(screen, mp)
             self.btn_quick_quest.draw(screen, mp)
+            self.btn_npc_search.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -2841,6 +2906,12 @@ class CampaignManagerState:
             if (getattr(self, "_monster_lore_open", False)
                     and self._monster_lore_modal is not None):
                 self._monster_lore_modal.draw(screen)
+            if (getattr(self, "_npc_detail_open", False)
+                    and self._npc_detail_modal is not None):
+                self._npc_detail_modal.draw(screen)
+            if (getattr(self, "_npc_search_open", False)
+                    and self._npc_search_modal is not None):
+                self._npc_search_modal.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
@@ -4255,6 +4326,20 @@ class CampaignManagerState:
             (lore_btn.x + 8, lore_btn.y + 4))
         if is_lore_hov and pygame.mouse.get_pressed()[0]:
             self._open_monster_lore(npc)
+        # Phase 39 — Detail card button
+        detail_btn = pygame.Rect(start_x + 380, y, 180, 24)
+        is_det_hov = detail_btn.collidepoint(mp)
+        pygame.draw.rect(screen,
+                          COLORS.get("legendary",
+                                      (170, 110, 220))
+                          if is_det_hov
+                          else COLORS.get("panel", (60, 60, 80)),
+                          detail_btn, border_radius=4)
+        screen.blit(fonts.small.render(
+            "Info-kortti / linkit…", True, COLORS["text_bright"]),
+            (detail_btn.x + 8, detail_btn.y + 4))
+        if is_det_hov and pygame.mouse.get_pressed()[0]:
+            self._open_npc_detail(npc)
         y += 30
         org_label = fonts.small_bold.render(
             f"Organisaatiot ({len(npc_orgs)}):", True, COLORS["text_dim"])
