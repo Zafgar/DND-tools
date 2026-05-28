@@ -75,12 +75,29 @@ class NpcDetailModal:
         self._status = ""
         self._status_timer = 0
 
+        # Phase 40 — inline add-link form state
+        self._link_form_open = False
+        self._link_target_idx = 0     # index into the candidate list
+        self._link_kind_idx = 0       # index into LINK_KINDS
+        self._link_notes = ""
+        self._link_notes_active = False
+
         # Hit rects per frame
         self._copy_buttons: List[Tuple[pygame.Rect, str, str]] = []
         # (rect, label, text)
         self._link_chips: List[Tuple[pygame.Rect, str]] = []
+        self._link_remove_rects: List[Tuple[pygame.Rect, str]] = []
         self._org_chips: List[Tuple[pygame.Rect, str]] = []
         self._inv_remove_rects: List[Tuple[pygame.Rect, str]] = []
+        self._add_link_btn_rect = None
+        # Phase 40 link-form widget rects (set when form is drawn)
+        self._lf_prev_target = None
+        self._lf_next_target = None
+        self._lf_prev_kind = None
+        self._lf_next_kind = None
+        self._lf_notes_field = None
+        self._lf_commit = None
+        self._lf_cancel = None
         self._content_height = 0
 
         # Buttons
@@ -126,6 +143,55 @@ class NpcDetailModal:
         self._status = text
         self._status_timer = 180
 
+    # ---- Phase 40: add-link form ------------------------------------ #
+    def _link_candidates(self) -> List:
+        """Other living NPCs we could link to (sorted by name)."""
+        out = [n for n in self.world.npcs.values()
+                if n.id != self.npc.id and n.active]
+        out.sort(key=lambda n: n.name.lower())
+        return out
+
+    def _toggle_link_form(self):
+        self._link_form_open = not self._link_form_open
+        self._link_target_idx = 0
+        self._link_kind_idx = 0
+        self._link_notes = ""
+        self._link_notes_active = False
+
+    def _cycle_link_target(self, step: int = 1):
+        cands = self._link_candidates()
+        if not cands:
+            return
+        self._link_target_idx = (
+            self._link_target_idx + step) % len(cands)
+
+    def _cycle_link_kind(self, step: int = 1):
+        self._link_kind_idx = (
+            self._link_kind_idx + step) % len(npc_dir.LINK_KINDS)
+
+    def _commit_link(self):
+        cands = self._link_candidates()
+        if not cands:
+            self._status_log("Ei muita NPC:itä linkitettäväksi.")
+            return
+        target = cands[self._link_target_idx % len(cands)]
+        kind = npc_dir.LINK_KINDS[
+            self._link_kind_idx % len(npc_dir.LINK_KINDS)]
+        ok = npc_dir.add_npc_link(
+            self.world, self.npc.id, target.id,
+            kind=kind, notes=self._link_notes)
+        if ok:
+            self._status_log(
+                f"Linkki lisätty: {kind} → {target.name}")
+            self._link_form_open = False
+            self._link_notes = ""
+        else:
+            self._status_log("Linkin lisäys epäonnistui.")
+
+    def _remove_link(self, target_id: str):
+        npc_dir.remove_npc_link(self.world, self.npc.id, target_id)
+        self._status_log("Linkki poistettu.")
+
     def _copy(self, text: str, label: str):
         if _copy_to_clipboard(text):
             self._status_log(f"Kopioitu: {label}")
@@ -156,9 +222,25 @@ class NpcDetailModal:
     def handle_event(self, event) -> bool:
         if not self.is_open:
             return False
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self._close()
-            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                if self._link_form_open:
+                    self._link_form_open = False
+                else:
+                    self._close()
+                return True
+            # Phase 40 — typing into the link-notes field
+            if self._link_form_open and self._link_notes_active:
+                if event.key == pygame.K_BACKSPACE:
+                    self._link_notes = self._link_notes[:-1]
+                    return True
+                if event.key == pygame.K_RETURN:
+                    self._commit_link()
+                    return True
+                if event.unicode and event.unicode.isprintable():
+                    if len(self._link_notes) < 80:
+                        self._link_notes += event.unicode
+                    return True
         if event.type == pygame.MOUSEWHEEL:
             max_scroll = max(
                 0, self._content_height - (self.HEIGHT - 100))
@@ -166,6 +248,10 @@ class NpcDetailModal:
                                         self.scroll - event.y * 30))
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Phase 40 — link-form widgets take priority when open
+            if self._link_form_open:
+                if self._handle_link_form_click(event.pos):
+                    return True
             # Always-on buttons
             for btn in (self.btn_close, self.btn_add_letter,
                           self.btn_add_key, self.btn_add_doc,
@@ -194,6 +280,41 @@ class NpcDetailModal:
                         self.npc, item_name)
                     self._status_log(f"Poistettu: {item_name}")
                     return True
+            for rect, target_id in self._link_remove_rects:
+                if rect.collidepoint(event.pos):
+                    self._remove_link(target_id)
+                    return True
+            # "+ Lisää linkki" toggle button
+            if (self._add_link_btn_rect
+                    and self._add_link_btn_rect.collidepoint(
+                        event.pos)):
+                self._toggle_link_form()
+                return True
+            return True
+        return False
+
+    def _handle_link_form_click(self, pos) -> bool:
+        """Phase 40 — clicks on the inline link-form widgets."""
+        if self._lf_prev_target and self._lf_prev_target.collidepoint(pos):
+            self._cycle_link_target(-1)
+            return True
+        if self._lf_next_target and self._lf_next_target.collidepoint(pos):
+            self._cycle_link_target(1)
+            return True
+        if self._lf_prev_kind and self._lf_prev_kind.collidepoint(pos):
+            self._cycle_link_kind(-1)
+            return True
+        if self._lf_next_kind and self._lf_next_kind.collidepoint(pos):
+            self._cycle_link_kind(1)
+            return True
+        if self._lf_notes_field and self._lf_notes_field.collidepoint(pos):
+            self._link_notes_active = True
+            return True
+        if self._lf_commit and self._lf_commit.collidepoint(pos):
+            self._commit_link()
+            return True
+        if self._lf_cancel and self._lf_cancel.collidepoint(pos):
+            self._link_form_open = False
             return True
         return False
 
@@ -216,8 +337,15 @@ class NpcDetailModal:
         # Reset per-frame click rects
         self._copy_buttons = []
         self._link_chips = []
+        self._link_remove_rects = []
         self._org_chips = []
         self._inv_remove_rects = []
+        self._add_link_btn_rect = None
+        if not self._link_form_open:
+            self._lf_prev_target = self._lf_next_target = None
+            self._lf_prev_kind = self._lf_next_kind = None
+            self._lf_notes_field = self._lf_commit = None
+            self._lf_cancel = None
 
         # Header strip (fixed)
         self._draw_header(screen, rect)
@@ -489,34 +617,67 @@ class NpcDetailModal:
     def _draw_links(self, screen, y):
         outgoing = npc_dir.npc_links_of(self.world, self.npc.id)
         incoming = npc_dir.npcs_linking_to(self.world, self.npc.id)
-        if not outgoing and not incoming:
-            return y
+        # Header + "Lisää linkki" toggle (always shown so the DM can
+        # add the first link even when none exist yet).
         screen.blit(fonts.small_bold.render(
             "Linkit hahmoihin:", True,
             COLORS.get("text_bright", (240, 240, 250))),
             (self.x + 20, y))
-        y += 22
+        add_btn = pygame.Rect(self.x + 170, y - 2, 130, 22)
+        pygame.draw.rect(screen,
+                          COLORS.get("success", (90, 200, 120))
+                          if not self._link_form_open
+                          else COLORS.get("danger", (220, 100, 90)),
+                          add_btn, border_radius=4)
+        screen.blit(fonts.tiny.render(
+            "+ Lisää linkki" if not self._link_form_open
+            else "Sulje lomake",
+            True, (20, 20, 30)),
+            (add_btn.x + 8, add_btn.y + 4))
+        self._add_link_btn_rect = add_btn
+        y += 26
+
+        # Phase 40 — inline add-link form
+        if self._link_form_open:
+            y = self._draw_link_form(screen, y)
+
         for link in outgoing:
+            from data.npc_graph import LINK_KIND_COLOR
+            col = LINK_KIND_COLOR.get(link["kind"], (140, 140, 150))
             txt = f"  → [{link['kind']}] {link['target_name']}"
             if link.get("notes"):
                 txt += f"  — {link['notes']}"
-            w = fonts.small.size(txt)[0] + 8
-            chip = pygame.Rect(self.x + 30, y, max(w, 200), 22)
+            chip = pygame.Rect(self.x + 30, y,
+                                 max(fonts.small.size(txt)[0] + 8,
+                                       200), 22)
             pygame.draw.rect(screen,
                               COLORS.get("panel_dark", (40, 40, 56)),
                               chip, border_radius=4)
+            # Colour pip for the link kind
+            pygame.draw.rect(screen, col,
+                              pygame.Rect(chip.x, chip.y, 4, 22))
             screen.blit(fonts.small.render(
                 txt, True,
                 COLORS.get("accent", (140, 200, 240))),
-                (chip.x + 4, chip.y + 3))
+                (chip.x + 8, chip.y + 3))
             self._link_chips.append((chip, link["target_id"]))
+            # × remove (outgoing only)
+            del_btn = pygame.Rect(chip.right + 4, y + 1, 20, 20)
+            pygame.draw.rect(screen,
+                              COLORS.get("danger", (220, 100, 90)),
+                              del_btn, border_radius=3)
+            screen.blit(fonts.tiny.render("×", True, (20, 20, 30)),
+                          (del_btn.x + 7, del_btn.y + 2))
+            self._link_remove_rects.append(
+                (del_btn, link["target_id"]))
             y += 24
         for link in incoming:
             txt = f"  ← [{link['kind']}] {link['source_name']}"
             if link.get("notes"):
                 txt += f"  — {link['notes']}"
-            w = fonts.small.size(txt)[0] + 8
-            chip = pygame.Rect(self.x + 30, y, max(w, 200), 22)
+            chip = pygame.Rect(self.x + 30, y,
+                                 max(fonts.small.size(txt)[0] + 8,
+                                       200), 22)
             pygame.draw.rect(screen,
                               COLORS.get("panel_dark", (40, 40, 56)),
                               chip, border_radius=4)
@@ -527,6 +688,107 @@ class NpcDetailModal:
             self._link_chips.append((chip, link["source_id"]))
             y += 24
         return y + 6
+
+    def _draw_link_form(self, screen, y):
+        """Phase 40 — compact inline form: target cycler, kind cycler,
+        notes field, commit/cancel."""
+        cands = self._link_candidates()
+        form = pygame.Rect(self.x + 24, y, self.WIDTH - 48, 96)
+        pygame.draw.rect(screen, COLORS.get("panel", (48, 48, 66)),
+                          form, border_radius=6)
+        pygame.draw.rect(screen, COLORS.get("border_light",
+                                              (110, 110, 140)),
+                          form, 1, border_radius=6)
+        # Target cycler
+        tname = (cands[self._link_target_idx % len(cands)].name
+                  if cands else "(ei NPC:itä)")
+        screen.blit(fonts.tiny.render("Kohde:", True,
+                                          COLORS.get("text_dim",
+                                                       (180, 180, 195))),
+                      (form.x + 10, form.y + 8))
+        self._lf_prev_target = pygame.Rect(form.x + 60, form.y + 6, 22, 20)
+        self._lf_next_target = pygame.Rect(form.x + 280, form.y + 6, 22, 20)
+        for r, ch in ((self._lf_prev_target, "<"),
+                        (self._lf_next_target, ">")):
+            pygame.draw.rect(screen, COLORS.get("panel_dark",
+                                                  (40, 40, 56)),
+                              r, border_radius=3)
+            screen.blit(fonts.small.render(ch, True,
+                                              COLORS.get("text_bright",
+                                                           (240, 240,
+                                                            250))),
+                          (r.x + 7, r.y + 2))
+        screen.blit(fonts.small.render(
+            tname[:24], True,
+            COLORS.get("text_bright", (240, 240, 250))),
+            (form.x + 88, form.y + 8))
+        # Kind cycler
+        kind = npc_dir.LINK_KINDS[
+            self._link_kind_idx % len(npc_dir.LINK_KINDS)]
+        screen.blit(fonts.tiny.render("Tyyppi:", True,
+                                          COLORS.get("text_dim",
+                                                       (180, 180, 195))),
+                      (form.x + 10, form.y + 36))
+        self._lf_prev_kind = pygame.Rect(form.x + 60, form.y + 34, 22, 20)
+        self._lf_next_kind = pygame.Rect(form.x + 200, form.y + 34, 22, 20)
+        for r, ch in ((self._lf_prev_kind, "<"),
+                        (self._lf_next_kind, ">")):
+            pygame.draw.rect(screen, COLORS.get("panel_dark",
+                                                  (40, 40, 56)),
+                              r, border_radius=3)
+            screen.blit(fonts.small.render(ch, True,
+                                              COLORS.get("text_bright",
+                                                           (240, 240,
+                                                            250))),
+                          (r.x + 7, r.y + 2))
+        screen.blit(fonts.small.render(
+            kind, True,
+            COLORS.get("text_bright", (240, 240, 250))),
+            (form.x + 88, form.y + 36))
+        # Notes field
+        self._lf_notes_field = pygame.Rect(form.x + 320, form.y + 6,
+                                              form.width - 340, 48)
+        pygame.draw.rect(screen, COLORS.get("bg", (32, 32, 40)),
+                          self._lf_notes_field, border_radius=4)
+        edge = (COLORS.get("accent", (180, 180, 240))
+                 if self._link_notes_active
+                 else COLORS.get("border", (80, 80, 100)))
+        pygame.draw.rect(screen, edge, self._lf_notes_field, 1,
+                          border_radius=4)
+        cursor = ("|" if self._link_notes_active
+                            and pygame.time.get_ticks() // 400 % 2 == 0
+                    else "")
+        notes_disp = self._link_notes or (
+            "(muistiinpano: miksi/miten)"
+            if not self._link_notes_active else "")
+        screen.blit(fonts.tiny.render(
+            (notes_disp + cursor)[:60], True,
+            COLORS.get("text_bright", (240, 240, 250))
+            if self._link_notes else COLORS.get("text_dim",
+                                                    (140, 140, 150))),
+            (self._lf_notes_field.x + 6,
+             self._lf_notes_field.y + 6))
+        # Commit / cancel
+        self._lf_commit = pygame.Rect(form.x + 10, form.y + 64,
+                                        140, 24)
+        self._lf_cancel = pygame.Rect(form.x + 160, form.y + 64,
+                                        100, 24)
+        pygame.draw.rect(screen, COLORS.get("success",
+                                              (90, 200, 120)),
+                          self._lf_commit, border_radius=4)
+        pygame.draw.rect(screen, COLORS.get("panel_dark",
+                                              (40, 40, 56)),
+                          self._lf_cancel, border_radius=4)
+        screen.blit(fonts.small.render("Lisää linkki", True,
+                                          (20, 20, 30)),
+                      (self._lf_commit.x + 16,
+                       self._lf_commit.y + 4))
+        screen.blit(fonts.small.render("Peruuta", True,
+                                          COLORS.get("text_bright",
+                                                       (240, 240, 250))),
+                      (self._lf_cancel.x + 18,
+                       self._lf_cancel.y + 4))
+        return y + 104
 
     def _draw_quests(self, screen, y):
         try:
