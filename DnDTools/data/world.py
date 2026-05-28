@@ -191,6 +191,18 @@ class NPC:
     custom_stats: dict = field(default_factory=dict)  # Serialized CreatureStats if custom
     # Relationships (per player character)
     relationships: List[NPCRelationship] = field(default_factory=list)
+    # Phase 39 — structured NPC↔NPC links so the DM can model
+    # rivalries, mentorships, families, secret affairs etc. Each
+    # entry: {"target_id": "<npc_id>", "kind": "rival|mentor|family|
+    # ally|subordinate|lover|enemy|patron|protege|other",
+    # "notes": "freeform context (why they connect)"}
+    npc_links: List[Dict] = field(default_factory=list)
+    # Phase 39 — structured carry-items (letters, keys, documents,
+    # trinkets, magic items). The free-form ``inventory_items`` list
+    # stays for backward compatibility. Each entry:
+    # {"name": "Sealed Letter to Calistro", "kind": "letter",
+    #  "description": "Signed: V.", "quantity": 1}
+    inventory_detailed: List[Dict] = field(default_factory=list)
     # Inventory / Shop
     is_shopkeeper: bool = False
     shop_name: str = ""               # Shop name if shopkeeper
@@ -493,6 +505,9 @@ def _serialize_npc(npc: NPC) -> dict:
         "shop_items": [_serialize_shop_item(si) for si in npc.shop_items],
         "inventory_items": npc.inventory_items, "gold": npc.gold,
         "wealth": dict(getattr(npc, "wealth", {}) or {}),
+        "npc_links": list(getattr(npc, "npc_links", []) or []),
+        "inventory_detailed": list(getattr(npc, "inventory_detailed",
+                                                  []) or []),
         "alive": npc.alive, "active": npc.active,
     }
 
@@ -521,6 +536,8 @@ def _deserialize_npc(d: dict) -> NPC:
         inventory_items=d.get("inventory_items", []),
         gold=d.get("gold", 0),
         wealth=dict(d.get("wealth", {}) or {}),
+        npc_links=list(d.get("npc_links", []) or []),
+        inventory_detailed=list(d.get("inventory_detailed", []) or []),
         alive=d.get("alive", True), active=d.get("active", True),
     )
 
