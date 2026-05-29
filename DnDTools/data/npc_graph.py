@@ -322,3 +322,58 @@ def nearest_node(graph: NpcGraph, x: float, y: float,
             best_d = d
             best = node
     return best
+
+
+# --------------------------------------------------------------------- #
+# Phase 44 — ego network (N-hop neighbourhood of one NPC)
+# --------------------------------------------------------------------- #
+
+def ego_npc_ids(world: World, center_id: str,
+                  depth: int = 1) -> List[str]:
+    """Breadth-first collect of every NPC within ``depth`` link hops
+    of ``center_id`` (inclusive of the centre).
+
+    depth=1 → the centre plus direct contacts.
+    depth=2 → also their contacts ("friends of friends").
+    Links are treated as undirected (an incoming link counts).
+    """
+    if center_id not in world.npcs:
+        return []
+    # Build an undirected adjacency once.
+    adj: Dict[str, set] = {}
+    for nid, npc in world.npcs.items():
+        adj.setdefault(nid, set())
+        for link in (getattr(npc, "npc_links", None) or []):
+            tgt = link.get("target_id", "")
+            if tgt:
+                adj.setdefault(nid, set()).add(tgt)
+                adj.setdefault(tgt, set()).add(nid)
+    # BFS to the requested depth.
+    seen = {center_id}
+    frontier = {center_id}
+    for _ in range(max(0, depth)):
+        nxt = set()
+        for nid in frontier:
+            for neigh in adj.get(nid, ()):
+                if neigh not in seen and neigh in world.npcs:
+                    nxt.add(neigh)
+        seen |= nxt
+        frontier = nxt
+        if not frontier:
+            break
+    return list(seen)
+
+
+def build_ego_graph(world: World, center_id: str, *,
+                      depth: int = 1, campaign=None) -> NpcGraph:
+    """Build a graph restricted to the ego network of ``center_id``.
+
+    The centre node is marked by giving it a sentinel high degree so
+    the viewer can highlight it; the actual ``degree`` still reflects
+    real link count for sizing.
+    """
+    ids = ego_npc_ids(world, center_id, depth=depth)
+    g = build_graph(world, npc_ids=ids, campaign=campaign,
+                      include_isolated=True)
+    return g
+

@@ -42,6 +42,10 @@ class NpcRelationshipGraph:
         self.graph: Optional[ng.NpcGraph] = None
         self.filter_faction = ""
         self.filter_org_key = ""
+        # Phase 44 — ego-network focus
+        self.ego_mode = False
+        self.ego_center_id = ""
+        self.ego_depth = 1
         self._hover_card = NpcHoverCard()
 
         self._fac_chip_rects: List[Tuple[pygame.Rect, str]] = []
@@ -55,6 +59,23 @@ class NpcRelationshipGraph:
                                    self._clear_filters,
                                    color=COLORS.get("panel_dark",
                                                       (40, 40, 56)))
+        # Phase 44 ego controls
+        self.btn_ego = Button(0, 0, 110, 24, "Ego-tila",
+                                 self._toggle_ego,
+                                 color=COLORS.get("legendary",
+                                                    (170, 110, 220)))
+        self.btn_ego_full = Button(0, 0, 110, 24, "Koko verkko",
+                                       self._exit_ego,
+                                       color=COLORS.get("panel_dark",
+                                                          (40, 40, 56)))
+        self.btn_depth_down = Button(0, 0, 28, 24, "-",
+                                         lambda: self._set_depth(-1),
+                                         color=COLORS.get("panel",
+                                                            (60, 60, 80)))
+        self.btn_depth_up = Button(0, 0, 28, 24, "+",
+                                       lambda: self._set_depth(1),
+                                       color=COLORS.get("panel",
+                                                          (60, 60, 80)))
 
     # ------------------------------------------------------------------ #
     def open(self):
@@ -71,6 +92,22 @@ class NpcRelationshipGraph:
         self.filter_org_key = ""
         self._rebuild()
 
+    def _toggle_ego(self):
+        self.ego_mode = not self.ego_mode
+        if not self.ego_mode:
+            self.ego_center_id = ""
+        self._rebuild()
+
+    def _exit_ego(self):
+        self.ego_mode = False
+        self.ego_center_id = ""
+        self._rebuild()
+
+    def _set_depth(self, delta: int):
+        self.ego_depth = max(1, min(3, self.ego_depth + delta))
+        if self.ego_center_id:
+            self._rebuild()
+
     # ------------------------------------------------------------------ #
     def _graph_area(self) -> pygame.Rect:
         # Reserve top strip for filter chips.
@@ -81,13 +118,19 @@ class NpcRelationshipGraph:
     def _rebuild(self):
         """Recompute graph + layout. Called on open and filter change
         ONLY — not per frame."""
-        self.graph = ng.build_graph(
-            self.world,
-            faction=self.filter_faction,
-            organisation_key=self.filter_org_key,
-            campaign=self.campaign,
-            include_isolated=True,
-        )
+        if self.ego_center_id and self.ego_center_id in self.world.npcs:
+            # Phase 44 — ego network around one NPC.
+            self.graph = ng.build_ego_graph(
+                self.world, self.ego_center_id,
+                depth=self.ego_depth, campaign=self.campaign)
+        else:
+            self.graph = ng.build_graph(
+                self.world,
+                faction=self.filter_faction,
+                organisation_key=self.filter_org_key,
+                campaign=self.campaign,
+                include_isolated=True,
+            )
         ga = self._graph_area()
         ng.force_directed_layout(
             self.graph, width=ga.width, height=ga.height,
@@ -120,12 +163,12 @@ class NpcRelationshipGraph:
             self._close()
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_close.rect.collidepoint(event.pos):
-                self.btn_close.handle_event(event)
-                return True
-            if self.btn_clear.rect.collidepoint(event.pos):
-                self.btn_clear.handle_event(event)
-                return True
+            for btn in (self.btn_close, self.btn_clear, self.btn_ego,
+                          self.btn_ego_full, self.btn_depth_down,
+                          self.btn_depth_up):
+                if btn.rect.collidepoint(event.pos):
+                    btn.handle_event(event)
+                    return True
             for rect, fac in self._fac_chip_rects:
                 if rect.collidepoint(event.pos):
                     self.filter_faction = (
@@ -138,13 +181,18 @@ class NpcRelationshipGraph:
                         "" if self.filter_org_key == key else key)
                     self._rebuild()
                     return True
-            # Node click → select
+            # Node click — ego mode re-centres; normal mode jumps to
+            # the NPC sheet.
             if self.graph:
                 node = ng.nearest_node(
                     self.graph, event.pos[0], event.pos[1],
                     max_dist=22)
-                if node and self.on_select:
-                    self.on_select(node.id)
+                if node:
+                    if self.ego_mode:
+                        self.ego_center_id = node.id
+                        self._rebuild()
+                    elif self.on_select:
+                        self.on_select(node.id)
                     return True
             return True
         return False
@@ -166,9 +214,18 @@ class NpcRelationshipGraph:
 
         node_count = len(self.graph.nodes) if self.graph else 0
         edge_count = len(self.graph.edges) if self.graph else 0
+        title = (f"NPC-suhdeverkosto ({node_count} hahmoa, "
+                  f"{edge_count} sidettä)")
+        if self.ego_mode and self.ego_center_id:
+            center = self.world.npcs.get(self.ego_center_id)
+            cname = center.name if center else self.ego_center_id
+            title = (f"Ego-verkosto: {cname} "
+                      f"(syvyys {self.ego_depth}) — "
+                      f"{node_count} hahmoa")
+        elif self.ego_mode:
+            title = "Ego-tila — klikkaa hahmoa keskittääksesi"
         screen.blit(fonts.body_bold.render(
-            f"NPC-suhdeverkosto ({node_count} hahmoa, "
-            f"{edge_count} sidettä)", True,
+            title, True,
             COLORS.get("text_bright", (240, 240, 250))),
             (self.rect.x + 20, self.rect.y + 14))
         self.btn_close.rect.x = self.rect.right - 110
@@ -228,6 +285,31 @@ class NpcRelationshipGraph:
                 (chip.x + 7, chip.y + 4))
             self._org_chip_rects.append((chip, key))
             x += w + 4
+
+        # Phase 44 — ego controls (top-right of the filter strip)
+        ex = self.rect.right - 320
+        ey = self.rect.y + 50
+        self.btn_ego.rect.x = ex
+        self.btn_ego.rect.y = ey
+        self.btn_ego.color = (COLORS.get("legendary", (170, 110, 220))
+                                if self.ego_mode
+                                else COLORS.get("panel_dark",
+                                                  (40, 40, 56)))
+        self.btn_ego.draw(screen, mp)
+        if self.ego_mode:
+            self.btn_depth_down.rect.x = ex + 120
+            self.btn_depth_down.rect.y = ey
+            self.btn_depth_down.draw(screen, mp)
+            screen.blit(fonts.small.render(
+                f"{self.ego_depth}", True,
+                COLORS.get("text_bright", (240, 240, 250))),
+                (ex + 152, ey + 3))
+            self.btn_depth_up.rect.x = ex + 166
+            self.btn_depth_up.rect.y = ey
+            self.btn_depth_up.draw(screen, mp)
+            self.btn_ego_full.rect.x = ex + 200
+            self.btn_ego_full.rect.y = ey
+            self.btn_ego_full.draw(screen, mp)
 
     def _draw_graph(self, screen, mp):
         if not self.graph:

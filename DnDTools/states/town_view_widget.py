@@ -37,17 +37,21 @@ class TownViewWidget:
 
     def __init__(self, world, location_id: str,
                   on_pick: Optional[Callable[[str, str], None]] = None,
-                  on_close: Optional[Callable[[], None]] = None):
+                  on_close: Optional[Callable[[], None]] = None,
+                  campaign=None):
         self.world = world
         self.location_id = location_id
         self.on_pick = on_pick or (lambda kind, _id: None)
         self.on_close = on_close
+        self.campaign = campaign
         self.is_open = False
         self.active_tab = "npcs"
         self.scroll = 0
         self.content_h = 0
         self._row_rects: List[Tuple[pygame.Rect, str, str]] = []
         self._btn_close: Optional[Button] = None
+        # Phase 43 — shared NPC hover card
+        self._hover_card = None
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -182,6 +186,27 @@ class TownViewWidget:
         else:
             self._draw_tab_body(screen, mp, body_top, summary)
         screen.set_clip(prev_clip)
+
+        # Phase 43 — NPC hover card. Show when the cursor is over an
+        # NPC row (and within the clipped body area).
+        self._draw_hover_card(screen, mp, body_rect)
+
+    def _draw_hover_card(self, screen, mp, body_rect):
+        if self._hover_card is None:
+            from states.npc_hover_card import NpcHoverCard
+            self._hover_card = NpcHoverCard()
+        hovered_npc = None
+        if body_rect.collidepoint(mp):
+            for row, kind, oid in self._row_rects:
+                if kind == "npc" and row.collidepoint(mp):
+                    hovered_npc = self.world.npcs.get(oid)
+                    break
+        if hovered_npc is not None:
+            self._hover_card.show(self.world, hovered_npc,
+                                    self.campaign)
+            self._hover_card.draw(screen, mp)
+        else:
+            self._hover_card.hide()
 
     # ------------------------------------------------------------------ #
     def _draw_tab_body(self, screen, mp, body_top, summary: TownSummary):
