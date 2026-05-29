@@ -488,6 +488,12 @@ class CampaignManagerState:
                                          "🔍 NPC-haku",
                                          self._open_npc_search,
                                          color=COLORS["accent"])
+        # Phase 42 — relationship graph
+        self.btn_npc_graph = Button(550, SCREEN_HEIGHT - 60,
+                                        115, 45,
+                                        "Suhdeverkosto",
+                                        self._open_npc_graph,
+                                        color=COLORS["spell"])
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
@@ -506,6 +512,11 @@ class CampaignManagerState:
         self._npc_search_open = False
         self._npc_detail_modal = None
         self._npc_detail_open = False
+        # Phase 42 — relationship graph viewer
+        self._npc_graph_view = None
+        self._npc_graph_open = False
+        # Phase 41 — shared hover card for the NPC list
+        self._npc_hover_card = None
         # Status string set by _import_text_file so the user sees what
         # actually happened (e.g. "5+ 2~ locations, 8+ NPCs").
         self._import_status: str = ""
@@ -1226,6 +1237,17 @@ class CampaignManagerState:
         self._npc_search_modal.open()
         self._npc_search_open = True
 
+    def _open_npc_graph(self):
+        """Phase 42: open the NPC relationship graph viewer."""
+        from states.npc_relationship_graph import NpcRelationshipGraph
+        self._npc_graph_view = NpcRelationshipGraph(
+            self.world, self.campaign,
+            on_close=lambda: setattr(self, "_npc_graph_open", False),
+            on_select=self._jump_to_npc,
+        )
+        self._npc_graph_view.open()
+        self._npc_graph_open = True
+
     def _open_npc_detail(self, npc):
         """Phase 39: open the NPC detail modal."""
         from states.npc_detail_modal import NpcDetailModal
@@ -1899,6 +1921,8 @@ class CampaignManagerState:
                 self.btn_quick_quest.handle_event(event)
                 # Phase 39 — NPC search
                 self.btn_npc_search.handle_event(event)
+                # Phase 42 — relationship graph
+                self.btn_npc_graph.handle_event(event)
                 if (self._quick_quest_modal is not None
                         and self._quick_quest_modal.is_open):
                     if self._quick_quest_modal.handle_event(event):
@@ -1950,6 +1974,10 @@ class CampaignManagerState:
                 if (getattr(self, "_npc_search_open", False)
                         and self._npc_search_modal is not None):
                     if self._npc_search_modal.handle_event(event):
+                        return
+                if (getattr(self, "_npc_graph_open", False)
+                        and self._npc_graph_view is not None):
+                    if self._npc_graph_view.handle_event(event):
                         return
 
     def _handle_party_click(self, mp):
@@ -2875,6 +2903,7 @@ class CampaignManagerState:
             self.btn_open_quest_log.draw(screen, mp)
             self.btn_quick_quest.draw(screen, mp)
             self.btn_npc_search.draw(screen, mp)
+            self.btn_npc_graph.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -2912,6 +2941,9 @@ class CampaignManagerState:
             if (getattr(self, "_npc_search_open", False)
                     and self._npc_search_modal is not None):
                 self._npc_search_modal.draw(screen)
+            if (getattr(self, "_npc_graph_open", False)
+                    and self._npc_graph_view is not None):
+                self._npc_graph_view.draw(screen)
             # Phase 13a: status line for text-import results
             if self._import_status_timer > 0:
                 self._import_status_timer -= 1
