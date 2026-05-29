@@ -195,7 +195,7 @@ class ScenarioPickerModal:
             elif row.collidepoint(mp):
                 pygame.draw.rect(screen, COLORS["panel"], row, border_radius=4)
 
-            name_surf = fonts.small_bold.render(s.name, True, COLORS["text"])
+            name_surf = fonts.small_bold.render(s.name, True, COLORS["text_main"])
             screen.blit(name_surf, (list_x + 10, ry + 6))
 
             lvl = f"Lv {s.recommended_level_min}-{s.recommended_level_max}  " \
@@ -240,11 +240,11 @@ class ScenarioPickerModal:
 
         # Description (wrapped)
         y = self._blit_wrapped(screen, s.description, px + 12, y,
-                                pw - 24, fonts.small, COLORS["text"])
+                                pw - 24, fonts.small, COLORS["text_main"])
         y += 10
 
         # Monsters
-        mons_title = fonts.small_bold.render("Monsters:", True, COLORS["text"])
+        mons_title = fonts.small_bold.render("Monsters:", True, COLORS["text_main"])
         screen.blit(mons_title, (px + 12, y))
         y += 20
         from collections import Counter

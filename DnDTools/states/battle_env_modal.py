@@ -235,7 +235,7 @@ class BattleEnvironmentModal:
         self.btn_alpha_up.draw(screen, mp)
         alpha_lbl = fonts.small.render(
             f"Opacity: {self.battle.background_alpha}/255",
-            True, COLORS["text"],
+            True, COLORS["text_main"],
         )
         screen.blit(alpha_lbl, (self.x + 70, self.y + 140))
 
@@ -244,7 +244,7 @@ class BattleEnvironmentModal:
         self.btn_w_up.draw(screen, mp)
         w_lbl = fonts.small.render(
             f"Width: {self.battle.background_world_cells_w} cells",
-            True, COLORS["text"],
+            True, COLORS["text_main"],
         )
         screen.blit(w_lbl, (self.x + 70, self.y + 190))
 
@@ -252,7 +252,7 @@ class BattleEnvironmentModal:
         self.btn_h_up.draw(screen, mp)
         h_lbl = fonts.small.render(
             f"Height: {self.battle.background_world_cells_h} cells",
-            True, COLORS["text"],
+            True, COLORS["text_main"],
         )
         screen.blit(h_lbl, (self.x + 350, self.y + 190))
 
@@ -290,7 +290,7 @@ class BattleEnvironmentModal:
             self._save_modal.draw(screen)
 
     def _label(self, screen, txt, x, y):
-        s = fonts.body_bold.render(txt, True, COLORS["text"])
+        s = fonts.body_bold.render(txt, True, COLORS["text_main"])
         screen.blit(s, (x, y))
 
     @staticmethod

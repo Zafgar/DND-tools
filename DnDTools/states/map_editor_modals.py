@@ -341,7 +341,7 @@ class NPCDetailModal:
             return
 
         # Header — name + title/occupation
-        hdr = fonts.large.render(npc.name, True, COLORS["text_bright"])
+        hdr = fonts.header.render(npc.name, True, COLORS["text_bright"])
         screen.blit(hdr, (self.x + 20, self.y + 14))
         sub_parts = [p for p in (npc.title, npc.occupation, npc.race) if p]
         sub = fonts.small.render(" · ".join(sub_parts), True, COLORS["text_dim"])
