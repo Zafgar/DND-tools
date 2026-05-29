@@ -140,7 +140,7 @@ class SaveScenarioModal:
         screen.blit(t, (self.x + 20, self.y + 15))
 
         # Name field
-        lbl = fonts.body_bold.render("Scenario name", True, COLORS["text"])
+        lbl = fonts.body_bold.render("Scenario name", True, COLORS["text_main"])
         screen.blit(lbl, (self.x + 20, self.y + 50))
         field_rect = pygame.Rect(self.x + 20, self.y + 70,
                                   self.WIDTH - 40, 34)
@@ -151,11 +151,11 @@ class SaveScenarioModal:
         txt = self.name_text + ("|" if (self.name_active
                                           and pygame.time.get_ticks() // 400 % 2 == 0)
                                  else "")
-        screen.blit(fonts.body.render(txt, True, COLORS["text"]),
+        screen.blit(fonts.body.render(txt, True, COLORS["text_main"]),
                     (self.x + 28, self.y + 76))
 
         # Category picker
-        cat_lbl = fonts.body_bold.render("Category", True, COLORS["text"])
+        cat_lbl = fonts.body_bold.render("Category", True, COLORS["text_main"])
         screen.blit(cat_lbl, (self.x + 20, self.y + 125))
         for b in self.cat_btns:
             b.draw(screen, mp)
