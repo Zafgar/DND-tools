@@ -115,6 +115,48 @@ class TestBuildGraph(unittest.TestCase):
         self.assertEqual(g.nodes[0].id, "n0")
 
 
+class TestEgoNetwork(unittest.TestCase):
+    """Phase 44 — N-hop ego network around one NPC."""
+    def setUp(self):
+        # Build a chain: n0 - n1 - n2 - n3, plus n0 - n4 branch.
+        self.w = World()
+        for i in range(5):
+            self.w.npcs[f"n{i}"] = NPC(id=f"n{i}", name=f"N{i}")
+        nd.add_npc_link(self.w, "n0", "n1", "ally")
+        nd.add_npc_link(self.w, "n1", "n2", "ally")
+        nd.add_npc_link(self.w, "n2", "n3", "ally")
+        nd.add_npc_link(self.w, "n0", "n4", "rival")
+
+    def test_depth_one_is_direct_contacts(self):
+        ids = set(ng.ego_npc_ids(self.w, "n0", depth=1))
+        # n0 + direct (n1, n4)
+        self.assertEqual(ids, {"n0", "n1", "n4"})
+
+    def test_depth_two_adds_friends_of_friends(self):
+        ids = set(ng.ego_npc_ids(self.w, "n0", depth=2))
+        # n0, n1, n4 (depth1) + n2 (via n1)
+        self.assertEqual(ids, {"n0", "n1", "n4", "n2"})
+
+    def test_depth_three_reaches_chain_end(self):
+        ids = set(ng.ego_npc_ids(self.w, "n0", depth=3))
+        self.assertEqual(ids, {"n0", "n1", "n2", "n3", "n4"})
+
+    def test_unknown_center_returns_empty(self):
+        self.assertEqual(ng.ego_npc_ids(self.w, "nobody"), [])
+
+    def test_build_ego_graph_restricts_nodes(self):
+        g = ng.build_ego_graph(self.w, "n0", depth=1)
+        ids = {n.id for n in g.nodes}
+        self.assertEqual(ids, {"n0", "n1", "n4"})
+        # Only edges among these three survive (n0-n1, n0-n4)
+        self.assertEqual(len(g.edges), 2)
+
+    def test_isolated_center_still_returns_itself(self):
+        self.w.npcs["lone"] = NPC(id="lone", name="Lone")
+        ids = ng.ego_npc_ids(self.w, "lone", depth=2)
+        self.assertEqual(ids, ["lone"])
+
+
 class TestLayout(unittest.TestCase):
     def setUp(self):
         self.w = _world()
@@ -296,6 +338,48 @@ class TestRelationshipGraphView(unittest.TestCase):
         v.filter_faction = "Brotherhood"
         v._rebuild()
         self.assertEqual(len(v.graph.nodes), 2)
+
+    def test_ego_mode_focuses_on_node(self):
+        from states.npc_relationship_graph import NpcRelationshipGraph
+        w = _world()
+        v = NpcRelationshipGraph(w, campaign=None)
+        v.open()
+        v._toggle_ego()
+        self.assertTrue(v.ego_mode)
+        v.ego_center_id = "n0"
+        v._rebuild()
+        # n0 links to n1 (patron) and n2 (rival) → ego depth 1 = 3
+        ids = {n.id for n in v.graph.nodes}
+        self.assertEqual(ids, {"n0", "n1", "n2"})
+
+    def test_ego_depth_expands_neighbourhood(self):
+        from states.npc_relationship_graph import NpcRelationshipGraph
+        w = _world()
+        # n3 - n4 are linked (mentor); link n2 - n3 to make a chain
+        nd.add_npc_link(w, "n2", "n3", "ally")
+        v = NpcRelationshipGraph(w, campaign=None)
+        v.open()
+        v._toggle_ego()
+        v.ego_center_id = "n0"
+        v.ego_depth = 1
+        v._rebuild()
+        d1 = {n.id for n in v.graph.nodes}
+        v._set_depth(1)   # depth 2
+        d2 = {n.id for n in v.graph.nodes}
+        self.assertGreater(len(d2), len(d1))
+
+    def test_exit_ego_returns_full_graph(self):
+        from states.npc_relationship_graph import NpcRelationshipGraph
+        w = _world()
+        v = NpcRelationshipGraph(w, campaign=None)
+        v.open()
+        v._toggle_ego()
+        v.ego_center_id = "n0"
+        v._rebuild()
+        v._exit_ego()
+        self.assertFalse(v.ego_mode)
+        self.assertEqual(v.ego_center_id, "")
+        self.assertEqual(len(v.graph.nodes), 5)
 
 
 if __name__ == "__main__":

@@ -1110,6 +1110,7 @@ class CampaignManagerState:
             self.world, loc_id,
             on_pick=self._on_town_pick,
             on_close=lambda: setattr(self, "_town_view_open", False),
+            campaign=self.campaign,
         )
         self._town_view_widget.open()
         self._town_view_open = True
@@ -4038,6 +4039,7 @@ class CampaignManagerState:
             npcs = search_npcs(self.world, self.npc_search)
         active_npcs = [n for n in npcs if n.active]
 
+        hovered_list_npc = None
         if not active_npcs:
             hint = fonts.body.render("No NPCs yet. Click '+ NPC' to create one.", True, COLORS["text_muted"])
             screen.blit(hint, (30, y))
@@ -4048,6 +4050,7 @@ class CampaignManagerState:
                 bg = COLORS["selected"] if is_sel else COLORS["panel"]
                 if rect.collidepoint(mp):
                     bg = COLORS["hover"]
+                    hovered_list_npc = npc
                 pygame.draw.rect(screen, bg, rect, border_radius=5)
                 if is_sel:
                     pygame.draw.rect(screen, COLORS["accent_dim"], rect, 1, border_radius=5)
@@ -4085,6 +4088,18 @@ class CampaignManagerState:
         # Right panel: selected NPC detail
         if self.selected_npc_id:
             self._draw_npc_detail(screen, mp, mid + 20)
+
+        # Phase 43 — hover mini-card on the NPC list (only when no
+        # NPC is selected, so it doesn't cover the detail panel).
+        if hovered_list_npc is not None and not self.selected_npc_id:
+            if self._npc_hover_card is None:
+                from states.npc_hover_card import NpcHoverCard
+                self._npc_hover_card = NpcHoverCard()
+            self._npc_hover_card.show(self.world, hovered_list_npc,
+                                        self.campaign)
+            self._npc_hover_card.draw(screen, mp)
+        elif self._npc_hover_card is not None:
+            self._npc_hover_card.hide()
 
     def _draw_npc_detail(self, screen, mp, start_x):
         npc = self.world.npcs.get(self.selected_npc_id)
