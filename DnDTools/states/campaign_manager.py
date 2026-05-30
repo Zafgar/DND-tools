@@ -494,6 +494,13 @@ class CampaignManagerState:
                                         "Suhdeverkosto",
                                         self._open_npc_graph,
                                         color=COLORS["spell"])
+        # Phase 45 — always-available dice tray (toggle with D)
+        from states.dice_tray_widget import DiceTrayWidget
+        self._dice_tray = DiceTrayWidget()
+        self.btn_dice = Button(SCREEN_WIDTH - 120, 12, 100, 32,
+                                  "🎲 Nopat",
+                                  self._dice_tray.toggle,
+                                  color=COLORS["accent"])
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
@@ -1685,6 +1692,20 @@ class CampaignManagerState:
             if self.modal:
                 self._handle_modal_event(event)
                 continue
+
+            # Phase 45 — dice tray takes events first when open; the
+            # D hotkey toggles it (when no text field is focused).
+            if self._dice_tray.is_open:
+                if self._dice_tray.handle_event(event):
+                    continue
+            if (event.type == pygame.KEYDOWN
+                    and event.key == pygame.K_d
+                    and not self._dice_tray.field_active
+                    and not getattr(self, "npc_search_active", False)
+                    and not self.input_active):
+                self._dice_tray.toggle()
+                continue
+            self.btn_dice.handle_event(event)
 
             # Tab bar
             self.tabs.handle_event(event)
@@ -2967,6 +2988,10 @@ class CampaignManagerState:
         if (self._dashboard_widget is not None
                 and self._dashboard_widget.is_open):
             self._dashboard_widget.draw(screen)
+
+        # Phase 45 — dice tray button (top-right) + tray overlay last
+        self.btn_dice.draw(screen, mp)
+        self._dice_tray.draw(screen)
 
     # ---- Party Tab Drawing ----
 
