@@ -1,0 +1,1708 @@
+"""Novus Somnium — Cunaen mantereen canon-lore (laajennusdata).
+
+Tämä moduuli kantaa kampanjan *varsinaisen* maailmankuvan: Cunaen
+mantereen viisi suurvaltaa kaupunkeineen, Aterterran Underdark-kaupungit,
+itsenäiset kohteet sekä keskeiset NPC:t (ulkonäkö, motiivit, stat-linkit
+ja suhdeverkosto) ja salaseurat.
+
+Data on jäsennelty taulukoiksi (``CITIES``, ``NPCS``, ``NPC_LINKS``) ja
+rakennetaan World-/Kingdom-/Organisation-objekteiksi build-funktioilla,
+jotka ``data.novus_somnium`` kutsuu kampanjaa generoidessaan. Kaikki on
+*additiivista* — alkuperäinen testeillä lukittu starter-sisältö (Arenhold,
+Vardun Keep, Frandin starter-NPC:t) säilyy ennallaan.
+
+Suunnittelu:
+  * Stat-blockit linkitetään ``stat_source = "monster:<Nimi>"`` -muodolla
+    olemassa olevaan hirviökirjastoon (data/monsters). Kun täsmällistä
+    vastinetta ei ole, käytetään lähintä proxya ja kirjataan tarkka
+    luokitus ``notes``-kenttään.
+  * Pelaajahahmot (PC:t) tallennetaan NPC-tietueina tagilla
+    ``player_character`` jotta suhdegraafi ja NPC-hakemisto näkevät heidät
+    ja suhdelinkit ratkeavat molempiin suuntiin.
+"""
+from __future__ import annotations
+
+from typing import Dict, List
+
+
+# Kingdom country-location ids luodaan data.novus_somnium._build_world():ssä
+# muodossa loc_<key>. Underdark-kaupungit ripustetaan Aterterran alle.
+KINGDOM_LOC = {
+    "tarmaas":   "loc_tarmaas",
+    "fundarla":  "loc_fundarla",
+    "smardu":    "loc_smardu",
+    "aterterra": "loc_aterterra",
+    "oblitus":   "loc_oblitus",
+}
+
+
+# --------------------------------------------------------------------- #
+# CITIES — (key, name, kingdom, loc_id, type, population, biome,
+#           industry, religion, ruler_npc_id, is_capital, description)
+# kingdom == "" → itsenäinen (top-level) kohde.
+# --------------------------------------------------------------------- #
+CITIES: List[dict] = [
+    # ---- TARMAAS (teknologia & teollisuus) -------------------------
+    dict(key="old_vaisil", name="Old Vaisil", kingdom="tarmaas",
+         loc_id="loc_old_vaisil", type="port", population=22_000,
+         biome="coast", industry="merenkulku & kauppa",
+         religion="Auringonkirkko", ruler="npc_efauxer",
+         description="Vilkas ja kaunis eteläinen satamakaupunki, joka on "
+                     "irtautunut Tarmaaksesta osaksi Vapaan Etelän "
+                     "Koalitiota. Eläköityneitä aatelisia ja "
+                     "kauppakomppanioita; oikeusjohtajana gobliini "
+                     "Gilhard Blacktooth. Salamurhayrityksiä, "
+                     "laivojen uppoamisia ja Chrith Lar -salakuljetusta."),
+    dict(key="ravenstone", name="Ravenstone", kingdom="tarmaas",
+         loc_id="loc_ravenstone", type="city", population=14_000,
+         biome="grim", industry="savikaivokset",
+         religion="Avarath-kultti (kasvava)", ruler="npc_jugorai",
+         description="Synkkä, pelottava kaupunki. Tunnettu "
+                     "savikaivoksistaan (Clay Shore), Asylum Purgo "
+                     "-mielisairaalasta ja muinaisista kryptoista "
+                     "(Corvus Spelchrum). Ghouleja ja vampyyreita; "
+                     "alamaailmaa hallitsee Cora 0. Muinainen Dimerius "
+                     "Blackfeet uhkaa herätä."),
+    dict(key="vilemour", name="Vilemour", kingdom="tarmaas",
+         loc_id="loc_vilemour", type="city", population=9_000,
+         biome="forest_edge", industry="fey-aarteet",
+         religion="Brotherhood of Glorious Sun (salaa)", ruler="npc_varros",
+         description="\"Sumumetsän portti\" Bladvine-metsän länsilaidalla. "
+                     "Läpimätä \"riski → rikkauksia\" -kaupunki, ympäröity "
+                     "tervahaudoilla ja palisadilla. Ihmisiä katoaa "
+                     "Veljeskunnan biokoe-laboratorioon, jossa heistä "
+                     "tehdään Spore Thralleja. Alla lymyää drow-tiedustelija "
+                     "Xalyth."),
+    dict(key="veksla", name="Veksla", kingdom="tarmaas",
+         loc_id="loc_veksla", type="village", population=2_000,
+         biome="farmland", industry="maatalous",
+         religion="Auringonkirkko", ruler="npc_artur_potvark",
+         description="Maatalouskaupunki Bladvinen metsän reunalla, "
+                     "raunioina undead-lohikäärmeen hyökkäyksen jäljiltä. "
+                     "Ruokapula. Dryadi Idefianin \"Metsän suojelijat\" "
+                     "hyökkäävät kaupunkiin kostona luonnontuhoista."),
+    dict(key="hijoin", name="Hijoin", kingdom="tarmaas",
+         loc_id="loc_hijoin", type="town", population=6_000,
+         biome="mountain_slope", industry="arkeologia & tutkimus",
+         religion="Auringonkirkko", ruler="npc_carl_gronmort",
+         description="Arkeologinen kaivauskaupunki Gregbagne-vuorijonon "
+                     "länsirinteellä. Maineikas C.H.O.M.P.-tutkimuskeskus. "
+                     "Kreivin ja tutkijoiden konflikti; kaivossortumia, "
+                     "kadonneita ryhmiä ja saastunutta kaivovettä "
+                     "(syynä Beholder Oomag)."),
+    dict(key="fat_carp", name="Fat Carp", kingdom="tarmaas",
+         loc_id="loc_fat_carp", type="port", population=1_500,
+         biome="coast", industry="kalastus",
+         religion="Aaltojen kirkko", ruler="npc_beur",
+         description="Rannikkokylä/satama. Kylään tuodaan \"hoidettavaksi\" "
+                     "Oblituksen Chrith Lar -huumeen käyttäjiä. Veljeskunta "
+                     "lavastaa terrori-iskun haltioiden (Fundarlan armeijan) "
+                     "syyksi."),
+    dict(key="pinwud", name="Pinwud", kingdom="tarmaas",
+         loc_id="loc_pinwud", type="village", population=900,
+         biome="forest", industry="puunhakkuu",
+         religion="Death's Vigil -temppeli", ruler="npc_gaius_marad",
+         description="Puunhakkaajien ja puolituisten metsäkylä, jossa on "
+                     "Death's Vigilin temppeli. Metsänhenget hyökkäävät "
+                     "liiallisen hakkuun vuoksi."),
+    dict(key="arist", name="Arist", kingdom="tarmaas",
+         loc_id="loc_arist", type="town", population=4_500,
+         biome="forest_edge", industry="kauppa & metsästys",
+         religion="Auringonkirkko", ruler="npc_cyra_nesh",
+         description="Sumumetsän eteläinen kauppakaupunki, \"Fey Hunter's "
+                     "Lodgen\" koti."),
+    dict(key="baltimon", name="Baltimon", kingdom="tarmaas",
+         loc_id="loc_baltimon", type="village", population=1_200,
+         biome="farmland", industry="viljely", religion="Auringonkirkko",
+         ruler="",
+         description="Viljelykylä, joka kärsii \"kasvirutosta\": "
+                     "salaperäinen voima imee elinvoimaa maasta."),
+    dict(key="zaprutas", name="Zaprutas", kingdom="tarmaas",
+         loc_id="loc_zaprutas", type="village", population=800,
+         biome="underground", industry="kaasu & insinöörityö",
+         religion="—", ruler="npc_zapui",
+         description="Maanalainen gnomi-yhteisö. Kivihirviöt sabotoivat "
+                     "heidän kaasulinjojaan."),
+
+    # ---- OBLITUS (aavikot, heimot & orjakauppa) --------------------
+    dict(key="iklence", name="Iklence", kingdom="oblitus",
+         loc_id="loc_iklence", type="city", population=60_000,
+         biome="desert", industry="orjakauppa (Red Drob)",
+         religion="Veru-kultti", ruler="npc_emnar", is_capital=True,
+         description="Massiivinen muurikaupunki Oblituksen sydämessä, "
+                     "Vihreän Armeijan vartioima. Kuningas Emnar Redfei "
+                     "kerää sieluja (Veru-projekti) ja pitää vihreää "
+                     "lohikäärme Mueglorisia vankinaan."),
+    dict(key="aesica", name="Aesica", kingdom="oblitus",
+         loc_id="loc_aesica", type="port", population=18_000,
+         biome="coast", industry="satama & gladiaattoriareena",
+         religion="—", ruler="npc_antos_orac",
+         description="Karu rannikkokaupunki. Aiemmin kreivi Erokme "
+                     "Belmudarin, nyt vallattu (Antos Orac & Krusk, Vapaan "
+                     "Etelän Koalitio). Gladiaattoriareena Nak Magnok Kor "
+                     "Adez (Julus Sanace) on salainen sielukone, joka "
+                     "pumppaa kuolleiden sieluja titaanin lukkoihin."),
+    dict(key="aklobar", name="Aklobar / Anyar Nauo", kingdom="oblitus",
+         loc_id="loc_aklobar", type="ruins", population=1_500,
+         biome="desert", industry="tyynyt (!)", religion="—",
+         ruler="npc_borbelio",
+         description="Vanha hylätty linnoitus, jota gobliinit rakentavat "
+                     "uudelleen. Entinen johtaja Borbelio Suuri myi Chrith "
+                     "Laria Fadom Jivfutille; uusi hallinto on \"Council of "
+                     "Cushions\" ja kylä myy nyt tyynyjä."),
+    dict(key="pulker", name="Pulker", kingdom="oblitus",
+         loc_id="loc_pulker", type="village", population=1_100,
+         biome="desert", industry="maatalous", religion="Aghuantin temppeli",
+         ruler="npc_wok",
+         description="Maatalouskaupunki, joka kärsii sadon menetyksestä ja "
+                     "rotista. Kuunvaihteessa sumuhirviöt hyökkäävät "
+                     "Aghuantin temppelin läheisyydessä."),
+    dict(key="kravok", name="Kravok", kingdom="oblitus",
+         loc_id="loc_kravok", type="village", population=700,
+         biome="swamp", industry="kalastus", religion="—",
+         ruler="npc_longtongue",
+         description="Sammakkokansan suokylä. Vanhimman poika kaapattu "
+                     "Svik Fethen (korppiolento) toimesta; Fadom Jivfut on "
+                     "piilottanut räjähteitä kylän temppeliin."),
+    dict(key="tukor_sheg", name="Tukor Sheg", kingdom="oblitus",
+         loc_id="loc_tukor_sheg", type="camp", population=600,
+         biome="desert", industry="—", religion="—", ruler="npc_nogjat",
+         description="Leiri lähellä Aesicaa. Orjakauppiaat (Red Drob) "
+                     "riivaavat leiriä; se varustautuu aseilla Aesican "
+                     "kapinan tueksi."),
+
+    # ---- FUNDARLA (magia & haltiat) --------------------------------
+    dict(key="zlalens", name="Zlalens", kingdom="fundarla",
+         loc_id="loc_zlalens", type="city", population=55_000,
+         biome="magical", industry="magia & pankkitoiminta",
+         religion="Lehtoäidin polku", ruler="npc_endail", is_capital=True,
+         description="Magian kehto ja Fundarlan sydän. Keskellä massiivinen "
+                     "15 m lentokristalli, johon Dath pumppaa sieluenergiaa "
+                     "nostaakseen koko kaupungin ilmaan sota-alukseksi. "
+                     "Täällä myös Cunaen suurin pankki, Golden Leaf Bank."),
+    dict(key="asmenor", name="Asmenor", kingdom="fundarla",
+         loc_id="loc_asmenor", type="city", population=20_000,
+         biome="forest", industry="puunhoito & magia",
+         religion="Shanta-temppeli", ruler="npc_hailaf",
+         description="Kolmen massiivisen puun runkoon ja latvoihin "
+                     "rakennettu haltioiden kaupunki. Muukalaisvihaa, "
+                     "levottomia metsäneläimiä ja saastunutta vettä."),
+    dict(key="cifiri", name="Cifiri", kingdom="fundarla",
+         loc_id="loc_cifiri", type="port", population=16_000,
+         biome="coast", industry="merikauppa",
+         religion="Aaltojen kirkko", ruler="npc_runlian",
+         description="Puhdas ja kaunis satamakaupunki. Hanons Oldarfok "
+                     "yrittää syrjäyttää virkamies Dafounin; alueella "
+                     "kidnappauksia laboratoriokokeita varten."),
+    dict(key="faharn", name="Faharn", kingdom="fundarla",
+         loc_id="loc_faharn", type="city", population=18_000,
+         biome="forest", industry="oppineisuus & akatemia",
+         religion="Lehtoäidin polku", ruler="npc_nimri",
+         description="Puun latvoihin rakennettu vihreä kaupunki, "
+                     "Saideneria-akatemian koti (Nimri Greentop). Metsä "
+                     "tekee kuolemaa pohjoisessa, kahdeksanjalkaiset olennot "
+                     "ryömivät koteihin."),
+
+    # ---- SMARDU (kääpiöt & lohikäärmeet) ---------------------------
+    dict(key="juamore", name="Juamore", kingdom="smardu",
+         loc_id="loc_juamore", type="city", population=48_000,
+         biome="mountain", industry="laki & diplomatia",
+         religion="Vasaran veljeskunta", ruler="npc_braimir",
+         is_capital=True,
+         description="Smardun pääkaupunki, lakien ja diplomatian keskus. "
+                     "Hallitsee Kymmenneuvosto (Braimir Burldair, Thesia "
+                     "Runeveil, Peokra Unroltrumm). Täällä säilytetään "
+                     "Codex Rauken -lakikiveä."),
+    dict(key="antanard", name="Antanard", kingdom="smardu",
+         loc_id="loc_antanard", type="city", population=30_000,
+         biome="volcanic", industry="tuotanto & lohikäärmehautomo",
+         religion="Vasaran veljeskunta", ruler="npc_jogra",
+         description="Massiivisen geysiirin päälle Efouset-vuoristoon "
+                     "rakennettu tuotannon keskus. Sisältää Unhael Scale "
+                     "Rider -hautomolaitoksen, jossa kasvatetaan "
+                     "lohikäärmeitä (PC Magnus on kotoisin täältä)."),
+    dict(key="hifrom", name="Hifrom", kingdom="smardu",
+         loc_id="loc_hifrom", type="town", population=5_000,
+         biome="mountain", industry="kaivostoiminta",
+         religion="Vasaran veljeskunta", ruler="npc_enquars",
+         description="Vuoristokaupunki, jonne on alkanut saapua "
+                     "ilkikurisia, pahantahtoisia olentoja vuorelta."),
+
+    # ---- ATERTERRA (Underdark, drow) — ripustetaan loc_aterterran alle
+    dict(key="zertath_lanke", name="Zer'tath Lanke", kingdom="aterterra",
+         loc_id="loc_zertath_lanke", type="city", population=40_000,
+         biome="underdark", industry="hallinto & magia",
+         religion="Hämähäkkikuningattaren kultti", ruler="npc_cazna",
+         is_capital=True,
+         description="\"Kristallijärven kaupunki\", suoraan Frandin alla. "
+                     "Aterterran poliittinen sydän; matriarkan palatsi "
+                     "lepää kristallijärven saarella. Sisältää "
+                     "Aether-arkistot. Vartioi tietämättään maailmantitaani "
+                     "Garruthaa Faerzress-kristallien avulla."),
+    dict(key="vlyn_darahl", name="Vlyn'Darahl", kingdom="aterterra",
+         loc_id="loc_vlyn_darahl", type="city", population=12_000,
+         biome="underdark", industry="kauppa & sienifarmit",
+         religion="—", ruler="npc_zekarra",
+         description="\"Pinnan portti\" Ravenstonen/Frandin laitamien alla. "
+                     "Drowien kauppakaupunki ja salainen reitti pintaan."),
+    dict(key="neldrath_zol", name="Neldrath Zol", kingdom="aterterra",
+         loc_id="loc_neldrath_zol", type="city", population=15_000,
+         biome="underdark", industry="hopeakaivokset",
+         religion="—", ruler="npc_urlryn",
+         description="\"Hopeasavu\", Bladvine-metsän alla. Teollinen sydän "
+                     "ja hopeakaivokset. Salainen orjien vapauttaja Talice "
+                     "Vel'kath operoi täällä."),
+    dict(key="ultrinnan", name="Ultrinnan", kingdom="aterterra",
+         loc_id="loc_ultrinnan", type="castle", population=9_000,
+         biome="underdark", industry="sotateollisuus", religion="—",
+         ruler="npc_dantrag",
+         description="\"Teräslinnoitus\" pohjois-Frandin alla. Velve Dro "
+                     "-armeijan päämaja; sotapäällikkö Dantrag Dyrr "
+                     "suunnittelee sotilasvallankaappausta pintamaailmaa "
+                     "vastaan."),
+    dict(key="vorzha", name="Vorzha", kingdom="aterterra",
+         loc_id="loc_vorzha", type="city", population=8_000,
+         biome="underdark", industry="vakoilu & salamurhat",
+         religion="—", ruler="npc_nhilymra",
+         description="\"Kuiskausten kaupunki\" Frandin viemäriverkoston "
+                     "alla. Salamurhaajien ja tiedustelun (Shadow Puppets) "
+                     "koti. Pelaajia tarkkaillaan täällä lakkaamatta."),
+    dict(key="eryn_zalas", name="Eryn'Zalas", kingdom="aterterra",
+         loc_id="loc_eryn_zalas", type="city", population=6_000,
+         biome="underdark", industry="profetia", religion="Unenkulkijat",
+         ruler="npc_ahlysra",
+         description="\"Kristallimetsä\" Fundarlan haltiametsien alla. "
+                     "Unenkulkijoiden temppeli, jossa profetiat tallentuvat "
+                     "jättimäisiin Faerzress-kristalleihin."),
+    dict(key="ithyl_quor", name="Ithyl'Quor", kingdom="aterterra",
+         loc_id="loc_ithyl_quor", type="city", population=7_000,
+         biome="underdark", industry="biomagia",
+         religion="Hämähäkkikuningattaren kultti", ruler="npc_qilue",
+         description="\"Seitin katedraali\" pohjois-Fundarlan alla. "
+                     "Hämähäkinmuotoinen kaupunki, biologisen magian ja "
+                     "metamorfoosien keskus."),
+    dict(key="dro_khazun", name="Dro'Khazun", kingdom="aterterra",
+         loc_id="loc_dro_khazun", type="castle", population=5_000,
+         biome="underdark", industry="sotateollisuus", religion="—",
+         ruler="npc_belgos",
+         description="\"Pimeä linnoitus\" Efousetin alla, Smardun rajalla. "
+                     "Ikuinen sotavyöhyke kääpiöiden (Antanard) ja drowien "
+                     "välillä — mahdollisuus historialliseen rauhaan."),
+    dict(key="kazrath_mor", name="Kazrath Mor", kingdom="aterterra",
+         loc_id="loc_kazrath_mor", type="castle", population=4_000,
+         biome="underdark", industry="orjakeräys", religion="—",
+         ruler="npc_azzmere",
+         description="\"Luiden linnoitus\" Aklobarin aavikon alla, "
+                     "rakennettu muinaisen pedon luiden sisään. "
+                     "Orjien keräyskeskus."),
+    dict(key="zar_ghul", name="Zar'Ghul", kingdom="aterterra",
+         loc_id="loc_zar_ghul", type="town", population=3_000,
+         biome="underdark", industry="mustapörssi", religion="—",
+         ruler="npc_malaggar",
+         description="\"Kuoleman kauppala\" Oblituksen ja Fundarlan "
+                     "rajalla. Underdarkin villin lännen mustapörssi — "
+                     "täältä saa mitä tahansa laitonta."),
+    dict(key="golgoth_inil", name="Golgoth-Inil / Velkyn Oloth",
+         kingdom="aterterra", loc_id="loc_golgoth_inil", type="camp",
+         population=1_500, biome="underdark", industry="—", religion="—",
+         ruler="npc_drathir",
+         description="Pakolaisleiri Vilemourin salaisen reitin (Tunneli 4) "
+                     "alapuolella, jossa Veljeskunnan \"Spore Rot\" -ruton "
+                     "tartuttamat drowt piileskelevät sillalla."),
+
+    # ---- ITSENÄISET / RIIPPUMATTOMAT KOHTEET -----------------------
+    dict(key="fort_whitestone", name="Fort Whitestone (Marblecrag Isle)",
+         kingdom="", loc_id="loc_fort_whitestone", type="castle",
+         population=300, biome="island", industry="mekaaninen armeija",
+         religion="—", ruler="npc_richard_walker",
+         description="Muinainen merilinnoitus Cunaen eteläosassa. Sisältää "
+                     "mekaanisen armeijan ja kätkee tietoa "
+                     "rinnakkaisulottuvuuksista (Occulo). Liittyi juuri "
+                     "Vapaan Etelän Koalitioon."),
+    dict(key="caldius", name="Caldius / Khro Kal", kingdom="",
+         loc_id="loc_caldius", type="city", population=4_000,
+         biome="underwater", industry="insinöörityö & merirosvous",
+         religion="—", ruler="npc_duemor",
+         description="Vedenalainen yhteiskunta Tarmaaksen edustalla. "
+                     "Smardusta irtautuneet tiedemiehet elävät "
+                     "sukellusveneissä ja ryöstävät laivoja kaasuttamalla "
+                     "ne nukuksiin."),
+    dict(key="aequitas_isle", name="Aequitas-saari", kingdom="",
+         loc_id="loc_aequitas", type="region", population=2_000,
+         biome="island", industry="lainkäyttö", religion="—",
+         ruler="",
+         description="Fundarlan rannikolta itään sijaitseva täysin "
+                     "riippumaton manneralue, joka vartioi Cunaen Pää "
+                     "Codexia. Saarella väkivalta ja valehtelu on "
+                     "maagisesti mahdotonta; The Boundless -agentit "
+                     "tuomitsevat maailman tasapainon rikkojat "
+                     "Nullifikaatioon."),
+]
+
+
+# --------------------------------------------------------------------- #
+# NPCS — täydet profiilit. stat = "" → ei suoraa monsterivastinetta
+# (tarkka luokitus notesissa). loc = "" → ei kiinteää sijaintia.
+# wealth = wealth-tier varallisuuden seedaukseen (tyhjä = ei kolikoita).
+# --------------------------------------------------------------------- #
+NPCS: List[dict] = [
+    # ===== DATH — pääantagonisti =====
+    dict(id="npc_emnar", name="Emnar Redfei", race="Orc", age="68",
+         occupation="Kuningas", title="Oblituksen kuningas",
+         faction="Dath", alignment="Lawful Evil", loc="loc_iklence",
+         stat="monster:Death Knight", wealth="aristocratic",
+         appearance="Täysverinen örkki: pitkät valkoiset hiukset, pyöreät "
+                     "mustat silmälasit, kultahampaat.",
+         personality="Säälimätön tyranni, joka murhasi omat veljensä ja "
+                     "äitinsä valtansa tähden.",
+         notes="Dath-ryhmän jäsen. Kerää sieluenergiaa (Veru) ja pitää "
+               "vihreää lohikäärme Mueglorisia vankinaan; kiduttaa sitä. "
+               "Kruskin ja Efauxerin vihollinen.",
+         tags=["antagonist", "ruler", "dath"]),
+    dict(id="npc_giurun", name="Giurun Kalfantan", race="Elf", age="684",
+         occupation="Arkkimaagi / rehtori",
+         title="Ama'Rum-akatemian rehtori", faction="Dath",
+         alignment="Lawful Evil", loc="loc_zlalens",
+         stat="monster:Archmage", wealth="wealthy",
+         appearance="Jämerä haltia: terävä leuka, hopeiset silmät, vahvat "
+                     "kulmakarvat, pitkät korvat.",
+         personality="Haltioiden ylivallan fanaattinen kannattaja; inhoaa "
+                     "drow-kansaa ja muita rotuja.",
+         notes="Dathin todellinen johtaja ja manipulaattori. Soluttautunut "
+               "Seekers of Demimaindiin; hallitsee Brotherhoodia "
+               "telepatian avulla (mm. Äiti Lysandran näyt). Vetää naruja "
+               "kaikkien Cunaen konfliktien taustalla.",
+         tags=["antagonist", "mastermind", "dath"]),
+    dict(id="npc_muegloris", name="Muegloris", race="Green Dragon",
+         occupation="Vanki", title="", faction="",
+         alignment="Lawful Evil", loc="loc_iklence",
+         stat="monster:Adult Green Dragon", wealth="",
+         appearance="Vihreä lohikäärme, kahleissa ja kidutettuna.",
+         personality="Katkera, vihainen vankeudestaan.",
+         notes="Emnar Redfein orja Iklencessä; sieluenergian lähde.",
+         tags=["monster", "dragon", "captive"]),
+
+    # ===== BROTHERHOOD OF GLORIOUS SUN =====
+    dict(id="npc_fadom", name="Fadom Jivfut", race="Human", age="",
+         occupation="Lähetti / tiedonhakija", title="",
+         faction="Brotherhood of Glorious Sun", alignment="Neutral Evil",
+         loc="", stat="monster:Spy", wealth="comfortable",
+         appearance="Tummaihoinen ihminen: pussittavat housut, pitkät "
+                     "nahkasaappaat, musta kangastakki. Rento mutta totinen.",
+         personality="Laskelmoiva, mukautuva.",
+         notes="\"Chrith Lar\" -huumeen lähetti; tekee sopimuksia "
+               "alamaailman kanssa (mm. Borbelio Aklobarissa). Piilotti "
+               "räjähteitä Kravokin temppeliin.",
+         tags=["brotherhood", "criminal"]),
+    dict(id="npc_kael_vane", name="Kael \"Tuhkasuu\" Vane", race="Human",
+         age="", occupation="Inkvisiittori", title="",
+         faction="Brotherhood of Glorious Sun", alignment="Lawful Evil",
+         loc="", stat="monster:Assassin", wealth="modest",
+         appearance="Leikannut omat huulensa irti todistaakseen "
+                     "vaitiolonsa.",
+         personality="Fanaattinen, armoton.",
+         notes="Veljeskunnan inkvisiittori, joka metsästää pettureita "
+               "järjestön sisältä.",
+         tags=["brotherhood", "inquisitor"]),
+    dict(id="npc_lysandra", name="Äiti Lysandra", race="Human", age="",
+         occupation="Ylipapitar", title="Pyhäkkö Solarian ylipapitar",
+         faction="Brotherhood of Glorious Sun", alignment="Lawful Neutral",
+         loc="", stat="monster:Archmage", wealth="modest",
+         appearance="Sokeuttanut itsensä rituaalisesti.",
+         personality="Hurskas, vilpitön — ja petetty.",
+         notes="Tulkitsee Nousevan Auringon Kääröjä. Ei tiedä, että hänen "
+               "näkynsä tulevat telepaattisesti Dathin johtajalta Giurun "
+               "Kalfantanilta. Stat-proxy: priest/archmage.",
+         tags=["brotherhood", "clergy"]),
+
+    # ===== SEEKERS OF DEMIMAIND =====
+    dict(id="npc_dihvik", name="Dihvik Mevraft", race="Human", age="996",
+         occupation="Arkkimaagi", title="Deatariksen rehtori",
+         faction="Seekers of Demimaind", alignment="Neutral Good", loc="",
+         stat="monster:Archmage", wealth="wealthy",
+         appearance="Vaaleat pitkät hiukset, lyhyt harmaa parta, polttaa "
+                     "piippua; lempeä katse.",
+         personality="Viisas, kärsivällinen, periksiantamaton.",
+         notes="Venriksen mentori. Brotherhood/Dath kaappasi hänet, mutta "
+               "hän on pysynyt vaiti kidutuksesta huolimatta. Agustion "
+               "Dust etsii häntä epätoivoisesti.",
+         tags=["scholar", "captive"]),
+    dict(id="npc_nimri", name="Nimri Greentop", race="Halfling", age="150",
+         occupation="Rehtori", title="Saideneria-akatemian rehtori",
+         faction="Seekers of Demimaind", alignment="Neutral Good",
+         loc="loc_faharn", stat="monster:Archmage", wealth="comfortable",
+         appearance="Puolituinen, syvät hymykuopat, pähkinänruskeat silmät, "
+                     "nuorekas olemus.",
+         personality="Lämmin, terävä-älyinen.",
+         notes="Istuu Tarmaaksen neuvostossa. Faharnin akatemian johtaja.",
+         tags=["scholar", "ruler"]),
+
+    # ===== DEATH'S VIGIL =====
+    dict(id="npc_gaius_marad", name="Gaius Marad", race="Human", age="",
+         occupation="Magnus Custos", title="Death's Vigilin ylin vartija",
+         faction="Death's Vigil", alignment="Lawful Neutral",
+         loc="loc_pinwud", stat="", wealth="comfortable",
+         appearance="Vanha ihminen, lempeät silmät, mutta niissä palaa "
+                     "outo liekki.",
+         personality="Arvokas johtaja; suojeleva mutta laskelmoiva.",
+         notes="Johtaa Kuoleman Vartijoita. Mardukin esimies — tietää "
+               "tämän kyvystä sitoa sieluja ja haluaa mahdollisesti käyttää "
+               "sitä. Poikansa Kaldir lähti järjestöstä. "
+               "Stat: Paladin/Cleric ~15, Deva-tier.",
+         tags=["faction_leader", "clergy"]),
+
+    # ===== LA FAMIGLIA DELL'ORSO =====
+    dict(id="npc_rahgo", name="Rahgo \"Karhu\"", race="Human", age="",
+         occupation="Mafiapomo", title="Capo dei Capi",
+         faction="La Famiglia dell'Orso", alignment="Neutral Evil",
+         loc="loc_frand", stat="monster:Thug", wealth="wealthy",
+         appearance="Augmentoitu sydän ja massiiviset mekaaniset "
+                     "rautakourat.",
+         personality="Raaka, hallitseva, kostonhaluinen.",
+         notes="Frandin rikollissyndikaatin johtaja. Haluaa Dariukselta "
+               "varastetun Heart Acceleratorin takaisin ja yrittää kaapata "
+               "T.R.A.:n teknologiaa. Stat-proxy: Thug, augmentoitu → "
+               "Veteran-tier.",
+         tags=["criminal", "boss"]),
+    dict(id="npc_zaira", name="Zaira \"La Volpe\"", race="Human", age="40",
+         occupation="Consigliere", title="",
+         faction="La Famiglia dell'Orso", alignment="Lawful Evil",
+         loc="loc_frand", stat="monster:Assassin", wealth="wealthy",
+         appearance="Poltetun kupariset hiukset, punametallinen kettunaamio, "
+                     "messinkiketjuilla koristeltu nahkatakki, "
+                     "saapaskorkokengät.",
+         personality="Eleganssi ja kylmyys; inhoaa huolimattomuutta.",
+         notes="Hoitaa Famiglian salakuuntelut, salamurhat ja lahjonnan. "
+               "Dariuksen vaarallinen vihollinen.",
+         tags=["criminal", "spy"]),
+
+    # ===== TARMAAS — T.R.A. & hallinto =====
+    dict(id="npc_agustion", name="Agustion Dust", race="Dwarf", age="467",
+         occupation="Tutkimusjohtaja", title="T.R.A.:n johtaja",
+         faction="T.R.A.", alignment="Lawful Neutral", loc="loc_frand",
+         stat="monster:Noble", wealth="wealthy",
+         appearance="Laiha kääpiö: kyhmynenä, kalju päälaki ja vaaleat "
+                     "sivut, kasvoissa kääpiötatuointeja.",
+         personality="Ylpeä, älykäs, salaileva — traaginen idealisti.",
+         notes="Johtaa T.R.A.-tutkimuskeskusta (ja C.H.O.M.P.ia Hijoinissa). "
+               "Etsii epätoivoisesti kadonnutta ystäväänsä Dihvikiä; "
+               "paniikissa Kraken-ilmalaivaprojektin viivästymisestä. "
+               "Karhun ja muiden pelinappula. Stat-proxy: Noble (artificer).",
+         tags=["scholar", "leader"]),
+    dict(id="npc_samuel_visimos", name="Samuel Visimos", race="Human",
+         age="35", occupation="Insinööri",
+         title="Mekaanisen suunnittelun mestari", faction="T.R.A.",
+         alignment="Neutral Good", loc="loc_frand", stat="monster:Noble",
+         wealth="comfortable",
+         appearance="Pyöreä, punaposkinen ihminen, taskukello ketjulla.",
+         personality="Innokas, hyväntahtoinen.",
+         notes="Heart Accelerator -projektin projektipomo T.R.A.:lla.",
+         tags=["scholar"]),
+    dict(id="npc_stefan_skelgen", name="Stefan Skelgen", race="Human",
+         age="", occupation="Neuvoston puhemies",
+         title="Teknokraattisen neuvoston kasvot", faction="Tarmaas",
+         alignment="Lawful Neutral", loc="loc_frand", stat="monster:Noble",
+         wealth="wealthy",
+         appearance="Hillitty, virallinen olemus.",
+         personality="Poliittinen, varovainen.",
+         notes="Tarmaaksen teknokraattisen neuvoston julkinen kasvo "
+               "Frandissa.",
+         tags=["ruler"]),
+    dict(id="npc_heinrich", name="Heinrich Stormhold", race="Human",
+         age="58", occupation="Seurajohtaja", title="Kultaisen Rattaan johtaja",
+         faction="Golden Gear", alignment="Lawful Evil", loc="loc_frand",
+         stat="monster:Noble", wealth="aristocratic",
+         appearance="Pitkä ja hoikka ihminen, terävä katse, aina musta puku.",
+         personality="Kylmä, laskelmoiva, vallanhimoinen.",
+         notes="Korruptoituneen Golden Gear -eliittiseuran johtaja. "
+               "Rahoittaa Emnar Redfeiä vastineeksi poliittisesta vallasta.",
+         tags=["elite", "conspirator"]),
+
+    # ===== E.F.I. & DEPARTMENT 0 =====
+    dict(id="npc_nilf", name="Nilf Duvlae", race="Human", age="56",
+         occupation="Poliisijohtaja", title="E.F.I.:n johtaja",
+         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_frand",
+         stat="monster:Spy", wealth="comfortable",
+         appearance="Hoikka ihminen: baskeri, monokkeli, valkoiset hanskat, "
+                     "arpi poskella.",
+         personality="Tarkka, periksiantamaton.",
+         notes="Tarmaaksen salaisen valtiopoliisin johtaja. Jahtaa Dariusta "
+               "ja valvoo taikuuteen ja teknologiaan liittyviä rikoksia.",
+         tags=["law", "leader"]),
+    dict(id="npc_sam_undercave", name="Sam Undercave", race="Human", age="",
+         occupation="Agentti", title="Tiro Aspicio (Taso 4)",
+         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_frand",
+         stat="monster:Scout", wealth="modest",
+         appearance="Musta liimaletti, punaiset silmät, roteva rakenne.",
+         personality="Kunnianhimoinen, maineenhaluinen.",
+         notes="Nouseva E.F.I.-agentti, joka saalistaa mainetta.",
+         tags=["law"]),
+    dict(id="npc_eemil", name="Eemil Jakson", race="Human", age="45",
+         occupation="Salainen agentti", title="Department 0 — Agentti 3",
+         faction="Department 0", alignment="Lawful Evil", loc="loc_frand",
+         stat="monster:Assassin", wealth="comfortable",
+         appearance="Silinteri, smokki ja piippu.",
+         personality="Kylmä, häikäilemätön.",
+         notes="Neuvoston pimeä tahto — metsästää kohteita varjoissa.",
+         tags=["law", "assassin"]),
+
+    # ===== EMBER & VEIL COMPANY =====
+    dict(id="npc_criella", name="Criella Lotre", race="Tiefling", age="",
+         occupation="Ohjaaja", title="Ember & Veil -ohjaaja",
+         faction="Ember & Veil Company", alignment="Chaotic Good", loc="",
+         stat="monster:Noble", wealth="modest",
+         appearance="Viininpunainen takki, sarvissa messinkirenkaat.",
+         personality="Suojeleva, dramaattinen.",
+         notes="Pitää kiertävän teatteritrupen turvassa ja valitsee "
+               "näytelmät. Stat-proxy: Noble (bard).",
+         tags=["performer"]),
+    dict(id="npc_asha", name="Asha Dawnsong", race="Half-Elf", age="",
+         occupation="Pääsolisti", title="", faction="Ember & Veil Company",
+         alignment="Neutral Good", loc="", stat="monster:Noble",
+         wealth="modest",
+         appearance="Hopeatatuoitu silmäkulma, tummat letit.",
+         personality="Lahjakas, etsii paikkaansa.",
+         notes="Trupen uusi pääsolisti (Kaironin tilalle).",
+         tags=["performer"]),
+
+    # ===== SMARDU =====
+    dict(id="npc_aedria", name="Aedria Fegel", race="Steel Dragon / Human",
+         age="", occupation="Lohikäärme-ekologi", title="Neuvoston jäsen",
+         faction="Unhael Scale Riders", alignment="Neutral Good",
+         loc="loc_antanard", stat="", wealth="wealthy",
+         appearance="Hopeiset hiukset ja silmät, virheetön atleettinen iho, "
+                     "nahkahaarniska.",
+         personality="Viisas, suojeleva, utelias.",
+         notes="Magnuksen mentori Antanardin hautomon syvyyksissä. "
+               "Stat: Steel Dragon (adult) ihmishahmossa.",
+         tags=["mentor", "dragon"]),
+    dict(id="npc_jogra", name="Jogra Greev", race="Dwarf", age="221",
+         occupation="Ylivalvoja", title="Hautomolaitoksen ylivalvoja",
+         faction="F.E.R.I.D.", alignment="Lawful Neutral",
+         loc="loc_antanard", stat="monster:Noble", wealth="comfortable",
+         appearance="Sinertävä haarniska, kalju tatuoitu pää, valkoinen "
+                     "palmikkoparta.",
+         personality="Tiukka, perinteitä kunnioittava.",
+         notes="Antanardin lohikäärmehautomon ylivalvoja.",
+         tags=["soldier"]),
+    dict(id="npc_braimir", name="Braimir Burldair", race="Dwarf", age="",
+         occupation="Kymmenneuvoston jäsen", title="Neuvoston kasvot",
+         faction="Smardun Kymmenneuvosto", alignment="Lawful Neutral",
+         loc="loc_juamore", stat="monster:Noble", wealth="wealthy",
+         appearance="Arvokas kääpiö, huoliteltu parta.",
+         personality="Diplomaattinen, harkitseva.",
+         notes="Smardun Kymmenneuvoston julkinen kasvo Juamoressa.",
+         tags=["ruler"]),
+    dict(id="npc_thesia", name="Thesia Runeveil", race="Dwarf", age="",
+         occupation="Lakimestari", title="Kymmenneuvosto — Laki",
+         faction="Smardun Kymmenneuvosto", alignment="Lawful Neutral",
+         loc="loc_juamore", stat="monster:Archmage", wealth="wealthy",
+         appearance="Tarkkaavainen kääpiönainen, riimukoristeltu kaapu.",
+         personality="Ehdoton, oikeudenmukainen.",
+         notes="Vastaa Codex Raukenin tulkinnasta Juamoressa.",
+         tags=["ruler", "scholar"]),
+    dict(id="npc_peokra", name="Peokra Unroltrumm", race="Dwarf", age="",
+         occupation="Rakennusmestari", title="Kymmenneuvosto — Rakennus",
+         faction="Smardun Kymmenneuvosto", alignment="Lawful Neutral",
+         loc="loc_juamore", stat="monster:Noble", wealth="wealthy",
+         appearance="Vankka kääpiö, työkaluvyö ja kaavakääröt.",
+         personality="Käytännöllinen, määrätietoinen.",
+         notes="Vastaa Smardun rakennushankkeista.",
+         tags=["ruler"]),
+    dict(id="npc_enquars", name="Enquars Paermote", race="Dwarf", age="",
+         occupation="Paroni", title="Hifromin paroni",
+         faction="Smardu", alignment="Lawful Neutral", loc="loc_hifrom",
+         stat="monster:Noble", wealth="comfortable",
+         appearance="Karaistunut vuoristokääpiö.",
+         personality="Huolestunut alueensa turvallisuudesta.",
+         notes="Hifromin hallitsija; taistelee vuorelta saapuvia "
+               "pahantahtoisia olentoja vastaan.",
+         tags=["ruler"]),
+
+    # ===== OBLITUS =====
+    dict(id="npc_julus", name="Julus Sanace", race="Human", age="43",
+         occupation="Areenan johtaja", title="Nak Magnok Kor Adez -isäntä",
+         faction="Red Drob", alignment="Lawful Evil", loc="loc_aesica",
+         stat="monster:Noble", wealth="wealthy",
+         appearance="Valkoiset viikset, kalju, läpitunkeva katse, kauniisti "
+                     "koristeltu viitta.",
+         personality="Sileä, julma, sopimususkollinen.",
+         notes="Hallitsee gladiaattoriareenaa Erokme Belmudarin "
+               "pelinappulana; tehnyt sopimuksen Lucienin kanssa.",
+         tags=["arena", "antagonist"]),
+    dict(id="npc_gorkha", name="Gorkha Redbone", race="Orc", age="",
+         occupation="Sielukoneen valvoja", title="", faction="Red Drob",
+         alignment="Neutral Evil", loc="loc_aesica", stat="monster:Cultist",
+         wealth="modest",
+         appearance="Arpinen örkki, rituaalimerkkejä.",
+         personality="Fanaattinen, kuuliainen.",
+         notes="Erokmen sisäpiiriä. Kontrolloi areenalla kuolleiden "
+               "sielujen kanavointia titaani Papan koneistoon "
+               "(Convergence Engine).",
+         tags=["antagonist", "cult"]),
+    dict(id="npc_antos_orac", name="Antos Orac", race="Human", age="",
+         occupation="Kapinajohtaja", title="Vapaan Etelän Koalitio",
+         faction="Vapaan Etelän Koalitio", alignment="Chaotic Good",
+         loc="loc_aesica", stat="monster:Scout", wealth="modest",
+         appearance="Karaistunut kapinallinen.",
+         personality="Päättäväinen, oikeudenmukainen.",
+         notes="Johtaa vallattua Aesicaa yhdessä Kruskin kanssa; Vapaan "
+               "Etelän Koalition pääarkkitehti Efauxerin rinnalla.",
+         tags=["rebel", "ally"]),
+    dict(id="npc_borbelio", name="Borbelio Suuri", race="Goblin", age="",
+         occupation="Entinen johtaja", title="", faction="",
+         alignment="Neutral Evil", loc="loc_aklobar",
+         stat="monster:Goblin Boss", wealth="modest",
+         appearance="Ahne, koristeisiin pukeutunut gobliini.",
+         personality="Ahne, opportunistinen.",
+         notes="Aklobarin entinen johtaja; myi Chrith Laria Fadom "
+               "Jivfutille. Syrjäytetty \"Council of Cushionsin\" tieltä.",
+         tags=["criminal"]),
+    dict(id="npc_wok", name="Wok Metsam", race="Goblin", age="",
+         occupation="Kylänvanhin", title="Pulkerin vanhin", faction="",
+         alignment="Neutral", loc="loc_pulker", stat="monster:Goblin Boss",
+         wealth="poor",
+         appearance="Vanha, ryppyinen gobliini.",
+         personality="Huolestunut, sitkeä.",
+         notes="Johtaa Pulkeria; kamppailee sadon menetyksen, rottien ja "
+               "sumuhirviöiden kanssa.",
+         tags=["ruler"]),
+    dict(id="npc_longtongue", name="LongTounge", race="Grung / Sammakkokansa",
+         age="", occupation="Kylänvanhin", title="Kravokin vanhin",
+         faction="", alignment="Neutral", loc="loc_kravok",
+         stat="monster:Lizardfolk", wealth="poor",
+         appearance="Suuri sammakkomainen humanoidi, kirkkaat värit.",
+         personality="Suojeleva, hiljainen.",
+         notes="Kravokin suokylän johtaja; poikansa kaapattu Svik Fethen "
+               "toimesta. Stat-proxy: Lizardfolk.",
+         tags=["ruler"]),
+    dict(id="npc_nogjat", name="Nogjat Makohf Sheg", race="Orc", age="",
+         occupation="Leirinpäällikkö", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Chaotic Neutral", loc="loc_tukor_sheg",
+         stat="monster:Thug", wealth="poor",
+         appearance="Karaistunut aavikkosoturi.",
+         personality="Selviytyjä, ylpeä.",
+         notes="Johtaa Tukor Shegin leiriä; varustautuu Aesican kapinan "
+               "tueksi orjakauppiaita (Red Drob) vastaan.",
+         tags=["rebel"]),
+
+    # ===== OLD VAISIL & VAPAA ETELÄ =====
+    dict(id="npc_efauxer", name="Efauxer Redfei", race="Half-Orc", age="78",
+         occupation="Kreivi", title="Old Vaisilin kreivi",
+         faction="Vapaan Etelän Koalitio", alignment="Lawful Good",
+         loc="loc_old_vaisil", stat="monster:Noble", wealth="wealthy",
+         appearance="Vanha puoliörkki: vaaleat hiukset ja parta, pienet "
+                     "pyöreät lasit, punaiset liivit ja karhunpäinen "
+                     "kävelykeppi.",
+         personality="Maltillinen, viisas bisnesmies; lämmin sydän.",
+         notes="Kruskin isoisä. Rahoittaa salaa orjien vapautusta ja Vapaan "
+               "Etelän kapinaa Emnaria vastaan; koalition pääarkkitehti "
+               "Antos Oracin kanssa.",
+         tags=["ruler", "ally"]),
+    dict(id="npc_gilhard", name="Gilhard Blacktooth", race="Goblin", age="",
+         occupation="Oikeusjohtaja", title="Old Vaisilin oikeusjohtaja",
+         faction="Old Vaisil", alignment="Lawful Neutral",
+         loc="loc_old_vaisil", stat="monster:Goblin Boss", wealth="comfortable",
+         appearance="Terävähampainen, hyvin pukeutunut gobliini.",
+         personality="Tarkka, lainkuuliainen.",
+         notes="Hoitaa Old Vaisilin oikeuslaitosta.",
+         tags=["law"]),
+    dict(id="npc_gersnet", name="Gersnet", race="Human", age="",
+         occupation="Salamurhaaja", title="", faction="",
+         alignment="Neutral Evil", loc="", stat="monster:Assassin",
+         wealth="comfortable",
+         appearance="Huomaamaton, ammattimainen.",
+         personality="Kylmä, tehokas.",
+         notes="Yritti murhata Efauxerin; tappoi Blitz Walkerin.",
+         tags=["assassin"]),
+
+    # ===== RAVENSTONE =====
+    dict(id="npc_jugorai", name="Jugorai Millwind", race="Human (Vampyyri)",
+         age="", occupation="Paroni", title="Ravenstonen paroni",
+         faction="", alignment="Lawful Evil", loc="loc_ravenstone",
+         stat="monster:Vampire", wealth="wealthy",
+         appearance="Kalpea, arvokas paroni — kätkee vampyyriluontonsa.",
+         personality="Hallitseva, salaileva.",
+         notes="Salainen vampyyri Dimeriuksen vaikutuksen alaisena; "
+               "hallitsee Ravenstonea.",
+         tags=["ruler", "undead", "secret"]),
+    dict(id="npc_cora0", name="Cora 0 (Gaur Rakek)", race="Human", age="",
+         occupation="Alamaailman pomo", title="", faction="",
+         alignment="Neutral Evil", loc="loc_ravenstone", stat="monster:Thug",
+         wealth="comfortable",
+         appearance="Synkkä rikollispomo.",
+         personality="Häikäilemätön, varovainen.",
+         notes="Hallitsee Ravenstonen alamaailmaa.",
+         tags=["criminal"]),
+    dict(id="npc_dimerius", name="Dimerius Blackfeet", race="Vampire", age="",
+         occupation="Muinainen paha", title="", faction="",
+         alignment="Chaotic Evil", loc="loc_ravenstone",
+         stat="monster:Vampire Spellcaster", wealth="",
+         appearance="Muinainen, voimakas epäkuollut.",
+         personality="Petollinen, kärsivällinen.",
+         notes="Ravenstonen alla lymyävä muinainen uhka, jonka herääminen "
+               "pelaajien on estettävä.",
+         tags=["antagonist", "undead"]),
+
+    # ===== VILEMOUR =====
+    dict(id="npc_varros", name="Varros Greycairn", race="Human", age="",
+         occupation="Lordi", title="Vilemourin lordi",
+         faction="Brotherhood of Glorious Sun", alignment="Lawful Evil",
+         loc="loc_vilemour", stat="monster:Noble", wealth="wealthy",
+         appearance="Korskea, ylellisesti pukeutunut lordi.",
+         personality="Korruptoitunut, pelokas sätkynukke.",
+         notes="Hallitsee Vilemouria Brotherhoodin sätkynukkena; peittelee "
+               "kaupungin alla toimivaa biokoe-laboratoriota.",
+         tags=["ruler", "brotherhood"]),
+    dict(id="npc_xalyth", name="Xalyth", race="Drow", age="",
+         occupation="Tiedustelija", title="", faction="Aterterra",
+         alignment="Lawful Evil", loc="loc_vilemour", stat="monster:Spy",
+         wealth="modest",
+         appearance="Varjoissa liikkuva drow-tiedustelija.",
+         personality="Tarkkaavainen, kärsivällinen.",
+         notes="Salainen drow-tiedustelija Vilemourin alla.",
+         tags=["spy", "drow"]),
+
+    # ===== VEKSLA =====
+    dict(id="npc_artur_potvark", name="Artur Potvark", race="Human (Ghoul)",
+         age="", occupation="Paroni", title="Vekslan paroni", faction="",
+         alignment="Neutral Evil", loc="loc_veksla", stat="monster:Ghoul",
+         wealth="poor",
+         appearance="Entinen paroni, nyt ghoul.",
+         personality="Raadollinen, nälkäinen.",
+         notes="Vekslan entinen hallitsija, muuttunut ghouliksi; alueella "
+               "väliaikainen vanhinneuvosto.",
+         tags=["ruler", "undead"]),
+    dict(id="npc_idefian", name="Idefian", race="Dryad", age="",
+         occupation="Metsän suojelija", title="", faction="Metsän suojelijat",
+         alignment="Chaotic Neutral", loc="loc_veksla", stat="monster:Dryad",
+         wealth="",
+         appearance="Kaunis, uhkaava dryadi.",
+         personality="Kostonhaluinen luonnon puolustaja.",
+         notes="Johtaa eläimistä koostuvia \"Metsän suojelijoita\", jotka "
+               "hyökkäävät Vekslaan kostona paronin luonnontuhoista.",
+         tags=["fey"]),
+
+    # ===== HIJOIN / FAT CARP / ARIST / ZAPRUTAS =====
+    dict(id="npc_carl_gronmort", name="Carl Grönmort", race="Human", age="",
+         occupation="Kreivi", title="Hijoinin kreivi", faction="Tarmaas",
+         alignment="Lawful Neutral", loc="loc_hijoin", stat="monster:Noble",
+         wealth="wealthy",
+         appearance="Ankara aateliskreivi.",
+         personality="Itsepäinen, valtaa puolustava.",
+         notes="Hijoinin hallitsija; konfliktissa C.H.O.M.P.-tutkijoiden "
+               "kanssa.",
+         tags=["ruler"]),
+    dict(id="npc_beur", name="Beur Ironface", race="Dwarf", age="",
+         occupation="Kapteeni", title="Fat Carpin kapteeni", faction="",
+         alignment="Neutral", loc="loc_fat_carp", stat="monster:Thug",
+         wealth="modest",
+         appearance="Rautanaamainen, karski merikapteeni.",
+         personality="Suora, epäluuloinen.",
+         notes="Fat Carpin satamakylän johtaja.",
+         tags=["ruler"]),
+    dict(id="npc_cyra_nesh", name="Cyra Nesh", race="Human", age="",
+         occupation="Kaupunginjohtaja", title="Aristin johtaja",
+         faction="Fey Hunter's Lodge", alignment="Neutral",
+         loc="loc_arist", stat="monster:Scout", wealth="comfortable",
+         appearance="Kokenut metsästäjä-johtaja.",
+         personality="Käytännöllinen, valpas.",
+         notes="Johtaa Aristia ja Fey Hunter's Lodgea.",
+         tags=["ruler"]),
+    dict(id="npc_zapui", name="Zapui Gerzoip", race="Gnome", age="",
+         occupation="Pormestari", title="Zaprutaksen pormestari",
+         faction="", alignment="Neutral Good", loc="loc_zaprutas",
+         stat="monster:Noble", wealth="modest",
+         appearance="Innokas, öljytahrainen gnomi-insinööri.",
+         personality="Nokkela, yhteisöllinen.",
+         notes="Johtaa maanalaista gnomi-yhteisöä; kivihirviöt sabotoivat "
+               "kaasulinjoja.",
+         tags=["ruler"]),
+
+    # ===== FUNDARLA =====
+    dict(id="npc_endail", name="Endail Un'faelie", race="Elf", age="",
+         occupation="Neuvoston jäsen", title="Fundarlan neuvosto",
+         faction="Fundarlan neuvosto", alignment="Neutral Good",
+         loc="loc_zlalens", stat="monster:Archmage", wealth="wealthy",
+         appearance="Arvokas haltiamaagi.",
+         personality="Harkitseva, idealistinen.",
+         notes="Fundarlan neuvoston jäsen Zlalensissa.",
+         tags=["ruler", "scholar"]),
+    dict(id="npc_hailaf", name="Hailaf Moonborn", race="Elf", age="",
+         occupation="Ylipappi", title="Shanta-temppelin ylipappi",
+         faction="Shanta-temppeli", alignment="Lawful Good",
+         loc="loc_asmenor", stat="monster:Archmage", wealth="comfortable",
+         appearance="Seesteinen haltiapappi.",
+         personality="Rauhallinen, suojeleva.",
+         notes="Asmenorin Shanta-temppelin ylipappi.",
+         tags=["clergy", "ruler"]),
+    dict(id="npc_runlian", name="Runlian Dafou Visedimor", race="Half-Elf",
+         age="", occupation="Virkamies", title="Cifirin virkamies",
+         faction="Fundarla", alignment="Lawful Neutral", loc="loc_cifiri",
+         stat="monster:Noble", wealth="comfortable",
+         appearance="Hillitty, huoliteltu virkamies.",
+         personality="Velvollisuudentuntoinen.",
+         notes="Hallitsee Cifirin satamakaupunkia; uhattuna Hanons "
+               "Oldarfokin toimesta.",
+         tags=["ruler"]),
+    dict(id="npc_hanons", name="Hanons Oldarfok", race="Half-Elf", age="",
+         occupation="Kilpailija", title="", faction="",
+         alignment="Lawful Evil", loc="loc_cifiri", stat="monster:Spy",
+         wealth="comfortable",
+         appearance="Kunnianhimoinen, viekas.",
+         personality="Vallanhaluinen, juonitteleva.",
+         notes="Yrittää syrjäyttää Runlian Dafounin Cifirissä; kytköksiä "
+               "kidnappauksiin.",
+         tags=["rival"]),
+
+    # ===== ATERTERRA — Underdark / drow-huoneet =====
+    dict(id="npc_cazna", name="Cazna Icharyd", race="Drow", age="",
+         occupation="Matriarkka", title="Aterterran matriarkka",
+         faction="Talo Icharyd", alignment="Chaotic Evil",
+         loc="loc_zertath_lanke", stat="monster:Archmage", wealth="aristocratic",
+         appearance="Mahtava drow-matriarkka, hämähäkkikoristeet.",
+         personality="Ylpeä, fanaattinen, salaileva.",
+         notes="Zer'tath Lanken hallitsija. Vartioi tietämättään "
+               "maailmantitaani Garruthaa Faerzress-kristallien avulla.",
+         tags=["ruler", "drow"]),
+    dict(id="npc_altheon", name="Altheon Vylarien Baenrahel", race="Drow",
+         age="", occupation="Varjovizier", title="Lordi",
+         faction="Talo Baenrahel", alignment="Lawful Evil",
+         loc="loc_zertath_lanke", stat="monster:Assassin", wealth="wealthy",
+         appearance="Arvokas ja synkkä drow-mies; kantaa sinistä kristallia "
+                     "(sielufokus).",
+         personality="Kylmä, kunnianhimoinen, häikäilemätön.",
+         notes="Beatricen biologinen isä ja matriarkka Caznan Varjovizier. "
+               "Hylkäsi tyttärensä pitääkseen valta-asemansa.",
+         tags=["drow", "noble"]),
+    dict(id="npc_amalica", name="Amalica Coloara Despana", race="Drow",
+         age="", occupation="Ilharess", title="Talo Despanan ilharess",
+         faction="Talo Despana", alignment="Neutral Evil",
+         loc="loc_vlyn_darahl", stat="monster:Archmage", wealth="aristocratic",
+         appearance="Hallitseva drow-aatelisnainen.",
+         personality="Laskelmoiva kauppias-matriarkka.",
+         notes="Johtaa Talo Despanaa (Kaupan Kruunu) — maanalainen "
+               "logistiikka ja salainen pintakauppa.",
+         tags=["drow", "ruler"]),
+    dict(id="npc_zekarra", name="Zekarra Despana", race="Drow", age="",
+         occupation="Kaupunginjohtaja", title="Vlyn'Darahlin johtaja",
+         faction="Talo Despana", alignment="Neutral Evil",
+         loc="loc_vlyn_darahl", stat="monster:Archmage", wealth="wealthy",
+         appearance="Terävä-älyinen drow-kauppias.",
+         personality="Opportunistinen.",
+         notes="Hallitsee Vlyn'Darahlia, drowien pinnanporttia.",
+         tags=["drow", "ruler"]),
+    dict(id="npc_urlryn", name="Urlryn Vel'kath", race="Drow", age="",
+         occupation="Kaupunginjohtaja", title="Neldrath Zolin johtaja",
+         faction="Talo Vel'kath", alignment="Lawful Evil",
+         loc="loc_neldrath_zol", stat="monster:Assassin", wealth="wealthy",
+         appearance="Ankara drow-teollisuusruhtinas.",
+         personality="Kova, tuottoa tavoitteleva.",
+         notes="Hallitsee Neldrath Zolin hopeakaivoksia.",
+         tags=["drow", "ruler"]),
+    dict(id="npc_talice", name="Talice Vel'kath", race="Drow", age="",
+         occupation="Orjien vapauttaja", title="", faction="",
+         alignment="Chaotic Good", loc="loc_neldrath_zol", stat="monster:Spy",
+         wealth="modest",
+         appearance="Salaisuuksia kantava nuori drow.",
+         personality="Rohkea, myötätuntoinen.",
+         notes="Salainen orjien vapauttaja, joka operoi Neldrath Zolissa.",
+         tags=["drow", "rebel", "ally"]),
+    dict(id="npc_dantrag", name="Dantrag Dyrr", race="Drow", age="",
+         occupation="Sotapäällikkö", title="Ultrinnanin ilharn",
+         faction="Talo Dyrr", alignment="Lawful Evil", loc="loc_ultrinnan",
+         stat="monster:Death Knight", wealth="wealthy",
+         appearance="Massiivinen, panssaroitu drow-soturi.",
+         personality="Aggressiivinen, vallanhimoinen.",
+         notes="Velve Dro -armeijan komentaja; suunnittelee "
+               "sotilasvallankaappausta pintamaailmaa vastaan.",
+         tags=["drow", "military"]),
+    dict(id="npc_nhilymra", name="Nhilymra Zaer'vyn", race="Drow", age="",
+         occupation="Ilharess", title="Vorzhan ilharess",
+         faction="Talo Zaer'vyn", alignment="Lawful Evil", loc="loc_vorzha",
+         stat="monster:Assassin", wealth="wealthy",
+         appearance="Hiljainen, tappavan tyylikäs drow-matriarkka.",
+         personality="Salaperäinen, laskelmoiva.",
+         notes="Johtaa Vorzhan salamurhaaja- ja tiedusteluverkostoa "
+               "(Shadow Puppets).",
+         tags=["drow", "spy"]),
+    dict(id="npc_ahlysra", name="Ahlysra Szith'ryn", race="Drow", age="",
+         occupation="Oraakkeli", title="Sokea oraakkeli",
+         faction="Unenkulkijat", alignment="Neutral", loc="loc_eryn_zalas",
+         stat="monster:Archmage", wealth="modest",
+         appearance="Sokea drow-profeetta.",
+         personality="Mystinen, etäinen.",
+         notes="Eryn'Zalasin Unenkulkijoiden temppelin oraakkeli.",
+         tags=["drow", "oracle"]),
+    dict(id="npc_qilue", name="Qilué Xarann", race="Drow", age="",
+         occupation="Ilharess", title="Ithyl'Quorin ilharess",
+         faction="Talo Xarann", alignment="Chaotic Evil", loc="loc_ithyl_quor",
+         stat="monster:Archmage", wealth="wealthy",
+         appearance="Biomagian mestari, hämähäkkimäiset piirteet.",
+         personality="Kokeileva, julma.",
+         notes="Hallitsee Ithyl'Quoria, biologisen magian ja metamorfoosien "
+               "keskusta.",
+         tags=["drow", "ruler"]),
+    dict(id="npc_belgos", name="Belgos Dyrr", race="Drow", age="",
+         occupation="Komentaja", title="Dro'Khazunin komentaja",
+         faction="Talo Dyrr", alignment="Lawful Evil", loc="loc_dro_khazun",
+         stat="monster:Assassin", wealth="comfortable",
+         appearance="Karaistunut drow-upseeri.",
+         personality="Sotilaallinen, järkkymätön.",
+         notes="Komentaa Dro'Khazunia kääpiöiden vastaisella "
+               "sotavyöhykkeellä.",
+         tags=["drow", "military"]),
+    dict(id="npc_azzmere", name="Azzmere Dyrr", race="Drow", age="",
+         occupation="Kenraali", title="Kazrath Morin kenraali",
+         faction="Talo Dyrr", alignment="Lawful Evil", loc="loc_kazrath_mor",
+         stat="monster:Death Knight", wealth="wealthy",
+         appearance="Pelottava drow-kenraali.",
+         personality="Säälimätön orjapiiskuri.",
+         notes="Johtaa Kazrath Morin orjien keräyskeskusta.",
+         tags=["drow", "military"]),
+    dict(id="npc_malaggar", name="Malaggar Zaer'vyn", race="Drow", age="",
+         occupation="Agentti", title="Zar'Ghulin isäntä",
+         faction="Talo Zaer'vyn", alignment="Neutral Evil", loc="loc_zar_ghul",
+         stat="monster:Spy", wealth="comfortable",
+         appearance="Liukas mustapörssikauppias.",
+         personality="Ahne, vaarallinen.",
+         notes="Pyörittää Zar'Ghulin mustapörssiä.",
+         tags=["drow", "criminal"]),
+    dict(id="npc_drathir", name="Vanhus Drathir", race="Drow", age="",
+         occupation="Pakolaisvanhin", title="", faction="",
+         alignment="Neutral", loc="loc_golgoth_inil", stat="monster:Cultist",
+         wealth="poor",
+         appearance="Sairas, sinnikäs drow-vanhus.",
+         personality="Epätoivoinen, suojeleva.",
+         notes="Johtaa Golgoth-Inilin pakolaisleiriä Spore Rot -ruton "
+               "keskellä.",
+         tags=["drow", "refugee"]),
+    dict(id="npc_vaelra", name="Itiö-äiti Vaelra", race="Spore-thrall", age="",
+         occupation="Ruton ruumiillistuma", title="", faction="Brotherhood of Glorious Sun",
+         alignment="Neutral Evil", loc="loc_golgoth_inil",
+         stat="monster:Shambling Mound", wealth="",
+         appearance="Sienikasvun valtaama entinen drow.",
+         personality="Tahdoton ruton levittäjä.",
+         notes="Spore Rot -ruton ruumiillistuma Golgoth-Inilissä. "
+               "Stat-proxy: Shambling Mound.",
+         tags=["antagonist", "plague"]),
+
+    # ===== INFERNAL DISC =====
+    dict(id="npc_lucien", name="Lucien the Ledgerkeeper",
+         race="Celestial (Sopimusten puolijumala)", age="",
+         occupation="Puolijumala", title="Sopimusten valvoja",
+         faction="Infernal Disc", alignment="Lawful Neutral", loc="",
+         stat="monster:Planetar", wealth="aristocratic",
+         appearance="Ulkoisesti 25–30 v: hopeiset hiukset, kalpeat piirteet, "
+                     "elohopeasilmät; kantaa aina mustaa nahkaista "
+                     "kirjanpidon kansiota.",
+         personality="Kylmän tasapuolinen, ehdoton sopimusten valvoja.",
+         notes="Asuu Infernal Discillä ja valvoo kosmista tasapainoa ja "
+               "sielusopimuksia. Pitää Morgania, Dariusta ja Beatricea "
+               "tiukasti otteessaan diilien kautta. Stat-proxy: Planetar.",
+         tags=["demigod", "patron"]),
+    dict(id="npc_nexoth", name="Nexoth Khar (Arch-Key)", race="Devil", age="",
+         occupation="Arkkivaltias", title="Infernal Discin valtias",
+         faction="Infernal Disc", alignment="Lawful Evil", loc="",
+         stat="monster:Pit Fiend", wealth="aristocratic",
+         appearance="Mahtava arkkivaltias, avainten herra.",
+         personality="Ylimielinen, ehdoton.",
+         notes="Hallitsee avaimia muihin tasoihin ja sanelee Discin ylimmän "
+               "tahdon.",
+         tags=["devil", "ruler"]),
+    dict(id="npc_moraqel", name="Moraqel Inscriptus", race="Devil", age="",
+         occupation="Scribe of Chains", title="Vasen Käsi",
+         faction="Infernal Disc", alignment="Lawful Evil", loc="",
+         stat="monster:Horned Devil", wealth="wealthy",
+         appearance="Kahleisiin kietoutunut kirjuri-paholainen.",
+         personality="Pedantti, kostonhaluinen.",
+         notes="Hallitsee Chainledgeria ja Lucienin sopimusarkistojen "
+               "sivuhaaraa; asuu Chainledger-tornissa.",
+         tags=["devil"]),
+    dict(id="npc_sereth", name="Sereth Nyx", race="Devil", age="",
+         occupation="Whisper Censor", title="Lady",
+         faction="Infernal Disc", alignment="Lawful Evil", loc="",
+         stat="monster:Succubus", wealth="wealthy",
+         appearance="Sumun verhoama viettelijätär.",
+         personality="Salaileva, manipuloiva.",
+         notes="Vakoilun ja muistojen editoinnin mestari; asuu Veilmiren "
+               "sumussa.",
+         tags=["devil", "spy"]),
+
+    # ===== CELESTE (High Heavens) =====
+    dict(id="npc_seraphel", name="Seraphel", race="Angel", age="",
+         occupation="High Archivist", title="", faction="Celeste",
+         alignment="Lawful Good", loc="", stat="monster:Deva", wealth="",
+         appearance="Kirkas arkistonhoitaja-enkeli.",
+         personality="Tyyni, viisas.",
+         notes="Hallinnoi muistojen ja elämien elävää kirjastoa "
+               "(Arx Mnemosyne).",
+         tags=["celestial"]),
+    dict(id="npc_manifex", name="Manifex (Index of Hands)",
+         race="Angel-konstrukti", age="", occupation="Elävä hakemisto",
+         title="", faction="Celeste", alignment="Lawful Neutral", loc="",
+         stat="monster:Shield Guardian", wealth="",
+         appearance="Monikätinen enkeli-konstrukti.",
+         personality="Mekaaninen, järjestelmällinen.",
+         notes="Elävä hakemisto; taikoo lukemattomia Mage Hand -efektejä "
+               "kirjojen siirtelyyn. Stat-proxy: Shield Guardian.",
+         tags=["celestial", "construct"]),
+
+    # ===== FORT WHITESTONE & CALDIUS =====
+    dict(id="npc_richard_walker", name="Richard Walker", race="Human", age="",
+         occupation="Linnoituksen herra", title="Fort Whitestonen herra",
+         faction="Vapaan Etelän Koalitio", alignment="Neutral Good",
+         loc="loc_fort_whitestone", stat="monster:Noble", wealth="wealthy",
+         appearance="Karaistunut tutkimusmatkailija-aatelinen.",
+         personality="Päättäväinen, suojeleva.",
+         notes="Blitz Walkerin isä; hallitsee Fort Whitestonea ja sen "
+               "mekaanista armeijaa.",
+         tags=["ally", "ruler"]),
+    dict(id="npc_archibald", name="Archibald", race="Konstrukti", age="",
+         occupation="Hovimestari", title="", faction="Fort Whitestone",
+         alignment="Lawful Neutral", loc="loc_fort_whitestone",
+         stat="monster:Shield Guardian", wealth="",
+         appearance="Hieno mekaaninen hovimestari.",
+         personality="Kohtelias, tehokas.",
+         notes="Fort Whitestonen mekaaninen hovimestari; voi auttaa Blitzin "
+               "elvyttämisessä.",
+         tags=["construct"]),
+    dict(id="npc_duemor", name="Duemor Melkan", race="Dwarf", age="",
+         occupation="Pormestari / insinööri", title="Caldiuksen pormestari",
+         faction="", alignment="Neutral", loc="loc_caldius",
+         stat="monster:Noble", wealth="comfortable",
+         appearance="Nokinen kääpiöinsinööri.",
+         personality="Kekseliäs, eristäytyvä.",
+         notes="Johtaa vedenalaista Caldiusta; ryöstää laivoja kaasuttamalla "
+               "ne nukuksiin.",
+         tags=["ruler"]),
+
+    # ===== THE VEIL =====
+    dict(id="npc_ilyana", name="Ilyana \"Redact\" Silaqui", race="High Elf",
+         age="", occupation="Sensuroija", title="", faction="The Veil",
+         alignment="Lawful Neutral", loc="", stat="monster:Assassin",
+         wealth="comfortable",
+         appearance="Tarkka, huomaamaton korkeahaltia.",
+         personality="Kylmä, tehtäväkeskeinen.",
+         notes="Huippusalamurhaaja, joka \"korjaa historiaa\" pinnalta; "
+               "estää totuuden leviämisen.",
+         tags=["assassin", "secret"]),
+    dict(id="npc_seraphina", name="Seraphina", race="Half-Elf", age="",
+         occupation="Tutkija", title="", faction="The Veil",
+         alignment="Neutral Good", loc="", stat="monster:Archmage",
+         wealth="modest",
+         appearance="Salaisuuksia kantava tutkija.",
+         personality="Utelias, varovainen.",
+         notes="The Veilin tutkija ja Beatricen äiti.",
+         tags=["scholar", "secret"]),
+
+    # ===== PELAAJAHAHMOT (PC:t) =====
+    dict(id="npc_krusk", name="Krusk", race="Half-Orc", age="",
+         occupation="Barbaari", title="Aesican kapinan johtotähti",
+         faction="Vapaan Etelän Koalitio", alignment="Chaotic Good",
+         loc="loc_aesica", stat="", wealth="modest",
+         appearance="Atleettinen puoliörkki, selässä valtava pyöreä \"Pedon "
+                     "merkki\" (Veru).",
+         personality="\"Orjasta johtajaksi\" — sitkeä, suojeleva.",
+         notes="PELAAJAHAHMO. Entinen gladiaattori. Kantaa 3/5 Veru-ihon "
+               "palasista → keisari Tarquvas Redfein (henkiolento Oknar) "
+               "perillinen. Efauxerin pojanpoika; Emnarin ja Aequitaksen "
+               "jahtaama.",
+         tags=["player_character", "party"]),
+    dict(id="npc_beatrice", name="Beatrice", race="Half-Elf / Drow",
+         age="", occupation="Warlock / Sorcerer", title="",
+         faction="", alignment="Neutral", loc="",
+         stat="", wealth="modest",
+         appearance="Punaiset hiukset hopearaidoin, violetit drow-silmät.",
+         personality="Ryhmän taikatykistö ja diplomaatti; kostonhimon ja "
+                     "armon välissä.",
+         notes="PELAAJAHAHMO. Seraphinan ja Altheon Baenrahelin tytär; "
+               "drowien laissa Dobluth Dro (kuolemantuomio). Patronina "
+               "Lucien the Ledgerkeeper.",
+         tags=["player_character", "party"]),
+    dict(id="npc_venris", name="Venris Galanodel", race="Elf", age="",
+         occupation="Velho", title="", faction="Seekers of Demimaind",
+         alignment="Neutral Good", loc="", stat="", wealth="modest",
+         appearance="Vaalea haltia; tutkiva, analyyttinen.",
+         personality="Tarkkailija, ajan säröjen näkijä.",
+         notes="PELAAJAHAHMO. Äiti ylipapitar Nundai (MaRa Vael esta) on "
+               "mielisairaalassa. Kantaa Hatred of Time -kirjaa (ajan "
+               "manipulointi). Dihvikin oppilas; E.F.I.:n ja Veljeskunnan "
+               "jahtaama.",
+         tags=["player_character", "party"]),
+    dict(id="npc_balthazar", name="Balthazar / Zarxetharion", race="Devil",
+         age="", occupation="Warlock / \"lakimies\"", title="",
+         faction="Infernal Disc", alignment="Lawful Neutral", loc="",
+         stat="monster:Horned Devil", wealth="comfortable",
+         appearance="Hienostuneesti pukeutunut \"lakimies\"; imp-apuri "
+                     "Barbatos.",
+         personality="Byrokraatti ja porsaanreikien mestari.",
+         notes="PELAAJAHAHMO. Todellisuudessa Zarxetharion, entinen Infernal "
+               "Discin herttua, joka putosi Cunaeen. Suojelee ryhmää Codex "
+               "Aterterran porsaanrei'illä. Stat-proxy: Horned Devil.",
+         tags=["player_character", "party"]),
+    dict(id="npc_magnus", name="Magnus", race="Air Genasi", age="",
+         occupation="Lohikäärmeenhoitaja", title="", faction="",
+         alignment="Chaotic Good", loc="loc_antanard", stat="", wealth="modest",
+         appearance="Sinertäväihoinen, rento.",
+         personality="Vapaa sielu; vanhojen lakien sokea piste.",
+         notes="PELAAJAHAHMO. Kasvoi Antanardin hautomossa; yhteys "
+               "prismaattiseen lohikäärme Aurelithiin. Viholliset: Smardun "
+               "konservatiivit (F.E.R.I.D.) ja Veljeskunta.",
+         tags=["player_character", "party"]),
+    dict(id="npc_darius", name="Thomas / Darius Morin", race="Human", age="",
+         occupation="Rogue / artefaktinmetsästäjä", title="",
+         faction="", alignment="Chaotic Neutral", loc="loc_frand", stat="",
+         wealth="modest",
+         appearance="Keskikokoinen, smaragdinvihreät silmät; "
+                     "kaksoisidentiteetti.",
+         personality="Varovainen, selviytyjä.",
+         notes="PELAAJAHAHMO. Varasti T.R.A.:lta Heart Acceleratorin, joka "
+               "sykkii hänen rinnassaan. Rahgo \"Karhun\" ja Varjo Kaartin "
+               "jahtaama; sopimus Lucienin kanssa.",
+         tags=["player_character", "party"]),
+    dict(id="npc_padak", name="Padak", race="Tabaxi", age="",
+         occupation="Taistelija", title="", faction="",
+         alignment="Neutral", loc="", stat="", wealth="modest",
+         appearance="Arpinen tabaxi, sormia puuttuu, suonissa violetti "
+                     "korruptio (Verdant Shard Fever).",
+         personality="\"Perhe on kaikki\" — sitkeä, vaarallinen.",
+         notes="PELAAJAHAHMO. Entinen Red Dagger -palkkasoturi; murhasi "
+               "Emnar Redfein pojan. Vaimo Demanda ja poika Rafal vankina "
+               "Kharakissa; pään hinta 150 000 gp.",
+         tags=["player_character", "party"]),
+    dict(id="npc_kairon", name="Kairon / Rin", race="Changeling", age="",
+         occupation="Bardi / vakooja", title="", faction="Ember & Veil Company",
+         alignment="Chaotic Neutral", loc="", stat="monster:Doppelganger",
+         wealth="modest",
+         appearance="Esiintyy usein tiefling-bardina; muodonmuuttaja.",
+         personality="Identiteettikriisi: tähti vai näkymätön varjo?",
+         notes="PELAAJAHAHMO. Syntyi Goldfist-kääpiöperheeseen; liittyi "
+               "Ember & Veil -teatteriin; nyt Efauxerin palveluksessa "
+               "vakoojana. Stat-proxy: Doppelganger.",
+         tags=["player_character", "party"]),
+    dict(id="npc_ulv", name="Ulv", race="Firbolg", age="",
+         occupation="Druidi", title="", faction="",
+         alignment="Neutral Good", loc="", stat="", wealth="modest",
+         appearance="3-metrinen, sarvekas; sammalviitta.",
+         personality="Luonnon suojelija; pelkää metsän korruptiota.",
+         notes="PELAAJAHAHMO. \"Kolmen veren\" ruumiillistuma: Archfey "
+               "Eksothethin ja druidi Bram Boulderrootin poika; Aghuantin "
+               "siunaama. Yrittää pelastaa velipuolensa Caeltherionin.",
+         tags=["player_character", "party"]),
+    dict(id="npc_marduk", name="Marduk", race="Human", age="",
+         occupation="Paladin / Cleric / Fighter",
+         title="Praefectus Purificatorum", faction="Death's Vigil",
+         alignment="Lawful Neutral", loc="", stat="", wealth="modest",
+         appearance="Kalju, arpikuvioitu; peittää tunteensa.",
+         personality="Kurinalainen, salaileva.",
+         notes="PELAAJAHAHMO. Karkotettiin Kaernathista nuorena; menetti "
+               "Strange Owl -ryhmänsä ja ystävänsä Brynnin (Revenant). "
+               "\"Kävelevä sieluvankila\": titaani Pappa ja orjuuttaja "
+               "Erokme Belmudar. Vaimo/mentori Mirabel piilossa elossa; "
+               "Gaius Marad manipuloi häntä.",
+         tags=["player_character", "party"]),
+    dict(id="npc_morgan", name="Morgan", race="Goblin", age="",
+         occupation="Bardi / Hexblade", title="", faction="",
+         alignment="Neutral Evil", loc="", stat="monster:Wight",
+         wealth="poor",
+         appearance="Entinen Dikrak Dikoz -muusikko, käytti Alter Self "
+                     "-maskia näyttääkseen puolituiselta.",
+         personality="Sieluton, pimeän voiman ohjaama.",
+         notes="PELAAJAHAHMO (kuollut/epäkuollut). Teki sopimuksen Oberionin "
+               "kanssa kostonsa tähden; kantaa Clavis-miekkaa (avain titaanin "
+               "lukkoihin). Stat-proxy: Wight.",
+         tags=["player_character", "party", "undead"]),
+    dict(id="npc_blitz", name="Blitz Walker", race="Human", age="",
+         occupation="Gunslinger", title="", faction="",
+         alignment="Neutral Good", loc="loc_fort_whitestone", stat="",
+         wealth="modest",
+         appearance="Tutkimusmatkailija-asuinen ampuja.",
+         personality="Periksiantamaton tutkija.",
+         notes="PELAAJAHAHMO (kuollut/lepotilassa). Walkerin suvun perillinen "
+               "(Occulo-tutkimus); menetti perheensä Honpassa Veljeskunnan "
+               "vuoksi. Gersnet tappoi hänet; elvytys mahdollista Fort "
+               "Whitestonella (Archibald).",
+         tags=["player_character", "party"]),
+]
+
+
+# --------------------------------------------------------------------- #
+# NPC↔NPC -suhteet — (src_id, target_id, kind, notes)
+# kind ∈ family|mentor|protege|ally|rival|enemy|patron|subordinate|lover|other
+# --------------------------------------------------------------------- #
+NPC_LINKS: List[tuple] = [
+    # Redfei-suku & Vapaa Etelä
+    ("npc_efauxer", "npc_krusk", "family", "Kruskin isoisä."),
+    ("npc_krusk", "npc_efauxer", "family", "Isoisä ja liittolainen."),
+    ("npc_emnar", "npc_efauxer", "enemy", "Vihollisia; eri linjat."),
+    ("npc_emnar", "npc_krusk", "enemy", "Jahtaa Kruskia Veru-palojen takia."),
+    ("npc_efauxer", "npc_antos_orac", "ally", "Vapaan Etelän Koalitio."),
+    ("npc_antos_orac", "npc_krusk", "ally", "Johtavat vallattua Aesicaa."),
+    ("npc_efauxer", "npc_kairon", "subordinate", "Kairon on Efauxerin vakooja."),
+    # Dath
+    ("npc_giurun", "npc_emnar", "ally", "Molemmat Dathin sisäpiiriä."),
+    ("npc_giurun", "npc_lysandra", "subordinate",
+     "Ohjaa Lysandraa telepatialla kulissien takaa."),
+    ("npc_giurun", "npc_dihvik", "enemy", "Soluttautunut Seekersiin; vihollinen."),
+    # Seekers / mentorit
+    ("npc_dihvik", "npc_venris", "protege", "Venriksen mentori."),
+    ("npc_venris", "npc_dihvik", "mentor", "Syvä kunnioitus mentoria kohtaan."),
+    ("npc_agustion", "npc_dihvik", "ally", "Etsii epätoivoisesti ystäväänsä."),
+    ("npc_aedria", "npc_magnus", "protege", "Magnuksen mentori Antanardissa."),
+    ("npc_magnus", "npc_aedria", "mentor", "Mentori hautomon syvyyksissä."),
+    # Beatrice / drow
+    ("npc_altheon", "npc_beatrice", "family",
+     "Biologinen isä; hylkäsi tyttärensä."),
+    ("npc_beatrice", "npc_altheon", "enemy", "Hylkäävä isä — kostonkohde."),
+    ("npc_seraphina", "npc_beatrice", "family", "Äiti (The Veil)."),
+    ("npc_cazna", "npc_altheon", "subordinate", "Altheon on matriarkan Varjovizier."),
+    # Lucienin sielusopimukset
+    ("npc_lucien", "npc_beatrice", "patron", "Patroni; sielusopimus."),
+    ("npc_lucien", "npc_darius", "patron", "Epätoivoinen diili."),
+    ("npc_lucien", "npc_morgan", "patron", "Kuolemansopimus."),
+    ("npc_lucien", "npc_julus", "other", "Sopimus areenan sieluista."),
+    # Famiglia vs. Darius
+    ("npc_rahgo", "npc_darius", "enemy", "Haluaa Heart Acceleratorin takaisin."),
+    ("npc_zaira", "npc_darius", "enemy", "Famiglian vaarallinen vihollinen."),
+    ("npc_zaira", "npc_rahgo", "subordinate", "Famiglian Consigliere."),
+    ("npc_nilf", "npc_darius", "enemy", "E.F.I. jahtaa Dariusta."),
+    # Death's Vigil
+    ("npc_gaius_marad", "npc_marduk", "patron", "Esimies; manipuloi Mardukia."),
+    ("npc_marduk", "npc_gaius_marad", "subordinate", "Vigilin alainen."),
+    # Golden Gear ↔ Emnar
+    ("npc_heinrich", "npc_emnar", "ally", "Rahoittaa Emnaria vallasta."),
+    # Aesica sielukone
+    ("npc_julus", "npc_gorkha", "ally", "Areenan sielukoneen sisäpiiri."),
+    # PC-ryhmän sisäiset suhteet
+    ("npc_krusk", "npc_padak", "ally", "Jakavat \"perhe on kaikki\" -mielen."),
+    ("npc_padak", "npc_krusk", "ally", "Hengenheimolainen."),
+    ("npc_krusk", "npc_beatrice", "ally", "Ymmärtävät toistensa tuskan."),
+    ("npc_beatrice", "npc_balthazar", "ally", "Lucienin pelinappuloita; lakimies."),
+    ("npc_magnus", "npc_balthazar", "rival", "\"Vapaus vs. laki\"."),
+    ("npc_balthazar", "npc_magnus", "rival", "\"Lakitekninen anomalia\"."),
+    ("npc_padak", "npc_darius", "rival", "Epäluuloinen suhde."),
+    ("npc_ulv", "npc_padak", "ally", "Kantavat kumpikin kirousta."),
+    ("npc_kairon", "npc_ulv", "ally", "Kunnioittaa Ulvin rehellisyyttä."),
+    ("npc_venris", "npc_blitz", "ally", "Tutkijakollega."),
+    ("npc_kairon", "npc_balthazar", "ally", "Täydentää lakimiestaktiikkaa."),
+    # Blitz
+    ("npc_richard_walker", "npc_blitz", "family", "Blitzin isä."),
+    ("npc_gersnet", "npc_blitz", "enemy", "Tappoi Blitzin."),
+    ("npc_gersnet", "npc_efauxer", "enemy", "Salamurhayritykset Efauxeria vastaan."),
+]
+
+
+# --------------------------------------------------------------------- #
+# Builders
+# --------------------------------------------------------------------- #
+def build_lore_locations(world) -> None:
+    """Add every canon city/independent location to ``world.locations``
+    and wire it under the right country location (Underdark cities under
+    Aterterra). Idempotent — skips ids that already exist."""
+    from data.world import Location
+    for c in CITIES:
+        if c["loc_id"] in world.locations:
+            continue
+        parent = KINGDOM_LOC.get(c["kingdom"], "") if c["kingdom"] else ""
+        tags = [c["key"]]
+        if c["kingdom"]:
+            tags.append(c["kingdom"])
+        if c.get("biome"):
+            tags.append(c["biome"])
+        loc = Location(
+            id=c["loc_id"], name=c["name"], location_type=c["type"],
+            description=c["description"], parent_id=parent,
+            population=c.get("population", 0),
+            religion=c.get("religion", ""),
+            known_for=c.get("industry", ""),
+            tags=tags,
+        )
+        world.locations[loc.id] = loc
+        if parent and parent in world.locations:
+            if loc.id not in world.locations[parent].children_ids:
+                world.locations[parent].children_ids.append(loc.id)
+
+
+def build_lore_npcs(world) -> None:
+    """Add every canon NPC to ``world.npcs``, place them at their location,
+    seed wealth, and wire stat links. Idempotent by id."""
+    from data.world import NPC
+    from data.wealth import set_npc_coins, suggest_coins_for_wealth_tier
+    for spec in NPCS:
+        nid = spec["id"]
+        if nid in world.npcs:
+            continue
+        loc_id = spec.get("loc", "") or ""
+        npc = NPC(
+            id=nid, name=spec["name"], race=spec.get("race", ""),
+            age=spec.get("age", ""), appearance=spec.get("appearance", ""),
+            personality=spec.get("personality", ""),
+            occupation=spec.get("occupation", ""),
+            title=spec.get("title", ""), faction=spec.get("faction", ""),
+            alignment=spec.get("alignment", ""), notes=spec.get("notes", ""),
+            location_id=loc_id, stat_source=spec.get("stat", ""),
+            tags=list(spec.get("tags", [])), alive=True, active=True,
+        )
+        tier = spec.get("wealth", "")
+        if tier:
+            set_npc_coins(npc, suggest_coins_for_wealth_tier(tier))
+        world.npcs[nid] = npc
+        if loc_id and loc_id in world.locations:
+            if nid not in world.locations[loc_id].npc_ids:
+                world.locations[loc_id].npc_ids.append(nid)
+
+
+def wire_lore_relationships(world) -> None:
+    """Apply NPC↔NPC links (Phase 39 ``npc_links``). Only adds a link if
+    both endpoints exist and it isn't already present."""
+    for src, tgt, kind, note in NPC_LINKS:
+        npc = world.npcs.get(src)
+        if npc is None or tgt not in world.npcs:
+            continue
+        if any(l.get("target_id") == tgt and l.get("kind") == kind
+               for l in npc.npc_links):
+            continue
+        npc.npc_links.append({"target_id": tgt, "kind": kind, "notes": note})
+
+
+def add_lore_cities_to_kingdoms(camp) -> None:
+    """Register every canon surface/Underdark city as a CityEntry on its
+    kingdom and cross-link the World location id. Idempotent by key."""
+    from data import kingdoms as kg
+    for c in CITIES:
+        if not c["kingdom"]:
+            continue
+        existing = kg.find_city(camp, c["kingdom"], c["key"])
+        if existing is not None:
+            if not existing.location_id:
+                existing.location_id = c["loc_id"]
+            continue
+        kg.add_city(
+            camp, c["kingdom"], c["key"], c["name"],
+            is_capital=c.get("is_capital", False),
+            location_id=c["loc_id"],
+            description=c["description"][:240],
+            population=c.get("population", 0),
+            biome=c.get("biome", ""),
+            primary_industry=c.get("industry", ""),
+            religion=c.get("religion", ""),
+            ruler_npc_id=c.get("ruler", ""),
+        )
+
+
+def augment_campaign(camp, world) -> None:
+    """One-stop entry: build all canon locations + NPCs + relationships on
+    ``world`` and register the cities on the campaign's kingdoms. The
+    caller is responsible for (re)serialising ``world`` into
+    ``camp.world_data`` afterwards. Organisations are added separately via
+    :func:`lore_organisations`."""
+    build_lore_locations(world)
+    build_lore_npcs(world)
+    wire_lore_relationships(world)
+    add_lore_cities_to_kingdoms(camp)
+
+
+# --------------------------------------------------------------------- #
+# Organisations
+# --------------------------------------------------------------------- #
+def lore_organisations():
+    """Return the list of canon organisations to add alongside the seeded
+    Brotherhood. Members link to World NPC ids where one exists."""
+    from data.organizations import (
+        Organisation, OrganisationRank, OrganisationRole, OrganisationMember,
+    )
+
+    dath = Organisation(
+        key="dath", name="Dath",
+        kind="secret_society",
+        description="Haltioiden ylivaltaa ajava salaseura ja kampanjan "
+                    "pääantagonisti. Tavoite: ladata sieluenergiaa Zlalensin "
+                    "huippukristalliin, herättää maailmantitaani Garruth ja "
+                    "vallata manner. Soluttautunut kaikkien valtakuntien "
+                    "hallintoon ja Brotherhoodiin.",
+        motto="Yksi veri, yksi tahto.",
+        secret=True, alignment="lawful evil",
+        headquarters_city="zlalens", headquarters_kingdom="fundarla",
+        operating_kingdoms=["fundarla", "oblitus", "tarmaas", "smardu"],
+        operating_cities=["zlalens", "iklence"],
+        ranks=[
+            OrganisationRank(key="hidden_hand", name="Kätketty käsi", tier=1,
+                             description="Todellinen johtaja."),
+            OrganisationRank(key="archon", name="Arkkimanipulaattori", tier=2,
+                             description="Sisäpiirin pelinappuloiden ohjaaja."),
+            OrganisationRank(key="agent", name="Agentti", tier=3,
+                             description="Soluttautunut hallintoon."),
+        ],
+        roles=[
+            OrganisationRole(key="puppeteer", name="Nukettaja",
+                             description="Ohjaa kulissijärjestöjä."),
+            OrganisationRole(key="soulwright", name="Sielunkerääjä",
+                             description="Kerää sieluenergiaa (Veru)."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_giurun", npc_name="Giurun Kalfantan",
+                               rank_key="hidden_hand", role_keys=["puppeteer"],
+                               kingdom_key="fundarla", city_key="zlalens",
+                               notes="Dathin todellinen johtaja."),
+            OrganisationMember(npc_id="npc_emnar", npc_name="Emnar Redfei",
+                               rank_key="archon", role_keys=["soulwright"],
+                               kingdom_key="oblitus", city_key="iklence",
+                               notes="Sielujen kerääjä, Oblituksen kuningas."),
+            OrganisationMember(npc_id="npc_heinrich", npc_name="Heinrich Stormhold",
+                               rank_key="agent", role_keys=[],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="Rahoittaja Golden Gearin kautta."),
+        ],
+        relations={"brotherhood_of_glorious_sun": "controls"},
+        color=(150, 90, 200),
+        tags=["antagonist", "secret_society", "mastermind"],
+    )
+
+    deaths_vigil = Organisation(
+        key="deaths_vigil", name="Death's Vigil",
+        kind="order",
+        description="Parin sadan hengen itsenäinen ritarikunta, joka "
+                    "suojelee kuoleman pyhyyttä ja tuhoaa epäkuolleita ja "
+                    "nekromantiaa.",
+        motto="Kuolema on pyhä; sitä ei myydä.",
+        secret=False, alignment="lawful neutral",
+        headquarters_city="pinwud", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas", "oblitus"],
+        operating_cities=["pinwud"],
+        ranks=[
+            OrganisationRank(key="magnus_custos", name="Magnus Custos", tier=1,
+                             description="Ylin vartija."),
+            OrganisationRank(key="praefectus", name="Praefectus", tier=2,
+                             description="Puhdistajien komentaja."),
+            OrganisationRank(key="custos", name="Custos", tier=4,
+                             description="Vartija-ritari."),
+        ],
+        roles=[
+            OrganisationRole(key="purificator", name="Puhdistaja",
+                             description="Tuhoaa epäkuolleita."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_gaius_marad", npc_name="Gaius Marad",
+                               rank_key="magnus_custos", role_keys=[],
+                               kingdom_key="tarmaas", city_key="pinwud",
+                               notes="Järjestön johtaja."),
+            OrganisationMember(npc_id="npc_marduk", npc_name="Marduk",
+                               rank_key="praefectus", role_keys=["purificator"],
+                               kingdom_key="tarmaas",
+                               notes="Praefectus Purificatorum; pelaajahahmo."),
+        ],
+        relations={},
+        color=(180, 180, 200),
+        tags=["order", "ally"],
+    )
+
+    seekers = Organisation(
+        key="seekers_of_demimaind", name="Seekers of Demimaind",
+        kind="academy",
+        description="\"Jumalten tiedon etsijät\" — Cunaen älykkäin "
+                    "tutkijajärjestö, jota johtaa seitsemän suurmestarin "
+                    "Council of Great Minds. Dath on soluttautunut tähän.",
+        motto="Tieto ennen jumalia.",
+        secret=False, alignment="neutral good",
+        headquarters_kingdom="fundarla",
+        operating_kingdoms=["fundarla", "tarmaas", "smardu"],
+        operating_cities=["zlalens", "faharn"],
+        ranks=[
+            OrganisationRank(key="grandmaster", name="Suurmestari", tier=1,
+                             description="Council of Great Minds (7)."),
+            OrganisationRank(key="researcher", name="Tutkija", tier=4,
+                             description="Akatemian tutkija."),
+        ],
+        roles=[],
+        members=[
+            OrganisationMember(npc_id="npc_dihvik", npc_name="Dihvik Mevraft",
+                               rank_key="grandmaster", role_keys=[],
+                               notes="Deatariksen rehtori; Dathin vankina."),
+            OrganisationMember(npc_id="npc_nimri", npc_name="Nimri Greentop",
+                               rank_key="grandmaster", role_keys=[],
+                               kingdom_key="fundarla", city_key="faharn",
+                               notes="Saideneria-akatemian rehtori."),
+            OrganisationMember(npc_id="npc_giurun", npc_name="Giurun Kalfantan",
+                               rank_key="grandmaster", role_keys=[],
+                               kingdom_key="fundarla", city_key="zlalens",
+                               notes="Soluttautunut Dathin agentti."),
+        ],
+        relations={"dath": "infiltrated_by"},
+        color=(90, 160, 200),
+        tags=["academy", "scholar"],
+    )
+
+    veil = Organisation(
+        key="the_veil", name="The Veil",
+        kind="secret_society",
+        description="Totuutta etsivä salaseura. Ainoa ryhmä, joka tietää, "
+                    "että Cunaen jumalat ovat vain heijastuksia ja että "
+                    "drow-uskonto on valhetta (Garruthan unia). Estää tiedon "
+                    "leviämisen salamurhilla.",
+        motto="Verho suojaa heikkoja totuudelta.",
+        secret=True, alignment="lawful neutral",
+        operating_kingdoms=["aterterra", "fundarla", "tarmaas"],
+        ranks=[
+            OrganisationRank(key="censor", name="Sensuroija", tier=2,
+                             description="Korjaa historiaa."),
+        ],
+        roles=[
+            OrganisationRole(key="researcher", name="Tutkija",
+                             description="Kaivaa kiellettyä totuutta."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_ilyana",
+                               npc_name="Ilyana \"Redact\" Silaqui",
+                               rank_key="censor", role_keys=[],
+                               notes="Huippusalamurhaaja-sensuroija."),
+            OrganisationMember(npc_id="npc_seraphina", npc_name="Seraphina",
+                               role_keys=["researcher"],
+                               notes="Tutkija; Beatricen äiti."),
+        ],
+        relations={},
+        color=(120, 120, 140),
+        tags=["secret_society"],
+    )
+
+    famiglia = Organisation(
+        key="famiglia_dell_orso", name="La Famiglia dell'Orso",
+        kind="criminal",
+        description="Frandin rikollissyndikaatti. Hallitsee salakuljetusta, "
+                    "suojelurahoja ja yrittää kaapata T.R.A.:n teknologiaa.",
+        motto="Karhu muistaa velkansa.",
+        secret=True, alignment="neutral evil",
+        headquarters_city="frand", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas"], operating_cities=["frand"],
+        ranks=[
+            OrganisationRank(key="capo_dei_capi", name="Capo dei Capi", tier=1,
+                             description="Pomojen pomo."),
+            OrganisationRank(key="consigliere", name="Consigliere", tier=2,
+                             description="Neuvonantaja."),
+            OrganisationRank(key="soldato", name="Soldato", tier=4,
+                             description="Jalkaväki."),
+        ],
+        roles=[
+            OrganisationRole(key="spymaster", name="Vakoilupäällikkö",
+                             description="Salakuuntelu ja solutus."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_rahgo", npc_name="Rahgo \"Karhu\"",
+                               rank_key="capo_dei_capi", role_keys=[],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="Kyborgipomo, augmentoidut rautakourat."),
+            OrganisationMember(npc_id="npc_zaira", npc_name="Zaira \"La Volpe\"",
+                               rank_key="consigliere", role_keys=["spymaster"],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="Consigliere; vakoilu ja salamurhat."),
+        ],
+        relations={},
+        color=(120, 80, 60),
+        tags=["criminal"],
+    )
+
+    efi = Organisation(
+        key="efi", name="E.F.I. (External First Investigation)",
+        kind="agency",
+        description="Tarmaaksen salainen valtiopoliisi. Tutkii taikuuteen ja "
+                    "teknologiaan liittyviä rikoksia; pitää yllä järjestystä. "
+                    "Sisältää salaisen Department 0:n.",
+        motto="Järjestys ennen totuutta.",
+        secret=False, alignment="lawful neutral",
+        headquarters_city="frand", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas"], operating_cities=["frand"],
+        ranks=[
+            OrganisationRank(key="director", name="Johtaja", tier=1,
+                             description="E.F.I.:n johtaja."),
+            OrganisationRank(key="aspicio", name="Aspicio", tier=4,
+                             description="Kenttäagentti."),
+        ],
+        roles=[],
+        members=[
+            OrganisationMember(npc_id="npc_nilf", npc_name="Nilf Duvlae",
+                               rank_key="director", role_keys=[],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="E.F.I.:n johtaja."),
+            OrganisationMember(npc_id="npc_sam_undercave", npc_name="Sam Undercave",
+                               rank_key="aspicio", role_keys=[],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="Tiro Aspicio (taso 4)."),
+            OrganisationMember(npc_id="npc_eemil", npc_name="Eemil Jakson",
+                               rank_key="aspicio", role_keys=[],
+                               kingdom_key="tarmaas", city_key="frand",
+                               notes="Department 0 — Agentti 3."),
+        ],
+        relations={},
+        color=(90, 110, 140),
+        tags=["agency", "law"],
+    )
+
+    aequitas = Organisation(
+        key="aequitas", name="Aequitas & The Boundless",
+        kind="order",
+        description="Cunaen ehdottoman Pää Codexin vartijat omalla "
+                    "ylikansallisella saarellaan. Erikoisjoukot, The "
+                    "Boundless, voivat ohittaa minkä tahansa valtion lait ja "
+                    "tuomita maailman tasapainon uhkaajat Nullifikaatioon.",
+        motto="Tasapaino ennen kaikkea.",
+        secret=False, alignment="lawful neutral",
+        operating_kingdoms=["tarmaas", "fundarla", "smardu", "aterterra",
+                            "oblitus"],
+        ranks=[
+            OrganisationRank(key="arbiter", name="Arbiter", tier=1,
+                             description="Aequitaksen tuomari."),
+            OrganisationRank(key="boundless", name="Boundless", tier=3,
+                             description="Lain rajaton käsi."),
+        ],
+        roles=[],
+        members=[],
+        relations={},
+        color=(200, 200, 210),
+        tags=["order", "law", "neutral"],
+    )
+
+    scale_riders = Organisation(
+        key="unhael_scale_riders", name="Unhael Scale Riders",
+        kind="order",
+        description="Smardun lohikäärmeratsastajat ja -ekologit. Kasvattavat "
+                    "ja vartioivat lohikäärmeitä Antanardin hautomossa. "
+                    "Konservatiivinen siipi F.E.R.I.D. valvoo vanhoja lakeja.",
+        motto="Suomu ja teräs.",
+        secret=False, alignment="lawful neutral",
+        headquarters_city="antanard", headquarters_kingdom="smardu",
+        operating_kingdoms=["smardu"], operating_cities=["antanard", "juamore"],
+        ranks=[
+            OrganisationRank(key="councillor", name="Neuvoston jäsen", tier=2,
+                             description="Lohikäärme-ekologi."),
+            OrganisationRank(key="overseer", name="Ylivalvoja", tier=3,
+                             description="Hautomon valvoja."),
+        ],
+        roles=[],
+        members=[
+            OrganisationMember(npc_id="npc_aedria", npc_name="Aedria Fegel",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="smardu", city_key="antanard",
+                               notes="Lohikäärme-ekologi; Magnuksen mentori."),
+            OrganisationMember(npc_id="npc_jogra", npc_name="Jogra Greev",
+                               rank_key="overseer", role_keys=[],
+                               kingdom_key="smardu", city_key="antanard",
+                               notes="Hautomolaitoksen ylivalvoja (F.E.R.I.D.)."),
+        ],
+        relations={},
+        color=(120, 140, 120),
+        tags=["order", "dragons"],
+    )
+
+    return [dath, deaths_vigil, seekers, veil, famiglia, efi, aequitas,
+            scale_riders]
+
+
+def add_lore_organisations(camp) -> None:
+    """Append canon organisations to the campaign (skipping any whose key
+    already exists). Call after ``ensure_organisations_on_campaign``."""
+    from data import organizations as orgs
+    existing = {o.key for o in orgs.ensure_organisations_on_campaign(camp)}
+    runtime = camp.organisations
+    for org in lore_organisations():
+        if org.key not in existing:
+            runtime.append(org)

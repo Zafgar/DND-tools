@@ -493,6 +493,11 @@ def build_novus_somnium() -> Campaign:
     # to their actual Location ids so the wealth aggregator,
     # organisation navigation and quest log all have data on day one.
     world = _build_world()
+    # Cunae canon lore — add all kingdom cities, Underdark settlements,
+    # named NPCs (with stat links + relationships) and register the
+    # cities on the kingdoms. Additive on top of the starter content.
+    from data import novus_somnium_lore as _lore
+    _lore.augment_campaign(camp, world)
     camp.world_data = _serialize_world_for_campaign(world)
     # Cross-link: Frand city → world location id
     tarmaas = _kg.find_kingdom(camp, "tarmaas")
@@ -504,6 +509,7 @@ def build_novus_somnium() -> Campaign:
 
     _orgs.ensure_organisations_on_campaign(camp)
     _wire_brotherhood_npcs(camp)
+    _lore.add_lore_organisations(camp)
     _orgs.sync_organisations_to_campaign(camp)
     return camp
 
