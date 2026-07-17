@@ -316,6 +316,12 @@ class BattleSystem:
             # Auto-remove condition if it matches effect name (e.g. Guiding Bolt)
             if current.has_condition(eff):
                 current.remove_condition(eff)
+            # PHB p.250: when Haste ends, the target loses a turn to
+            # lethargy — also on natural expiry, not just when the
+            # caster's concentration breaks.
+            if eff == "Haste":
+                current.apply_haste_lethargy()
+                self.log(f"  [HASTE] {current.name} is overcome by lethargy!")
 
         # Regeneration at start of turn (Vampire, Troll, Phoenix, etc.)
         if current.hp > 0:
@@ -620,20 +626,21 @@ class BattleSystem:
 
     def check_opportunity_attacks(self, mover: Entity, old_x: float, old_y: float):
         """Check if any hostile can make an OA against mover."""
-        if mover.is_disengaging:
-            return []
-            
         # Forced movement (e.g. Grappled/dragged, Shoved) does not provoke OAs
         # If speed is 0 (Grappled), they can't move voluntarily, so it must be forced.
         if mover.has_condition("Grappled") or mover.has_condition("Restrained") or mover.has_condition("Stunned"):
             return []
-            
+
         oas = []
         for e in self.entities:
             if e == mover or e.hp <= 0 or e.reaction_used:
                 continue
             if e.is_player == mover.is_player:
                 continue  # same team
+            # Disengage prevents OAs — except against a Sentinel-feat
+            # watcher (creatures ignore Disengage for Sentinel's OA).
+            if mover.is_disengaging and not e.has_feature("sentinel"):
+                continue
             
             # Calculate reach in squares (1 square = 5 ft)
             reach_squares = e.get_max_melee_reach() / 5.0
@@ -934,21 +941,25 @@ class BattleSystem:
         speed / amphibious / water_breathing) ignore the water penalty."""
         if entity and entity.is_flying:
             return 1.0
+        # PHB p.191: moving while prone = crawling, every foot costs one
+        # extra foot (doubles again in difficult terrain via the stack
+        # below). Prone no longer halves speed itself.
+        crawl_mult = 2.0 if (entity and entity.has_condition("Prone")) else 1.0
         t = self.get_terrain_at(int(x), int(y))
         if t:
             # Water: aquatic creatures move at full speed; everyone else
             # pays the PHB p.182 swim penalty (half speed).
             if t.terrain_type in ("water", "deep_water"):
                 if entity and entity.is_aquatic:
-                    return 1.0
-                return 2.0
+                    return crawl_mult
+                return 2.0 * crawl_mult
             if t.is_difficult:
-                return 2.0
+                return 2.0 * crawl_mult
             if t.is_climbable and entity and entity.is_climbing:
                 # Climbing without climb speed = half speed (2x cost)
                 if entity.stats.climb_speed <= 0:
-                    return 2.0
-        return 1.0
+                    return 2.0 * crawl_mult
+        return crawl_mult
 
     def get_entity_at(self, x: float, y: float) -> Optional[Entity]:
         for e in self.entities:

@@ -135,6 +135,14 @@ CONDITION_EFFECTS = {
         "attack_advantage": True,
         "attacked_disadvantage": True,
     },
+    # Haste aftermath (PHB p.250): when Haste ends, the target "can't
+    # move or take actions until after its next turn". Applied together
+    # with a matching 2-tick active_effect that auto-expires.
+    "Lethargic": {
+        "no_actions": True,
+        "no_reactions": True,
+        "speed_zero": True,
+    },
     "Paralyzed": {
         "incapacitated": True,
         "no_actions": True,
@@ -195,11 +203,11 @@ CONDITION_EFFECTS = {
     },
 }
 
-INCAPACITATING_CONDITIONS = {"Incapacitated", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
-SPEED_ZERO_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
+INCAPACITATING_CONDITIONS = {"Incapacitated", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished", "Lethargic"}
+SPEED_ZERO_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished", "Lethargic"}
 
 # Conditions that prevent standing from Prone (because speed is 0)
-PREVENTS_STANDUP_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished"}
+PREVENTS_STANDUP_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished", "Lethargic"}
 
 # Conditions that require a source entity for their effects (e.g. Frightened, Charmed)
 SOURCE_DEPENDENT_CONDITIONS = {"Frightened", "Charmed", "Banished"}

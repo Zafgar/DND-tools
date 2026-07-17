@@ -94,6 +94,11 @@ class Entity:
         # Concentration
         self.concentrating_on: SpellInfo | None = None
         self.concentration_rounds_left: int | None = None  # Auto-tracked by BattleSystem
+        # Links to effects/conditions this caster's concentration is
+        # maintaining on other entities: [{"target": Entity, "kind":
+        # "effect"|"condition", "name": str}]. Cleared (and the linked
+        # effects removed) the moment concentration ends (PHB p.203).
+        self.concentration_links: list = []
 
         # Death saves (players only)
         self.death_save_successes: int = 0
@@ -530,7 +535,8 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def take_damage(self, amount: int, damage_type: str = "", is_magical: bool = False,
-                     source=None, is_ranged_weapon: bool = False) -> tuple[int, bool]:
+                     source=None, is_ranged_weapon: bool = False,
+                     is_crit: bool = False) -> tuple[int, bool]:
         """
         Apply damage. Returns (damage_dealt, broke_concentration).
         Respects temp HP, resistances, immunities, vulnerabilities, rage.
@@ -599,7 +605,10 @@ class Entity:
         if amount > 0:
             self.is_stable = False
 
-        # Temp HP absorbs first
+        # Temp HP absorbs first. Concentration still keys off the full
+        # damage of the instance (Sage Advice: losing temp HP to damage
+        # is still taking damage, and the DC uses the total damage).
+        damage_for_concentration = amount
         if self.temp_hp > 0:
             absorbed = min(self.temp_hp, amount)
             self.temp_hp -= absorbed
@@ -615,6 +624,7 @@ class Entity:
                 if excess > 0:
                     return self.take_damage(excess, damage_type, is_magical)
 
+        hp_before_damage = self.hp
         self.hp -= amount
 
         # Relentless Endurance (Half-Orc): Drop to 1 HP instead of 0
@@ -631,8 +641,8 @@ class Entity:
 
         # Concentration check on damage
         broke_conc = False
-        if self.concentrating_on and amount > 0:
-            dc = max(10, amount // 2)
+        if self.concentrating_on and damage_for_concentration > 0:
+            dc = max(10, damage_for_concentration // 2)
             con_bonus = self.get_save_bonus("Constitution")
             roll = random.randint(1, 20) + con_bonus
             # War Caster: advantage on concentration saves
@@ -656,6 +666,26 @@ class Entity:
             if roll < dc:
                 self.drop_concentration()
                 broke_conc = True
+
+        # PHB p.197: damage while already at 0 HP causes death save
+        # failures — one, or two on a critical hit — and is instant
+        # death when the damage equals or exceeds the HP maximum.
+        if (self.is_player and amount > 0
+                and self.has_condition("Unconscious")
+                and hp_before_damage <= 0):
+            if amount >= self.max_hp:
+                self.death_save_failures = 3
+                self.death_save_history.append("MASSIVE")
+                if hasattr(self, '_log_func') and self._log_func:
+                    self._log_func(f"  [MASSIVE DAMAGE] {self.name} is killed instantly!")
+            else:
+                fails = 2 if is_crit else 1
+                self.death_save_failures = min(3, self.death_save_failures + fails)
+                self.death_save_history.append("CRIT-HIT" if is_crit else "DMG-HIT")
+                if hasattr(self, '_log_func') and self._log_func:
+                    tag = "two death save failures" if fails == 2 else "a death save failure"
+                    self._log_func(f"  [DOWNED] {self.name} takes damage at 0 HP — {tag}!")
+            self.is_stable = False
 
         # Unconscious at 0 HP for players
         if self.hp <= 0 and self.is_player and not self.has_condition("Unconscious"):
@@ -686,6 +716,14 @@ class Entity:
                 # End rage
                 if self.rage_active:
                     self.end_rage()
+
+        # RAW: death always ends concentration. Players are handled by
+        # the Unconscious path above; this covers NPCs reduced to 0 HP
+        # that passed (or never rolled) the damage-triggered save —
+        # e.g. a dead caster must not keep a target Banished.
+        if self.hp <= 0 and self.concentrating_on:
+            self.drop_concentration()
+            broke_conc = True
 
         # Release grapples if defeated (NPC at 0 HP or player unconscious)
         if self.hp <= 0 and self.grappling:
@@ -758,6 +796,10 @@ class Entity:
 
     def start_concentration(self, spell: SpellInfo) -> SpellInfo | None:
         dropped = self.concentrating_on
+        if dropped is not None:
+            # RAW: starting a new concentration spell ends the previous
+            # one — including its ongoing effects on targets.
+            self._end_concentration_effects()
         self.concentrating_on = spell
         self.concentration_rounds_left = None  # Reset; BattleSystem will initialize
         # If dropping a mark spell, clear marked target
@@ -774,7 +816,45 @@ class Entity:
         # Store for terrain cleanup by battle system
         if dropped and dropped.creates_terrain:
             self._dropped_spell_terrain = (self.name, dropped.name)
+        # PHB p.203: when concentration ends, the spell's ongoing
+        # effects end with it — remove them from every linked target.
+        self._end_concentration_effects()
         return dropped
+
+    def register_concentration_effect(self, target, kind: str, name: str):
+        """Record that ``name`` (an active effect or condition) applied
+        to ``target`` is sustained by this caster's concentration, so it
+        can be removed the instant concentration ends."""
+        self.concentration_links.append(
+            {"target": target, "kind": kind, "name": name})
+
+    def _end_concentration_effects(self):
+        """Remove every effect/condition this caster's concentration was
+        sustaining. Tolerates already-expired entries. Banished is left
+        to the BattleSystem, which also restores the target's position."""
+        links, self.concentration_links = self.concentration_links, []
+        for link in links:
+            tgt = link.get("target")
+            name = link.get("name", "")
+            if tgt is None or not name or name == "Banished":
+                continue
+            if link.get("kind") == "effect":
+                if name in tgt.active_effects:
+                    del tgt.active_effects[name]
+                    if name == "Haste":
+                        tgt.apply_haste_lethargy()
+                if tgt.has_condition(name):
+                    tgt.remove_condition(name)
+            else:
+                if tgt.has_condition(name):
+                    tgt.remove_condition(name)
+
+    def apply_haste_lethargy(self):
+        """PHB: when Haste ends, the target 'can't move or take actions
+        until after its next turn'. Modeled as a 1-turn Lethargic
+        condition whose matching active_effect expires automatically."""
+        self.add_condition("Lethargic")
+        self.active_effects["Lethargic"] = 2
 
     # ------------------------------------------------------------------ #
     # Conditions                                                           #
@@ -791,10 +871,14 @@ class Entity:
             if source:
                 self.condition_sources[condition] = source
             if condition in INCAPACITATING_CONDITIONS:
-                if self.concentrating_on:
-                    self.drop_concentration()
-                # PHB: Incapacitated grappler releases grapple
-                self._release_all_grapples()
+                # Lethargic (Haste aftermath) blocks actions/movement but
+                # is not the Incapacitated condition — it does not break
+                # concentration or grapples.
+                if condition != "Lethargic":
+                    if self.concentrating_on:
+                        self.drop_concentration()
+                    # PHB: Incapacitated grappler releases grapple
+                    self._release_all_grapples()
 
     def remove_condition(self, condition: str):
         self.conditions.discard(condition)
@@ -866,8 +950,10 @@ class Entity:
         if self.conditions & SPEED_ZERO_CONDITIONS:
             return 0.0
         speed = float(self.stats.speed)
-        if self.has_condition("Prone"):
-            speed = speed / 2.0
+        # NOTE: Prone does NOT halve speed (PHB p.190-191) — crawling
+        # costs double per foot (applied as a movement-cost multiplier)
+        # and standing up costs half your speed. The old halving here
+        # double-penalized prone creatures and made standing cost 1/4.
         # Exhaustion 2+: half speed
         if self.exhaustion >= 2:
             speed = speed / 2.0

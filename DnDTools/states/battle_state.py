@@ -1248,7 +1248,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     evasion_on_fail = True
 
                 old_hp = target.hp
-                dealt, broke = target.take_damage(dmg, step.damage_type, is_magical=step.is_magical)
+                dealt, broke = target.take_damage(
+                    dmg, step.damage_type, is_magical=step.is_magical,
+                    source=step.attacker,
+                    is_crit=bool(getattr(step, "is_crit", False)))
 
                 # --- AI REACTION CHECK (Hellish Rebuke) ---
                 if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
@@ -1353,6 +1356,11 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     dropped_spell = step.attacker.start_concentration(step.spell)
                     if dropped_spell:
                         self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
+                    # Link the applied condition to the caster's
+                    # concentration so it ends the moment
+                    # concentration breaks (PHB p.203).
+                    step.attacker.register_concentration_effect(
+                        target, "condition", cond)
                 self._log(f"  -> {target.name} is {cond}")
 
                 # Special handling for Banishment: Remove from map immediately
@@ -1399,6 +1407,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                      
                      target.active_effects[step.spell.name] = rounds
                      self._log(f"  -> {step.spell.name} applied ({rounds} rnds)")
+                     # Buffs sustained by concentration (Bless, Haste,
+                     # …) must vanish when the caster's concentration
+                     # ends — link them to the caster.
+                     if step.spell.concentration and step.attacker:
+                         step.attacker.register_concentration_effect(
+                             target, "effect", step.spell.name)
 
         elif outcome == "save":
             # Half damage (usually), no condition
@@ -1455,7 +1469,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
             if final_dmg > 0:
                 old_hp = target.hp
-                dealt, broke = target.take_damage(final_dmg, step.damage_type, is_magical=step.is_magical)
+                dealt, broke = target.take_damage(
+                    final_dmg, step.damage_type, is_magical=step.is_magical,
+                    source=step.attacker, is_crit=True)
                 self._log(f"  -> {target.name} takes {dealt} {step.damage_type} (CRIT)")
                 self._spawn_damage_text(target, dealt)
                 self.battle.stats_tracker.record_damage(

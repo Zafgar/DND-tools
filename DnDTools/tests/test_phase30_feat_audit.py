@@ -243,13 +243,15 @@ class TestMobile(unittest.TestCase):
         self.assertEqual(with_mobile.get_speed(),
                           base.get_speed() + 10)
 
-    def test_mobile_does_not_apply_when_prone(self):
-        # Prone halves speed; the +10 still applies on top.
+    def test_mobile_applies_while_prone(self):
+        # Phase 46 RAW fix: Prone no longer halves speed (crawling
+        # doubles movement cost instead, PHB p.190-191) — the Mobile
+        # +10 applies to the unmodified speed.
         e = _build_entity(features=[
             _feat_to_feature(get_feat("Mobile"))])
         e.add_condition("Prone")
-        # base 30 / 2 = 15, +10 → 25
-        self.assertEqual(e.get_speed(), 25)
+        # base 30 + 10 → 40
+        self.assertEqual(e.get_speed(), 40)
 
 
 class TestElementalAdept(unittest.TestCase):

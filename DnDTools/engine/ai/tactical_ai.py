@@ -3123,13 +3123,18 @@ class TacticalAI:
                 adv = entity.has_attack_advantage(target, is_ranged=True)
                 dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
-                is_hit = total >= target.stats.armor_class and not is_fumble
+                # PHB p.196: cover applies to ALL attack rolls, and use
+                # the dynamic AC (Shield spell etc.), not the static
+                # stat-block value. Natural 20 always hits.
+                cover_ac = battle.get_cover_bonus(entity, target) if battle else 0
+                effective_ac = target.armor_class + cover_ac
+                is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
                 dmg = roll_dice_critical(effective_dice) if is_crit else roll_dice(effective_dice)
                 dmg += int(extra)
 
                 hit_str = "CRIT! " if is_crit else "Hit? "
                 desc = (f"{entity.name} casts {spell.name} ({roll_str}+{atk_bonus}={total} "
-                        f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}")
+                        f"vs AC {effective_ac}) {hit_str}→ {target.name}")
                 return ActionStep(
                     step_type="spell", description=desc,
                     attacker=entity, target=target, spell=spell, slot_used=slot,
@@ -3209,11 +3214,16 @@ class TacticalAI:
                 and step.is_hit):
             sa_dice = entity.get_sneak_attack_dice()
             if sa_dice:
-                # Check conditions for Sneak Attack
-                has_advantage = entity.has_attack_advantage(target,
-                                                           is_ranged=(step.action and step.action.range > 10))
+                # Check conditions for Sneak Attack (PHB p.96):
+                # advantage on the roll, OR an ally within 5 ft of the
+                # target while the roll is NOT at disadvantage.
+                sa_is_ranged = bool(step.action and step.action.range > 10)
+                has_advantage = entity.has_attack_advantage(
+                    target, is_ranged=sa_is_ranged, battle=battle)
+                has_disadvantage = entity.has_attack_disadvantage(
+                    target, is_ranged=sa_is_ranged, battle=battle)
                 ally_adjacent = any(battle.is_adjacent(a, target) for a in allies if a.hp > 0)
-                if has_advantage or ally_adjacent:
+                if has_advantage or (ally_adjacent and not has_disadvantage):
                     sa_dmg = roll_dice_critical(sa_dice) if step.is_crit else roll_dice(sa_dice)
                     step.bonus_damage += sa_dmg
                     step.damage += sa_dmg
@@ -3221,7 +3231,9 @@ class TacticalAI:
                     entity.sneak_attack_used = True
 
         # --- PALADIN: Divine Smite (auto-use on crits, or vs tough enemies) ---
-        if entity.has_feature("divine_smite") and step.is_hit:
+        # PHB p.85: melee weapon attacks only.
+        if (entity.has_feature("divine_smite") and step.is_hit
+                and step.action and step.action.range <= 5):
             should_smite = False
             # Always smite on crits
             if step.is_crit:
@@ -3240,19 +3252,21 @@ class TacticalAI:
                 slot_key = entity._LEVEL_KEYS.get(slot_level, "1st")
                 if entity.spell_slots.get(slot_key, 0) > 0:
                     entity.spell_slots[slot_key] -= 1
-                    # 2d8 base + 1d8 per level above 1st
-                    num_dice = 2 + (slot_level - 1)
-                    # +1d8 vs undead/fiend
+                    # 2d8 base + 1d8 per level above 1st, slot dice
+                    # capped at 5d8 BEFORE the undead/fiend bonus
+                    # (PHB p.85: max 5d8, +1d8 vs undead/fiend → 6d8).
+                    num_dice = min(2 + (slot_level - 1), 5)
                     t_type = target.stats.creature_type.lower()
                     if t_type in ("undead", "fiend"):
                         num_dice += 1
-                    num_dice = min(num_dice, 5)  # Max 5d8
 
                     smite_dice = f"{num_dice}d8"
                     smite_dmg = roll_dice_critical(smite_dice) if step.is_crit else roll_dice(smite_dice)
                     step.bonus_damage += smite_dmg
                     step.damage += smite_dmg
-                    bonus_parts.append(f"Divine Smite ({slot_level}st slot) {smite_dice}={smite_dmg}")
+                    ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(
+                        slot_level, f"{slot_level}th")
+                    bonus_parts.append(f"Divine Smite ({ordinal} slot) {smite_dice}={smite_dmg}")
 
         # --- PALADIN: Improved Divine Smite ---
         if entity.has_feature("improved_divine_smite") and step.is_hit:
@@ -3475,18 +3489,23 @@ class TacticalAI:
 
         # Override crit check with expanded range
         is_crit = nat >= crit_range
-        crit_auto = (target.has_condition("Paralyzed") or target.has_condition("Unconscious")) and dist <= 0.5
-        if crit_auto:
-            is_crit, is_hit = True, True
-        else:
-            # Phase 30 — Defensive Duelist: target may spend their
-            # reaction to add proficiency bonus to AC against this
-            # melee attack if it would convert a hit into a miss.
-            is_melee = action.range <= 5
-            from engine.feat_effects import defensive_duelist_ac_bonus
-            effective_ac = defensive_duelist_ac_bonus(
-                target, total, effective_ac, is_melee)
-            is_hit = total >= effective_ac and not is_fumble
+        # Phase 30 — Defensive Duelist: target may spend their
+        # reaction to add proficiency bonus to AC against this
+        # melee attack if it would convert a hit into a miss.
+        is_melee = action.range <= 5
+        from engine.feat_effects import defensive_duelist_ac_bonus
+        effective_ac = defensive_duelist_ac_bonus(
+            target, total, effective_ac, is_melee)
+        # PHB p.194: a natural 20 always hits; a natural 1 always misses.
+        is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
+        # PHB p.292: any HIT within 5 ft against a paralyzed or
+        # unconscious creature is a critical hit — but the attack must
+        # still hit first (previously this forced an unconditional hit,
+        # letting even natural 1s connect).
+        if (is_hit and dist <= 0.5
+                and (target.has_condition("Paralyzed")
+                     or target.has_condition("Unconscious"))):
+            is_crit = True
 
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
