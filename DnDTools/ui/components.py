@@ -75,6 +75,23 @@ def draw_gradient_rect(surface, rect, color_top, color_bottom, border_radius=0):
     surface.blit(grad_surf, (x, y))
 
 
+def fit_text(font, text, max_width):
+    """Return ``text`` truncated with an ellipsis so it renders no wider
+    than ``max_width`` in ``font``. Returns the original text when it
+    already fits."""
+    if max_width <= 0 or font.size(text)[0] <= max_width:
+        return text
+    ell = "…"
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if font.size(text[:mid] + ell)[0] <= max_width:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo] + ell
+
+
 class Button:
     def __init__(self, x, y, width, height, text, on_click, color=None, hover_color=None,
                  font=None, icon=None, style="default"):
@@ -89,6 +106,18 @@ class Button:
         self.style = style  # "default", "flat", "outline", "danger"
         self.enabled = True
         self._press_anim = 0
+        # Cache for the ellipsized label: (text, avail_width) → fitted text
+        self._fit_cache = ("", -1, "")
+
+    def _label(self):
+        """The button text, ellipsized to fit inside the rect with a
+        6px padding per side so labels never spill over the edges."""
+        avail = self.rect.width - 12
+        key_text, key_w, fitted = self._fit_cache
+        if key_text != self.text or key_w != avail:
+            fitted = fit_text(self._font, self.text, avail)
+            self._fit_cache = (self.text, avail, fitted)
+        return fitted
 
     @staticmethod
     def _brighten(color, amount):
@@ -118,7 +147,7 @@ class Button:
 
         if not self.enabled:
             pygame.draw.rect(screen, COLORS["disabled"], r, border_radius=6)
-            surf = self._font.render(self.text, True, COLORS["text_muted"])
+            surf = self._font.render(self._label(), True, COLORS["text_muted"])
             screen.blit(surf, surf.get_rect(center=r.center))
             return
 
@@ -141,7 +170,7 @@ class Button:
 
         # Text
         text_color = COLORS["text_bright"] if self.style != "flat" else COLORS["text_main"]
-        surf = self._font.render(self.text, True, text_color)
+        surf = self._font.render(self._label(), True, text_color)
         screen.blit(surf, surf.get_rect(center=r.center))
 
 

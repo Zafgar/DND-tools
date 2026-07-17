@@ -202,7 +202,9 @@ class CampaignManagerState:
 
         # UI state
         self.active_tab = 0  # 0=Party, 1=Encounters, 2=Areas, 3=Notes, 4=World
-        self.tabs = TabBar(250, 15, 900, ["Party", "Encounters", "Areas", "Notes", "World"],
+        # Tabs start at x=430 so the campaign title (drawn at x=150)
+        # has room and never disappears under the tab bar.
+        self.tabs = TabBar(430, 15, 830, ["Party", "Encounters", "Areas", "Notes", "World"],
                            active=0, on_change=self._on_tab_change)
         self.scroll_y = 0
         self.selected_member_idx = -1
@@ -329,41 +331,44 @@ class CampaignManagerState:
         self.btn_back = Button(20, 15, 100, 35, "< Menu",
                                lambda: self.manager.change_state("MENU"),
                                color=COLORS["panel"])
-        self.btn_save = Button(SCREEN_WIDTH - 130, 15, 110, 35, "Save",
+        # Top-right cluster, row 1 (y=15) — right-aligned with 8px
+        # gaps so nothing ever overlaps: Yleiskatsaus | Rules | Save | Nopat
+        self.btn_save = Button(SCREEN_WIDTH - 223, 15, 100, 35, "Save",
                                self._save_campaign, color=COLORS["success"])
-        self.btn_rules = Button(SCREEN_WIDTH - 250, 15, 110, 35, "Rules",
+        self.btn_rules = Button(SCREEN_WIDTH - 331, 15, 100, 35, "Rules",
                                 self._open_variant_rules_modal, color=COLORS["accent"])
         # Phase 20a: dashboard banner toggle
-        self.btn_dashboard = Button(SCREEN_WIDTH - 380, 15, 120, 35,
+        self.btn_dashboard = Button(SCREEN_WIDTH - 464, 15, 125, 35,
                                        "Yleiskatsaus",
                                        self._toggle_dashboard,
                                        color=COLORS["spell"])
         self._dashboard_widget = None
 
-        # Time of day buttons
+        # Row 2 (y=58, below the header bar) — time-of-day cycler and
+        # calendar advance buttons in one right-aligned strip.
         self.time_buttons = []
         times = [("Dawn", "dawn"), ("Day", "day"), ("Dusk", "dusk"), ("Night", "night")]
         for i, (label, val) in enumerate(times):
             self.time_buttons.append(
-                Button(SCREEN_WIDTH - 490 + i * 85, 15, 80, 35, label,
+                Button(SCREEN_WIDTH - 748 + i * 88, 58, 80, 30, label,
                        lambda v=val: self._set_time(v),
                        color=COLORS["panel"])
             )
 
         # Phase 20e: calendar advance buttons (in-game day + time
-        # cycler). Live just below the time-of-day buttons.
+        # cycler). Continue the same strip after the time-of-day row.
         self.btn_advance_tod = Button(
-            SCREEN_WIDTH - 490, 55, 165, 30,
+            SCREEN_WIDTH - 396, 58, 150, 30,
             "Edistä aikaa", self._cmd_advance_tod,
             color=COLORS["accent"],
         )
         self.btn_advance_day = Button(
-            SCREEN_WIDTH - 320, 55, 105, 30,
+            SCREEN_WIDTH - 238, 58, 105, 30,
             "+ 1 päivä", self._cmd_advance_day,
             color=COLORS["spell"],
         )
         self.btn_advance_week = Button(
-            SCREEN_WIDTH - 210, 55, 105, 30,
+            SCREEN_WIDTH - 125, 58, 105, 30,
             "+ 7 päivää", self._cmd_advance_week,
             color=COLORS["legendary"],
         )
@@ -485,7 +490,7 @@ class CampaignManagerState:
         # Phase 39 — NPC search / directory
         self.btn_npc_search = Button(670, SCREEN_HEIGHT - 60,
                                          120, 45,
-                                         "🔍 NPC-haku",
+                                         "NPC-haku",
                                          self._open_npc_search,
                                          color=COLORS["accent"])
         # Phase 42 — relationship graph
@@ -497,10 +502,57 @@ class CampaignManagerState:
         # Phase 45 — always-available dice tray (toggle with D)
         from states.dice_tray_widget import DiceTrayWidget
         self._dice_tray = DiceTrayWidget()
-        self.btn_dice = Button(SCREEN_WIDTH - 120, 12, 100, 32,
-                                  "🎲 Nopat",
+        self.btn_dice = Button(SCREEN_WIDTH - 115, 15, 95, 35,
+                                  "Nopat",
                                   self._dice_tray.toggle,
                                   color=COLORS["accent"])
+
+        # ---- World-tab action rows: layout pass ---------------------
+        # The rows above accumulated buttons over many phases with
+        # hand-picked x offsets, which ended in overlaps. Re-flow both
+        # rows left→right with fixed gaps and one colour scheme:
+        # green = create, blue = open/browse, purple = tools/import.
+        def _flow_row(y, entries, x0=20, gap=8, height=45):
+            x = x0
+            for btn, width, colour in entries:
+                btn.rect.x = x
+                btn.rect.y = y
+                btn.rect.width = width
+                btn.rect.height = height
+                btn.color = colour
+                btn.hover_color = Button._brighten(colour, 25)
+                x += width + gap
+
+        _create, _browse, _tool = (
+            COLORS["success"], COLORS["accent"], COLORS["spell"])
+        _flow_row(SCREEN_HEIGHT - 115, [
+            (self.btn_open_town,      150, _browse),
+            (self.btn_open_shop,      140, _browse),
+            (self.btn_open_rels,      110, _browse),
+            (self.btn_open_kingdoms,  140, _browse),
+            (self.btn_open_orgs,      150, _browse),
+            (self.btn_open_quest_log, 170, _browse),
+            (self.btn_npc_portrait,   150, _tool),
+            (self.btn_quick_npc,      130, _create),
+            (self.btn_quick_quest,    130, _create),
+        ])
+        _flow_row(SCREEN_HEIGHT - 60, [
+            (self.btn_add_location,    140, _create),
+            (self.btn_add_npc,         110, _create),
+            (self.btn_add_quest,       110, _create),
+            (self.btn_world_npcs_view, 120, _browse),
+            (self.btn_npc_search,      120, _browse),
+            (self.btn_npc_graph,       140, _browse),
+            (self.btn_world_shops_view, 100, _browse),
+            (self.btn_world_quests,    100, _browse),
+            (self.btn_world_services,  110, _browse),
+            (self.btn_world_templates, 115, _browse),
+            (self.btn_world_travel,     95, _browse),
+            (self.btn_world_map_view,   80, _browse),
+            (self.btn_open_map_editor, 140, _tool),
+            (self.btn_import_text,     145, _tool),
+        ])
+
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
@@ -2801,19 +2853,14 @@ class CampaignManagerState:
             screen.blit(hint, (name_rect.right + 6, 20))
         screen.blit(nt, (150, 14))
 
-        # Time of day indicator
+        # Time of day → the active time button below is tinted with
+        # this colour, so no separate "Time:" label is needed.
         tod = self.campaign.time_of_day
         tod_colors = {
             "dawn": (255, 180, 100), "day": (255, 240, 180),
             "dusk": (180, 100, 140), "night": (60, 60, 120),
         }
         tod_col = tod_colors.get(tod, (200, 200, 200))
-        tod_txt = fonts.body.render(f"Time: {tod.capitalize()}", True, tod_col)
-        screen.blit(tod_txt, (SCREEN_WIDTH - 500, 48))
-
-        # Session number
-        sess = fonts.small.render(f"Session #{self.campaign.session_number}", True, COLORS["text_dim"])
-        screen.blit(sess, (SCREEN_WIDTH - 280, 48))
 
         # Draw buttons
         self.btn_back.draw(screen, mp)
@@ -2828,25 +2875,28 @@ class CampaignManagerState:
             else:
                 tb.color = COLORS["panel"]
             tb.draw(screen, mp)
-        # Phase 20e: in-game date label + advance buttons
+        # Phase 20e: in-game date + session label — one right-aligned
+        # line under the time strip so nothing collides.
         try:
             from data.campaign_calendar import format_date
             date_str = format_date(self.campaign)
         except Exception:
             date_str = ""
+        info = f"Session #{self.campaign.session_number}"
         if date_str:
-            screen.blit(fonts.small.render(
-                date_str, True,
-                COLORS.get("text_dim", (160, 160, 160))),
-                (SCREEN_WIDTH - 490, 90))
+            info += f"  ·  {date_str}"
+        info_surf = fonts.small.render(
+            info, True, COLORS.get("text_dim", (160, 160, 160)))
+        screen.blit(info_surf, (SCREEN_WIDTH - 20 - info_surf.get_width(), 94))
         self.btn_advance_tod.draw(screen, mp)
         self.btn_advance_day.draw(screen, mp)
         self.btn_advance_week.draw(screen, mp)
 
-        # Status message
+        # Status message — right-aligned into the free slot between the
+        # tab bar and the top-right button cluster.
         if hasattr(self, '_status_timer') and self._status_timer > 0:
             sm = fonts.small.render(self._status_msg, True, COLORS["success"])
-            screen.blit(sm, (SCREEN_WIDTH - 350, 38))
+            screen.blit(sm, (SCREEN_WIDTH - 474 - sm.get_width(), 25))
 
         # Draw active tab content
         clip_rect = pygame.Rect(0, 60, SCREEN_WIDTH, SCREEN_HEIGHT - 120)
@@ -3858,7 +3908,19 @@ class CampaignManagerState:
             "wilderness": COLORS["success"], "cave": COLORS["text_dim"],
         }
         tc = type_colors.get(loc.location_type, COLORS["text_dim"])
-        tt = fonts.tiny.render(loc.location_type[:5].upper(), True, tc)
+        # Readable fixed-width abbreviations instead of raw 5-char cuts
+        # ("COUNT", "CASTL", "REGIO" → "CNTRY", "CASTLE", "REGION").
+        type_abbr = {
+            "country": "CNTRY", "region": "REGION", "city": "CITY",
+            "town": "TOWN", "village": "VILLG", "district": "DISTR",
+            "building": "BLDG", "tavern": "TAVRN", "shop": "SHOP",
+            "temple": "TEMPL", "dungeon": "DNGN", "room": "ROOM",
+            "wilderness": "WILDS", "cave": "CAVE", "castle": "CASTLE",
+            "port": "PORT", "camp": "CAMP", "ruins": "RUINS",
+        }
+        label = type_abbr.get(loc.location_type,
+                              loc.location_type[:6].upper())
+        tt = fonts.tiny.render(label, True, tc)
         screen.blit(tt, (indent + 18, y + 10))
 
         # Name

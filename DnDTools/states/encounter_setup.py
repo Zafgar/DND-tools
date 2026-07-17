@@ -18,6 +18,7 @@ class EncounterSetupState(GameState):
         self.roster = []
         self.scroll_monster = 0
         self.scroll_hero    = 0
+        self.scroll_cr      = 0
         self.importing = False
         self.ts_last_update = 0
         all_monsters = library.get_all_monsters()
@@ -341,11 +342,21 @@ class EncounterSetupState(GameState):
                 self._update_monster_list()
 
             if event.type == pygame.MOUSEWHEEL:
-                if pygame.mouse.get_pos()[0] < 160:
-                    self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
-                else:
+                # Scroll the column under the cursor: CR list, monster
+                # list or hero list. (Previously the CR column scrolled
+                # the hero list and could itself never scroll, leaving
+                # CR 21+ unreachable below the screen edge.)
+                mx = pygame.mouse.get_pos()[0]
+                if mx < 160:
+                    self.scroll_cr = min(0, self.scroll_cr + event.y * 25)
+                elif mx < 430:
                     self.scroll_monster = min(0, self.scroll_monster + event.y * 25)
-            for b in self.action_btns + self.cr_btns + [self.btn_plane, self.btn_lair]:
+                elif mx < 700:
+                    self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
+            for b in self.action_btns + [self.btn_plane, self.btn_lair]:
+                b.handle_event(event)
+            for i, b in enumerate(self.cr_btns):
+                b.rect.y = 130 + i * 40 + self.scroll_cr
                 b.handle_event(event)
             for i, b in enumerate(self.hero_btns):
                 b.rect.y = 130 + i * 40 + self.scroll_hero
@@ -382,11 +393,15 @@ class EncounterSetupState(GameState):
         # Column labels
         for lbl, x in [("CR Level", 30), ("Monsters", 160), ("Heroes", 430), ("Roster", 700)]:
             screen.blit(fonts.small.render(lbl, True, COLORS["text_dim"]), (x, 110))
-        # CR buttons
-        for b in self.cr_btns:
+        # CR buttons (clipped + scrollable)
+        clip_cr = pygame.Rect(0, 120, 160, SCREEN_HEIGHT - 130)
+        screen.set_clip(clip_cr)
+        for i, b in enumerate(self.cr_btns):
+            b.rect.y = 130 + i * 40 + self.scroll_cr
             if self.selected_cr is not None and b.text == (f"CR {self.selected_cr:.3g}" if self.selected_cr % 1 != 0 else f"CR {int(self.selected_cr)}"):
                 pygame.draw.rect(screen, COLORS["accent"], b.rect.inflate(4, 4), 2, border_radius=6)
             b.draw(screen, mp)
+        screen.set_clip(None)
         # Monster buttons (clipped)
         clip = pygame.Rect(160, 120, 260, SCREEN_HEIGHT - 200)
         screen.set_clip(clip)
