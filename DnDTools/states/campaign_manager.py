@@ -215,6 +215,17 @@ class CampaignManagerState:
         self.selected_location_id = ""
         self.selected_npc_id = ""
         self.world_view = "locations"  # "locations", "npcs", "shop_detail"
+        # Pre-select the campaign's current area (or the first root
+        # location) so the detail panel is never an empty half-screen.
+        if self.world.locations:
+            cur = (self.campaign.current_area or "").strip().lower()
+            match = next((l.id for l in self.world.locations.values()
+                          if l.name.strip().lower() == cur), "")
+            if not match:
+                roots = [l for l in self.world.locations.values()
+                         if not l.parent_id]
+                match = roots[0].id if roots else ""
+            self.selected_location_id = match
         # Phase 16: lazy-instantiated widgets (town view / shop panel
         # / relationship matrix). Each widget has its own is_open flag
         # and opens via the matching toggle below.
@@ -224,6 +235,12 @@ class CampaignManagerState:
         self.npc_search = ""
         self.npc_search_active = False
         self.world_location_expanded: set = set()  # Expanded location IDs in tree
+        # Expand the ancestors of the pre-selected location so the
+        # selection is visible in the tree on first open.
+        anc = self.world.locations.get(self.selected_location_id)
+        while anc is not None and anc.parent_id:
+            self.world_location_expanded.add(anc.parent_id)
+            anc = self.world.locations.get(anc.parent_id)
         self.shop_item_search = ""
         self.shop_item_search_active = False
         self.tooltip_item = ""  # Item name for tooltip popup
@@ -4026,29 +4043,62 @@ class CampaignManagerState:
             lx += lw + 4
         y += 30
 
-        # Description
+        # Description — word-wrapped over up to 5 lines so the longer
+        # lore descriptions are actually readable (was a single line
+        # hard-cut at 90 chars).
         desc_label = fonts.small_bold.render("Description:", True, COLORS["text_dim"])
         screen.blit(desc_label, (start_x, y))
         y += 18
-        desc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, 40)
-        pygame.draw.rect(screen, COLORS["input_bg"], desc_rect, border_radius=4)
-        pygame.draw.rect(screen, COLORS["border"], desc_rect, 1, border_radius=4)
         dt = loc.description or "(Click to add description)"
         dc = COLORS["text_main"] if loc.description else COLORS["text_muted"]
-        ds = fonts.small.render(dt[:90], True, dc)
-        screen.blit(ds, (start_x + 5, y + 5))
+        avail_w = SCREEN_WIDTH - start_x - 40
+        lines, cur = [], ""
+        for word in dt.split():
+            test = (cur + " " + word).strip()
+            if fonts.small.size(test)[0] <= avail_w:
+                cur = test
+            else:
+                lines.append(cur)
+                cur = word
+                if len(lines) == 5:
+                    lines[-1] += " …"
+                    cur = ""
+                    break
+        if cur:
+            lines.append(cur)
+        box_h = 12 + max(1, len(lines)) * 18
+        desc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, box_h)
+        pygame.draw.rect(screen, COLORS["input_bg"], desc_rect, border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], desc_rect, 1, border_radius=4)
+        for i, line in enumerate(lines):
+            screen.blit(fonts.small.render(line, True, dc),
+                        (start_x + 5, y + 5 + i * 18))
         if desc_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
             self.input_active = "location_desc"
             self.input_text = loc.description
             self.modal = ("edit_field", "location_desc")
-        y += 48
+        y += box_h + 8
 
-        # NPCs at this location
+        # NPCs at this location. Cap the list so the notes box and the
+        # Delete button below always stay above the bottom action rows —
+        # previously a long NPC list pushed the flow-positioned Delete
+        # button underneath the action buttons, where a click on e.g.
+        # "+ Pika-NPC" could silently delete the selected location.
         npcs = get_npcs_at_location(self.world, loc.id)
         nl = fonts.small_bold.render(f"NPCs here ({len(npcs)}):", True, COLORS["text_dim"])
         screen.blit(nl, (start_x, y))
         y += 20
+        npc_area_bottom = SCREEN_HEIGHT - 265
+        shown = 0
         for npc in npcs:
+            if y + 40 > npc_area_bottom and shown < len(npcs) - 1:
+                more = fonts.small.render(
+                    f"… ja {len(npcs) - shown} lisää — avaa \"All NPCs\"",
+                    True, COLORS["text_muted"])
+                screen.blit(more, (start_x + 8, y + 4))
+                y += 26
+                break
+            shown += 1
             npc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, 35)
             is_hover = npc_rect.collidepoint(mp)
             bg = COLORS["hover"] if is_hover else COLORS["panel"]
@@ -4103,7 +4153,10 @@ class CampaignManagerState:
                          del_rect, border_radius=4)
         dlt = fonts.small.render("Delete Location", True, COLORS["text_bright"])
         screen.blit(dlt, (start_x + 10, del_y + 6))
-        if is_del_hover and pygame.mouse.get_pressed()[0]:
+        # Safety: never accept a delete click in the bottom action-row
+        # band, even if layout ever pushes the button down there again.
+        if (is_del_hover and pygame.mouse.get_pressed()[0]
+                and del_rect.bottom < SCREEN_HEIGHT - 125):
             self._delete_world_location(loc.id)
 
     def _draw_world_npcs(self, screen, mp):
