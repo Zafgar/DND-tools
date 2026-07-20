@@ -9,6 +9,16 @@ from data.models import CreatureStats
 from data.serialization import deserialize
 
 
+def _rebind_spells(stats):
+    """Bind a stat block's spells to the central library (single source of
+    truth). Tolerant of any import/lookup failure."""
+    try:
+        from data.spells import rebind_to_library
+        rebind_to_library(stats)
+    except Exception:
+        pass
+
+
 class MonsterLibrary:
     def __init__(self):
         self._monsters: dict[str, CreatureStats] = {}
@@ -32,6 +42,7 @@ class MonsterLibrary:
                     data_list = json.load(f)
                 for data in data_list:
                     monster = deserialize(CreatureStats, data)
+                    _rebind_spells(monster)
                     self._monsters[monster.name.lower()] = monster
             except Exception as ex:
                 print(f"Warning: Failed to load {filename}: {ex}")
@@ -67,6 +78,7 @@ class MonsterLibrary:
                     # Don't overwrite a JSON-loaded entry; Python is
                     # a fallback / supplement for the JSON catalogue.
                     if m.name.lower() not in self._monsters:
+                        _rebind_spells(m)
                         self._monsters[m.name.lower()] = m
         except ImportError as ex:
             print(f"Warning: Failed to load Python monster modules: {ex}")

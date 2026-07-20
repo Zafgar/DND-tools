@@ -809,11 +809,47 @@ def get_spell(name: str, **overrides) -> SpellInfo:
     if name not in _spells:
         # Return a placeholder if not found to prevent crashes
         return SpellInfo(name=name, description="Unknown spell")
-    
+
     spell = copy.deepcopy(_spells[name])
-    
+
     for key, value in overrides.items():
         if hasattr(spell, key):
             setattr(spell, key, value)
-            
+
     return spell
+
+
+def has_spell(name: str) -> bool:
+    """True if the central library defines a spell by this name."""
+    return name in _spells
+
+
+def rebind_to_library(stats) -> "object":
+    """Re-bind a CreatureStats' spells_known/cantrips to the central
+    library BY NAME, so the library (this module) is the single source of
+    truth. Any stale embedded copy (e.g. from a JSON stat block or a
+    hand-authored SpellInfo) is replaced with a fresh library definition;
+    per-instance combat overrides (attack_bonus_fixed / save_dc_fixed) are
+    preserved. Unknown/custom spells are left untouched.
+
+    Idempotent — safe to call on every load.
+    """
+    def _rebind(lst):
+        out = []
+        for sp in lst or []:
+            name = getattr(sp, "name", "")
+            if name and name in _spells:
+                fresh = copy.deepcopy(_spells[name])
+                # Preserve the monster's own to-hit / DC where it set one.
+                if getattr(sp, "attack_bonus_fixed", 0):
+                    fresh.attack_bonus_fixed = sp.attack_bonus_fixed
+                if getattr(sp, "save_dc_fixed", 0):
+                    fresh.save_dc_fixed = sp.save_dc_fixed
+                out.append(fresh)
+            else:
+                out.append(sp)
+        return out
+
+    stats.spells_known = _rebind(getattr(stats, "spells_known", []))
+    stats.cantrips = _rebind(getattr(stats, "cantrips", []))
+    return stats

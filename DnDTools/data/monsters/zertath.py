@@ -6,7 +6,6 @@ kenttiä; erikoismekaniikat (sielukruunu, mielenhallinta, Action Surge)
 on kuvattu Feature-teksteinä pelinjohtajalle.
 """
 from data.models import CreatureStats, AbilityScores, Action, Feature
-from data.spells import get_spell
 
 
 monsters = [
@@ -31,21 +30,14 @@ monsters = [
         spell_attack_bonus=13,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 3,
                      "6th": 2, "7th": 2, "8th": 1, "9th": 1},
-        spells_known=[
-            get_spell("Shield"), get_spell("Misty Step"),
-            get_spell("Counterspell"), get_spell("Dispel Magic"),
-            get_spell("Fireball"), get_spell("Lightning Bolt"),
-            get_spell("Banishment"), get_spell("Greater Invisibility"),
-            get_spell("Cone of Cold"), get_spell("Wall of Force"),
-            get_spell("Synaptic Static"), get_spell("Chain Lightning"),
-            get_spell("Hold Monster"), get_spell("Telekinesis"),
-            get_spell("Power Word Stun"), get_spell("Finger of Death"),
+        spell_names=[
+            "Shield", "Misty Step", "Counterspell", "Dispel Magic",
+            "Fireball", "Lightning Bolt", "Banishment",
+            "Greater Invisibility", "Cone of Cold", "Wall of Force",
+            "Synaptic Static", "Chain Lightning", "Hold Monster",
+            "Telekinesis", "Power Word Stun", "Finger of Death",
         ],
-        cantrips=[
-            get_spell("Fire Bolt", attack_bonus_fixed=13),
-            get_spell("Ray of Frost", attack_bonus_fixed=13),
-            get_spell("Mage Hand"),
-        ],
+        cantrip_names=["Fire Bolt", "Ray of Frost", "Mage Hand"],
         actions=[
             Action("Multiattack", "x2 Soul Lash", 0, "", 0, "",
                    is_multiattack=True, multiattack_count=2,
@@ -166,11 +158,9 @@ monsters = [
         spellcasting_ability="Intelligence", spell_save_dc=16,
         spell_attack_bonus=8,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 2, "5th": 1},
-        spells_known=[
-            get_spell("Shield"), get_spell("Misty Step"),
-            get_spell("Counterspell"), get_spell("Hold Person"),
-            get_spell("Hypnotic Pattern"), get_spell("Greater Invisibility"),
-            get_spell("Hold Monster"),
+        spell_names=[
+            "Shield", "Misty Step", "Counterspell", "Hold Person",
+            "Hypnotic Pattern", "Greater Invisibility", "Hold Monster",
         ],
         actions=[
             Action("Multiattack", "x2 Poisoned Dagger", 0, "", 0, "",
@@ -226,10 +216,9 @@ monsters = [
         spell_attack_bonus=10,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2,
                      "6th": 1},
-        spells_known=[
-            get_spell("Hold Person"), get_spell("Hypnotic Pattern"),
-            get_spell("Hold Monster"), get_spell("Telekinesis"),
-            get_spell("Synaptic Static"), get_spell("Power Word Stun"),
+        spell_names=[
+            "Hold Person", "Hypnotic Pattern", "Hold Monster",
+            "Telekinesis", "Synaptic Static", "Power Word Stun",
         ],
         actions=[
             Action("Multiattack", "x3 Mind Sliver", 0, "", 0, "",

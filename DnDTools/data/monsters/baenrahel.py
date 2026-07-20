@@ -14,7 +14,6 @@ pelinjohtajaa varten; ydinmekaniikka (multiattack, vahinko, saving
 throwt, ehdot, loitsut) toimii moottorissa suoraan.
 """
 from data.models import CreatureStats, AbilityScores, Action, Feature, SpellInfo
-from data.spells import get_spell
 
 
 monsters = [
@@ -159,15 +158,9 @@ monsters = [
         spellcasting_ability="Intelligence", spell_save_dc=16,
         spell_attack_bonus=8,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 2},
-        spells_known=[
-            get_spell("Mage Armor"),
-            get_spell("Hold Person"),
-            get_spell("Counterspell"),
-            get_spell("Dispel Magic"),
-            get_spell("Silence"),
-            get_spell("Slow"),
-            get_spell("Banishment"),
-            get_spell("Wall of Force"),
+        spell_names=[
+            "Mage Armor", "Hold Person", "Counterspell", "Dispel Magic",
+            "Silence", "Slow", "Banishment", "Wall of Force",
         ],
         actions=[
             Action("Multiattack", "x2 Searing Blood", 0, "", 0, "",
@@ -228,22 +221,12 @@ monsters = [
         spell_attack_bonus=11,
         spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 3,
                      "6th": 2, "7th": 2},
-        spells_known=[
-            get_spell("Shield"),
-            get_spell("Misty Step"),
-            get_spell("Counterspell"),
-            get_spell("Dispel Magic"),
-            get_spell("Banishment"),
-            get_spell("Greater Invisibility"),
-            get_spell("Synaptic Static"),
-            get_spell("Wall of Force"),
-            get_spell("Chain Lightning"),
+        spell_names=[
+            "Shield", "Misty Step", "Counterspell", "Dispel Magic",
+            "Banishment", "Greater Invisibility", "Synaptic Static",
+            "Wall of Force", "Chain Lightning",
         ],
-        cantrips=[
-            get_spell("Fire Bolt", attack_bonus_fixed=11),
-            get_spell("Ray of Frost", attack_bonus_fixed=11),
-            get_spell("Mage Hand"),
-        ],
+        cantrip_names=["Fire Bolt", "Ray of Frost", "Mage Hand"],
         actions=[
             Action("Multiattack", "x3 Aether Siphon", 0, "", 0, "",
                    is_multiattack=True, multiattack_count=3,

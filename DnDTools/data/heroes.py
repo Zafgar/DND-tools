@@ -1183,3 +1183,14 @@ def _assign_hero_items():
             hero.items = get_hero_items(hero.character_class, hero.character_level)
 
 _assign_hero_items()
+
+
+def _bind_hero_spells_to_library():
+    """Bind every pre-built hero's spells to the central spell library so
+    the library (data/spells.py) is the single source of truth for heroes
+    as well as monsters."""
+    from data.spells import rebind_to_library
+    for hero in hero_list:
+        rebind_to_library(hero)
+
+_bind_hero_spells_to_library()
