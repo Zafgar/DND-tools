@@ -3096,13 +3096,24 @@ class TacticalAI:
             spell, target, dc, atk_bonus, extra = best_step
             slot = spell.level
             if spell.level > 0:
-                entity.use_spell_slot(slot)
-            
+                # Spend the LOWEST available slot at or above the spell's
+                # level, and scale the effect to that slot — so a burned
+                # higher slot actually delivers the upcast (extra damage /
+                # Magic Missile darts) instead of being wasted.
+                slot = next(
+                    (lvl for lvl in range(spell.level, 10)
+                     if entity.spell_slots.get(
+                         entity._LEVEL_KEYS.get(lvl, f"{lvl}th"), 0) > 0),
+                    spell.level)
+                if not entity.use_spell_slot_exact(slot):
+                    entity.use_spell_slot(spell.level)
+                    slot = spell.level
+
             if spell.concentration:
                 entity.start_concentration(spell)
 
-            # Scale cantrip damage dice by caster level
-            effective_dice = _get_spell_damage_dice(spell, entity)
+            # Cantrip scaling by level; leveled spells scale to the slot used.
+            effective_dice = _get_spell_damage_dice(spell, entity, slot_used=slot)
 
             if spell.save_ability:
                 dmg = roll_dice(effective_dice) + int(extra)

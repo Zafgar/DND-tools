@@ -143,5 +143,45 @@ class TestAoEFriendlyFire(unittest.TestCase):
         self.assertNotIn("Ally", {e.name for e in cluster})
 
 
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestUpcastScaling(unittest.TestCase):
+    """Leveled spells scale to the slot spent (needs the multi-term dice
+    parser to combine base + scaling correctly)."""
+
+    def _wizard(self):
+        from data.models import CreatureStats, AbilityScores
+        from engine.entities import Entity
+        st = CreatureStats(name="Wiz",
+                           abilities=AbilityScores(intelligence=18),
+                           spellcasting_ability="Intelligence",
+                           character_level=9)
+        return Entity(st, 0, 0, is_player=True)
+
+    def test_fireball_upcasts_extra_dice(self):
+        from engine.ai.utils import _get_spell_damage_dice
+        from engine.dice import average_damage
+        from data.spells import get_spell
+        e = self._wizard()
+        fb = get_spell("Fireball")
+        base = average_damage(_get_spell_damage_dice(fb, e, slot_used=3))
+        up = average_damage(_get_spell_damage_dice(fb, e, slot_used=5))
+        self.assertGreater(up, base + 6, "5th-level Fireball adds ~2d6")
+
+    def test_magic_missile_scales_darts(self):
+        from engine.ai.utils import _get_spell_damage_dice
+        from engine.dice import average_damage
+        from data.spells import get_spell
+        e = self._wizard()
+        mm = get_spell("Magic Missile")
+        base = average_damage(_get_spell_damage_dice(mm, e, slot_used=1))
+        up = average_damage(_get_spell_damage_dice(mm, e, slot_used=3))
+        self.assertGreater(up, base, "upcast Magic Missile adds darts")
+
+
+
 if __name__ == "__main__":
     unittest.main()
