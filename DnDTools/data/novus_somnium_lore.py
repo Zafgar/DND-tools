@@ -134,14 +134,22 @@ CITIES: List[dict] = [
                      "kerää sieluja (Veru-projekti) ja pitää vihreää "
                      "lohikäärme Mueglorisia vankinaan."),
     dict(key="aesica", name="Aesica", kingdom="oblitus",
-         loc_id="loc_aesica", type="port", population=18_000,
-         biome="coast", industry="satama & gladiaattoriareena",
-         religion="—", ruler="npc_antos_orac",
-         description="Karu rannikkokaupunki. Aiemmin kreivi Erokme "
-                     "Belmudarin, nyt vallattu (Antos Orac & Krusk, Vapaan "
-                     "Etelän Koalitio). Gladiaattoriareena Nak Magnok Kor "
-                     "Adez (Julus Sanace) on salainen sielukone, joka "
-                     "pumppaa kuolleiden sieluja titaanin lukkoihin."),
+         loc_id="loc_aesica", type="port", population=50_000,
+         biome="coast", industry="satama, gladiaattoriareena & kapina",
+         religion="Aghuant", ruler="npc_krusk",
+         description="Oblituksen massiivinen ja vilkas satamakaupunki "
+                     "meren rannalla (~50 000 as.): sulatusuuni örkeille "
+                     "(50 %), puoliörkeille (20 %), gobliineille (10 %) ja "
+                     "vähemmistöille. Tunnettiin julmasta "
+                     "gladiaattorikulttuuristaan ja orjakaupastaan "
+                     "(kreivi Erokme Belmudar). Areenan (Nak Magnok Kor "
+                     "Adez) alla on Convergence Engine -sielukone. Kaupunki "
+                     "kävi juuri läpi verisen kapinan: Belmudar syöstiin "
+                     "vallasta, nyt sulkutila (martial law) ja osa Vapaan "
+                     "Etelän Koalitiota. Kaduilla vapautetut orjat jakavat "
+                     "veristä omankädenoikeutta.",
+         demographics={"Orc": 50, "Half-Orc": 20, "Goblin": 10,
+                       "Human": 8, "Elf": 4, "Other": 8}),
     dict(key="aklobar", name="Aklobar / Anyar Nauo", kingdom="oblitus",
          loc_id="loc_aklobar", type="ruins", population=1_500,
          biome="desert", industry="tyynyt (!)", religion="—",
@@ -363,6 +371,26 @@ SUBLOCATIONS: List[dict] = [
                      "täällä taistellaan myrkyin ja teräasein. Palvelijat "
                      "tuntevat kentän 'kuolleet kulmat', joissa magia yhä "
                      "toimii."),
+    dict(key="nak_magnok", name="Nak Magnok Kor Adez (areena)",
+         parent="loc_aesica", loc_id="loc_nak_magnok", type="building",
+         biome="coast",
+         description="Aesican jättimäinen gladiaattoriareena. Julkisesti "
+                     "verinen viihdekeskus; sen alla sijaitsee Convergence "
+                     "Engine -sielukone, joka imi kuolleiden gladiaattorien "
+                     "sieluja. Uusi (opportunistinen) omistaja Julus Sanace "
+                     "yrittää sopeutua kapinan jälkeiseen valtaan."),
+    dict(key="gor_rash", name="Gor'Rash (satama-alue)",
+         parent="loc_aesica", loc_id="loc_gor_rash", type="port",
+         biome="coast",
+         description="Aesican satama-alue, jota satamamestari Borug Skud "
+                     "johti rautaisella otteella vanhan hallinnon rinnalla. "
+                     "Salakuljetuksen ja merikaupan solmukohta."),
+    dict(key="aghuant_temple", name="Aghuantin suuri temppeli",
+         parent="loc_aesica", loc_id="loc_aghuant_temple", type="temple",
+         biome="coast",
+         description="Aesican hengellinen keskus, Aghuantin palvonnan "
+                     "korkein pyhäkkö. Ylipappina gobliini Isä Dimerio Fao; "
+                     "papisto pelastettiin kapinan aikana myrkytysyritykseltä."),
 ]
 
 
@@ -647,15 +675,16 @@ NPCS: List[dict] = [
 
     # ===== OBLITUS =====
     dict(id="npc_julus", name="Julus Sanace", race="Human", age="43",
-         occupation="Areenan johtaja", title="Nak Magnok Kor Adez -isäntä",
-         faction="Red Drob", alignment="Lawful Evil", loc="loc_aesica",
+         occupation="Areenan omistaja", title="Nak Magnok Kor Adez -isäntä",
+         faction="Aesica", alignment="Lawful Evil", loc="loc_nak_magnok",
          stat="monster:Noble", wealth="wealthy",
          appearance="Valkoiset viikset, kalju, läpitunkeva katse, kauniisti "
                      "koristeltu viitta.",
-         personality="Sileä, julma, sopimususkollinen.",
-         notes="Hallitsee gladiaattoriareenaa Erokme Belmudarin "
-               "pelinappulana; tehnyt sopimuksen Lucienin kanssa.",
-         tags=["arena", "antagonist"]),
+         personality="Sileä, opportunistinen, sopimususkollinen.",
+         notes="Areenan uusi omistaja; selvisi kapinasta ja yrittää "
+               "sopeutua Kruskin ja Antosin valtaan. Sitoo yhä synkkä "
+               "sopimus Lucienin kanssa (Convergence Enginen sielut).",
+         tags=["arena", "conspirator"]),
     dict(id="npc_gorkha", name="Gorkha Redbone", race="Orc", age="",
          occupation="Sielukoneen valvoja", title="", faction="Red Drob",
          alignment="Neutral Evil", loc="loc_aesica", stat="monster:Cultist",
@@ -672,8 +701,10 @@ NPCS: List[dict] = [
          loc="loc_aesica", stat="monster:Scout", wealth="modest",
          appearance="Karaistunut kapinallinen.",
          personality="Päättäväinen, oikeudenmukainen.",
-         notes="Johtaa vallattua Aesicaa yhdessä Kruskin kanssa; Vapaan "
-               "Etelän Koalition pääarkkitehti Efauxerin rinnalla.",
+         notes="Kruskin aisapari; hoitaa Aesican hallinnon byrokraattisen "
+               "puolen, diplomatian ja poliittiset neuvottelut koalition "
+               "jäsenten kanssa. Vapaan Etelän Koalition pääarkkitehti "
+               "Efauxerin rinnalla.",
          tags=["rebel", "ally"]),
     dict(id="npc_borbelio", name="Borbelio Suuri", race="Goblin", age="",
          occupation="Entinen johtaja", title="", faction="",
@@ -689,10 +720,11 @@ NPCS: List[dict] = [
          alignment="Neutral", loc="loc_pulker", stat="monster:Goblin Boss",
          wealth="poor",
          appearance="Vanha, ryppyinen gobliini.",
-         personality="Huolestunut, sitkeä.",
-         notes="Johtaa Pulkeria; kamppailee sadon menetyksen, rottien ja "
-               "sumuhirviöiden kanssa.",
-         tags=["ruler"]),
+         personality="Huolestunut ja sitkeä; räävitön huumori.",
+         notes="Pulkerin gobliiniparantaja ja vanhin; kamppailee sadon "
+               "menetyksen, rottien ja sumuhirviöiden kanssa. Istuu nyt "
+               "Aesican uudessa heimoneuvostossa.",
+         tags=["ruler", "council"]),
     dict(id="npc_longtongue", name="LongTounge", race="Grung / Sammakkokansa",
          age="", occupation="Kylänvanhin", title="Kravokin vanhin",
          faction="", alignment="Neutral", loc="loc_kravok",
@@ -702,15 +734,180 @@ NPCS: List[dict] = [
          notes="Kravokin suokylän johtaja; poikansa kaapattu Svik Fethen "
                "toimesta. Stat-proxy: Lizardfolk.",
          tags=["ruler"]),
-    dict(id="npc_nogjat", name="Nogjat Makohf Sheg", race="Orc", age="",
-         occupation="Leirinpäällikkö", title="", faction="Vapaan Etelän Koalitio",
+    dict(id="npc_nogjat", name="Makohf Sheg", race="Half-Orc", age="",
+         occupation="Leirinpäällikkö", title="Tukor Shegin johtaja",
+         faction="Vapaan Etelän Koalitio",
          alignment="Chaotic Neutral", loc="loc_tukor_sheg",
          stat="monster:Thug", wealth="poor",
-         appearance="Karaistunut aavikkosoturi.",
+         appearance="Karaistunut puoliörkki-aavikkosoturi.",
          personality="Selviytyjä, ylpeä.",
-         notes="Johtaa Tukor Shegin leiriä; varustautuu Aesican kapinan "
-               "tueksi orjakauppiaita (Red Drob) vastaan.",
-         tags=["rebel"]),
+         notes="Tukor Shegin puoliörkkileirin johtohahmo; hänen heimonsa "
+               "aloitti Aesican kapinan. Istuu nyt kaupungin uudessa "
+               "heimoneuvostossa.",
+         tags=["rebel", "council"]),
+
+    # ===== AESICA — kapinan jälkeinen kaupunki =====
+    dict(id="npc_erokme", name="Erokme Belmudar", race="Human", age="",
+         occupation="Syrjäytetty kreivi", title="Aesican entinen hirmuvaltias",
+         faction="", alignment="Lawful Evil", loc="",
+         stat="monster:Death Knight", wealth="wealthy",
+         appearance="Kylmä, ylimielinen orjaruhtinas.",
+         personality="Julma, laskelmoiva sielukauppias.",
+         notes="Johti Aesican gladiaattorikulttuuria, orjakauppaa ja "
+               "Convergence Engine -sielukonetta. Syöstiin vallasta "
+               "verisessä kapinassa. Kytkeytyy Mardukin sieluvankilaan "
+               "(orjuuttaja Erokme). Stat-proxy: Death Knight.",
+         tags=["antagonist", "arena"]),
+    dict(id="npc_lyra", name="Lyra Penediktus", race="Goblin", age="",
+         occupation="Bardi", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Chaotic Good", loc="loc_aesica", stat="monster:Noble",
+         wealth="modest",
+         appearance="Ilmeikäs gobliinibardi.",
+         personality="Uskollinen, mutta unettomuuden ja pelon rasittama.",
+         notes="Jäi Kruskin tueksi Aesicaan. Kantaa kirottua Clavis-miekkaa "
+               "ja kärsii öisin painajaisista, joissa vampyyri Dimerius "
+               "Blackfeet yrittää manipuloida häntä. Stat-proxy: Noble (bard).",
+         tags=["ally", "party"]),
+    dict(id="npc_xionzer", name="Xionzer \"Xer\"", race="Dwarf", age="",
+         occupation="Barbaari", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Chaotic Good", loc="loc_aesica", stat="", wealth="modest",
+         appearance="Roteva kääpiöbarbaari.",
+         personality="Suora, taisteluhaluinen, uskollinen.",
+         notes="Jäi Aesicaan; ratsastaa valkoisella lohikäärme Fangrokilla. "
+               "Toi Kruskille huolestuttavia tietoja Unhaelin "
+               "lohikäärmeratsastajien epäilyttävistä toimista. "
+               "Stat: Barbaari (DM valitsee blockin).",
+         tags=["ally", "party"]),
+    dict(id="npc_fangrok", name="Fangrok", race="White Dragon", age="",
+         occupation="Ratsulohikäärme", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Chaotic Neutral", loc="loc_aesica",
+         stat="monster:Adult White Dragon", wealth="",
+         appearance="Valkoinen lohikäärme.",
+         personality="Villi mutta uskollinen Xionzerille.",
+         notes="Xionzerin ratsulohikäärme.",
+         tags=["dragon", "ally"]),
+    dict(id="npc_aleria", name="Aleria", race="Halfling", age="",
+         occupation="Vakooja / resurssien kerääjä", title="",
+         faction="Vapaan Etelän Koalitio", alignment="Chaotic Good",
+         loc="loc_aesica", stat="monster:Spy", wealth="modest",
+         appearance="Nopea, huomaamaton puolituinen.",
+         personality="Näppärä, kekseliäs.",
+         notes="Tärkeä liittolainen kapinan aikana; hoitaa tiedustelua ja "
+               "hankintoja kaupungissa.",
+         tags=["ally", "spy"]),
+    dict(id="npc_zahara", name="Zahara", race="Loxodon", age="",
+         occupation="Parantaja", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Neutral Good", loc="loc_aesica", stat="monster:Acolyte",
+         wealth="modest",
+         appearance="Rauhallinen norsupäinen loxodon-parantaja.",
+         personality="Lempeä, viisas.",
+         notes="Loxodon-parantaja; tärkeä liittolainen kapinan aikana, "
+               "toimii edelleen kaupungissa. Stat-proxy: Acolyte.",
+         tags=["ally", "healer"]),
+    dict(id="npc_adrik", name="Adrik Balderk", race="Dwarf", age="",
+         occupation="Gladiaattorivalmentaja", title="", faction="",
+         alignment="Lawful Neutral", loc="loc_nak_magnok", stat="",
+         wealth="modest",
+         appearance="Vanha, arpinen ja arvostettu kääpiösoturi.",
+         personality="Ankara mutta isällinen.",
+         notes="Toimi areenalla gladiaattorien opettajana; Kruskille "
+               "isällinen hahmo. Valmentaa nyt vain vapaaehtoisia "
+               "taistelijoita. Stat: Veteran/Gladiator-tier (DM valitsee).",
+         tags=["ally", "mentor"]),
+    dict(id="npc_grebza", name="Grebza the Velvet Maw", race="Human", age="",
+         occupation="Killan johtaja", title="Samettisen Killan johtaja",
+         faction="Samettinen Kilta", alignment="Neutral Evil",
+         loc="loc_aesica", stat="monster:Noble", wealth="aristocratic",
+         appearance="Ylellinen aatelinen; käyttää viehätysamulettia.",
+         personality="Liukas, varovainen selviytyjä.",
+         notes="Omistaa varjokauppoja ja orjamarkkinoita. Pitää matalaa "
+               "profiilia ja yrittää navigoida uudessa poliittisessa "
+               "tilanteessa hengissä.",
+         tags=["criminal", "elite"]),
+    dict(id="npc_bervider", name="Bervider", race="Half-Orc", age="",
+         occupation="Heimojohtaja", title="Tukor Shegin johtohahmo",
+         faction="Vapaan Etelän Koalitio", alignment="Chaotic Neutral",
+         loc="loc_aesica", stat="monster:Thug", wealth="poor",
+         appearance="Karaistunut puoliörkkisoturi.",
+         personality="Suorapuheinen, sitkeä.",
+         notes="Makohf Shegin rinnalla Tukor Shegin johtohahmo; istuu "
+               "Aesican uudessa heimoneuvostossa.",
+         tags=["rebel", "council"]),
+    dict(id="npc_longhop", name="Longhop", race="Grung", age="",
+         occupation="Kylän edustaja", title="Kravokin edustaja",
+         faction="Vapaan Etelän Koalitio", alignment="Neutral",
+         loc="loc_aesica", stat="monster:Lizardfolk", wealth="poor",
+         appearance="Kirkasvärinen sammakkokansan (grung) edustaja.",
+         personality="Varovainen, tarkkaavainen.",
+         notes="Kravokin sammakkokylän edustaja Aesican uudessa "
+               "heimoneuvostossa. Stat-proxy: Lizardfolk.",
+         tags=["council"]),
+    dict(id="npc_borug", name="Borug Skud", race="Orc", age="",
+         occupation="Satamamestari", title="Gor'Rashin satamamestari",
+         faction="", alignment="Lawful Evil", loc="loc_gor_rash",
+         stat="monster:Orc", wealth="comfortable",
+         appearance="Pelätty, jäntevä örkki.",
+         personality="Rautainen, korruptoitunut.",
+         notes="Johti Gor'Rashin satamaa rautaisella otteella ja teki "
+               "yhteistyötä vanhan hallinnon kanssa.",
+         tags=["harbor", "criminal"]),
+    dict(id="npc_dimerio", name="Isä Dimerio Fao", race="Goblin", age="",
+         occupation="Ylipappi", title="Aghuantin temppelin ylipappi",
+         faction="Aghuant", alignment="Neutral Good", loc="loc_aghuant_temple",
+         stat="monster:Acolyte", wealth="modest",
+         appearance="Arvokas, ikääntynyt gobliinipappi.",
+         personality="Hurskas, yhteisöllinen.",
+         notes="Aghuantin suuren temppelin korkein pappi — Aesican "
+               "hengellinen keskus. Papisto pelastettiin kapinan aikana "
+               "myrkytysyritykseltä. Stat-proxy: Acolyte (ylipappi).",
+         tags=["clergy"]),
+    dict(id="npc_gaufex", name="Gaufex Bakduvar", race="Dwarf", age="",
+         occupation="Komentaja / tiedustelumestari",
+         title="Unhael Scale Rider", faction="Unhael Scale Riders",
+         alignment="Lawful Neutral", loc="loc_aesica", stat="monster:Scout",
+         wealth="comfortable",
+         appearance="Terävä-älyinen kääpiökomentaja.",
+         personality="Laskelmoiva, salaileva.",
+         notes="Ratsastaa messinkilohikäärme Khaldryksella. Tuki kapinaa "
+               "ilmasta, mutta ajaa salaista agendaa (kuningas Saxigniksen "
+               "pelastaminen Chento-vuoren yrteillä) — Krusk on alkanut "
+               "epäillä hänen aikeitaan.",
+         tags=["dragon_rider", "scholar"]),
+    dict(id="npc_khaldrys", name="Khaldrys", race="Brass Dragon", age="",
+         occupation="Ratsulohikäärme", title="", faction="Unhael Scale Riders",
+         alignment="Chaotic Good", loc="loc_aesica",
+         stat="monster:Adult Brass Dragon", wealth="",
+         appearance="Messinkilohikäärme.",
+         personality="Puhelias, ovela.",
+         notes="Gaufex Bakduvarin ratsulohikäärme.",
+         tags=["dragon"]),
+    dict(id="npc_brynja", name="Brynja Ironfist", race="Dwarf", age="",
+         occupation="Lohikäärmeratsastaja", title="Unhael Scale Rider",
+         faction="Unhael Scale Riders", alignment="Lawful Good",
+         loc="loc_aesica", stat="monster:Scout", wealth="comfortable",
+         appearance="Vankka kääpiösoturi.",
+         personality="Suora, kunniallinen.",
+         notes="Ratsastaa hopealohikäärme Silverscalella (Reemien). "
+               "Toverit Thorfinn ja Bronzewing kaatuivat kapinassa.",
+         tags=["dragon_rider"]),
+    dict(id="npc_silverscale", name="Silverscale (Reemien)",
+         race="Silver Dragon", age="", occupation="Ratsulohikäärme", title="",
+         faction="Unhael Scale Riders", alignment="Lawful Good",
+         loc="loc_aesica", stat="monster:Adult Silver Dragon", wealth="",
+         appearance="Hopealohikäärme.",
+         personality="Jalo, suojeleva.",
+         notes="Brynja Ironfistin ratsulohikäärme.",
+         tags=["dragon"]),
+    dict(id="npc_saxignis", name="Kuningas Saxignis", race="Red Dragon",
+         age="", occupation="Lohikäärmekuningas", title="",
+         faction="Unhael Scale Riders", alignment="Chaotic Neutral", loc="",
+         stat="monster:Adult Red Dragon", wealth="aristocratic",
+         appearance="Mahtava punainen lohikäärmekuningas, sairauden "
+                     "heikentämä.",
+         personality="Ylpeä, kärsivä.",
+         notes="Unhael Scale Ridersin lohikäärmekuningas, jonka pelastamista "
+               "(Chento-vuoren yrtit) ratsastajat salaa ajavat.",
+         tags=["dragon", "ruler"]),
 
     # ===== OLD VAISIL & VAPAA ETELÄ =====
     dict(id="npc_efauxer", name="Efauxer Redfei", race="Half-Orc", age="78",
@@ -1273,18 +1470,23 @@ NPCS: List[dict] = [
          tags=["scholar", "secret"]),
 
     # ===== PELAAJAHAHMOT (PC:t) =====
-    dict(id="npc_krusk", name="Krusk", race="Half-Orc", age="",
-         occupation="Barbaari", title="Aesican kapinan johtotähti",
+    dict(id="npc_krusk", name="Krusk Akarsho", race="Half-Orc", age="",
+         occupation="Barbaari", title="Vastentahtoinen keisari",
          faction="Vapaan Etelän Koalitio", alignment="Chaotic Good",
          loc="loc_aesica", stat="", wealth="modest",
          appearance="Atleettinen puoliörkki, selässä valtava pyöreä \"Pedon "
                      "merkki\" (Veru).",
-         personality="\"Orjasta johtajaksi\" — sitkeä, suojeleva.",
-         notes="PELAAJAHAHMO. Entinen gladiaattori. Kantaa 3/5 Veru-ihon "
-               "palasista → keisari Tarquvas Redfein (henkiolento Oknar) "
-               "perillinen. Efauxerin pojanpoika; Emnarin ja Aequitaksen "
-               "jahtaama.",
-         tags=["player_character", "party"]),
+         personality="\"Orjasta johtajaksi\" — sitkeä, suojeleva; tällä "
+                     "hetkellä uupunut ja ahdistunut katujen verisistä "
+                     "puhdistuksista.",
+         notes="PELAAJAHAHMO. Aesican kapinan symboli — kansa huutaa häntä "
+               "keisariksi, mutta hän kieltäytyi tittelistä ja toimii "
+               "koalition moraalisena ankkurina ja armeijan kasvoina. "
+               "Kantaa 3/5 Veru-ihon palasista → keisari Tarquvas Redfein "
+               "(henkiolento Oknar) perillinen. Efauxerin pojanpoika; "
+               "Emnarin ja Aequitaksen jahtaama. Henkivartijoina entinen "
+               "areenaryhmä Broken Spear.",
+         tags=["player_character", "party", "ruler"]),
     dict(id="npc_beatrice", name="Beatrice", race="Half-Elf / Drow",
          age="", occupation="Warlock / Sorcerer", title="",
          faction="", alignment="Neutral", loc="",
@@ -1454,6 +1656,20 @@ NPC_LINKS: List[tuple] = [
      "Kairon voi puhua nuoren keittiöpojan puolelleen."),
     ("npc_faldor", "npc_beatrice", "other",
      "Salainen hengenheimolainen (Dobluth Dro) — voi auttaa."),
+    # Aesica — kapinan jälkeen
+    ("npc_adrik", "npc_krusk", "mentor", "Isällinen gladiaattorivalmentaja."),
+    ("npc_krusk", "npc_adrik", "protege", "Kruskin isähahmo areenalta."),
+    ("npc_erokme", "npc_krusk", "enemy", "Syrjäytetty hirmuvaltias vs. kapina."),
+    ("npc_lyra", "npc_krusk", "ally", "Jäi Kruskin tueksi Aesicaan."),
+    ("npc_xionzer", "npc_krusk", "ally", "Jäi Aesicaan; varoitti Unhaelista."),
+    ("npc_xionzer", "npc_fangrok", "ally", "Ratsastaja ja valkoinen lohikäärme."),
+    ("npc_dimerius", "npc_lyra", "enemy",
+     "Manipuloi Lyraa painajaisissa Clavis-miekan kautta."),
+    ("npc_gaufex", "npc_khaldrys", "ally", "Ratsastaja ja messinkilohikäärme."),
+    ("npc_brynja", "npc_silverscale", "ally", "Ratsastaja ja hopealohikäärme."),
+    ("npc_gaufex", "npc_saxignis", "ally", "Salaa pelastamassa kuningastaan."),
+    ("npc_krusk", "npc_gaufex", "rival", "Epäilee Unhaelin todellisia aikeita."),
+    ("npc_julus", "npc_erokme", "subordinate", "Areena entisen kreivin alla."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
@@ -1608,6 +1824,7 @@ def add_lore_cities_to_kingdoms(camp) -> None:
             primary_industry=c.get("industry", ""),
             religion=c.get("religion", ""),
             ruler_npc_id=c.get("ruler", ""),
+            demographics=c.get("demographics", {}),
         )
 
 
@@ -1907,10 +2124,88 @@ def lore_organisations():
                                rank_key="overseer", role_keys=[],
                                kingdom_key="smardu", city_key="antanard",
                                notes="Hautomolaitoksen ylivalvoja (F.E.R.I.D.)."),
+            OrganisationMember(npc_id="npc_gaufex", npc_name="Gaufex Bakduvar",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Komentaja & tiedustelumestari; ratsastaa "
+                                     "Khaldryksella. Salainen agenda."),
+            OrganisationMember(npc_id="npc_brynja", npc_name="Brynja Ironfist",
+                               rank_key="overseer", role_keys=[],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Ratsastaa Silverscalella; tuki Aesican "
+                                     "kapinaa ilmasta."),
         ],
         relations={},
         color=(120, 140, 120),
         tags=["order", "dragons"],
+    )
+
+    free_south = Organisation(
+        key="vapaan_etelan_koalitio", name="Vapaan Etelän Koalitio",
+        kind="coalition",
+        description="Aesican kapinasta syntynyt liittouma, joka yhdistää "
+                    "vapautetut orjat, Oblituksen sorretut heimot ja "
+                    "irtautuneet etelän kaupungit (Aesica, Old Vaisil, Fort "
+                    "Whitestone) Emnar Redfein ja orjakaupan vastaiseen "
+                    "rintamaan.",
+        motto="Ei enää kahleita.",
+        secret=False, alignment="chaotic good",
+        headquarters_city="aesica", headquarters_kingdom="oblitus",
+        operating_kingdoms=["oblitus"],
+        operating_cities=["aesica", "tukor_sheg", "pulker", "aklobar",
+                          "kravok", "old_vaisil"],
+        ranks=[
+            OrganisationRank(key="figurehead", name="Symboli", tier=1,
+                             description="Kapinan kasvot (Krusk)."),
+            OrganisationRank(key="administrator", name="Hallinto", tier=2,
+                             description="Byrokratia & diplomatia (Antos)."),
+            OrganisationRank(key="councillor", name="Heimoneuvosto", tier=3,
+                             description="Heimojen edustajat."),
+        ],
+        roles=[
+            OrganisationRole(key="general", name="Armeijan kasvo",
+                             description="Sotilaallinen johto."),
+            OrganisationRole(key="diplomat", name="Diplomaatti",
+                             description="Koalition neuvottelut."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_krusk", npc_name="Krusk Akarsho",
+                               rank_key="figurehead", role_keys=["general"],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Vastentahtoinen keisari; kapinan symboli."),
+            OrganisationMember(npc_id="npc_antos_orac", npc_name="Antos Orac",
+                               rank_key="administrator", role_keys=["diplomat"],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Hallinto & diplomatia."),
+            OrganisationMember(npc_id="npc_efauxer", npc_name="Efauxer Redfei",
+                               rank_key="administrator", role_keys=["diplomat"],
+                               kingdom_key="tarmaas", city_key="old_vaisil",
+                               notes="Koalition pääarkkitehti; Old Vaisil."),
+            OrganisationMember(npc_id="npc_nogjat", npc_name="Makohf Sheg",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="oblitus",
+                               notes="Tukor Sheg; kapinan sytyttäjä."),
+            OrganisationMember(npc_id="npc_bervider", npc_name="Bervider",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Tukor Sheg."),
+            OrganisationMember(npc_id="npc_wok", npc_name="Wok Metsam",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="oblitus",
+                               notes="Pulker."),
+            OrganisationMember(npc_id="npc_longhop", npc_name="Longhop",
+                               rank_key="councillor", role_keys=[],
+                               kingdom_key="oblitus", city_key="aesica",
+                               notes="Kravok (grung)."),
+            OrganisationMember(npc_id="npc_richard_walker",
+                               npc_name="Richard Walker",
+                               rank_key="administrator", role_keys=[],
+                               notes="Fort Whitestone liittyi koalitioon."),
+        ],
+        relations={"unhael_scale_riders": "ally",
+                   "brotherhood_of_glorious_sun": "enemy"},
+        color=(210, 150, 60),
+        tags=["coalition", "ally"],
     )
 
     baenrahel = Organisation(
@@ -1990,7 +2285,7 @@ def lore_organisations():
     )
 
     return [dath, deaths_vigil, seekers, veil, famiglia, efi, aequitas,
-            scale_riders, baenrahel]
+            scale_riders, baenrahel, free_south]
 
 
 # --------------------------------------------------------------------- #
@@ -2037,6 +2332,15 @@ def lore_campaign_notes():
          "arkistoihin, hän voi resonoida suoraan sielukoneen ja Garruthan "
          "kanssa ja rikkoa drowien 2000 vuotta varjeleman valheen — mikä "
          "sytyttäisi Aterterrassa sisällissodan."),
+        ("AESICAN KAPINA — Aesica (~50 000 as., örkkien satamakaupunki "
+         "Oblituksessa) kävi läpi verisen kapinan: hirmuvaltias kreivi "
+         "Erokme Belmudar syöstiin vallasta ja kaupunki liittyi Vapaan "
+         "Etelän Koalitioon. Nyt sulkutila (martial law); kadut ovat "
+         "räjähdysherkät, kun vapautetut orjat jakavat omankädenoikeutta. "
+         "Krusk on kapinan symboli ('vastentahtoinen keisari'). Areenan "
+         "(Nak Magnok Kor Adez) alla sykkii yhä Convergence Engine "
+         "-sielukone; Unhael Scale Riders liikkuu alueella omalla "
+         "salaisella agendallaan (kuningas Saxigniksen pelastus)."),
     ]
     return [CampaignNote(text=t, category="lore") for t in specs]
 
