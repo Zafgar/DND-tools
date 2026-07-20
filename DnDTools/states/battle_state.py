@@ -1324,12 +1324,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                             killer_is_player=step.attacker.is_player if step.attacker else False,
                             target_is_player=target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Damage at 0 HP → death save failures are applied inside
+                # take_damage (1 normally, 2 on a crit, instant death if
+                # damage >= HP max). We only log the resulting state here.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    failures = 2 if outcome == "crit" else 1
-                    target.death_save_failures += failures
-                    target.death_save_history.extend(["F"] * failures)
-                    self._log(f"  -> {target.name} suffers {failures} death save failure(s)!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3.")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
                         # Record kill if not already recorded
@@ -1440,11 +1440,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 if target.hp <= 0 and old_hp > 0:
                     self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Death save failures applied inside take_damage; log only.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    target.death_save_failures += 1
-                    target.death_save_history.append("F")
-                    self._log(f"  -> {target.name} suffers 1 death save failure!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3.")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
 
@@ -1487,12 +1486,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                             killer_is_player=step.attacker.is_player if step.attacker else False,
                             target_is_player=target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Death save failures (2 on crit) applied inside take_damage.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    failures = 2 # Crits cause 2 failures
-                    target.death_save_failures += failures
-                    target.death_save_history.extend(["F"] * failures)
-                    self._log(f"  -> {target.name} suffers {failures} death save failures (CRIT)!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3 (CRIT).")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
 

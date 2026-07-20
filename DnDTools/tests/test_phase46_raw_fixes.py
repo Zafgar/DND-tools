@@ -262,3 +262,53 @@ class TestSentinelVsDisengage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoDoubleDeathSaveInBattleState(unittest.TestCase):
+    """Regression: death-save failures at 0 HP are applied once (inside
+    take_damage), not doubled by battle_state's resolution path."""
+
+    def _setup(self):
+        import pygame
+        pygame.init()
+        pygame.display.set_mode((320, 240))
+        from states.battle_state import BattleState
+        from engine.ai import ActionStep
+
+        class FM:
+            def __init__(s):
+                s.screen = pygame.display.get_surface()
+                s.running = True
+
+            def change_state(s, *a, **k):
+                pass
+
+        hero = _make_entity("Hero", is_player=True, hp=30)
+        foe = _make_entity("Orc", is_player=False, hp=30, x=6, y=5)
+        bs = BattleState(FM(), entities=[hero, foe])
+        hero.take_damage(30)  # down the hero (Unconscious, 0 failures)
+        self.assertTrue(hero.has_condition("Unconscious"))
+        self.assertEqual(hero.death_save_failures, 0)
+        return bs, hero, foe, ActionStep
+
+    def test_normal_hit_on_downed_adds_one_failure(self):
+        bs, hero, foe, ActionStep = self._setup()
+        step = ActionStep("attack")
+        step.attacker = foe
+        step.target = hero
+        step.damage = 5
+        step.damage_type = "slashing"
+        step.is_crit = False
+        bs._resolve_target_outcome(step, hero, "hit")
+        self.assertEqual(hero.death_save_failures, 1)
+
+    def test_crit_on_downed_adds_two_failures(self):
+        bs, hero, foe, ActionStep = self._setup()
+        step = ActionStep("attack")
+        step.attacker = foe
+        step.target = hero
+        step.damage = 5
+        step.damage_type = "slashing"
+        step.is_crit = True
+        bs._resolve_target_outcome(step, hero, "crit")
+        self.assertEqual(hero.death_save_failures, 2)
