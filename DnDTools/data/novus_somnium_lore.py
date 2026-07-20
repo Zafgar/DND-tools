@@ -324,14 +324,33 @@ CITIES: List[dict] = [
                      "tartuttamat drowt piileskelevät sillalla."),
 
     # ---- ITSENÄISET / RIIPPUMATTOMAT KOHTEET -----------------------
-    dict(key="fort_whitestone", name="Fort Whitestone (Marblecrag Isle)",
-         kingdom="", loc_id="loc_fort_whitestone", type="castle",
-         population=300, biome="island", industry="mekaaninen armeija",
-         religion="—", ruler="npc_richard_walker",
-         description="Muinainen merilinnoitus Cunaen eteläosassa. Sisältää "
-                     "mekaanisen armeijan ja kätkee tietoa "
-                     "rinnakkaisulottuvuuksista (Occulo). Liittyi juuri "
-                     "Vapaan Etelän Koalitioon."),
+    dict(key="maclebar_isle", name="Maclebar Isle (Ma Fo)", kingdom="",
+         loc_id="loc_maclebar", type="region", population=6_000,
+         biome="island", industry="marmori & kalastus", religion="—",
+         ruler="npc_richard_walker",
+         description="Eteläinen, Walker-suvun hallitsema saari. Ulospäin "
+                     "tunnettu laadukkaasta marmoristaan ja kalastajakylistä "
+                     "(mm. Pearl Bay); todellinen sydän on pohjoiskärjen "
+                     "Fort Whitestone."),
+    dict(key="pearl_bay", name="Pearl Bay", kingdom="",
+         parent="loc_maclebar", loc_id="loc_pearl_bay", type="village",
+         population=1_200, biome="coast", industry="kalastus", religion="—",
+         ruler="",
+         description="Maclebar Islen rauhallinen kalastajakylä."),
+    dict(key="fort_whitestone", name="Fort Whitestone (Silex Alpus)",
+         kingdom="", parent="loc_maclebar", loc_id="loc_fort_whitestone",
+         type="castle", population=300, biome="island",
+         industry="korkeateknologinen tehdas & arkisto",
+         religion="—", ruler="npc_blitz",
+         description="Maclebar Islen pohjoiskärjen kallioilla lepäävä "
+                     "linnake (vanha ydin: Silex Alpus). Ei pelkkä linna "
+                     "vaan Walker-suvun vuosisatoja vanha tehdas, arkisto ja "
+                     "ulottuvuuksien välinen tukikohta. Kellaritasot ovat "
+                     "oma taskuulottuvuus, jonne on varastoitu 8000 Automata "
+                     "Trooperia, Whitestone Colosseja ja sukellusveneitä — "
+                     "kosmisen karanteenin armeija. Sisältää kosmisen kartan "
+                     "(kristallikupu + Phlogiston). Liittyi Vapaan Etelän "
+                     "Koalitioon."),
     dict(key="caldius", name="Caldius / Khro Kal", kingdom="",
          loc_id="loc_caldius", type="city", population=4_000,
          biome="underwater", industry="insinöörityö & merirosvous",
@@ -436,6 +455,18 @@ SUBLOCATIONS: List[dict] = [
                      "todellisuudessa muinainen Aboleth, joka pesee "
                      "palvojiensa mielet fanaattisiksi orjiksi vedenalaisesta "
                      "piilostaan sataman tuntumassa."),
+    # ---- Fort Whitestone (Maclebar Isle) sisäiset alueet ------------
+    dict(key="protocol_omega_vault", name="Protokolla Omega -holvi",
+         parent="loc_fort_whitestone", type="room", biome="pocket_dimension",
+         loc_id="loc_protocol_omega",
+         description="Fort Whitestonen kellaritason taskuulottuvuus, jonne "
+                     "on varastoitu 8000 Automata Trooperia, "
+                     "Whitestone Colosseja ja sukellusveneita. Armeijan "
+                     "ensisijainen ohjelmointi (Protokolla Omega) on tuhota "
+                     "'Uusi Keisari' — kuka tahansa joka resonoi Veru-ihon "
+                     "palojen kanssa (Krusk). Herättäminen asettaa armeijan "
+                     "välittömästi Kruskin tappo-ohjelmointiin. Avautuu vain "
+                     "Walker-verellä ja -sinettisormuksella (Blitz)."),
 ]
 
 
@@ -1615,15 +1646,30 @@ NPCS: List[dict] = [
          notes="Blitz Walkerin isä; hallitsee Fort Whitestonea ja sen "
                "mekaanista armeijaa.",
          tags=["ally", "ruler"]),
-    dict(id="npc_archibald", name="Archibald", race="Konstrukti", age="",
-         occupation="Hovimestari", title="", faction="Fort Whitestone",
-         alignment="Lawful Neutral", loc="loc_fort_whitestone",
-         stat="monster:Shield Guardian", wealth="",
-         appearance="Hieno mekaaninen hovimestari.",
-         personality="Kohtelias, tehokas.",
-         notes="Fort Whitestonen mekaaninen hovimestari; voi auttaa Blitzin "
-               "elvyttämisessä.",
+    dict(id="npc_archibald", name="Archibald", race="Konstrukti", age="300+",
+         occupation="Hovimestari", title="Linnakkeen ylläpitäjä",
+         faction="Fort Whitestone", alignment="Lawful Neutral",
+         loc="loc_fort_whitestone", stat="monster:Shield Guardian", wealth="",
+         appearance="Hieno, yli 300-vuotias mekaaninen hovimestari.",
+         personality="Kohtelias, ehdottoman kuuliainen Walker-verilinjalle.",
+         notes="Fort Whitestonen mekaaninen ylläpitäjä. Blitzin kuoltua "
+               "tulkitsi protokollia vapaammin auttaakseen Venristä; nyt "
+               "Blitzin eläessä tottelee vain tätä. Ilmoittaa Veru-palojen "
+               "resonanssista ja Kruskiin lukitusta tappokäskystä "
+               "(Protokolla Omega). Stat-proxy: Shield Guardian.",
          tags=["construct"]),
+    dict(id="npc_nundai", name="Nundai Galanodel", race="Elf", age="",
+         occupation="Ylipapitar", title="Mara Vael Esta (Elämän Vendil)",
+         faction="Nimfritein papisto", alignment="Neutral Good",
+         loc="loc_fort_whitestone", stat="monster:Archmage", wealth="modest",
+         appearance="Kirkastunut haltiaylipapitar, vapautunut hulluudestaan.",
+         personality="Vihdoin ehjä; puhtaan toivon ja jumalallisen magian "
+                     "voima.",
+         notes="Venriksen äiti ja Elämän Vendilin (Nimfritein) korkein "
+               "ylipapitar. Todisti mahtinsa palauttamalla Blitzin sielun "
+               "ja ruumiin yhteen (herätti kuolleista). Stat-proxy: "
+               "Archmage (jumalallinen loitsija).",
+         tags=["clergy", "ally"]),
     dict(id="npc_duemor", name="Duemor Melkan", race="Dwarf", age="",
          occupation="Pormestari / insinööri", title="Caldiuksen pormestari",
          faction="", alignment="Neutral", loc="loc_caldius",
@@ -1684,12 +1730,16 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_venris", name="Venris Galanodel", race="Elf", age="",
          occupation="Velho", title="", faction="Seekers of Demimaind",
-         alignment="Neutral Good", loc="", stat="", wealth="modest",
+         alignment="Neutral Good", loc="loc_fort_whitestone", stat="",
+         wealth="modest",
          appearance="Vaalea haltia; tutkiva, analyyttinen.",
          personality="Tarkkailija, ajan säröjen näkijä.",
-         notes="PELAAJAHAHMO. Äiti ylipapitar Nundai (MaRa Vael esta) on "
-               "mielisairaalassa. Kantaa Hatred of Time -kirjaa (ajan "
-               "manipulointi). Dihvikin oppilas; E.F.I.:n ja Veljeskunnan "
+         notes="PELAAJAHAHMO. Äiti ylipapitar Nundai on vapautunut "
+               "hulluudestaan ja herätti Blitzin kuolleista. Kantaa "
+               "Hatred of Time -kirjaa (ajan manipulointi). Blitzin "
+               "peilikuva: aika/kosminen magia vs. ulottuvuusteknologia — "
+               "yhdessä he voisivat purkaa Cunaen taikarajan (Leutik & "
+               "Adultus). Dihvikin oppilas; E.F.I.:n ja Veljeskunnan "
                "jahtaama.",
          tags=["player_character", "party"]),
     dict(id="npc_balthazar", name="Balthazar / Zarxetharion", race="Devil",
@@ -1778,16 +1828,51 @@ NPCS: List[dict] = [
                "lukkoihin). Stat-proxy: Wight.",
          tags=["player_character", "party", "undead"]),
     dict(id="npc_blitz", name="Blitz Walker", race="Human", age="",
-         occupation="Gunslinger", title="", faction="",
+         occupation="Gunslinger", title="Walker-suvun perillinen",
+         faction="Vapaan Etelän Koalitio",
          alignment="Neutral Good", loc="loc_fort_whitestone", stat="",
-         wealth="modest",
+         wealth="wealthy",
          appearance="Tutkimusmatkailija-asuinen ampuja.",
-         personality="Periksiantamaton tutkija.",
-         notes="PELAAJAHAHMO (kuollut/lepotilassa). Walkerin suvun perillinen "
-               "(Occulo-tutkimus); menetti perheensä Honpassa Veljeskunnan "
-               "vuoksi. Gersnet tappoi hänet; elvytys mahdollista Fort "
-               "Whitestonella (Archibald).",
-         tags=["player_character", "party"]),
+         personality="Periksiantamaton tutkija; nyt valtavan moraalisen "
+                     "dilemman edessä.",
+         notes="PELAAJAHAHMO. Nundai herätti hänet juuri kuolleista. Suvun "
+               "ainoa aktiivinen perillinen — hänen verensä ja "
+               "Walker-sinettisormus avaavat Fort Whitestonen täyden "
+               "potentiaalin (Protokolla Omega -armeija). Dilemma: koalitio "
+               "tarvitsee armeijaa Oblitusta vastaan, mutta se on ohjelmoitu "
+               "tappamaan Veru-kantaja Krusk. Walkerin suku (esim. esi-isä "
+               "Vermok) rakensi armeijan kosmisen karanteenin ylläpitoon. "
+               "Gersnet tappoi hänet aiemmin.",
+         tags=["player_character", "party", "ruler"]),
+    dict(id="npc_carlo", name="Carlo \"Flexmaster\"", race="Human", age="",
+         occupation="Barbaari / perämies", title="", faction="",
+         alignment="Chaotic Good", loc="loc_fort_whitestone", stat="",
+         wealth="poor",
+         appearance="Lihaksikas, kookospähkinöitä rakastava ihmissoturi.",
+         personality="Maanläheinen, rento, kaoottinen energia.",
+         notes="\"Rapulaivan\" (kapteeni Rommiparran alus) perämies. Tuo "
+               "kaivattua rentoa energiaa vakavaan tilanteeseen. "
+               "Stat: Barbaari (DM valitsee blockin).",
+         tags=["ally"]),
+    dict(id="npc_rommiparta", name="Kapteeni Rommiparta", race="Dwarf",
+         age="", occupation="Merikapteeni", title="\"Rapulaivan\" kapteeni",
+         faction="", alignment="Chaotic Neutral", loc="loc_fort_whitestone",
+         stat="monster:Thug", wealth="modest",
+         appearance="Juopotteleva kääpiökapteeni.",
+         personality="Välinpitämätön, huoleton, luotettava hädässä.",
+         notes="Löytyy todennäköisesti linnakkeen piha-alueelta "
+               "juopottelemasta välittämättä kosmisen tason draamasta.",
+         tags=["ally"]),
+    dict(id="npc_gediroi", name="Gediroi", race="Human", age="",
+         occupation="Liittolainen", title="", faction="",
+         alignment="Neutral Good", loc="loc_fort_whitestone",
+         stat="monster:Scout", wealth="modest",
+         appearance="Karaistunut, hiljainen sivustakatsoja.",
+         personality="Lojaali, sitkeä.",
+         notes="Selvisi laivamatkan syvyyden olentojen kohtaamisesta; nyt "
+               "ryhmän mukana linnakkeessa. Tuo jatkuvuutta aiemmista "
+               "seikkailuista.",
+         tags=["ally"]),
 ]
 
 
@@ -1881,6 +1966,19 @@ NPC_LINKS: List[tuple] = [
     ("npc_edmun", "npc_hannes", "ally", "Avarath-kultin perustajat."),
     ("npc_padak", "npc_sam_undercave", "ally", "Matkatoveri Ravenstonessa."),
     ("npc_sam_undercave", "npc_padak", "ally", "Matkatoveri Ravenstonessa."),
+    # Fort Whitestone / Maclebar Isle
+    ("npc_nundai", "npc_venris", "family", "Äiti ja poika."),
+    ("npc_venris", "npc_nundai", "family", "Äiti, vapautunut hulluudestaan."),
+    ("npc_nundai", "npc_blitz", "other", "Herätti Blitzin kuolleista."),
+    ("npc_richard_walker", "npc_blitz", "family", "Isä ja poika (perillinen)."),
+    ("npc_archibald", "npc_blitz", "subordinate",
+     "Tottelee ehdottomasti Walker-verilinjaa."),
+    ("npc_blitz", "npc_krusk", "ally",
+     "Ystävä — mutta Protokolla Omega uhkaa tappaa Kruskin."),
+    ("npc_venris", "npc_blitz", "ally", "Peilikuvat: aika vs. teknologia."),
+    ("npc_carlo", "npc_rommiparta", "ally", "\"Rapulaivan\" miehistö."),
+    ("npc_rommiparta", "npc_carlo", "ally", "Perämies."),
+    ("npc_gediroi", "npc_blitz", "ally", "Lojaali tukija linnakkeessa."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
@@ -1933,7 +2031,11 @@ def build_lore_locations(world) -> None:
     for c in CITIES:
         if c["loc_id"] in world.locations:
             continue
-        parent = KINGDOM_LOC.get(c["kingdom"], "") if c["kingdom"] else ""
+        # Explicit "parent" wins (nests independent locations, e.g. Fort
+        # Whitestone under Maclebar Isle); otherwise fall back to the
+        # kingdom country-location.
+        parent = c.get("parent") or (
+            KINGDOM_LOC.get(c["kingdom"], "") if c["kingdom"] else "")
         tags = [c["key"]]
         if c["kingdom"]:
             tags.append(c["kingdom"])
@@ -2693,6 +2795,18 @@ def lore_campaign_notes():
          "polttaa). Taustalla Asylum Purgon Greg Silverhand (ihmiskokeet) "
          "ja Clay Shoren Avarath-kultti (Aboleth). Padak etsii täältä "
          "parannusta — pahin mahdollinen paikka."),
+        ("PROTOKOLLA OMEGA (Fort Whitestone) — Maclebar Islen linnakkeen "
+         "kellaritaso on taskuulottuvuus, jossa on 8000 Automata Trooperia "
+         "(CR 4), Whitestone Colosseja (CR 14) ja sukellusveneita. Walkerin "
+         "suku (esi-isä Vermok) rakensi armeijan kosmisen karanteenin "
+         "ylläpitoon kahlittua Garrutha-titaania vastaan. Armeijan "
+         "ensisijainen ohjelmointi (Protokolla Omega) tuhoaa 'Uuden "
+         "Keisarin' — kuka tahansa joka resonoi Veru-ihon palojen kanssa. "
+         "KOSKA KRUSK KANTAA VERU-PALOJA, armeijan herättäminen asettaa sen "
+         "välittömästi Kruskin tappo-ohjelmointiin. Armeijan avaa vain "
+         "Walker-veri + sinettisormus (Blitz), joka on juuri herätetty "
+         "kuolleista (Nundai). Linnakkeessa on myös kosminen kartta "
+         "(kristallikupu + Phlogiston)."),
     ]
     return [CampaignNote(text=t, category="lore") for t in specs]
 

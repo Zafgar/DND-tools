@@ -94,5 +94,40 @@ class TestNpcsWiredToStatBlocks(unittest.TestCase):
             self.assertIsNotNone(lib.get_monster(name))
 
 
+class TestWhitestoneConstructs(unittest.TestCase):
+    def setUp(self):
+        self.lib = MonsterLibrary()
+
+    def test_present_with_correct_cr(self):
+        for name, cr in [("Automata Trooper", 4.0),
+                         ("Whitestone Colossus", 14.0)]:
+            self.assertEqual(self.lib.get_monster(name).challenge_rating, cr)
+
+    def test_constructs_immune_to_poison_and_charm(self):
+        from engine.entities import Entity
+        for name in ("Automata Trooper", "Whitestone Colossus"):
+            m = self.lib.get_monster(name)
+            self.assertIn("poison", m.damage_immunities)
+            self.assertIn("Charmed", m.condition_immunities)
+            Entity(m, 0, 0, is_player=False)  # must instantiate
+
+    def test_colossus_is_legendary(self):
+        m = self.lib.get_monster("Whitestone Colossus")
+        self.assertEqual(m.legendary_action_count, 3)
+
+
+class TestMaclebarNesting(unittest.TestCase):
+    def test_fort_nested_under_maclebar(self):
+        camp = build_novus_somnium()
+        locs = camp.world_data["locations"]
+        self.assertIn("loc_maclebar", locs)
+        self.assertEqual(locs["loc_fort_whitestone"]["parent_id"],
+                         "loc_maclebar")
+        self.assertIn("loc_fort_whitestone",
+                      locs["loc_maclebar"]["children_ids"])
+        self.assertIn("loc_protocol_omega",
+                      locs["loc_fort_whitestone"]["children_ids"])
+
+
 if __name__ == "__main__":
     unittest.main()
