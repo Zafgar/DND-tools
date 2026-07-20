@@ -86,13 +86,21 @@ CITIES: List[dict] = [
                      "tehdään Spore Thralleja. Alla lymyää drow-tiedustelija "
                      "Xalyth."),
     dict(key="veksla", name="Veksla", kingdom="tarmaas",
-         loc_id="loc_veksla", type="village", population=2_000,
+         loc_id="loc_veksla", type="village", population=3_800,
          biome="farmland", industry="maatalous",
-         religion="Auringonkirkko", ruler="npc_artur_potvark",
-         description="Maatalouskaupunki Bladvinen metsän reunalla, "
-                     "raunioina undead-lohikäärmeen hyökkäyksen jäljiltä. "
-                     "Ruokapula. Dryadi Idefianin \"Metsän suojelijat\" "
-                     "hyökkäävät kaupunkiin kostona luonnontuhoista."),
+         religion="Aghuant (temppeli suljettu)", ruler="npc_artur_potvark",
+         description="Bladvine-metsän ja viljelysten rajalla oleva "
+                     "maatalouskaupunki (~3 800 as., ihmisiä 80 %, "
+                     "puolituisia 15 %). Toipuu 'Night of the Heart' "
+                     "-verilöylystä: nekromantikko Fauster nostatti "
+                     "epäkuolleita ja yli 1 200 kuoli tai pakeni (sankarit "
+                     "Kaldir & Ailas pysäyttivät hänet). Pellot täynnä "
+                     "nekroottisia arpia, Aghuantin temppeli naulattu umpeen. "
+                     "Paroni Artur Potvark on veloissa ja poissa pelistä; "
+                     "hallitsee väliaikainen Vanhimpien Neuvosto + Metsän "
+                     "Suojelijat. Vartiosto tuhottu, metsän nälkäiset olennot "
+                     "hyökkäävät.",
+         demographics={"Human": 80, "Halfling": 15, "Other": 5}),
     dict(key="hijoin", name="Hijoin", kingdom="tarmaas",
          loc_id="loc_hijoin", type="town", population=6_000,
          biome="mountain_slope", industry="arkeologia & tutkimus",
@@ -535,6 +543,32 @@ SUBLOCATIONS: List[dict] = [
          loc_id="loc_drakiel_slum",
          description="Kaupungin köyhin kerros; laiton tappeluklubi, jonka "
                      "orja-kapo on minotauri \"Murtunut\" Thol."),
+    # ---- Veksla (Tarmaas) sisäiset alueet --------------------------
+    dict(key="faunder_farm", name="Faunderin tila", parent="loc_veksla",
+         type="building", biome="farmland", loc_id="loc_faunder_farm",
+         description="Vekslan tärkein maatila 20 min kävelyn päässä "
+                     "keskustasta. Ladossa tapahtui Fausterin uhrirituaali; "
+                     "lähistön kurpitsat kypsyvät epäluonnollisen nopeasti. "
+                     "Elisan haamu vaeltaa öisin. Työntekijänä salainen "
+                     "veteraani Gurug Brask."),
+    dict(key="anthos_store", name="Anthos General Store", parent="loc_veksla",
+         type="shop", biome="farmland", loc_id="loc_anthos_store",
+         description="Kylän keskustan kodikas kivijalkakauppa; pitäjä Antos "
+                     "Erdofek (salaa rikas entinen aarteenmetsästäjä) tukee "
+                     "jälleenrakennusta omilla rahoillaan."),
+    dict(key="feather_pillow", name="Feather Pillow Inn", parent="loc_veksla",
+         type="tavern", biome="farmland", loc_id="loc_feather_pillow",
+         description="Höyhentyynyn majatalo — ryhmän ja agentti Sam "
+                     "Undercaven majapaikka. Brokvardin kääpiöperhe, "
+                     "salamyhkäiset kaksoset Sylrieth & Thyrieth, ja ullakon "
+                     "pokeria pelaava imp Sir Caromaik von Ermizen."),
+    dict(key="veksla_temple", name="Aghuantin temppeli (Veksla)",
+         parent="loc_veksla", type="temple", biome="farmland",
+         loc_id="loc_veksla_temple",
+         description="Raskaasti umpeen naulattu temppeli; kaupunkilaiset "
+                     "elävät pelossa sen voimaa kohtaan. Pappi Vendimo "
+                     "Aarsentop menetti uskonsa ja kuoli kasvimassan "
+                     "valtaamana."),
 ]
 
 
@@ -729,15 +763,16 @@ NPCS: List[dict] = [
          tags=["law", "leader"]),
     dict(id="npc_sam_undercave", name="Sam Undercave", race="Human", age="",
          occupation="Agentti", title="Tiro Aspicio (Taso 4)",
-         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_ravenstone",
+         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_veksla",
          stat="monster:Scout", wealth="modest",
          appearance="Musta liimaletti, punaiset silmät, roteva rakenne.",
          personality="Kunnianhimoinen, maineenhaluinen.",
          notes="E.F.I.:n korkean tason (Taso 4) agentti, joka saalistaa "
                "mainetta ja tutkii valtakunnan sisäistä korruptiota. "
-               "Saapui Padakin kanssa Ravenstoneen keräämään todisteita "
-               "kaupungin nekromantiasta — riittävä näyttö voisi julistaa "
-               "kaupungin 'Kirotuksi maaksi' (Nullifikaatio).",
+               "Matkusti Padakin kanssa (Ravenstonen kautta) ja asustelee "
+               "nyt Vekslan Feather Pillow Innissä; haluaa kuulustella "
+               "ryhmää kylän ja Veljeskunnan tapahtumista olematta liian "
+               "päällekäyvä.",
          tags=["law"]),
     dict(id="npc_eemil", name="Eemil Jakson", race="Human", age="45",
          occupation="Salainen agentti", title="Department 0 — Agentti 3",
@@ -1399,25 +1434,183 @@ NPCS: List[dict] = [
          notes="Salainen drow-tiedustelija Vilemourin alla.",
          tags=["spy", "drow"]),
 
-    # ===== VEKSLA =====
-    dict(id="npc_artur_potvark", name="Artur Potvark", race="Human (Ghoul)",
-         age="", occupation="Paroni", title="Vekslan paroni", faction="",
-         alignment="Neutral Evil", loc="loc_veksla", stat="monster:Ghoul",
-         wealth="poor",
-         appearance="Entinen paroni, nyt ghoul.",
-         personality="Raadollinen, nälkäinen.",
-         notes="Vekslan entinen hallitsija, muuttunut ghouliksi; alueella "
-               "väliaikainen vanhinneuvosto.",
-         tags=["ruler", "undead"]),
+    # ===== VEKSLA — 'Night of the Heart' -jälkeinen =====
+    dict(id="npc_artur_potvark", name="Artur Potvark", race="Human",
+         age="", occupation="Paroni (velkaantunut)", title="Vekslan paroni",
+         faction="", alignment="Neutral", loc="loc_veksla",
+         stat="monster:Noble", wealth="poor",
+         appearance="Rähjääntynyt, velkojen murtama entinen aatelinen.",
+         personality="Toivoton, kyvytön.",
+         notes="Vekslan nimellinen paroni — korviaan myöten veloissa ja "
+               "käytännössä poissa pelistä. Valta on väliaikaisella "
+               "Vanhimpien Neuvostolla ja Metsän Suojelijoilla. Mavielf "
+               "kiristää häntä tuomaan metsälle ruokaa.",
+         tags=["ruler"]),
     dict(id="npc_idefian", name="Idefian", race="Dryad", age="",
+         occupation="Metsän suojelijoiden johtaja", title="",
+         faction="Metsän suojelijat", alignment="Chaotic Neutral",
+         loc="loc_veksla", stat="monster:Dryad", wealth="",
+         appearance="Kaunis, uhkaava dryadi.",
+         personality="Kostonhaluinen luonnon puolustaja.",
+         notes="Johtaa Metsän Suojelijoita — dryadiryhmää jonka Ulvin isä "
+               "Bram Boulderroot aikoinaan perusti. Nälkäisen metsän "
+               "olennot hyökkäävät Vekslaan.",
+         tags=["fey"]),
+    dict(id="npc_mavielf", name="Mavielf", race="Dryad", age="",
          occupation="Metsän suojelija", title="", faction="Metsän suojelijat",
          alignment="Chaotic Neutral", loc="loc_veksla", stat="monster:Dryad",
          wealth="",
-         appearance="Kaunis, uhkaava dryadi.",
-         personality="Kostonhaluinen luonnon puolustaja.",
-         notes="Johtaa eläimistä koostuvia \"Metsän suojelijoita\", jotka "
-               "hyökkäävät Vekslaan kostona paronin luonnontuhoista.",
+         appearance="Ison tammen dryadi 2 km kylästä pohjoiseen.",
+         personality="Uhkaava, nälän ajama.",
+         notes="Kiristää ja uhkailee Vekslan paronia tuomaan metsälle "
+               "ruokaa.",
          tags=["fey"]),
+    dict(id="npc_jay_upto", name="Jay Upto", race="Werebear", age="",
+         occupation="Karhumies", title="", faction="Metsän suojelijat",
+         alignment="Chaotic Neutral", loc="loc_veksla",
+         stat="monster:Wereboar", wealth="poor",
+         appearance="Pitkät ruskeat hiukset, leveä hymy; karhumies.",
+         personality="Leppoisa mutta vaarallinen.",
+         notes="Dryadien 'lihasvoima'; liikkuu Vekslan kaduilla etsimässä "
+               "ruokaa tovereilleen ja kiristää hallintoa. Suunniteltu "
+               "CR 5 (Werebear). Stat-proxy: Wereboar.",
+         tags=["shapeshifter", "fey"]),
+    # -- Faunder Farm --
+    dict(id="npc_timotei", name="Timotei Faunder", race="Human", age="",
+         occupation="Maanviljelijä", title="Faunderin tilan omistaja",
+         faction="", alignment="Neutral Good", loc="loc_faunder_farm",
+         stat="monster:Commoner", wealth="poor",
+         appearance="Työteliäs, vähäpuheinen maanviljelijä.",
+         personality="Vaitonainen, surun murtama.",
+         notes="Faunderin tilan omistaja; vaimo Elisa (Fausterin sisko) "
+               "kuoli Fausterin rituaalissa ladossa.",
+         tags=["farmer"]),
+    dict(id="npc_elisa_ghost", name="Elisan Haamu", race="Human (Haamu)",
+         age="", occupation="Levoton henki", title="", faction="",
+         alignment="Neutral", loc="loc_faunder_farm", stat="monster:Ghost",
+         wealth="", alive=False,
+         appearance="Timotein vaimon levoton henki.",
+         personality="Suruinen, rauhaton.",
+         notes="Kuoli Fausterin rituaalissa; vaeltaa öisin ladon ja "
+               "kurpitsapellon läheisyydessä.",
+         tags=["undead"]),
+    dict(id="npc_gurug", name="Gurug Brask", race="Half-Orc", age="38",
+         occupation="Maatyöläinen", title="", faction="",
+         alignment="Lawful Good", loc="loc_faunder_farm",
+         stat="monster:Assassin", wealth="poor",
+         appearance="Jäntevä, hiljainen puoliörkki-maatyöläinen.",
+         personality="Rauhaa etsivä, periaatteellinen.",
+         notes="DM-SALAISUUS: CR 8 veteraani ja entinen Aesican Puna-armeijan "
+               "alikomentaja, joka kieltäytyi siviilien teloituksista ja "
+               "pakeni. Hautasi hihamerkkinsä kurpitsapenkkiin; Tomas "
+               "varasti hänen armeijamiekkansa heinävajaan. Stat-proxy: "
+               "Assassin (veteraani).",
+         tags=["farmer", "veteran", "secret"]),
+    dict(id="npc_tomas_farm", name="Tomas (Faunderin tila)", race="Human",
+         age="", occupation="Maatyöläinen", title="", faction="",
+         alignment="Chaotic Neutral", loc="loc_faunder_farm",
+         stat="monster:Commoner", wealth="poor",
+         appearance="Laiska, kiero työntekijä.",
+         personality="Ahne, vilpillinen.",
+         notes="Varastaa viljaa (Lemin kanssa) myydäkseen pimeästi; "
+               "piilotti Gurugin vanhan armeijamiekan heinävajaan.",
+         tags=["farmer", "criminal"]),
+    # -- Kylä --
+    dict(id="npc_antos_erdofek", name="Antos Erdofek", race="Human", age="62",
+         occupation="Kauppias", title="Anthos General Storen pitäjä",
+         faction="", alignment="Neutral Good", loc="loc_anthos_store",
+         stat="monster:Scout", wealth="wealthy",
+         appearance="Silmälasipäinen, kodikas kauppias.",
+         personality="Ystävällinen, vaatimaton — salaa varovainen.",
+         notes="Entinen aarteenmetsästäjä, salaa erittäin rikas (löysi "
+               "Vihreän Runekiven ytimen Efousetin kaivoksista). Tukee "
+               "kylän jälleenrakennusta salaa; jokin metsän suunnassa "
+               "tarkkailee häntä öisin. Stat-proxy: Scout.",
+         tags=["merchant", "secret"]),
+    dict(id="npc_andur", name="Andur Brokvard", race="Dwarf", age="",
+         occupation="Majatalonpitäjä / kokki", title="", faction="",
+         alignment="Neutral Good", loc="loc_feather_pillow",
+         stat="monster:Commoner", wealth="modest",
+         appearance="Lämminhenkinen kääpiökokki.",
+         personality="Vieraanvarainen, työteliäs.",
+         notes="Pyörittää Feather Pillow Inniä veljiensä Loksarin (siivooja) "
+               "ja Enquestin kanssa.",
+         tags=["innkeeper"]),
+    dict(id="npc_sylrieth", name="Sylrieth", race="Tiefling", age="",
+         occupation="Majatalon \"johtaja\"", title="", faction="",
+         alignment="Neutral", loc="loc_feather_pillow", stat="monster:Spy",
+         wealth="comfortable",
+         appearance="Salamyhkäinen, viehättävä kaksonen.",
+         personality="Karismaattinen, arvoituksellinen.",
+         notes="Toinen Feather Pillow Innin uusista salamyhkäisistä "
+               "kaksosista (Thyriethin sisar); todellinen luonto tuntematon.",
+         tags=["mysterious"]),
+    dict(id="npc_thyrieth", name="Thyrieth", race="Tiefling", age="",
+         occupation="Majatalon \"johtaja\"", title="", faction="",
+         alignment="Neutral", loc="loc_feather_pillow", stat="monster:Spy",
+         wealth="comfortable",
+         appearance="Salamyhkäinen, viehättävä kaksonen.",
+         personality="Karismaattinen, arvoituksellinen.",
+         notes="Toinen Feather Pillow Innin uusista kaksosista (Sylriethin "
+               "sisar); todellinen luonto tuntematon.",
+         tags=["mysterious"]),
+    dict(id="npc_caromaik", name="Sir Caromaik von Ermizen", race="Imp",
+         age="", occupation="Pokerinpelaaja", title="", faction="",
+         alignment="Lawful Evil", loc="loc_feather_pillow", stat="",
+         wealth="modest",
+         appearance="Pieni, ovela paholainen (imp).",
+         personality="Viekas, viihdyttävä.",
+         notes="Piileskelee majatalon ullakolla ja pelaa pokeria. "
+               "Stat: Imp (ei kirjastossa — DM lisää).",
+         tags=["fiend", "mysterious"]),
+    dict(id="npc_vendimo", name="Isä Vendimo Aarsentop", race="Human",
+         age="", occupation="Pappi", title="Aghuantin temppelin pappi",
+         faction="Aghuant", alignment="Neutral", loc="loc_veksla_temple",
+         stat="monster:Acolyte", wealth="poor", alive=False,
+         appearance="Uskonsa menettänyt pappi.",
+         personality="Epätoivoinen, murtunut.",
+         notes="Menetti uskonsa ja tuhosi satoa; vihreä kasvimassa otti "
+               "vallan hänen kehostaan ja tappoi hänet sisältäpäin. "
+               "KUOLLUT. Temppeli naulattu umpeen.",
+         tags=["clergy", "deceased"]),
+    dict(id="npc_zetris", name="Kapteeni Zetris", race="Human", age="",
+         occupation="Kapteeni / virkamies", title="", faction="Tarmaas",
+         alignment="Lawful Neutral", loc="loc_veksla", stat="monster:Scout",
+         wealth="comfortable",
+         appearance="Tarkka, virallinen kapteeni.",
+         personality="Kylmä, velvollisuudentuntoinen.",
+         notes="Järjesti majatalolla väijytyksen ja pidätti Thomaksen "
+               "(joka on sittemmin matkalla pois kaupungista).",
+         tags=["law"]),
+    dict(id="npc_fauster", name="Fauster", race="Human", age="",
+         occupation="Nekromantikko", title="", faction="",
+         alignment="Neutral Evil", loc="", stat="monster:Archmage",
+         wealth="modest", alive=False,
+         appearance="Synkkä nekromantikko koirineen.",
+         personality="Kostonhaluinen, mielipuolinen.",
+         notes="Aiheutti 'Night of the Heart' -verilöylyn (nostatti "
+               "epäkuolleita, koirat tappoivat vartioston). Sankarit Kaldir "
+               "ja Ailas pysäyttivät hänet. KUOLLUT/kukistettu. "
+               "Stat-proxy: Archmage (nekromantikko).",
+         tags=["antagonist", "undead", "deceased"]),
+    dict(id="npc_kaldir", name="Kaldir", race="Human", age="",
+         occupation="Vaeltava sankari", title="", faction="",
+         alignment="Neutral Good", loc="loc_veksla", stat="monster:Assassin",
+         wealth="modest",
+         appearance="Karaistunut, arpinen soturi.",
+         personality="Itsenäinen, oikeudenmukainen.",
+         notes="Gaius Maradin poika, joka lähti Death's Vigilistä. Pysäytti "
+               "(Ailasin kanssa) nekromantikko Fausterin ja pelasti "
+               "Vekslan. Stat-proxy: Assassin.",
+         tags=["ally", "hero"]),
+    dict(id="npc_ailas", name="Ailas", race="Half-Elf", age="",
+         occupation="Vaeltava sankari", title="", faction="",
+         alignment="Neutral Good", loc="loc_veksla", stat="monster:Scout",
+         wealth="modest",
+         appearance="Ketterä, tarkkaavainen seikkailija.",
+         personality="Lojaali, rohkea.",
+         notes="Kaldirin toveri; auttoi pysäyttämään Fausterin Vekslassa.",
+         tags=["ally", "hero"]),
 
     # ===== HIJOIN / FAT CARP / ARIST / ZAPRUTAS =====
     dict(id="npc_carl_gronmort", name="Carl Grönmort", race="Human", age="",
@@ -2023,7 +2216,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party", "ruler"]),
     dict(id="npc_beatrice", name="Beatrice", race="Half-Elf / Drow",
          age="", occupation="Warlock / Sorcerer", title="",
-         faction="", alignment="Neutral", loc="",
+         faction="", alignment="Neutral", loc="loc_veksla",
          stat="", wealth="modest",
          appearance="Punaiset hiukset hopearaidoin, violetit drow-silmät.",
          personality="Ryhmän taikatykistö ja diplomaatti; kostonhimon ja "
@@ -2068,26 +2261,28 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_darius", name="Thomas / Darius Morin", race="Human", age="",
          occupation="Rogue / artefaktinmetsästäjä", title="",
-         faction="", alignment="Chaotic Neutral", loc="loc_frand", stat="",
+         faction="", alignment="Chaotic Neutral", loc="", stat="",
          wealth="modest",
          appearance="Keskikokoinen, smaragdinvihreät silmät; "
                      "kaksoisidentiteetti.",
          personality="Varovainen, selviytyjä.",
          notes="PELAAJAHAHMO. Varasti T.R.A.:lta Heart Acceleratorin, joka "
                "sykkii hänen rinnassaan. Rahgo \"Karhun\" ja Varjo Kaartin "
-               "jahtaama; sopimus Lucienin kanssa.",
+               "jahtaama; sopimus Lucienin kanssa. On jo matkalla pois "
+               "Vekslasta tiefling-kapteeninsa kanssa (vältti Zetriksen "
+               "väijytyksen).",
          tags=["player_character", "party"]),
     dict(id="npc_padak", name="Padak", race="Tabaxi", age="",
          occupation="Taistelija", title="", faction="",
-         alignment="Neutral", loc="loc_ravenstone", stat="", wealth="modest",
+         alignment="Neutral", loc="loc_veksla", stat="", wealth="modest",
          appearance="Arpinen tabaxi, sormia puuttuu, suonissa violetti "
                      "korruptio (Verdant Shard Fever).",
          personality="\"Perhe on kaikki\" — sitkeä, vaarallinen.",
          notes="PELAAJAHAHMO. Entinen Red Dagger -palkkasoturi; murhasi "
                "Emnar Redfein pojan. Vaimo Demanda ja poika Rafal vankina "
-               "Kharakissa; pään hinta 150 000 gp. Matkusti agentti Sam "
-               "Undercaven kanssa Ravenstoneen etsimään parannusta "
-               "sairauteensa — pahin mahdollinen paikka etsiä apua.",
+               "Kharakissa; pään hinta 150 000 gp. Matkusti Sam Undercaven "
+               "kanssa (Ravenstonen kautta) etsimään parannusta "
+               "sairauteensa; nyt Vekslassa.",
          tags=["player_character", "party"]),
     dict(id="npc_kairon", name="Kairon / Rin", race="Changeling", age="",
          occupation="Bardi / vakooja", title="", faction="Ember & Veil Company",
@@ -2101,12 +2296,14 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_ulv", name="Ulv", race="Firbolg", age="",
          occupation="Druidi", title="", faction="",
-         alignment="Neutral Good", loc="", stat="", wealth="modest",
+         alignment="Neutral Good", loc="loc_veksla", stat="", wealth="modest",
          appearance="3-metrinen, sarvekas; sammalviitta.",
          personality="Luonnon suojelija; pelkää metsän korruptiota.",
          notes="PELAAJAHAHMO. \"Kolmen veren\" ruumiillistuma: Archfey "
                "Eksothethin ja druidi Bram Boulderrootin poika; Aghuantin "
-               "siunaama. Yrittää pelastaa velipuolensa Caeltherionin.",
+               "siunaama. Yrittää pelastaa velipuolensa Caeltherionin. "
+               "Vekslassa keskellä isänsä (Bram Boulderroot / Metsän "
+               "Suojelijat) historiaa; fey-olennot tunnistavat hänet.",
          tags=["player_character", "party"]),
     dict(id="npc_marduk", name="Marduk", race="Human", age="",
          occupation="Paladin / Cleric / Fighter",
@@ -2306,6 +2503,17 @@ NPC_LINKS: List[tuple] = [
     ("npc_szoraya", "npc_elarae", "family", "Täti/sisarentytär."),
     ("npc_naerthali", "npc_cazna", "subordinate", "Reverie-kultin pääpapitar."),
     ("npc_thol", "npc_krusk", "ally", "Mahdollinen liittolainen (orjasta orjalle)."),
+    # Veksla
+    ("npc_kaldir", "npc_gaius_marad", "family", "Poika, joka lähti Vigilistä."),
+    ("npc_gaius_marad", "npc_kaldir", "family", "Poika, jätti Death's Vigilin."),
+    ("npc_kaldir", "npc_ailas", "ally", "Pysäyttivät yhdessä Fausterin."),
+    ("npc_fauster", "npc_elisa_ghost", "family", "Sisko, kuoli rituaalissa."),
+    ("npc_timotei", "npc_elisa_ghost", "family", "Vaimo (Fausterin sisko)."),
+    ("npc_idefian", "npc_ulv", "other", "Metsän Suojelijat tuntevat Ulvin isän."),
+    ("npc_gurug", "npc_tomas_farm", "enemy", "Tomas varasti Gurugin miekan."),
+    ("npc_mavielf", "npc_artur_potvark", "enemy", "Kiristää paronia ruoasta."),
+    ("npc_jay_upto", "npc_idefian", "subordinate", "Dryadien 'lihasvoima'."),
+    ("npc_zetris", "npc_darius", "enemy", "Väijytti ja yritti pidättää Thomaksen."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
@@ -3146,6 +3354,18 @@ def lore_campaign_notes():
          "murhasi satamaruhtinas Giluanin), sabotaasi ja pakolaisvirrat. "
          "Grand Gardenissa tapahtui salamurhayritys jossa Blitz kuoli "
          "(Gersnet + petturi-hovimestari Orien)."),
+        ("VEKSLA — 'NIGHT OF THE HEART' -JÄLKEEN — Tarmaaksen "
+         "maatalouskaupunki Bladvine-metsän rajalla toipuu nekromantikko "
+         "Fausterin verilöylystä (yli 1 200 kuoli/pakeni; sankarit Kaldir & "
+         "Ailas pysäyttivät hänet). Paroni Potvark on veloissa ja poissa "
+         "pelistä; hallitsee Vanhimpien Neuvosto + Metsän Suojelijat "
+         "(dryadit, jotka Ulvin isä Bram Boulderroot perusti). Nälkäinen "
+         "metsä hyökkää (Mavielf, karhumies Jay Upto). Aghuantin temppeli "
+         "naulattu umpeen. Faunderin tilalla piilottelee salainen veteraani "
+         "Gurug Brask ja Elisan haamu. Ryhmän tilanne: Sam Undercave "
+         "kuulustelee heitä Feather Pillow Innissä, kapteeni Zetris "
+         "väijytti Thomasta (joka on jo lähdössä), ja Ulv on isänsä "
+         "historian ytimessä."),
     ]
     return [CampaignNote(text=t, category="lore") for t in specs]
 
