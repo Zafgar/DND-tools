@@ -11,6 +11,9 @@ from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, 
 from data.conditions import CONDITIONS
 from data.library import library
 from data.heroes import hero_list
+from data.ability_help_fi import (
+    explain_action, explain_condition, explain_feature, summarize_ai_plan_fi,
+)
 from engine.terrain import TERRAIN_TYPES
 from engine.win_probability import assess_encounter_danger
 
@@ -1280,6 +1283,25 @@ class BattleRendererMixin:
             else self.collapsed_sections.add(k))))
         return y + 20, collapsed
 
+    def _get_ai_suggestion_fi(self, sel):
+        """Laske (ja välimuistita) AI:n suomenkielinen toimintaehdotus
+        annetulle hahmolle. Uudelleenlasketaan vain kun hahmo tai kierros
+        vaihtuu, jottei jokainen frame kuormita AI-laskentaa."""
+        key = (id(sel), getattr(self.battle, "round", 0),
+               sel.hp, len(sel.conditions))
+        cache = getattr(self, "_ai_sugg_cache", None)
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        lines = []
+        try:
+            if sel.hp > 0:
+                plan = self.battle.compute_ai_turn(sel)
+                lines = summarize_ai_plan_fi(plan)
+        except Exception:
+            lines = []
+        self._ai_sugg_cache = (key, lines)
+        return lines
+
     def _draw_stats_tab(self, screen, sel, x0, y, mp):
 
         def ln(text, color=COLORS["text_main"], indent=0):
@@ -1317,6 +1339,18 @@ class BattleRendererMixin:
             ln(f"Cond Imm: {', '.join(sel.stats.condition_immunities)}", COLORS["text_dim"])
 
         ln("")
+
+        # AI-ehdotus: mitä tekoäly tekisi tällä hahmolla (suomeksi).
+        # Auttaa pelinjohtajaa ajamaan NPC:n käsin nopeasti.
+        try:
+            sugg = self._get_ai_suggestion_fi(sel)
+        except Exception:
+            sugg = []
+        if sugg:
+            ln("AI EHDOTTAA:", COLORS["legendary"])
+            for line in sugg[:4]:
+                ln(f"→ {line}", COLORS["warning"], 8)
+            ln("")
 
         # Ability scores (collapsible)
         y, collapsed = self._draw_section_header(screen, "ABILITIES", "ABILITIES / SAVES / SKILLS", x0, y, mp)
@@ -1482,7 +1516,8 @@ class BattleRendererMixin:
             bg = COLORS["accent"] if is_active else (45,47,52)
             if r.collidepoint(mp):
                 bg = COLORS["accent_hover"] if is_active else (60,62,67)
-                self.active_tooltip = f"{cond}: {desc}"
+                fi = explain_condition(cond)
+                self.active_tooltip = f"{cond}: {fi}" if fi else f"{cond}: {desc}"
             pygame.draw.rect(screen, bg, r, border_radius=3)
             self.ui_click_zones.append((r, lambda c=cond: self._toggle_condition(c)))
             ct = fonts.tiny.render(cond, True, COLORS["text_main"])
@@ -1528,7 +1563,7 @@ class BattleRendererMixin:
 
                     if line_rect.collidepoint(mp):
                         s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
-                        self.active_tooltip = f"{feat.name}: {feat.description}"
+                        self.active_tooltip = f"{feat.name}: {explain_feature(feat)}"
 
                     # Click to use feature (if it has uses)
                     if feat.uses_per_day > 0 or feat.recharge:
@@ -1572,25 +1607,11 @@ class BattleRendererMixin:
                 
                 if line_rect.collidepoint(mp):
                     s = fonts.small.render(summary, True, COLORS["accent_hover"])
-                    # Generate tooltip description
-                    desc = act.description
-                    if not desc:
-                        parts = []
-                        if act.is_multiattack:
-                            parts.append(f"Multiattack: {act.multiattack_count} attacks ({', '.join(act.multiattack_targets)})")
-                        else:
-                            parts.append(f"Type: {act.action_type}")
-                            if act.range: parts.append(f"Range: {act.range}ft")
-                            if act.attack_bonus: parts.append(f"Hit: +{act.attack_bonus}")
-                            if act.damage_dice: 
-                                d = act.damage_dice
-                                if act.damage_bonus: d += f"+{act.damage_bonus}"
-                                parts.append(f"Damage: {d} {act.damage_type}")
-                            if act.applies_condition:
-                                c = f"Applies {act.applies_condition}"
-                                if act.condition_dc: c += f" (DC {act.condition_dc} {act.condition_save})"
-                                parts.append(c)
-                        desc = ". ".join(parts)
+                    # Suomenkielinen täsmäselite käsin pelaamista varten;
+                    # jos statblokissa on oma kuvaus, näytä se perässä.
+                    desc = explain_action(act)
+                    if act.description:
+                        desc += f"  ({act.description})"
                     self.active_tooltip = f"{act.name}: {desc}"
 
                 # Click to target action
