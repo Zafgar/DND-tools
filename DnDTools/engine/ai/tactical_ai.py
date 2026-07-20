@@ -4949,6 +4949,38 @@ class TacticalAI:
         if not best_cluster:
             return None
 
+        # RAW: an area spell hits EVERY creature in the area, friend or
+        # foe. The scoring above steers the aim AWAY from allies, but if
+        # the best available aim still engulfs an ally, that ally takes
+        # the damage too (friendly fire). Add any such allies to the
+        # applied cluster.
+        if allies and best_aim_point is not None:
+            ax, ay = best_aim_point
+            ff_half = (math.radians(30) if shape == "cone"
+                       else math.radians(5)) if shape in ("cone", "line") else 0.0
+            ff_aim = math.atan2(ay - ecy, ax - ecx)
+            in_cluster = {id(e) for e in best_cluster}
+            for a in allies:
+                if a.hp <= 0 or id(a) in in_cluster:
+                    continue
+                if damage_type and damage_type.lower() in [
+                        x.lower() for x in a.stats.damage_immunities]:
+                    continue
+                acx, acy = get_center(a)
+                if shape in ("cone", "line"):
+                    if math.hypot(acx - ecx, acy - ecy) * 5 > radius_ft:
+                        continue
+                    diff = math.atan2(acy - ecy, acx - ecx) - ff_aim
+                    while diff > math.pi:
+                        diff -= 2 * math.pi
+                    while diff < -math.pi:
+                        diff += 2 * math.pi
+                    if abs(diff) <= ff_half:
+                        best_cluster.append(a)
+                else:
+                    if math.hypot(ax - acx, ay - acy) * 5 <= radius_ft:
+                        best_cluster.append(a)
+
         return best_cluster, best_aim_point
 
     def _cluster_center(self, cluster):

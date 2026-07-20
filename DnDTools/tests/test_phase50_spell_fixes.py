@@ -101,5 +101,47 @@ class TestHalfOnSaveNegate(unittest.TestCase):
         self.assertEqual(target.hp, hp0 - 6, "half_on_save=True deals half")
 
 
+class TestAoEFriendlyFire(unittest.TestCase):
+    """PHB: an area spell hits every creature in the area, friend or foe."""
+
+    def _ai_and_battle(self):
+        from data.models import CreatureStats, AbilityScores
+        from engine.entities import Entity
+        from engine.battle import BattleSystem
+        from engine.ai import TacticalAI
+
+        def mk(n, x, y, pl):
+            s = CreatureStats(name=n, hit_points=40, armor_class=13,
+                              speed=30, abilities=AbilityScores())
+            return Entity(s, x, y, is_player=pl)
+        return mk, BattleSystem, TacticalAI
+
+    def test_ally_in_blast_is_included(self):
+        mk, BattleSystem, TacticalAI = self._ai_and_battle()
+        caster = mk("Mage", 0, 0, False)
+        foe1 = mk("Hero1", 5, 5, True)
+        foe2 = mk("Hero2", 6, 5, True)
+        ally = mk("Ally", 5, 6, False)          # standing in the cluster
+        b = BattleSystem(log_callback=lambda s: None,
+                         initial_entities=[caster, foe1, foe2, ally])
+        cluster, _ = TacticalAI()._best_aoe_cluster(
+            caster, [foe1, foe2], [ally], b, radius_ft=20, shape="sphere")
+        names = {e.name for e in cluster}
+        self.assertIn("Ally", names, "ally in the blast must take the hit")
+        self.assertIn("Hero1", names)
+
+    def test_distant_ally_not_included(self):
+        mk, BattleSystem, TacticalAI = self._ai_and_battle()
+        caster = mk("Mage", 0, 0, False)
+        foe1 = mk("Hero1", 5, 5, True)
+        foe2 = mk("Hero2", 6, 5, True)
+        ally = mk("Ally", 0, 1, False)           # far from the blast center
+        b = BattleSystem(log_callback=lambda s: None,
+                         initial_entities=[caster, foe1, foe2, ally])
+        cluster, _ = TacticalAI()._best_aoe_cluster(
+            caster, [foe1, foe2], [ally], b, radius_ft=20, shape="sphere")
+        self.assertNotIn("Ally", {e.name for e in cluster})
+
+
 if __name__ == "__main__":
     unittest.main()
