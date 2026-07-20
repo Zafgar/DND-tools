@@ -281,6 +281,78 @@ def explain_action(action) -> str:
 # --------------------------------------------------------------------- #
 # AI-ehdotus suomeksi
 # --------------------------------------------------------------------- #
+def _hp_pct(e) -> float:
+    mx = getattr(e, "max_hp", 0) or 0
+    return (getattr(e, "hp", 0) / mx) if mx > 0 else 0.0
+
+
+def _threat_score(e) -> float:
+    """Karkea uhka-arvo: kuinka vaarallinen olento on juuri nyt."""
+    try:
+        cr = getattr(e.stats, "challenge_rating", 0) or 0
+    except Exception:
+        cr = 0
+    lvl = getattr(getattr(e, "stats", None), "character_level", 0) or 0
+    caster = 1.5 if getattr(getattr(e, "stats", None), "spell_slots", None) else 1.0
+    conc = 1.3 if getattr(e, "concentrating_on", None) else 1.0
+    return (cr + lvl) * caster * conc
+
+
+def target_rationale_fi(target, battle) -> str:
+    """Selitä suomeksi miksi juuri tämä kohde on paras valinta — katsoen
+    koko kenttää (matalin HP, loitsija/keskittyjä, suurin uhka)."""
+    if target is None:
+        return ""
+    reasons = []
+    pct = _hp_pct(target)
+    if pct <= 0.35:
+        reasons.append("matala HP (viimeistely irrottaa vihollisen toiminnasta)")
+    if getattr(target, "concentrating_on", None):
+        sp = getattr(target.concentrating_on, "name", "loitsu")
+        reasons.append(f"keskittyy loitsuun ({sp}) — vahinko voi katkaista sen")
+    if getattr(getattr(target, "stats", None), "spell_slots", None):
+        reasons.append("loitsija (suuri uhka, kannattaa poistaa ajoissa)")
+    # Onko tämä kentän vaarallisin vihollinen?
+    try:
+        foes = [e for e in battle.entities
+                if e.is_player != target.is_player and e.hp > 0]
+        if foes and target is max(foes, key=_threat_score):
+            reasons.append("kentän vaarallisin vastustaja")
+    except Exception:
+        pass
+    if not reasons:
+        reasons.append("paras osumatodennäköisyys/vahinko tällä hetkellä")
+    return "; ".join(reasons)
+
+
+# Voittotodennäköisyyden suomennos (pelaajien näkökulmasta)
+_PROB_LABEL_FI = [
+    (0.85, "pelaajilla ratkaiseva etu — helppo"),
+    (0.70, "pelaajilla vahva etu"),
+    (0.55, "pelaajilla lievä etu"),
+    (0.45, "tasainen taisto"),
+    (0.30, "pelaajilla lievä alakynsi"),
+    (0.15, "pelaajilla vahva alakynsi — vaarallinen"),
+    (0.0,  "pelaajille tuhoisa asetelma"),
+]
+
+
+def difficulty_read_fi(battle) -> str:
+    """Palauta suomenkielinen vaikeusarvio asetelmalle (voitto-% +
+    sanallinen tulkinta). Katsoo koko kenttää."""
+    try:
+        from engine.win_probability import WinProbabilityCalculator
+        res = WinProbabilityCalculator().calculate(battle)
+    except Exception:
+        return ""
+    if not res:
+        return ""
+    pct = res.get("percentage", 0.0)
+    prob = res.get("probability", 0.0)
+    label = next(t for thr, t in _PROB_LABEL_FI if prob >= thr)
+    return f"Voitto-% (pelaajat): {pct:.0f}% — {label}"
+
+
 def summarize_ai_plan_fi(plan) -> list:
     """Tiivistä AI:n TurnPlan suomenkielisiksi riveiksi ('mitä AI "
     tekisi'). Palauttaa listan lyhyitä rivejä."""

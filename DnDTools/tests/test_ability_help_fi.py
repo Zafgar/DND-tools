@@ -12,7 +12,11 @@ from data.conditions import CONDITIONS
 from data.ability_help_fi import (
     explain_action, explain_condition, explain_feature,
     summarize_ai_plan_fi, CONDITION_HELP_FI, MECHANIC_HELP_FI,
+    target_rationale_fi, difficulty_read_fi,
 )
+from data.models import CreatureStats, AbilityScores
+from engine.entities import Entity
+from engine.battle import BattleSystem
 
 
 class TestConditionHelp(unittest.TestCase):
@@ -107,6 +111,47 @@ class TestAiPlanSummary(unittest.TestCase):
         lines = summarize_ai_plan_fi(P())
         self.assertTrue(any("Liiku" in l for l in lines))
         self.assertTrue(any("Hyökkää" in l and "Hero" in l for l in lines))
+
+
+def _ent(name, hp, ac=15, is_player=True, x=0, y=0):
+    s = CreatureStats(name=name, hit_points=hp, armor_class=ac, speed=30,
+                      abilities=AbilityScores(strength=14, dexterity=14,
+                                              constitution=14))
+    return Entity(s, x, y, is_player=is_player)
+
+
+class TestTacticalAdvice(unittest.TestCase):
+    def test_low_hp_target_rationale(self):
+        wounded = _ent("Wounded", 40, is_player=True)
+        wounded.hp = 8  # 20 %
+        healthy = _ent("Orc", 60, is_player=False, x=5, y=5)
+        battle = BattleSystem(log_callback=lambda s: None,
+                              initial_entities=[wounded, healthy])
+        txt = target_rationale_fi(wounded, battle)
+        self.assertIn("matala HP", txt)
+
+    def test_rationale_never_empty(self):
+        a = _ent("A", 30, is_player=True)
+        b = _ent("B", 30, is_player=False, x=5, y=5)
+        battle = BattleSystem(log_callback=lambda s: None,
+                              initial_entities=[a, b])
+        self.assertTrue(target_rationale_fi(b, battle))
+
+    def test_difficulty_read_is_finnish(self):
+        hero = _ent("Hero", 100, is_player=True)
+        goblin = _ent("Goblin", 7, is_player=False, x=5, y=5)
+        battle = BattleSystem(log_callback=lambda s: None,
+                              initial_entities=[hero, goblin])
+        txt = difficulty_read_fi(battle)
+        self.assertIn("Voitto-%", txt)
+
+    def test_difficulty_read_no_target_safe(self):
+        # No enemies -> calculator returns a result; must not raise.
+        hero = _ent("Hero", 100, is_player=True)
+        battle = BattleSystem(log_callback=lambda s: None,
+                              initial_entities=[hero])
+        # Should not raise
+        difficulty_read_fi(battle)
 
 
 if __name__ == "__main__":

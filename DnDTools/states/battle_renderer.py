@@ -13,6 +13,7 @@ from data.library import library
 from data.heroes import hero_list
 from data.ability_help_fi import (
     explain_action, explain_condition, explain_feature, summarize_ai_plan_fi,
+    target_rationale_fi, difficulty_read_fi,
 )
 from engine.terrain import TERRAIN_TYPES
 from engine.win_probability import assess_encounter_danger
@@ -1292,15 +1293,34 @@ class BattleRendererMixin:
         cache = getattr(self, "_ai_sugg_cache", None)
         if cache is not None and cache[0] == key:
             return cache[1]
-        lines = []
+        lines, rationale, diff = [], "", ""
         try:
             if sel.hp > 0:
                 plan = self.battle.compute_ai_turn(sel)
                 lines = summarize_ai_plan_fi(plan)
+                # Kohdeperuste: etsi ensimmäinen kohteellinen hyökkäys/loitsu
+                # (myös AoE-loitsun ensimmäinen kohde targets-listasta).
+                tgt = None
+                for st in getattr(plan, "steps", []) or []:
+                    if getattr(st, "step_type", "") not in (
+                            "attack", "multiattack", "bonus_attack",
+                            "legendary", "spell"):
+                        continue
+                    if getattr(st, "target", None) is not None:
+                        tgt = st.target
+                        break
+                    tl = getattr(st, "targets", None) or []
+                    if tl:
+                        tgt = tl[0]
+                        break
+                if tgt is not None:
+                    rationale = target_rationale_fi(tgt, self.battle)
+            diff = difficulty_read_fi(self.battle)
         except Exception:
-            lines = []
-        self._ai_sugg_cache = (key, lines)
-        return lines
+            pass
+        result = {"lines": lines, "rationale": rationale, "difficulty": diff}
+        self._ai_sugg_cache = (key, result)
+        return result
 
     def _draw_stats_tab(self, screen, sel, x0, y, mp):
 
@@ -1340,16 +1360,23 @@ class BattleRendererMixin:
 
         ln("")
 
-        # AI-ehdotus: mitä tekoäly tekisi tällä hahmolla (suomeksi).
-        # Auttaa pelinjohtajaa ajamaan NPC:n käsin nopeasti.
+        # AI-ehdotus: mitä tekoäly tekisi tällä hahmolla (suomeksi),
+        # koko kenttä huomioiden. Auttaa ajamaan NPC:n käsin nopeasti.
         try:
             sugg = self._get_ai_suggestion_fi(sel)
         except Exception:
-            sugg = []
-        if sugg:
+            sugg = {}
+        if sugg and sugg.get("lines"):
             ln("AI EHDOTTAA:", COLORS["legendary"])
-            for line in sugg[:4]:
+            for line in sugg["lines"][:4]:
                 ln(f"→ {line}", COLORS["warning"], 8)
+            if sugg.get("rationale"):
+                # rivitä peruste
+                r = f"Kohde: {sugg['rationale']}"
+                for i in range(0, len(r), 46):
+                    ln(("  " + r[i:i+46]).rstrip(), COLORS["text_dim"], 8)
+            if sugg.get("difficulty"):
+                ln(sugg["difficulty"], COLORS["accent_hover"], 8)
             ln("")
 
         # Ability scores (collapsible)
