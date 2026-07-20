@@ -61,13 +61,17 @@ class NpcDetailModal:
                   on_navigate_npc: Optional[
                       Callable[[str], None]] = None,
                   on_open_org: Optional[
-                      Callable[[str], None]] = None):
+                      Callable[[str], None]] = None,
+                  on_open_stats: Optional[
+                      Callable[[object], None]] = None):
         self.world = world
         self.campaign = campaign
         self.npc = npc
         self.on_close = on_close
         self.on_navigate_npc = on_navigate_npc
         self.on_open_org = on_open_org
+        # Opens the combat stat sheet (Monster Lore modal) for this NPC.
+        self.on_open_stats = on_open_stats
         self.is_open = False
         self.x = (SCREEN_WIDTH - self.WIDTH) // 2
         self.y = (SCREEN_HEIGHT - self.HEIGHT) // 2
@@ -105,6 +109,10 @@ class NpcDetailModal:
                                   self._close,
                                   color=COLORS.get("panel",
                                                      (60, 60, 80)))
+        self.btn_stats = Button(0, 0, 150, 28, "⚔ Statit / Lore",
+                                   self._open_stats,
+                                   color=COLORS.get("danger",
+                                                      (200, 70, 70)))
         self.btn_add_letter = Button(0, 0, 130, 24, "+ Kirje",
                                           lambda: self._add_inv(
                                               "letter"),
@@ -138,6 +146,12 @@ class NpcDetailModal:
         self.is_open = False
         if self.on_close:
             self.on_close()
+
+    def _open_stats(self):
+        """Open the combat stat sheet for this NPC (resolved from
+        stat_source / custom_stats by the host)."""
+        if self.on_open_stats:
+            self.on_open_stats(self.npc)
 
     def _status_log(self, text: str):
         self._status = text
@@ -253,7 +267,8 @@ class NpcDetailModal:
                 if self._handle_link_form_click(event.pos):
                     return True
             # Always-on buttons
-            for btn in (self.btn_close, self.btn_add_letter,
+            for btn in (self.btn_close, self.btn_stats,
+                          self.btn_add_letter,
                           self.btn_add_key, self.btn_add_doc,
                           self.btn_add_trinket):
                 if btn.rect.collidepoint(event.pos):
@@ -378,6 +393,10 @@ class NpcDetailModal:
         self.btn_close.rect.x = rect.right - 110
         self.btn_close.rect.y = rect.bottom - 40
         self.btn_close.draw(screen, mp)
+        # Combat stat sheet button (left of Sulje)
+        self.btn_stats.rect.x = rect.x + 20
+        self.btn_stats.rect.y = rect.bottom - 40
+        self.btn_stats.draw(screen, mp)
 
     # ------------------------------------------------------------------ #
     def _draw_header(self, screen, rect):

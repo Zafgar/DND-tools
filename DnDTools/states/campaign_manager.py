@@ -1334,6 +1334,7 @@ class CampaignManagerState:
                                           False),
             on_navigate_npc=self._jump_to_npc_via_detail,
             on_open_org=self._jump_to_organisation,
+            on_open_stats=self._open_monster_lore,
         )
         self._npc_detail_modal.open()
         self._npc_detail_open = True
@@ -3021,12 +3022,15 @@ class CampaignManagerState:
             if (getattr(self, "_feat_picker_open", False)
                     and self._feat_picker_modal is not None):
                 self._feat_picker_modal.draw(screen)
-            if (getattr(self, "_monster_lore_open", False)
-                    and self._monster_lore_modal is not None):
-                self._monster_lore_modal.draw(screen)
+            # NPC detail first, then the stat sheet ON TOP so the sheet
+            # opened from the detail card's "Statit / Lore" button is
+            # visible above it.
             if (getattr(self, "_npc_detail_open", False)
                     and self._npc_detail_modal is not None):
                 self._npc_detail_modal.draw(screen)
+            if (getattr(self, "_monster_lore_open", False)
+                    and self._monster_lore_modal is not None):
+                self._monster_lore_modal.draw(screen)
             if (getattr(self, "_npc_search_open", False)
                     and self._npc_search_modal is not None):
                 self._npc_search_modal.draw(screen)
@@ -4406,10 +4410,13 @@ class CampaignManagerState:
         if npc.stat_source:
             stats = self._get_npc_stats(npc)
             if stats:
+                cr_val = stats.challenge_rating
+                cr_str = (f"{cr_val:.3g}" if cr_val and cr_val % 1
+                          else str(int(cr_val)) if cr_val else "—")
                 preview_items = [
-                    f"HP:{stats.hp}",
-                    f"AC:{stats.ac}",
-                    f"CR:{stats.cr}",
+                    f"HP:{stats.hit_points}",
+                    f"AC:{stats.armor_class}",
+                    f"CR:{cr_str}",
                 ]
                 if hasattr(stats, 'abilities') and stats.abilities:
                     preview_items.append(
@@ -4752,7 +4759,10 @@ class CampaignManagerState:
             return None
         if npc.stat_source.startswith("monster:"):
             monster_name = npc.stat_source[len("monster:"):]
-            return library.get(monster_name)
+            try:
+                return library.get_monster(monster_name)
+            except Exception:
+                return None
         return None
 
     def _find_npc_by_name(self, name):

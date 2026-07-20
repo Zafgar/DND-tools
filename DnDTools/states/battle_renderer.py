@@ -9,6 +9,8 @@ import re
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT, CREATURE_TYPE_COLORS, CREATURE_ICONS, SIZE_RADIUS
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect, Tooltip
 from data.conditions import CONDITIONS
+from data.library import library
+from data.heroes import hero_list
 from engine.terrain import TERRAIN_TYPES
 from engine.win_probability import assess_encounter_danger
 
@@ -3050,14 +3052,21 @@ class BattleRendererMixin:
         st = fonts.small.render(f"Search: {self.add_entity_search}_", True, COLORS["text_main"])
         screen.blit(st, (bx + 15, search_y + 4))
 
-        # Player/Enemy toggle
-        toggle_r = pygame.Rect(bx + bw - 85, search_y, 75, 28)
+        # Side toggle — decides which team a placed entity joins. This is
+        # the authority: any creature (monster OR hero) can be added to
+        # EITHER side, so e.g. a summoned ally monster or a turncoat hero
+        # works. Shown prominently since it drives placement.
+        toggle_r = pygame.Rect(bx + bw - 130, search_y, 120, 28)
         toggle_c = COLORS["player"] if self.add_entity_is_player else COLORS["enemy"]
         pygame.draw.rect(screen, toggle_c, toggle_r, border_radius=4)
-        toggle_txt = "PLAYER" if self.add_entity_is_player else "ENEMY"
+        toggle_txt = ("ADD TO: ALLIES" if self.add_entity_is_player
+                       else "ADD TO: ENEMIES")
         tt = fonts.tiny.render(toggle_txt, True, (255, 255, 255))
         screen.blit(tt, (toggle_r.centerx - tt.get_width() // 2, toggle_r.centery - tt.get_height() // 2))
         self.ui_click_zones.append((toggle_r, lambda: setattr(self, 'add_entity_is_player', not self.add_entity_is_player)))
+        # Hint under the toggle
+        hint = fonts.tiny.render("(click to switch side)", True, COLORS["text_dim"])
+        screen.blit(hint, (toggle_r.right - hint.get_width(), toggle_r.bottom + 2))
 
         # Monster/Hero list
         list_y = search_y + 36
@@ -3088,7 +3097,11 @@ class BattleRendererMixin:
             c = COLORS["player"] if is_hero else COLORS["text_main"]
             s = fonts.tiny.render(label, True, c)
             screen.blit(s, (r.x + 6, r.y + 4))
-            self.ui_click_zones.append((r, lambda st=stats, ip=is_hero: self._add_entity_to_battle(st, is_player=ip)))
+            # Side comes from the toggle, NOT from whether the entry is a
+            # hero or a monster — this is what lets the DM pick the side.
+            self.ui_click_zones.append(
+                (r, lambda st=stats: self._add_entity_to_battle(
+                    st, is_player=self.add_entity_is_player)))
 
         # Scroll indicator
         if len(combined) > max_visible:
