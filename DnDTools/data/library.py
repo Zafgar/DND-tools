@@ -54,10 +54,13 @@ class MonsterLibrary:
             from data.monsters.cr_13 import monsters as cr13_list
             from data.monsters.cr_1416 import monsters as cr1416_list
             from data.monsters.cr_17plus import monsters as cr17_list
+            # Campaign-specific bosses & soldiers (Novus Somnium).
+            from data.monsters.baenrahel import monsters as baenrahel_list
 
             for lst in [cr018_list, cr025_list, cr05_list, cr1_list,
                         cr2_list, cr3_list, cr4_list, cr5_list, cr67_list,
-                        cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list]:
+                        cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list,
+                        baenrahel_list]:
                 for m in lst:
                     # Don't overwrite a JSON-loaded entry; Python is
                     # a fallback / supplement for the JSON catalogue.

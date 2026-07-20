@@ -1034,7 +1034,8 @@ NPCS: List[dict] = [
     dict(id="npc_elarae", name="Elarae Baenrahel", race="Drow", age="",
          occupation="Arkkimaagi-perijä", title="Talo Baenrahelin perijä",
          faction="Talo Baenrahel", alignment="Lawful Evil",
-         loc="loc_verkkojen_talo", stat="monster:Archmage", wealth="wealthy",
+         loc="loc_verkkojen_talo", stat="monster:Elarae Baenrahel",
+         wealth="wealthy",
          appearance="Pitkät moitteettomat hopeahiukset, joihin punottu "
                      "mustia obsidiaanihelmiä; viileät violetit silmät; "
                      "tummansiniset silkki- ja nahkakaavut.",
@@ -1048,7 +1049,8 @@ NPCS: List[dict] = [
     dict(id="npc_dravin", name="Dravin Baenrahel", race="Drow", age="",
          occupation="Velve Dro -upseeri", title="Suvun sotilaallinen nyrkki",
          faction="Talo Baenrahel", alignment="Lawful Evil",
-         loc="loc_verkkojen_talo", stat="monster:Assassin", wealth="comfortable",
+         loc="loc_verkkojen_talo", stat="monster:Dravin Baenrahel",
+         wealth="comfortable",
          appearance="Poikkeuksellisen lihaksikas drow-mies; raskas "
                      "piikikäs drow-haarniska, kaksi myrkytettyä "
                      "lyhytmiekkaa, ylimielinen virne.",
