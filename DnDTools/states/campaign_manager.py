@@ -3961,7 +3961,9 @@ class CampaignManagerState:
         loc = self.world.locations.get(self.selected_location_id)
         if not loc:
             return
-        y = 70
+        # Start below the top-right time/date strip (buttons y58-88,
+        # info line y94) so long breadcrumbs never run under it.
+        y = 100
 
         # Breadcrumb
         path = get_location_path(self.world, loc.id)

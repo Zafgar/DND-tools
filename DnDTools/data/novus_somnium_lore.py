@@ -341,6 +341,32 @@ CITIES: List[dict] = [
 
 
 # --------------------------------------------------------------------- #
+# SUBLOCATIONS — rakennukset/tilat kaupunkien sisällä. Näistä syntyy
+# vain World.Location (parent-linkillä), ei kuningaskunnan CityEntryä.
+# (key, name, parent_loc_id, type, description)
+# --------------------------------------------------------------------- #
+SUBLOCATIONS: List[dict] = [
+    dict(key="verkkojen_talo", name="Verkkojen Talo (Talo Baenrahelin "
+                                     "palvelijoiden talo)",
+         parent="loc_zertath_lanke", loc_id="loc_verkkojen_talo",
+         type="building", biome="underdark",
+         description="Talo Baenrahelin ulompi kartano, louhittu massiivisen "
+                     "tippukiven sisään pääkartanon ja Aether-arkistojen "
+                     "alapuolelle. Suvun konehuone: yhteiskeittiö, ahtaat "
+                     "makuusalikolot, ratsuliskojen ja hämähäkkien tallit, "
+                     "vartijoiden parakit. Valaistuksena säröilleet, "
+                     "levotonta violettia hohtavat faerzress-sirpaleet; ilma "
+                     "haisee otsonilta, paahdetulta sieneltä ja vanhalta "
+                     "verelta. Alueella vallitsee 'Lex Null' — pysyvät "
+                     "vaimennuskentät (loitsu vaatii CON-heiton DC 13 + "
+                     "loitsun taso, epäonnistuessa force-vahinkoa), joten "
+                     "täällä taistellaan myrkyin ja teräasein. Palvelijat "
+                     "tuntevat kentän 'kuolleet kulmat', joissa magia yhä "
+                     "toimii."),
+]
+
+
+# --------------------------------------------------------------------- #
 # NPCS — täydet profiilit. stat = "" → ei suoraa monsterivastinetta
 # (tarkka luokitus notesissa). loc = "" → ei kiinteää sijaintia.
 # wealth = wealth-tier varallisuuden seedaukseen (tyhjä = ei kolikoita).
@@ -856,24 +882,41 @@ NPCS: List[dict] = [
          tags=["rival"]),
 
     # ===== ATERTERRA — Underdark / drow-huoneet =====
-    dict(id="npc_cazna", name="Cazna Icharyd", race="Drow", age="",
+    dict(id="npc_cazna", name="Cazna Icharyd", race="Drow", age="3500+",
          occupation="Matriarkka", title="Aterterran matriarkka",
          faction="Talo Icharyd", alignment="Chaotic Evil",
          loc="loc_zertath_lanke", stat="monster:Archmage", wealth="aristocratic",
-         appearance="Mahtava drow-matriarkka, hämähäkkikoristeet.",
-         personality="Ylpeä, fanaattinen, salaileva.",
-         notes="Zer'tath Lanken hallitsija. Vartioi tietämättään "
-               "maailmantitaani Garruthaa Faerzress-kristallien avulla.",
-         tags=["ruler", "drow"]),
+         appearance="Mahtava, ajaton drow-matriarkka; kantaa "
+                     "kristallikruunua johon on vangittu keisari "
+                     "Tarquvasin sielu.",
+         personality="Ei paha pahuudesta vaan kosmisesta PTSD:stä — "
+                     "epätoivoinen Atlas, joka kantaa maailmanlopun "
+                     "huutoa mielessään.",
+         notes="Zer'tath Lanken hallitsija. TIETÄÄ totuuden: puhdasveriset "
+               "drowt kuulevat Faerzress-kristallien säteilyn kauniina "
+               "'Syvyyden Unena', mutta Cazna kuulee kahlitun titaani "
+               "Garruthan raastavan huudon. Ruokkii salaa Vanqurionin "
+               "Sarrukh-sielukonetta Kristallijärven pohjassa ('Syvyyden "
+               "Kaste' — tuomitut pudotetaan elävinä kuiluun); tämä pitää "
+               "hänet ikuisesti nuorena. Eristi drowt maan alle "
+               "suojellakseen konetta ja peittääkseen valheen.",
+         tags=["ruler", "drow", "antagonist"]),
     dict(id="npc_altheon", name="Altheon Vylarien Baenrahel", race="Drow",
-         age="", occupation="Varjovizier", title="Lordi",
+         age="", occupation="Aether-arkistojen johtaja", title="Lordi",
          faction="Talo Baenrahel", alignment="Lawful Evil",
-         loc="loc_zertath_lanke", stat="monster:Assassin", wealth="wealthy",
+         loc="loc_zertath_lanke", stat="monster:Archmage", wealth="wealthy",
          appearance="Arvokas ja synkkä drow-mies; kantaa sinistä kristallia "
                      "(sielufokus).",
-         personality="Kylmä, kunnianhimoinen, häikäilemätön.",
-         notes="Beatricen biologinen isä ja matriarkka Caznan Varjovizier. "
-               "Hylkäsi tyttärensä pitääkseen valta-asemansa.",
+         personality="Ei vihollinen vaan vanki — kylmä pinta peittää "
+                     "vuosikymmenten surun.",
+         notes="Beatricen biologinen isä ja matriarkka Caznan oikea käsi; "
+               "huoltaa sekä Faerzress-verkostoa että Vanqurionin "
+               "sielukonetta. Pelasti aikoinaan koko kaupungin projekti "
+               "'Kaiun' avulla yhdessä ihmistutkija Seraphinan kanssa — "
+               "siksi Cazna ei voi tappaa häntä. Rakastui Seraphinaan; "
+               "kun Beatrice (Dobluth Dro) syntyi, Altheon suostui The "
+               "Veilin Geas-loitsuun (ei saa etsiä perhettään) pitääkseen "
+               "heidät turvassa. Stat-proxy: Archmage.",
          tags=["drow", "noble"]),
     dict(id="npc_amalica", name="Amalica Coloara Despana", race="Drow",
          age="", occupation="Ilharess", title="Talo Despanan ilharess",
@@ -986,6 +1029,137 @@ NPCS: List[dict] = [
          notes="Spore Rot -ruton ruumiillistuma Golgoth-Inilissä. "
                "Stat-proxy: Shambling Mound.",
          tags=["antagonist", "plague"]),
+
+    # ===== TALO BAENRAHEL — Verkkojen Talo (palvelijoiden talo) =====
+    dict(id="npc_elarae", name="Elarae Baenrahel", race="Drow", age="",
+         occupation="Arkkimaagi-perijä", title="Talo Baenrahelin perijä",
+         faction="Talo Baenrahel", alignment="Lawful Evil",
+         loc="loc_verkkojen_talo", stat="monster:Archmage", wealth="wealthy",
+         appearance="Pitkät moitteettomat hopeahiukset, joihin punottu "
+                     "mustia obsidiaanihelmiä; viileät violetit silmät; "
+                     "tummansiniset silkki- ja nahkakaavut.",
+         personality="Kylmä, laskelmoiva, äärimmäisen älykäs.",
+         notes="Beatricen siskopuoli — Altheonin virallinen perijä ja "
+               "tuleva arkkimaagi. Vierailee palvelijoiden talossa "
+               "käyttääkseen palvelijoita salaisten kokeidensa "
+               "koekaniineina. Epäilee isällään olevan salaisuus ja etsii "
+               "vipuvartta tätä vastaan.",
+         tags=["drow", "noble", "baenrahel"]),
+    dict(id="npc_dravin", name="Dravin Baenrahel", race="Drow", age="",
+         occupation="Velve Dro -upseeri", title="Suvun sotilaallinen nyrkki",
+         faction="Talo Baenrahel", alignment="Lawful Evil",
+         loc="loc_verkkojen_talo", stat="monster:Assassin", wealth="comfortable",
+         appearance="Poikkeuksellisen lihaksikas drow-mies; raskas "
+                     "piikikäs drow-haarniska, kaksi myrkytettyä "
+                     "lyhytmiekkaa, ylimielinen virne.",
+         personality="Halveksuu palvelijoita, näkee heidät pelkkänä lihana.",
+         notes="Beatricen velipuoli. Velve Dro -armeijan upseeri, ei maagi. "
+               "Saattaa saapua palvelijoiden taloon tarkastamaan "
+               "ratsuliskoja juuri kun pelaajat ilmestyvät.",
+         tags=["drow", "noble", "baenrahel", "military"]),
+    dict(id="npc_vorn", name="Vorn Xorlath", race="Drow", age="",
+         occupation="Vartiokapteeni", title="Verkkojen Talon vartiokapteeni",
+         faction="Talo Baenrahel", alignment="Lawful Neutral",
+         loc="loc_verkkojen_talo", stat="monster:Scout", wealth="modest",
+         appearance="Poikkinaisen miekan arpeuttamat kasvot, katkennut "
+                     "torahammas; kantaa raskasta varsijousta.",
+         personality="Kyyninen ja pragmaattinen; lojaali kullalle ja "
+                     "vallalle, ei aatteelle.",
+         notes="Xorlath-suvun päämies, talon vartijoiden johtaja. On "
+               "tappanut kymmeniä salamurhaajia suvun puolesta saamatta "
+               "kunniaa. Tuntee jokaisen salakäytävän — voi myydä pelaajille "
+               "reitin Altheonin Aether-arkistoon jos maksu on oikea.",
+         tags=["drow", "guard"]),
+    dict(id="npc_nymia", name="Nymia Xorlath", race="Drow", age="",
+         occupation="Tiedustelija / ovivahti", title="",
+         faction="Talo Baenrahel", alignment="Lawful Neutral",
+         loc="loc_verkkojen_talo", stat="monster:Spy", wealth="poor",
+         appearance="Pieni, ketterä ja hermostuneesti liikkuva nuori "
+                     "drow-nainen; tummanharmaa viitta.",
+         personality="Tarkkaavainen, hermostunut, utelias.",
+         notes="Vornin tytär. Piileskelee talon kattopalkeissa ja kuuntelee "
+               "kaikkea — todennäköisesti ensimmäinen joka huomaa "
+               "tunkeutujat.",
+         tags=["drow", "spy"]),
+    dict(id="npc_thala", name="Thala Myrdin", race="Drow", age="400+",
+         occupation="Pääemäntä", title="Matroona",
+         faction="Talo Baenrahel", alignment="Neutral", loc="loc_verkkojen_talo",
+         stat="monster:Commoner", wealth="poor",
+         appearance="Yli 400-vuotias drow-nainen; oikea silmä täysin "
+                     "valkoinen ja sokea; kädet täynnä happo- ja "
+                     "palovammoja.",
+         personality="Nähnyt kaiken; tietää tarkkaan milloin teeskennellä "
+                     "sokeaa.",
+         notes="Palvelijoiden epävirallinen johtaja. Muistaa, että Altheon "
+               "toi vuosia sitten kartanoon ihmisnaisen (Seraphinan) salaa "
+               "ja suree tätä yhä. Voi piilottaa pelaajat välttääkseen "
+               "aatelisten raivon. Tietää vaimennuskentän 'kuolleet "
+               "kulmat'.",
+         tags=["drow", "servant"]),
+    dict(id="npc_kael_myrdin", name="Kael Myrdin", race="Drow", age="30",
+         occupation="Keittiöpoika / lihankantaja", title="",
+         faction="Talo Baenrahel", alignment="Neutral Good",
+         loc="loc_verkkojen_talo", stat="monster:Commoner", wealth="poor",
+         appearance="Laiha, huonosti ruokittu drow-nuorukainen (lapsi "
+                     "drow-iässä); vaatteet veressä petojen ruokkimisesta.",
+         personality="Utelias ja naiivi; vihaa kohtaloaan.",
+         notes="Haluaisi paeta pintamaailmaan, josta on vain kuullut "
+               "tarinoita. Kairon voi helposti puhua pojan puolelleen.",
+         tags=["drow", "servant"]),
+    dict(id="npc_zirkass", name="Zir'kass", race="Drow", age="",
+         occupation="Tallimestari", title="Petojen kesyttäjä",
+         faction="Talo Baenrahel", alignment="Neutral", loc="loc_verkkojen_talo",
+         stat="monster:Scout", wealth="poor",
+         appearance="Vasemmasta kädestä puuttuu kolme sormea; haisee "
+                     "happamalta hämähäkin myrkyltä; paksut nahkasuojalasit.",
+         personality="Välittää eläimistä enemmän kuin droweista.",
+         notes="Vastaa Baenrahelin ratsuliskoista ja vahtihämähäkeistä; "
+               "pumppaa hämähäkinmyrkkyä suvun aseisiin. Voi usuttaa "
+               "kymmeniä jättihämähäkkejä yhdellä vihellyksellä. Aistii "
+               "että 'jokin syvyyksissä on hereillä — kiteet murtuvat "
+               "sisältäpäin'.",
+         tags=["drow", "beastmaster"]),
+    dict(id="npc_faldor", name="Faldor \"Sokea Kipinä\"", race="Drow", age="",
+         occupation="Kristallien huoltaja", title="",
+         faction="Talo Baenrahel", alignment="Neutral", loc="loc_verkkojen_talo",
+         stat="monster:Commoner", wealth="poor",
+         appearance="Äärimmäisen vanha, pahasti kumarassa kävelevä drow; "
+                     "sormenpäät mustuneet kristallien säteilystä.",
+         personality="Hiljainen, sisäänpäin kääntynyt.",
+         notes="JUONIKOUKKU: ylläpitää talon faerzress-sirpaleita ja on "
+               "itse laimeaa Dobluth Dro -verta (puoliverinen usean "
+               "sukupolven takaa). On oppinut sulkemaan mielensä "
+               "kristallien huudolta; jos näkee Beatricen reagoivan "
+               "kristalleihin, voi tunnistaa hengenheimolaisensa ja auttaa "
+               "paljastamaan uskonnon valheen.",
+         tags=["drow", "servant", "plot_hook"]),
+    dict(id="npc_vhaerani", name="Vhaerani Icharyd", race="Drow", age="2200",
+         occupation="Salainen perillinen", title="Varjojen tytär",
+         faction="Talo Icharyd", alignment="Neutral Evil",
+         loc="loc_zertath_lanke", stat="monster:Assassin", wealth="wealthy",
+         appearance="Näyttää drow'ksi kolmekymppiseltä, mutta katse on "
+                     "kahden vuosituhannen ikäinen.",
+         personality="Ei tunne sääliä; kasvatettu aseeksi.",
+         notes="Caznan salainen tytär ja perillinen, pidetty poissa "
+               "politiikasta yli 2000 vuotta palatsin syvimmissä "
+               "kammioissa laitteen lähellä. On harjoitellut taistelua, "
+               "salamurhaa ja magiaa kaksi vuosituhatta putkeen ja lukee "
+               "vastustajan liikkeet ennen iskua. Suvun perimmäinen ase — "
+               "boss-tier, vielä äitiään pelottavampi. Stat-proxy: "
+               "Assassin (skaalaa ylös).",
+         tags=["drow", "assassin", "boss", "secret"]),
+    dict(id="npc_xalyra", name="Xalyra Icharyd", race="Drow", age="",
+         occupation="Varjojen äiti", title="Kuiskaaja verhon takana",
+         faction="Talo Icharyd", alignment="Lawful Evil",
+         loc="loc_zertath_lanke", stat="monster:Archmage", wealth="aristocratic",
+         appearance="Ikivanha drow-matriarkka, joka pysyttelee varjoissa.",
+         personality="Laskelmoiva, kärsivällinen, näkymätön vallankäyttäjä.",
+         notes="Caznan äiti — nainen joka alun perin löysi Vanqurionin "
+               "sielukoneen ja oppi käyttämään sitä. Vetäytyi varjoihin "
+               "'Kuiskaajaksi verhon taakse' johtaen tytärtään; ajoi "
+               "Lex Claustrumin (vetäytymisen lain) jottei kukaan pääsisi "
+               "alas löytämään konetta.",
+         tags=["drow", "mastermind", "secret"]),
 
     # ===== INFERNAL DISC =====
     dict(id="npc_lucien", name="Lucien the Ledgerkeeper",
@@ -1253,10 +1427,36 @@ NPC_LINKS: List[tuple] = [
     ("npc_magnus", "npc_aedria", "mentor", "Mentori hautomon syvyyksissä."),
     # Beatrice / drow
     ("npc_altheon", "npc_beatrice", "family",
-     "Biologinen isä; hylkäsi tyttärensä."),
+     "Biologinen isä; hylkäsi tyttärensä (Geas-kirous)."),
     ("npc_beatrice", "npc_altheon", "enemy", "Hylkäävä isä — kostonkohde."),
     ("npc_seraphina", "npc_beatrice", "family", "Äiti (The Veil)."),
-    ("npc_cazna", "npc_altheon", "subordinate", "Altheon on matriarkan Varjovizier."),
+    ("npc_altheon", "npc_seraphina", "lover",
+     "Rakastui projekti 'Kaiun' aikana; Beatricen vanhemmat."),
+    ("npc_seraphina", "npc_altheon", "lover", "Beatricen isä Aterterrassa."),
+    ("npc_cazna", "npc_altheon", "subordinate",
+     "Altheon on matriarkan oikea käsi ja arkistojen johtaja."),
+    # Talo Baenrahel — sisarukset & palvelijoiden talo
+    ("npc_altheon", "npc_elarae", "family", "Virallinen perijä."),
+    ("npc_altheon", "npc_dravin", "family", "Poika, Velve Dro -upseeri."),
+    ("npc_elarae", "npc_altheon", "rival",
+     "Perijä joka etsii vipuvartta isänsä salaisuutta vastaan."),
+    ("npc_elarae", "npc_beatrice", "family", "Beatricen siskopuoli."),
+    ("npc_dravin", "npc_beatrice", "family", "Beatricen velipuoli."),
+    ("npc_elarae", "npc_dravin", "family", "Sisarukset — perijä ja nyrkki."),
+    ("npc_vorn", "npc_nymia", "family", "Isä ja tytär (Xorlath)."),
+    ("npc_thala", "npc_kael_myrdin", "family", "Myrdin-suku; suojelee poikaa."),
+    ("npc_vorn", "npc_altheon", "subordinate", "Palvelee Talo Baenrahelia."),
+    ("npc_thala", "npc_altheon", "subordinate", "Talon pääemäntä."),
+    ("npc_zirkass", "npc_altheon", "subordinate", "Talon tallimestari."),
+    ("npc_kairon", "npc_kael_myrdin", "other",
+     "Kairon voi puhua nuoren keittiöpojan puolelleen."),
+    ("npc_faldor", "npc_beatrice", "other",
+     "Salainen hengenheimolainen (Dobluth Dro) — voi auttaa."),
+    # Talo Icharyd — Caznan varjoperhe
+    ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
+    ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
+    ("npc_cazna", "npc_vhaerani", "family", "Salainen tytär ja perillinen."),
+    ("npc_vhaerani", "npc_cazna", "family", "Äidin perimmäinen ase."),
     # Lucienin sielusopimukset
     ("npc_lucien", "npc_beatrice", "patron", "Patroni; sielusopimus."),
     ("npc_lucien", "npc_darius", "patron", "Epätoivoinen diili."),
@@ -1317,6 +1517,24 @@ def build_lore_locations(world) -> None:
             religion=c.get("religion", ""),
             known_for=c.get("industry", ""),
             tags=tags,
+        )
+        world.locations[loc.id] = loc
+        if parent and parent in world.locations:
+            if loc.id not in world.locations[parent].children_ids:
+                world.locations[parent].children_ids.append(loc.id)
+
+    # Buildings/rooms inside cities (built after the cities they hang off).
+    for s in SUBLOCATIONS:
+        if s["loc_id"] in world.locations:
+            continue
+        parent = s.get("parent", "")
+        tags = [s["key"]]
+        if s.get("biome"):
+            tags.append(s["biome"])
+        loc = Location(
+            id=s["loc_id"], name=s["name"],
+            location_type=s.get("type", "building"),
+            description=s["description"], parent_id=parent, tags=tags,
         )
         world.locations[loc.id] = loc
         if parent and parent in world.locations:
@@ -1693,8 +1911,132 @@ def lore_organisations():
         tags=["order", "dragons"],
     )
 
+    baenrahel = Organisation(
+        key="talo_baenrahel", name="Talo Baenrahel",
+        kind="noble_house",
+        description="Aterterran mahtava drow-arkkimaagisuku; hallitsee "
+                    "Aether-arkistoja ja Faerzress-verkostoa. Verkkojen "
+                    "Talo (palvelijoiden talo) on suvun konehuone, jossa "
+                    "vallitsee Lex Null (magian vaimennus) ja armoton "
+                    "sisäinen hierarkia palvelijasukujen (Xorlath, Myrdin, "
+                    "Zir) kesken.",
+        motto="Verkko pitää kaiken.",
+        secret=False, alignment="lawful evil",
+        headquarters_city="zertath_lanke", headquarters_kingdom="aterterra",
+        operating_kingdoms=["aterterra"], operating_cities=["zertath_lanke"],
+        ranks=[
+            OrganisationRank(key="lord", name="Lordi / Arkistojen johtaja",
+                             tier=1, description="Suvun pää (Altheon)."),
+            OrganisationRank(key="heir", name="Perijä", tier=2,
+                             description="Tuleva arkkimaagi (Elarae)."),
+            OrganisationRank(key="fist", name="Nyrkki", tier=3,
+                             description="Sotilaallinen upseeri (Dravin)."),
+            OrganisationRank(key="captain", name="Vartiokapteeni", tier=4,
+                             description="Palvelijoiden kurinpito."),
+            OrganisationRank(key="servant", name="Palvelija", tier=6,
+                             description="Xorlath/Myrdin/Zir-suvut."),
+        ],
+        roles=[
+            OrganisationRole(key="archivist", name="Arkistonhoitaja",
+                             description="Aether-arkistot & sielukone."),
+            OrganisationRole(key="disciplinarian", name="Kurinpitäjä",
+                             description="Xorlath-vartijat."),
+            OrganisationRole(key="beastmaster", name="Petojen kesyttäjä",
+                             description="Ratsuliskot & vahtihämähäkit."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_altheon", npc_name="Altheon Baenrahel",
+                               rank_key="lord", role_keys=["archivist"],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Suvun pää; huoltaa myös sielukonetta."),
+            OrganisationMember(npc_id="npc_elarae", npc_name="Elarae Baenrahel",
+                               rank_key="heir", role_keys=[],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Perijä; kokeilee palvelijoilla."),
+            OrganisationMember(npc_id="npc_dravin", npc_name="Dravin Baenrahel",
+                               rank_key="fist", role_keys=[],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Velve Dro -upseeri."),
+            OrganisationMember(npc_id="npc_vorn", npc_name="Vorn Xorlath",
+                               rank_key="captain", role_keys=["disciplinarian"],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Vartiokapteeni; myytävissä kullalla."),
+            OrganisationMember(npc_id="npc_nymia", npc_name="Nymia Xorlath",
+                               rank_key="servant", role_keys=["disciplinarian"],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Ovivahti; kuuntelee kattopalkeista."),
+            OrganisationMember(npc_id="npc_thala", npc_name="Thala Myrdin",
+                               rank_key="servant", role_keys=[],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Pääemäntä; palvelijoiden epävirallinen johtaja."),
+            OrganisationMember(npc_id="npc_kael_myrdin", npc_name="Kael Myrdin",
+                               rank_key="servant", role_keys=[],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Keittiöpoika; haluaa paeta pintaan."),
+            OrganisationMember(npc_id="npc_zirkass", npc_name="Zir'kass",
+                               rank_key="servant", role_keys=["beastmaster"],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Tallimestari."),
+            OrganisationMember(npc_id="npc_faldor", npc_name="Faldor \"Sokea Kipinä\"",
+                               rank_key="servant", role_keys=[],
+                               kingdom_key="aterterra", city_key="zertath_lanke",
+                               notes="Kristallihuoltaja; salaa Dobluth Dro."),
+        ],
+        relations={"talo_icharyd": "serves", "the_veil": "secret_pact"},
+        color=(90, 70, 130),
+        tags=["drow", "noble_house"],
+    )
+
     return [dath, deaths_vigil, seekers, veil, famiglia, efi, aequitas,
-            scale_riders]
+            scale_riders, baenrahel]
+
+
+# --------------------------------------------------------------------- #
+# Campaign lore notes — the big Aterterra / cosmology reveals for the DM.
+# --------------------------------------------------------------------- #
+def lore_campaign_notes():
+    """Return CampaignNote objects capturing the deep Aterterra secrets,
+    so the reveals live in the campaign's notes tab from day one."""
+    from data.campaign import CampaignNote
+    specs = [
+        ("SYVYYDEN UNI (Reverie d'Oloth) — Aterterran drow-uskonto väittää "
+         "Faerzress-kristallien säteilyn olevan jumalallinen, rauhoittava "
+         "'Syvyyden Uni'. Todellisuudessa se on maailmantitaani Garruthan "
+         "hermoverkon vuotoa: Baenrahel-suvun maaginen suodatin muuttaa "
+         "titaanin tuskan ja muistot kauniiksi kehtolauluksi. Puhdasveriset "
+         "kuulevat laulun; puoliveriset (Dobluth Dro, kuten Beatrice) ja "
+         "riittävän vahvat kuulevat kahlitun titaanin huudon — siksi "
+         "sekaveri on kuolemantuomion arvoinen: se voi paljastaa valheen."),
+        ("VANQURIONIN SYDÄN — Zer'tath Lanken Kristallijärven pohjassa, "
+         "Matriarkan palatsin alla, lepää muinainen Sarrukh-sielukone. "
+         "Tuomitut pudotetaan elävinä 'Tuomion kuiluun' ('Syvyyden Kaste'); "
+         "kone repii heidän sielunsa ja kanavoi elinvoiman Caznalle ja "
+         "sisäpiirille — tämä pitää Caznan ikuisesti nuorena. Aterterran "
+         "eristys (Lex Claustrum) suojelee tätä salaisuutta niin pinnalta "
+         "(Veljeskunta, T.R.A., Veil) kuin Death's Vigililtä."),
+        ("KESKIMEREN SYNTY (The Meridian Sundering) — Keskimeri ei ollut "
+         "alun perin meri. Mantereen ytimessä oli Sarrukhien pääkaupunki "
+         "Vanqurion. Kun ensimmäinen Redfei (Veru-ihon kantaja) kytkettiin "
+         "titaani Garruthaan, hän räjäytti itsensä tahallaan; räjähdys repi "
+         "mantereen ytimen irti ja meret täyttivät tyhjiön. Keskimerta "
+         "ympäröivät vuoristot ovat kivettyneitä shokkiaaltoja, ja ikuiset "
+         "myrskyt titaanin yhä vuotavaa energiaa."),
+        ("PROJEKTI 'KAIKU' — n. 20 v sitten Aterterran Faerzress-verkosto "
+         "alkoi horjua. The Veil lähetti analyytikkonsa Seraphinan "
+         "auttamaan arkistojen johtajaa Altheonia. He vakauttivat verkoston "
+         "(Echo-Mythal) — siksi Altheon on korvaamaton eikä Cazna voi "
+         "tappaa häntä. Työn aikana he löysivät Syvyyden Unen totuuden, "
+         "rakastuivat, ja Beatrice syntyi. Salaisen sopimuksen hinta: "
+         "Seraphina karkotettiin lapsen kanssa pintaan ja Altheon suostui "
+         "The Veilin Geas-loitsuun."),
+        ("KRUSK = KÄVELEVÄ YDINPOMMI — Kun drow-eliitti näkee Kruskin selän "
+         "Veru-palasineen, he näkevät saman pedon joka tuhosi Vanqurionin — "
+         "ja Tarquvasin aaveen. Jos Krusk astuu Kristallijärven rannalle tai "
+         "arkistoihin, hän voi resonoida suoraan sielukoneen ja Garruthan "
+         "kanssa ja rikkoa drowien 2000 vuotta varjeleman valheen — mikä "
+         "sytyttäisi Aterterrassa sisällissodan."),
+    ]
+    return [CampaignNote(text=t, category="lore") for t in specs]
 
 
 def add_lore_organisations(camp) -> None:
