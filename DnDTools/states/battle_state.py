@@ -964,6 +964,27 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     self.reaction_context = {"caster": step.attacker, "level": lvl, "step_idx": self.pending_step_idx}
                     return # Pause confirmation to ask for reaction
 
+            # --- Opportunity Attack Check (AI movement) ---
+            # The move step's new position was already applied during
+            # planning. If leaving an enemy's reach provokes OAs, revert
+            # to the origin, hand off to the same reaction flow the
+            # player-drag path uses, and resume the AI turn afterwards.
+            if step.step_type == "move" and step.attacker and not step.counter_checked:
+                step.counter_checked = True
+                mover = step.attacker
+                new_x, new_y = mover.grid_x, mover.grid_y
+                oas = self.battle.check_opportunity_attacks(
+                    mover, step.old_x, step.old_y)
+                if oas:
+                    mover.grid_x, mover.grid_y = step.old_x, step.old_y
+                    self.reaction_pending = list(oas)
+                    self.reaction_type = "oa"
+                    self.pending_move = (mover, new_x, new_y)
+                    self.reaction_context = {"resume_ai_step": True}
+                    self._log(f"[REACTION] {mover.name}'s move provokes "
+                              f"{len(oas)} opportunity attack(s)!")
+                    return  # Pause; _resolve_reaction resumes the plan
+
             # Handle summon spawning
             if step.step_type == "summon" and step.summon_name:
                 new_ent = self.battle.spawn_summon(
@@ -2431,7 +2452,17 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 mover.grid_x = dest_x
                 mover.grid_y = dest_y
                 self.pending_move = None
-        
+                # If this OA interrupted an AI move step, advance the AI
+                # plan past that step now that the reaction is resolved.
+                if (self.reaction_context or {}).get("resume_ai_step") \
+                        and self.pending_plan:
+                    self.reaction_context = {}
+                    self.pending_step_idx += 1
+                    self._prepare_step_outcomes()
+                    if self.pending_step_idx >= len(self.pending_plan.steps):
+                        self.pending_plan = None
+                        self._log("[AI] Turn complete.")
+
         elif self.reaction_type == "counterspell":
             if allowed:
                 self._log(f"[REACTION] {reactor.name} uses Counterspell (Slot expended).")
