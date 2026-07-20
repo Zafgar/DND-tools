@@ -635,6 +635,10 @@ class BattleSystem:
         for e in self.entities:
             if e == mover or e.hp <= 0 or e.reaction_used:
                 continue
+            # A surprised or incapacitated watcher can't take the OA
+            # reaction (PHB p.189 / Incapacitated).
+            if getattr(e, "is_surprised", False) or e.is_incapacitated():
+                continue
             if e.is_player == mover.is_player:
                 continue  # same team
             # Disengage prevents OAs — except against a Sentinel-feat

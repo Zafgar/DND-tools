@@ -56,6 +56,10 @@ def _has_reaction_available(entity) -> bool:
         return False
     if entity.is_incapacitated():
         return False
+    # PHB p.189: a surprised creature can't take reactions until the end
+    # of its first turn (the flag is cleared when its turn starts).
+    if getattr(entity, "is_surprised", False):
+        return False
     return True
 
 
