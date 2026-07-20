@@ -116,6 +116,41 @@ class TestWhitestoneConstructs(unittest.TestCase):
         self.assertEqual(m.legendary_action_count, 3)
 
 
+class TestZertathBosses(unittest.TestCase):
+    def setUp(self):
+        self.lib = MonsterLibrary()
+
+    def test_present_with_correct_cr(self):
+        for name, cr in [("Cazna Icharyd", 20.0), ("Dantrag Dyrr", 14.0),
+                         ("Nhilymra Zaer'vyn", 13.0),
+                         ("Zhindia Oblodra", 14.0),
+                         ('"Murtunut" Thol', 6.0)]:
+            self.assertEqual(self.lib.get_monster(name).challenge_rating, cr)
+
+    def test_cazna_is_mythic_caster(self):
+        m = self.lib.get_monster("Cazna Icharyd")
+        self.assertEqual(m.legendary_resistance_count, 5)
+        self.assertEqual(m.spell_save_dc, 21)
+        self.assertTrue(m.spells_known)
+
+    def test_existing_npcs_repointed_to_new_blocks(self):
+        camp = build_novus_somnium()
+        npcs = camp.world_data["npcs"]
+        self.assertEqual(npcs["npc_cazna"]["stat_source"],
+                         "monster:Cazna Icharyd")
+        self.assertEqual(npcs["npc_dantrag"]["stat_source"],
+                         "monster:Dantrag Dyrr")
+        self.assertEqual(npcs["npc_nhilymra"]["stat_source"],
+                         "monster:Nhilymra Zaer'vyn")
+
+    def test_all_zertath_stat_sources_resolve(self):
+        camp = build_novus_somnium()
+        for nid in ("npc_cazna", "npc_dantrag", "npc_nhilymra",
+                    "npc_zhindia", "npc_thol"):
+            src = camp.world_data["npcs"][nid]["stat_source"]
+            self.assertIsNotNone(self.lib.get_monster(src.split(":", 1)[1]))
+
+
 class TestMaclebarNesting(unittest.TestCase):
     def test_fort_nested_under_maclebar(self):
         camp = build_novus_somnium()

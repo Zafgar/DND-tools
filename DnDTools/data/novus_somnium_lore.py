@@ -508,6 +508,33 @@ SUBLOCATIONS: List[dict] = [
                      "tukikohta ja Old Vaisilin tiedon ja historian keskus. "
                      "Hopealohikäärme Thalorian ja apulaiset Elara "
                      "Silverleaf ja Tormek Ironfoot."),
+    # ---- Zer'tath Lanke (Aterterra) kaupunginosat ------------------
+    dict(key="hohtavat_terassit", name="Hohtavat Terassit",
+         parent="loc_zertath_lanke", type="district", biome="underdark",
+         loc_id="loc_hohtavat_terassit",
+         description="Zer'tath Lanken ylhäisön kerros — aatelistalojen "
+                     "loistavat terassit kristallijärven yllä."),
+    dict(key="rotanhammas", name="Rotanhammas", parent="loc_zertath_lanke",
+         type="district", biome="underdark", loc_id="loc_rotanhammas",
+         description="Kaupungin keskikastin ja kauppiaiden kortteli: "
+                     "Kuiskausten Lasi -antikvariaatti (Valas Pharn), "
+                     "Myrkkykehrä-asekauppa (Xune T'sarran) ja Oloth's "
+                     "Caress -bordelli (Jarlax Melarn)."),
+    dict(key="sokean_totuuden_pyhakko", name="Sokean Totuuden Pyhäkkö",
+         parent="loc_zertath_lanke", type="temple", biome="underdark",
+         loc_id="loc_sokean_totuuden_pyhakko",
+         description="Zha'lin-aukion pyhäkkö, jossa palvotaan Syvyyden Unta "
+                     "faerzress-sirpaleiden kautta. Pääpapitar Naerthali "
+                     "Szith'ryn."),
+    dict(key="tuhkakuilu", name="Tuhkakuilu", parent="loc_zertath_lanke",
+         type="dungeon", biome="underdark", loc_id="loc_tuhkakuilu",
+         description="Teloituskuilu, jonka reunalla kieletön pyöveli Vornak "
+                     "toteuttaa kaupungin tuomiot."),
+    dict(key="drakiel_slum", name="Dra'kielin slummi",
+         parent="loc_zertath_lanke", type="district", biome="underdark",
+         loc_id="loc_drakiel_slum",
+         description="Kaupungin köyhin kerros; laiton tappeluklubi, jonka "
+                     "orja-kapo on minotauri \"Murtunut\" Thol."),
 ]
 
 
@@ -1468,7 +1495,8 @@ NPCS: List[dict] = [
     dict(id="npc_cazna", name="Cazna Icharyd", race="Drow", age="3500+",
          occupation="Matriarkka", title="Aterterran matriarkka",
          faction="Talo Icharyd", alignment="Chaotic Evil",
-         loc="loc_zertath_lanke", stat="monster:Archmage", wealth="aristocratic",
+         loc="loc_zertath_lanke", stat="monster:Cazna Icharyd",
+         wealth="aristocratic",
          appearance="Mahtava, ajaton drow-matriarkka; kantaa "
                      "kristallikruunua johon on vangittu keisari "
                      "Tarquvasin sielu.",
@@ -1537,7 +1565,7 @@ NPCS: List[dict] = [
     dict(id="npc_dantrag", name="Dantrag Dyrr", race="Drow", age="",
          occupation="Sotapäällikkö", title="Ultrinnanin ilharn",
          faction="Talo Dyrr", alignment="Lawful Evil", loc="loc_ultrinnan",
-         stat="monster:Death Knight", wealth="wealthy",
+         stat="monster:Dantrag Dyrr", wealth="wealthy",
          appearance="Massiivinen, panssaroitu drow-soturi.",
          personality="Aggressiivinen, vallanhimoinen.",
          notes="Velve Dro -armeijan komentaja; suunnittelee "
@@ -1546,7 +1574,7 @@ NPCS: List[dict] = [
     dict(id="npc_nhilymra", name="Nhilymra Zaer'vyn", race="Drow", age="",
          occupation="Ilharess", title="Vorzhan ilharess",
          faction="Talo Zaer'vyn", alignment="Lawful Evil", loc="loc_vorzha",
-         stat="monster:Assassin", wealth="wealthy",
+         stat="monster:Nhilymra Zaer'vyn", wealth="wealthy",
          appearance="Hiljainen, tappavan tyylikäs drow-matriarkka.",
          personality="Salaperäinen, laskelmoiva.",
          notes="Johtaa Vorzhan salamurhaaja- ja tiedusteluverkostoa "
@@ -1745,6 +1773,111 @@ NPCS: List[dict] = [
                "Lex Claustrumin (vetäytymisen lain) jottei kukaan pääsisi "
                "alas löytämään konetta.",
          tags=["drow", "mastermind", "secret"]),
+
+    # ===== ZER'TATH LANKE — hovi, kauppiaat & slummi =====
+    dict(id="npc_pharaun", name="Pharaun Dyrr", race="Drow", age="",
+         occupation="Arcane Trickster", title="Matriarkan salainen ilmiantaja",
+         faction="Talo Dyrr", alignment="Neutral Evil", loc="loc_zertath_lanke",
+         stat="monster:Assassin", wealth="wealthy",
+         appearance="Ovela, hienostunut drow-veijari.",
+         personality="Viekas, kaksinaamainen, itsesuojelullinen.",
+         notes="Dantragin veli ja Matriarkan salainen ilmiantaja. Ovela "
+               "pakoilu, illuusiot ja arcane trickster -temput. "
+               "Suunniteltu CR 9 (Rogue 8 / Wizard 4). Stat-proxy: Assassin.",
+         tags=["drow", "spy", "high_court"]),
+    dict(id="npc_valas_szithryn", name="Valas Szith'ryn", race="Drow", age="",
+         occupation="Bardi / poliittinen käsi", title="",
+         faction="Talo Szith'ryn", alignment="Neutral Evil",
+         loc="loc_zertath_lanke", stat="monster:Archmage", wealth="wealthy",
+         appearance="Kaunopuheinen, myrkyllisen viehättävä drow.",
+         personality="Petollinen, manipuloiva.",
+         notes="Szith'rynin suvun poliittinen 'maallinen käsi' "
+               "pääkaupungissa; keskittyy psyykkiseen vahinkoon ja "
+               "petokseen. Suunniteltu CR 8 (Bard 9, Whispers). "
+               "Stat-proxy: Archmage (bardi).",
+         tags=["drow", "high_court", "bard"]),
+    dict(id="npc_zhindia", name="Zhindia Oblodra", race="Drow", age="",
+         occupation="Psion", title="Hiljainen Kuningatar",
+         faction="Talo Oblodra", alignment="Lawful Evil",
+         loc="loc_zertath_lanke", stat="monster:Zhindia Oblodra",
+         wealth="wealthy",
+         appearance="Kylmä, leijuva mielenlukija.",
+         personality="Etäinen, kaikkinäkevä, armoton.",
+         notes="Mielenlukijoiden (Oblodra) johtaja; hallitsee Dusklornista "
+               "mutta ulottaa telepaattisen otteensa pääkaupunkiin. Raskas "
+               "psioniikka ja mielenhallinta.",
+         tags=["drow", "high_court", "psion"]),
+    dict(id="npc_szoraya", name="Szoraya Baenrahel", race="Drow", age="",
+         occupation="Divinaatiovelho", title="", faction="Talo Baenrahel",
+         alignment="Neutral", loc="loc_verkkojen_talo", stat="monster:Archmage",
+         wealth="wealthy",
+         appearance="Tarkkasilmäinen, mietteliäs drow-velho.",
+         personality="Utelias totuudenetsijä.",
+         notes="Altheonin sisar, joka etsii totuutta (mm. isänsä "
+               "salaisuuksista). Divination-velho (Portent). Suunniteltu "
+               "CR 10 (Wizard 12). Stat-proxy: Archmage.",
+         tags=["drow", "baenrahel", "scholar"]),
+    dict(id="npc_naerthali", name="Naerthali Szith'ryn", race="Drow", age="",
+         occupation="Ylipapitar", title="Sokean Totuuden Pyhäkön pääpapitar",
+         faction="Reverie-kultti", alignment="Lawful Evil",
+         loc="loc_sokean_totuuden_pyhakko", stat="monster:Archmage",
+         wealth="wealthy",
+         appearance="Sokea, faerzress-sirpaleilla koristeltu papitar.",
+         personality="Fanaattinen, hurmoksellinen.",
+         notes="Zha'lin-aukion Sokean Totuuden Pyhäkön fanaattinen "
+               "pääpapitar; blindsight ja raskaat radiant/psychic-loitsut. "
+               "Suunniteltu CR 9–11. Stat-proxy: Archmage.",
+         tags=["drow", "clergy"]),
+    dict(id="npc_vornak", name="Pyöveli Vornak", race="Drow", age="",
+         occupation="Pyöveli", title="Tuhkakuilun pyöveli",
+         faction="", alignment="Lawful Evil", loc="loc_tuhkakuilu",
+         stat="monster:Half-Ogre", wealth="poor",
+         appearance="Kieletön jättiläis-drow, arpien peitossa.",
+         personality="Tunteeton, säälimätön.",
+         notes="Tuhkakuilun kieletön jättiläis-drow-pyöveli; raakaa voimaa, "
+               "grapple ja kuilun reunan insta-kill. Suunniteltu CR 8–10. "
+               "Stat-proxy: Half-Ogre (skaalaa ylös).",
+         tags=["drow", "executioner"]),
+    dict(id="npc_valas_pharn", name="Valas Pharn", race="Drow", age="",
+         occupation="Antikvariaatin pitäjä", title="Mustan pörssin kauppias",
+         faction="", alignment="Neutral", loc="loc_rotanhammas",
+         stat="monster:Spy", wealth="comfortable",
+         appearance="Liukas, salaperäinen kirjakauppias.",
+         personality="Varovainen, tiedonnälkäinen.",
+         notes="'Kuiskausten Lasi' -antikvariaatin pitäjä ja mustan pörssin "
+               "kauppias; illuusioita ja pakenemismekaniikkoja. Suunniteltu "
+               "CR 4–6. Stat-proxy: Spy.",
+         tags=["drow", "merchant", "criminal"]),
+    dict(id="npc_xune", name="Xune T'sarran", race="Drow", age="",
+         occupation="Alkemisti / asekauppias", title="",
+         faction="", alignment="Neutral", loc="loc_rotanhammas",
+         stat="monster:Assassin", wealth="comfortable",
+         appearance="Yksisilmäinen drow, happovammojen peitossa.",
+         personality="Kokeileva, vaarallinen.",
+         notes="'Myrkkykehrä' -asekaupan pitäjä; myrkkypommit ja happoiskut. "
+               "Suunniteltu CR 6–7 (Alchemist/Artificer). Stat-proxy: "
+               "Assassin (myrkyt).",
+         tags=["drow", "merchant"]),
+    dict(id="npc_jarlax", name="Jarlax \"Silkki\" Melarn", race="Drow", age="",
+         occupation="Bordellin pitäjä", title="", faction="",
+         alignment="Chaotic Neutral", loc="loc_rotanhammas",
+         stat="monster:Archmage", wealth="wealthy",
+         appearance="Viettelevä, silkkiin pukeutunut drow-bardi.",
+         personality="Karismaattinen, laskelmoiva.",
+         notes="'Oloth's Caress' -bordellin pitäjä; tekee musiikkia "
+               "kristalleja värisyttämällä (illuusiot). Suunniteltu CR 5–6 "
+               "(Bard/Illusionist). Stat-proxy: Archmage (bardi).",
+         tags=["drow", "merchant"]),
+    dict(id="npc_thol", name="\"Murtunut\" Thol", race="Minotaur", age="",
+         occupation="Gladiaattori-kapo", title="", faction="",
+         alignment="Neutral", loc="loc_drakiel_slum",
+         stat="monster:\"Murtunut\" Thol", wealth="poor",
+         appearance="Arpinen, kieletön minotauri-orja.",
+         personality="Raivokas areenalla, mutta kaipaa vapautta.",
+         notes="Dra'kielin slummin tappeluklubin orja-kapo; Charge + Gore "
+               "-profiili. Mahdollinen liittolainen Kruskille (orjasta "
+               "orjalle).",
+         tags=["gladiator", "potential_ally"]),
 
     # ===== INFERNAL DISC =====
     dict(id="npc_lucien", name="Lucien the Ledgerkeeper",
@@ -2164,6 +2297,15 @@ NPC_LINKS: List[tuple] = [
     ("npc_adelf", "npc_elara_silverleaf", "subordinate", "Apulainen."),
     ("npc_adelf", "npc_tormek", "subordinate", "Apulainen & suojelija."),
     ("npc_undur", "npc_dumblo", "subordinate", "Rekrytoi komentajalle."),
+    # Zer'tath Lanke — hovi & kadut
+    ("npc_pharaun", "npc_dantrag", "family", "Veli."),
+    ("npc_pharaun", "npc_cazna", "subordinate", "Matriarkan salainen ilmiantaja."),
+    ("npc_zhindia", "npc_cazna", "ally", "Mielenlukijoiden johtaja hovissa."),
+    ("npc_valas_szithryn", "npc_nhilymra", "ally", "Szith'ryn/Zaer'vyn -kytkös."),
+    ("npc_szoraya", "npc_altheon", "family", "Altheonin sisar (totuudenetsijä)."),
+    ("npc_szoraya", "npc_elarae", "family", "Täti/sisarentytär."),
+    ("npc_naerthali", "npc_cazna", "subordinate", "Reverie-kultin pääpapitar."),
+    ("npc_thol", "npc_krusk", "ally", "Mahdollinen liittolainen (orjasta orjalle)."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
