@@ -57,12 +57,17 @@ CITIES: List[dict] = [
          loc_id="loc_ravenstone", type="city", population=14_000,
          biome="grim", industry="savikaivokset",
          religion="Avarath-kultti (kasvava)", ruler="npc_jugorai",
-         description="Synkkä, pelottava kaupunki. Tunnettu "
-                     "savikaivoksistaan (Clay Shore), Asylum Purgo "
-                     "-mielisairaalasta ja muinaisista kryptoista "
-                     "(Corvus Spelchrum). Ghouleja ja vampyyreita; "
-                     "alamaailmaa hallitsee Cora 0. Muinainen Dimerius "
-                     "Blackfeet uhkaa herätä."),
+         description="Ulospäin sivistynyt satamakaupunki ja Asylum Purgo "
+                     "-parantolan koti — todellisuudessa Pää Codexin "
+                     "vakavimpien rikkomusten (nekromantia) keskus. "
+                     "Kolmen rintaman sota: vampyyrien sisällissota "
+                     "(paroni Jugorai vs. muinainen Dimerius Blackfeet), "
+                     "alamaailma (Cora 0 + drow-liittolaiset) vs. "
+                     "vampyyrit, ja laki vs. korruptio (E.F.I.). Ghouleja "
+                     "vaeltaa kaduilla; savikaivannot (Clay Shore) ja "
+                     "kasvava Avarath-kultti. Jos rikkomuksista saadaan "
+                     "todisteet, kaupunki voidaan julistaa 'Kirotuksi "
+                     "maaksi' → Death's Vigil polttaa sen."),
     dict(key="vilemour", name="Vilemour", kingdom="tarmaas",
          loc_id="loc_vilemour", type="city", population=9_000,
          biome="forest_edge", industry="fey-aarteet",
@@ -391,6 +396,46 @@ SUBLOCATIONS: List[dict] = [
          description="Aesican hengellinen keskus, Aghuantin palvonnan "
                      "korkein pyhäkkö. Ylipappina gobliini Isä Dimerio Fao; "
                      "papisto pelastettiin kapinan aikana myrkytysyritykseltä."),
+    # ---- Ravenstone (Tarmaas) sisäiset alueet ----------------------
+    dict(key="asylum_purgo", name="Asylum Purgo", parent="loc_ravenstone",
+         type="building", biome="grim", loc_id="loc_asylum_purgo",
+         description="Koko Tarmaaksessa tunnettu \"mielisairaala\" ja "
+                     "parantola — todellisuudessa julma ihmiskoelaboratorio. "
+                     "Neuvosto käyttää sitä poistaakseen todistajia ja "
+                     "\"puhdistaakseen\" muistoja; alimmilla tasoilla "
+                     "ihmisistä valutetaan verta salaa Dimeriuksen "
+                     "ruokkimiseksi. Johtajana sadistinen Greg Silverhand."),
+    dict(key="corvus_spelchrum", name="Corvus Spelchrum (krypta)",
+         parent="loc_ravenstone", type="dungeon", biome="grim",
+         loc_id="loc_corvus_spelchrum",
+         description="Muinainen krypta kaupungin alla. Sen "
+                     "kynttiläkammioon on teljetty vampyyrilordi Dimerius "
+                     "Blackfeet, joka odottaa heräämistään ja manipuloi "
+                     "kaupunkia varjoista."),
+    dict(key="profundus", name="Profundus (alamaailman kaupunki)",
+         parent="loc_ravenstone", type="city", biome="underground",
+         loc_id="loc_profundus",
+         description="Salainen alamaailman kaupunki syvällä Ravenstonen "
+                     "viemäriverkostossa. Rikollisjärjestö Cora 0:n "
+                     "(Gaur Rakek) päämaja; valmistautuu sotaan "
+                     "maanpäällisiä vampyyrejä vastaan. Täällä piileskelee "
+                     "myös vampyyrinmetsästäjä Aksel Wolfbane."),
+    dict(key="clay_shore", name="Clay Shore (savikaivannot)",
+         parent="loc_ravenstone", type="port", biome="coast",
+         loc_id="loc_clay_shore",
+         description="Ravenstonen satama ja puhtaan saven kaivannot. "
+                     "Aterterran drowt (Talo Despana) hakevat savea "
+                     "ilmaiseksi ja suojaavat vastineeksi satamaa öisin "
+                     "vampyyreilta. Kaivannoilla Avarath-kultti löysi "
+                     "\"jotain, joka puhui syvyyksistä\"."),
+    dict(key="avarath_temple", name="Avarathin temppeli",
+         parent="loc_ravenstone", type="temple", biome="grim",
+         loc_id="loc_avarath_temple",
+         description="Vanha temppeli, jota Avarath-kultin munkit "
+                     "rakentavat uusiksi. \"Jumala\" Avarath on "
+                     "todellisuudessa muinainen Aboleth, joka pesee "
+                     "palvojiensa mielet fanaattisiksi orjiksi vedenalaisesta "
+                     "piilostaan sataman tuntumassa."),
 ]
 
 
@@ -585,11 +630,15 @@ NPCS: List[dict] = [
          tags=["law", "leader"]),
     dict(id="npc_sam_undercave", name="Sam Undercave", race="Human", age="",
          occupation="Agentti", title="Tiro Aspicio (Taso 4)",
-         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_frand",
+         faction="E.F.I.", alignment="Lawful Neutral", loc="loc_ravenstone",
          stat="monster:Scout", wealth="modest",
          appearance="Musta liimaletti, punaiset silmät, roteva rakenne.",
          personality="Kunnianhimoinen, maineenhaluinen.",
-         notes="Nouseva E.F.I.-agentti, joka saalistaa mainetta.",
+         notes="E.F.I.:n korkean tason (Taso 4) agentti, joka saalistaa "
+               "mainetta ja tutkii valtakunnan sisäistä korruptiota. "
+               "Saapui Padakin kanssa Ravenstoneen keräämään todisteita "
+               "kaupungin nekromantiasta — riittävä näyttö voisi julistaa "
+               "kaupungin 'Kirotuksi maaksi' (Nullifikaatio).",
          tags=["law"]),
     dict(id="npc_eemil", name="Eemil Jakson", race="Human", age="45",
          occupation="Salainen agentti", title="Department 0 — Agentti 3",
@@ -939,33 +988,168 @@ NPCS: List[dict] = [
          notes="Yritti murhata Efauxerin; tappoi Blitz Walkerin.",
          tags=["assassin"]),
 
-    # ===== RAVENSTONE =====
+    # ===== RAVENSTONE — vampyyrien sisällissota =====
     dict(id="npc_jugorai", name="Jugorai Millwind", race="Human (Vampyyri)",
-         age="", occupation="Paroni", title="Ravenstonen paroni",
-         faction="", alignment="Lawful Evil", loc="loc_ravenstone",
-         stat="monster:Vampire", wealth="wealthy",
-         appearance="Kalpea, arvokas paroni — kätkee vampyyriluontonsa.",
-         personality="Hallitseva, salaileva.",
-         notes="Salainen vampyyri Dimeriuksen vaikutuksen alaisena; "
-               "hallitsee Ravenstonea.",
+         age="", occupation="Paroni / vampyyriloitsija",
+         title="Ravenstonen paroni", faction="", alignment="Lawful Evil",
+         loc="loc_ravenstone", stat="monster:Vampire Spellcaster",
+         wealth="wealthy",
+         appearance="Kalpea, erakoitunut paroni — salainen vampyyriloitsija.",
+         personality="Epätoivoinen, vallanhimoinen, hajoamassa.",
+         notes="Kaupungin nimellinen hallitsija, täysin Dimeriuksen "
+               "hallinnassa. Yrittää epätoivoisesti kaapata Dimeriuksen "
+               "voimat: luo ghouleja ja uusia vampyyreja (Fior Rask, Zemok "
+               "Retana) uhrattavaksi voimansiirrossa. Suunnitelmat "
+               "hajoavat — ghouleja vaeltaa vapaana kaduilla. Lupasi 3700 "
+               "kultaa Aksel Wolfbanen päästä (tämä tappoi hänen "
+               "vampyyriksi muutetun tyttärensä Isabelin).",
          tags=["ruler", "undead", "secret"]),
-    dict(id="npc_cora0", name="Cora 0 (Gaur Rakek)", race="Human", age="",
-         occupation="Alamaailman pomo", title="", faction="",
-         alignment="Neutral Evil", loc="loc_ravenstone", stat="monster:Thug",
-         wealth="comfortable",
-         appearance="Synkkä rikollispomo.",
-         personality="Häikäilemätön, varovainen.",
-         notes="Hallitsee Ravenstonen alamaailmaa.",
-         tags=["criminal"]),
-    dict(id="npc_dimerius", name="Dimerius Blackfeet", race="Vampire", age="",
-         occupation="Muinainen paha", title="", faction="",
-         alignment="Chaotic Evil", loc="loc_ravenstone",
-         stat="monster:Vampire Spellcaster", wealth="",
-         appearance="Muinainen, voimakas epäkuollut.",
-         personality="Petollinen, kärsivällinen.",
-         notes="Ravenstonen alla lymyävä muinainen uhka, jonka herääminen "
-               "pelaajien on estettävä.",
-         tags=["antagonist", "undead"]),
+    dict(id="npc_dimerius", name="Dimerius Blackfeet", race="Goblin (Vampyyri)",
+         age="", occupation="Vampyyrilordi", title="Ravenstonen perustajaisä",
+         faction="", alignment="Chaotic Evil", loc="loc_corvus_spelchrum",
+         stat="monster:Vampire Spellcaster", wealth="aristocratic",
+         appearance="Muinainen \"elinvoiman vampyyri\"; alun perin gobliini.",
+         personality="Petollinen, kärsivällinen, kaikkinäkevä.",
+         notes="Ravenstonen perustaja ja keisari Tarquvasin entinen oikea "
+               "käsi. Teljetty Corvus Spelchrum -kryptan kynttiläkammioon; "
+               "odottaa heräämistään ja manipuloi koko kaupunkia varjoista "
+               "palatakseen valtaan. Muinaiset vampyyrit vartioivat häntä "
+               "Jugorailta.",
+         tags=["antagonist", "undead", "boss"]),
+    dict(id="npc_polsen", name="Polsen", race="Vampire", age="",
+         occupation="Vampyyrilordi", title="", faction="Dimeriuksen hovi",
+         alignment="Lawful Evil", loc="loc_ravenstone",
+         stat="monster:Vampire", wealth="wealthy",
+         appearance="Hallitseva vampyyrilordi.",
+         personality="Kylmä strategi.",
+         notes="Johtaa Ravenstonen vampyyriverkostoa; suojelee Dimeriusta "
+               "ja estää Jugoraita varastamasta tämän voimaa.",
+         tags=["undead", "vampire"]),
+    dict(id="npc_vilan", name="Vilan Norgrad", race="Vampire", age="350+",
+         occupation="Palvelija", title="", faction="Dimeriuksen hovi",
+         alignment="Lawful Evil", loc="loc_ravenstone",
+         stat="monster:Vampire", wealth="comfortable",
+         appearance="Yli 350-vuotias uskollinen vampyyri.",
+         personality="Uskollinen, tarkkaavainen.",
+         notes="Dimeriuksen uskollinen palvelija; vartioi tämän voimaa.",
+         tags=["undead", "vampire"]),
+    dict(id="npc_herold", name="Herold Reggefoi", race="Vampire", age="800+",
+         occupation="Palvelija", title="", faction="Dimeriuksen hovi",
+         alignment="Lawful Evil", loc="loc_ravenstone",
+         stat="monster:Vampire", wealth="comfortable",
+         appearance="Yli 800-vuotias muinainen vampyyri.",
+         personality="Ikivanha, hidasliikkeinen, armoton.",
+         notes="Dimeriuksen vanhin palvelija; osa hovia joka estää "
+               "Jugorain vallankaappauksen.",
+         tags=["undead", "vampire"]),
+    dict(id="npc_fior", name="Fior Rask", race="Human (Vampyyri)", age="",
+         occupation="Majatalonpitäjän tytär", title="", faction="",
+         alignment="Neutral Evil", loc="loc_ravenstone",
+         stat="monster:Vampire Spawn", wealth="poor",
+         appearance="Nuori, vastikään muutettu vampyyri.",
+         personality="Peloissaan, nälkäinen.",
+         notes="Jugorain luoma uusi vampyyri, tarkoitettu uhrattavaksi "
+               "Dimeriuksen voimansiirrossa.",
+         tags=["undead"]),
+    dict(id="npc_zemok", name="Zemok Retana", race="Human (Vampyyri)", age="",
+         occupation="Kauppias", title="", faction="",
+         alignment="Neutral Evil", loc="loc_ravenstone",
+         stat="monster:Vampire Spawn", wealth="modest",
+         appearance="Entinen kauppias, nyt vampyyri.",
+         personality="Katkera, ahne.",
+         notes="Jugorain luoma uusi vampyyri, uhrattavaksi tarkoitettu.",
+         tags=["undead"]),
+    dict(id="npc_greg", name="Greg Silverhand", race="Human", age="",
+         occupation="Parantolan johtaja", title="Asylum Purgon johtaja",
+         faction="Tarmaas", alignment="Lawful Evil", loc="loc_asylum_purgo",
+         stat="monster:Noble", wealth="wealthy",
+         appearance="Sileä, hymyilevä tiedemies.",
+         personality="Sadistinen, utelias, tunteeton.",
+         notes="Asylum Purgon johtaja; vastuussa julmista ihmiskokeista, "
+               "mm. Walkerin suvun (Blitzin perheen) kohtaloista. Valuttaa "
+               "vankien verta salaa Dimeriukselle. Stat-proxy: Noble "
+               "(tiedemies).",
+         tags=["antagonist", "scholar"]),
+    dict(id="npc_gaur", name="Gaur Rakek", race="Tabaxi", age="",
+         occupation="Alamaailman pomo", title="Cora 0:n johtaja",
+         faction="Cora 0", alignment="Neutral Evil", loc="loc_profundus",
+         stat="monster:Assassin", wealth="wealthy",
+         appearance="Juonitteleva, tarkkaavainen tabaxi.",
+         personality="Kunnianhimoinen, laskelmoiva.",
+         notes="Johtaa Profunduksen rikollisjärjestöä Cora 0. Valmistautuu "
+               "sotaan vampyyrejä vastaan ja haluaa syrjäyttää paroni "
+               "Jugorain. Teki salaisen sopimuksen Talo Despanan drowien "
+               "kanssa (savea vastaan yösuojelu).",
+         tags=["criminal", "boss"]),
+    dict(id="npc_jivin", name="Jivin Lukom", race="Gnome", age="",
+         occupation="Kirjastonhoitaja", title="", faction="Cora 0",
+         alignment="Neutral", loc="loc_ravenstone", stat="monster:Spy",
+         wealth="modest",
+         appearance="Huomaamaton gnomi-kirjastonhoitaja.",
+         personality="Terävä-älyinen, salaileva.",
+         notes="Kaupungin kirjastonhoitaja — todellisuudessa Cora 0:n "
+               "älykäs tiedonkerääjä ja vakooja.",
+         tags=["criminal", "spy"]),
+    dict(id="npc_aksel", name="Aksel Wolfbane", race="Human", age="",
+         occupation="Vampyyrinmetsästäjä", title="", faction="",
+         alignment="Chaotic Good", loc="loc_profundus",
+         stat="monster:Assassin", wealth="modest",
+         appearance="Karaistunut, arpinen metsästäjä.",
+         personality="Päättäväinen, katkera, kunniallinen.",
+         notes="Vampyyrinmetsästäjä joka piileskelee Profunduksessa. "
+               "Murhasi paroni Jugorain tyttären Isabelin (joka oli "
+               "muutettu vampyyriksi ja halusi kuolla). Pään hinta 3700 "
+               "kultaa. Hänen veljensä Davos on Jugorain vampyyriorja.",
+         tags=["ally", "hunter"]),
+    dict(id="npc_davos", name="Davos Wolfbane", race="Human (Vampyyri)",
+         age="", occupation="Vampyyriorja", title="", faction="",
+         alignment="Neutral Evil", loc="loc_ravenstone",
+         stat="monster:Vampire Spawn", wealth="poor",
+         appearance="Kalpea, tahdoton vampyyri.",
+         personality="Orjuutettu, tuskainen.",
+         notes="Akselin veli, joka on nyt Jugorain vampyyriorja — "
+               "emotionaalinen vipuvarsi Akselia vastaan.",
+         tags=["undead"]),
+    dict(id="npc_isabel", name="Isabel Millwind", race="Human (Vampyyri)",
+         age="", occupation="Paronin tytär", title="", faction="",
+         alignment="Neutral", loc="loc_ravenstone",
+         stat="monster:Vampire Spawn", wealth="wealthy",
+         appearance="Kaunis, murheellinen nuori nainen.",
+         personality="Kärsivä, kuolemaa kaipaava.",
+         notes="Jugorain tytär, muutettu vampyyriksi; halusi kuolla ja "
+               "Aksel Wolfbane surmasi hänet. KUOLLUT — juonen liikkeelle "
+               "paneva tragedia.",
+         tags=["undead", "deceased"]),
+    dict(id="npc_edmun", name="Edmun Padel", race="Human", age="",
+         occupation="Ylipappi", title="Avarath-kultin perustaja",
+         faction="Avarath-kultti", alignment="Chaotic Evil",
+         loc="loc_avarath_temple", stat="monster:Cultist", wealth="modest",
+         appearance="Hurmoksellinen kulttipappi.",
+         personality="Fanaattinen, mielen orjuuttama.",
+         notes="Avarath-kultin perustaja ja pääpappi; löysi savikaivannoilta "
+               "\"jotain, joka puhui syvyyksistä\". Aivopesty Abolethin "
+               "orja.",
+         tags=["cult", "clergy"]),
+    dict(id="npc_hannes", name="Hannes Allroad", race="Human", age="",
+         occupation="Ylipappi", title="Avarath-kultin perustaja",
+         faction="Avarath-kultti", alignment="Chaotic Evil",
+         loc="loc_avarath_temple", stat="monster:Cultist", wealth="modest",
+         appearance="Kiihkeä kulttipappi.",
+         personality="Fanaattinen, mielen orjuuttama.",
+         notes="Avarath-kultin toinen perustaja ja pääpappi; Abolethin "
+               "aivopesemä.",
+         tags=["cult", "clergy"]),
+    dict(id="npc_avarath", name="Avarath (Aboleth)", race="Aboleth", age="",
+         occupation="Vale-jumala", title="", faction="Avarath-kultti",
+         alignment="Lawful Evil", loc="loc_clay_shore",
+         stat="monster:Aboleth", wealth="",
+         appearance="Muinainen vedenalainen aberraatio.",
+         personality="Itsekeskeinen, ikimuistoinen, manipuloiva.",
+         notes="Kultin palvoma \"jumala\" — todellisuudessa muinainen "
+               "Aboleth, joka pesee palvojiensa mielet fanaattisiksi "
+               "orjiksi. Piileskelee vedenalaisella alueella sataman "
+               "tuntumassa.",
+         tags=["antagonist", "aberration"]),
 
     # ===== VILEMOUR =====
     dict(id="npc_varros", name="Varros Greycairn", race="Human", age="",
@@ -1541,13 +1725,15 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_padak", name="Padak", race="Tabaxi", age="",
          occupation="Taistelija", title="", faction="",
-         alignment="Neutral", loc="", stat="", wealth="modest",
+         alignment="Neutral", loc="loc_ravenstone", stat="", wealth="modest",
          appearance="Arpinen tabaxi, sormia puuttuu, suonissa violetti "
                      "korruptio (Verdant Shard Fever).",
          personality="\"Perhe on kaikki\" — sitkeä, vaarallinen.",
          notes="PELAAJAHAHMO. Entinen Red Dagger -palkkasoturi; murhasi "
                "Emnar Redfein pojan. Vaimo Demanda ja poika Rafal vankina "
-               "Kharakissa; pään hinta 150 000 gp.",
+               "Kharakissa; pään hinta 150 000 gp. Matkusti agentti Sam "
+               "Undercaven kanssa Ravenstoneen etsimään parannusta "
+               "sairauteensa — pahin mahdollinen paikka etsiä apua.",
          tags=["player_character", "party"]),
     dict(id="npc_kairon", name="Kairon / Rin", race="Changeling", age="",
          occupation="Bardi / vakooja", title="", faction="Ember & Veil Company",
@@ -1670,6 +1856,31 @@ NPC_LINKS: List[tuple] = [
     ("npc_gaufex", "npc_saxignis", "ally", "Salaa pelastamassa kuningastaan."),
     ("npc_krusk", "npc_gaufex", "rival", "Epäilee Unhaelin todellisia aikeita."),
     ("npc_julus", "npc_erokme", "subordinate", "Areena entisen kreivin alla."),
+    # Ravenstone — vampyyrien sisällissota & alamaailma
+    ("npc_dimerius", "npc_jugorai", "subordinate",
+     "Jugorai on täysin Dimeriuksen hallinnassa."),
+    ("npc_jugorai", "npc_dimerius", "enemy",
+     "Yrittää varastaa Dimeriuksen voiman."),
+    ("npc_polsen", "npc_dimerius", "subordinate", "Suojelee Dimeriusta."),
+    ("npc_vilan", "npc_dimerius", "subordinate", "Uskollinen palvelija (350+)."),
+    ("npc_herold", "npc_dimerius", "subordinate", "Vanhin palvelija (800+)."),
+    ("npc_jugorai", "npc_isabel", "family", "Tytär, muutettu vampyyriksi."),
+    ("npc_aksel", "npc_isabel", "enemy", "Surmasi Isabelin (tämän pyynnöstä)."),
+    ("npc_jugorai", "npc_aksel", "enemy", "3700 kullan tapporaha."),
+    ("npc_aksel", "npc_davos", "family", "Veli — Jugorain vampyyriorja."),
+    ("npc_jugorai", "npc_davos", "subordinate", "Vampyyriorja (vipuvarsi)."),
+    ("npc_jugorai", "npc_fior", "subordinate", "Luotu uhrattavaksi."),
+    ("npc_jugorai", "npc_zemok", "subordinate", "Luotu uhrattavaksi."),
+    ("npc_gaur", "npc_jivin", "subordinate", "Cora 0:n vakooja."),
+    ("npc_gaur", "npc_jugorai", "enemy", "Haluaa syrjäyttää paronin."),
+    ("npc_gaur", "npc_amalica", "ally", "Salainen savi-sopimus Talo Despanan kanssa."),
+    ("npc_greg", "npc_dimerius", "subordinate", "Valuttaa vankien verta Dimeriukselle."),
+    ("npc_greg", "npc_blitz", "enemy", "Vastuussa Walkerin suvun kohtaloista."),
+    ("npc_edmun", "npc_avarath", "subordinate", "Abolethin aivopesty pappi."),
+    ("npc_hannes", "npc_avarath", "subordinate", "Abolethin aivopesty pappi."),
+    ("npc_edmun", "npc_hannes", "ally", "Avarath-kultin perustajat."),
+    ("npc_padak", "npc_sam_undercave", "ally", "Matkatoveri Ravenstonessa."),
+    ("npc_sam_undercave", "npc_padak", "ally", "Matkatoveri Ravenstonessa."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
@@ -2284,8 +2495,137 @@ def lore_organisations():
         tags=["drow", "noble_house"],
     )
 
+    cora_zero = Organisation(
+        key="cora_zero", name="Cora 0",
+        kind="criminal",
+        description="Profunduksen (Ravenstonen viemäriverkoston alainen "
+                    "salakaupunki) ammattirikollisten järjestö. Valmistautuu "
+                    "sotaan maanpäällisiä vampyyrejä vastaan ja haluaa "
+                    "syrjäyttää paroni Jugorain; liittolaisena Talo Despanan "
+                    "drow-salamurhaajat.",
+        motto="Syvyydet kuuluvat meille.",
+        secret=True, alignment="neutral evil",
+        headquarters_city="ravenstone", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas", "aterterra"],
+        operating_cities=["ravenstone"],
+        ranks=[
+            OrganisationRank(key="boss", name="Pomo", tier=1,
+                             description="Cora 0:n johtaja."),
+            OrganisationRank(key="operative", name="Agentti", tier=4,
+                             description="Vakooja / tiedonkerääjä."),
+        ],
+        roles=[
+            OrganisationRole(key="spymaster", name="Tiedonkerääjä",
+                             description="Vakoilu ja tiedustelu."),
+        ],
+        members=[
+            OrganisationMember(npc_id="npc_gaur", npc_name="Gaur Rakek",
+                               rank_key="boss", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Tabaxi-johtaja; drow-liittouma."),
+            OrganisationMember(npc_id="npc_jivin", npc_name="Jivin Lukom",
+                               rank_key="operative", role_keys=["spymaster"],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Kirjastonhoitaja-vakooja."),
+        ],
+        relations={"talo_baenrahel": "neutral",
+                   "court_of_dimerius": "enemy"},
+        color=(80, 90, 110),
+        tags=["criminal"],
+    )
+
+    dimerius_court = Organisation(
+        key="court_of_dimerius", name="Dimeriuksen hovi",
+        kind="secret_society",
+        description="Ravenstonen vampyyriverkosto. Muinainen Dimerius "
+                    "Blackfeet manipuloi kaupunkia Corvus Spelchrum "
+                    "-kryptasta; muinaiset vampyyrit suojelevat häntä "
+                    "paroni Jugorailta, joka yrittää kaapata hänen voimansa.",
+        motto="Veri muistaa.",
+        secret=True, alignment="lawful evil",
+        headquarters_city="ravenstone", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas"], operating_cities=["ravenstone"],
+        ranks=[
+            OrganisationRank(key="lord", name="Vampyyrilordi", tier=1,
+                             description="Dimerius Blackfeet."),
+            OrganisationRank(key="ancient", name="Muinainen", tier=2,
+                             description="Ikivanhat suojelijat."),
+            OrganisationRank(key="spawn", name="Sikiö", tier=5,
+                             description="Uudet vampyyrit / orjat."),
+        ],
+        roles=[],
+        members=[
+            OrganisationMember(npc_id="npc_dimerius", npc_name="Dimerius Blackfeet",
+                               rank_key="lord", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Teljetty kryptaan; manipuloi varjoista."),
+            OrganisationMember(npc_id="npc_polsen", npc_name="Polsen",
+                               rank_key="ancient", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Johtaa vampyyriverkostoa."),
+            OrganisationMember(npc_id="npc_vilan", npc_name="Vilan Norgrad",
+                               rank_key="ancient", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="350+ v palvelija."),
+            OrganisationMember(npc_id="npc_herold", npc_name="Herold Reggefoi",
+                               rank_key="ancient", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="800+ v palvelija."),
+            OrganisationMember(npc_id="npc_jugorai", npc_name="Jugorai Millwind",
+                               rank_key="ancient", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Paroni; yrittää kaapata Dimeriuksen "
+                                     "voiman (sisäinen vihollinen)."),
+            OrganisationMember(npc_id="npc_davos", npc_name="Davos Wolfbane",
+                               rank_key="spawn", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Jugorain vampyyriorja."),
+        ],
+        relations={"cora_zero": "enemy", "deaths_vigil": "enemy"},
+        color=(120, 40, 60),
+        tags=["antagonist", "undead", "secret_society"],
+    )
+
+    avarath = Organisation(
+        key="avarath_cult", name="Avarath-kultti",
+        kind="cult",
+        description="Ravenstonessa kasvava kultti, joka palvoo 'Avarathia'. "
+                    "Todellisuudessa jumala on muinainen Aboleth, joka pesee "
+                    "palvojiensa mielet fanaattisiksi orjiksi Clay Shoren "
+                    "vedenalaisesta piilostaan.",
+        motto="Syvyys kutsuu.",
+        secret=True, alignment="chaotic evil",
+        headquarters_city="ravenstone", headquarters_kingdom="tarmaas",
+        operating_kingdoms=["tarmaas"], operating_cities=["ravenstone"],
+        ranks=[
+            OrganisationRank(key="god", name="Vale-jumala", tier=1,
+                             description="Aboleth Avarath."),
+            OrganisationRank(key="high_priest", name="Ylipappi", tier=2,
+                             description="Kultin perustajat."),
+        ],
+        roles=[],
+        members=[
+            OrganisationMember(npc_id="npc_avarath", npc_name="Avarath (Aboleth)",
+                               rank_key="god", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Mieliä pesevä Aboleth."),
+            OrganisationMember(npc_id="npc_edmun", npc_name="Edmun Padel",
+                               rank_key="high_priest", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Perustaja / pääpappi."),
+            OrganisationMember(npc_id="npc_hannes", npc_name="Hannes Allroad",
+                               rank_key="high_priest", role_keys=[],
+                               kingdom_key="tarmaas", city_key="ravenstone",
+                               notes="Perustaja / pääpappi."),
+        ],
+        relations={},
+        color=(60, 120, 120),
+        tags=["antagonist", "cult", "aberration"],
+    )
+
     return [dath, deaths_vigil, seekers, veil, famiglia, efi, aequitas,
-            scale_riders, baenrahel, free_south]
+            scale_riders, baenrahel, free_south, cora_zero, dimerius_court,
+            avarath]
 
 
 # --------------------------------------------------------------------- #
@@ -2341,6 +2681,18 @@ def lore_campaign_notes():
          "(Nak Magnok Kor Adez) alla sykkii yhä Convergence Engine "
          "-sielukone; Unhael Scale Riders liikkuu alueella omalla "
          "salaisella agendallaan (kuningas Saxigniksen pelastus)."),
+        ("RAVENSTONEN KOLMEN RINTAMAN SOTA — Tarmaaksen 'mädäntynyt omena', "
+         "ulospäin satamakaupunki ja Asylum Purgo -parantola, sisältä "
+         "nekromantian keskus. (1) Vampyyrien sisällissota: paroni Jugorai "
+         "Millwind yrittää kaapata kryptaan (Corvus Spelchrum) teljetyn "
+         "muinaisen Dimerius Blackfeetin voiman; muinaiset vampyyrit "
+         "(Polsen, Vilan, Herold) estävät. (2) Alamaailma: Cora 0 (Gaur "
+         "Rakek) + Talo Despanan drowt puhdistavat katuja ja tähtäävät "
+         "paronin syrjäyttämiseen. (3) Laki: E.F.I.-agentti Sam Undercave "
+         "kerää todisteita → Nullifikaatio ('Kirottu maa', Death's Vigil "
+         "polttaa). Taustalla Asylum Purgon Greg Silverhand (ihmiskokeet) "
+         "ja Clay Shoren Avarath-kultti (Aboleth). Padak etsii täältä "
+         "parannusta — pahin mahdollinen paikka."),
     ]
     return [CampaignNote(text=t, category="lore") for t in specs]
 
