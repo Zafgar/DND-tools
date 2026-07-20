@@ -1,42 +1,60 @@
 import random
 import re
 
-def roll_dice(dice_str: str) -> int:
-    """Roll dice from a D&D notation string like '2d6+3', '1d8-1', '10'."""
+
+def _parse_dice(dice_str: str):
+    """Parse a full D&D notation string into ([(sign, count, sides), …],
+    flat_modifier). Supports multiple dice terms and flats, e.g.
+    '2d8+4d6+3', '1d10', '1d6-1', '10'. Unknown text yields ([], 0)."""
     if not dice_str:
+        return [], 0
+    s = str(dice_str).strip().replace(" ", "").lower()
+    if not s:
+        return [], 0
+    dice_terms = []
+    flat = 0
+    # Split into signed tokens: 2d8, +4d6, -1, +3 …
+    for tok in re.findall(r"[+-]?[^+-]+", s):
+        sign = -1 if tok[0] == "-" else 1
+        body = tok.lstrip("+-")
+        if not body:
+            continue
+        if "d" in body:
+            n_str, _, sides_str = body.partition("d")
+            try:
+                n = int(n_str) if n_str else 1
+                sides = int(sides_str)
+            except ValueError:
+                continue
+            dice_terms.append((sign, n, sides))
+        else:
+            try:
+                flat += sign * int(body)
+            except ValueError:
+                continue
+    return dice_terms, flat
+
+
+def roll_dice(dice_str: str) -> int:
+    """Roll dice from a D&D notation string like '2d6+3', '2d8+4d6', '10'."""
+    terms, flat = _parse_dice(dice_str)
+    if not terms and flat == 0:
         return 0
-    dice_str = str(dice_str).strip()
-    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", dice_str)
-    if not match:
-        try:
-            return int(dice_str)
-        except ValueError:
-            return 0
-    num_dice = int(match.group(1))
-    num_sides = int(match.group(2))
-    modifier_str = match.group(3)
-    total = sum(random.randint(1, num_sides) for _ in range(num_dice))
-    if modifier_str:
-        total += int(modifier_str)
+    total = flat
+    for sign, n, sides in terms:
+        total += sign * sum(random.randint(1, sides) for _ in range(n))
     return max(0, total)
 
+
 def roll_dice_critical(dice_str: str) -> int:
-    """Critical hit: double the dice (add extra dice, not doubled total)."""
-    if not dice_str:
+    """Critical hit: double the dice count of every dice term (flat
+    modifiers are added once, not doubled). Handles multi-term strings."""
+    terms, flat = _parse_dice(dice_str)
+    if not terms and flat == 0:
         return 0
-    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", str(dice_str))
-    if not match:
-        try:
-            return int(dice_str)
-        except ValueError:
-            return 0
-    num_dice = int(match.group(1))
-    num_sides = int(match.group(2))
-    modifier_str = match.group(3)
-    # Double dice for critical hit
-    total = sum(random.randint(1, num_sides) for _ in range(num_dice * 2))
-    if modifier_str:
-        total += int(modifier_str)
+    total = flat
+    for sign, n, sides in terms:
+        total += sign * sum(random.randint(1, sides) for _ in range(n * 2))
     return max(0, total)
 
 def roll_d20(advantage: bool = False, disadvantage: bool = False) -> tuple[int, str]:
@@ -83,16 +101,16 @@ def scale_cantrip_dice(damage_dice: str, caster_level: int) -> str:
 
 
 def average_damage(dice_str: str) -> float:
-    """Calculate average damage for AI evaluation."""
-    if not dice_str:
-        return 0.0
-    match = re.match(r"(\d+)d(\d+)([\+\-]\d+)?", str(dice_str))
-    if not match:
+    """Average of a full dice expression (handles multi-term strings) for
+    AI evaluation, e.g. '2d8+4d6' → 9 + 14 = 23."""
+    terms, flat = _parse_dice(dice_str)
+    if not terms and flat == 0:
+        # Allow bare floats/ints the parser skipped (e.g. "7.5").
         try:
             return float(dice_str)
-        except ValueError:
+        except (ValueError, TypeError):
             return 0.0
-    num_dice = int(match.group(1))
-    num_sides = int(match.group(2))
-    modifier = int(match.group(3)) if match.group(3) else 0
-    return num_dice * (num_sides + 1) / 2 + modifier
+    avg = float(flat)
+    for sign, n, sides in terms:
+        avg += sign * n * (sides + 1) / 2.0
+    return avg

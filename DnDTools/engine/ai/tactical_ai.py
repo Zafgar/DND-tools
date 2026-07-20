@@ -3128,7 +3128,11 @@ class TacticalAI:
                 # stat-block value. Natural 20 always hits.
                 cover_ac = battle.get_cover_bonus(entity, target) if battle else 0
                 effective_ac = target.armor_class + cover_ac
-                is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
+                # Magic Missile auto-hits (no attack roll, PHB p.257).
+                if spell.name == "Magic Missile":
+                    is_hit, is_crit, roll_str = True, False, "auto"
+                else:
+                    is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
                 dmg = roll_dice_critical(effective_dice) if is_crit else roll_dice(effective_dice)
                 dmg += int(extra)
 
@@ -3213,7 +3217,12 @@ class TacticalAI:
         if (entity.has_feature("sneak_attack") and not entity.sneak_attack_used
                 and step.is_hit):
             sa_dice = entity.get_sneak_attack_dice()
-            if sa_dice:
+            # PHB p.96: Sneak Attack requires a finesse or ranged weapon.
+            act = step.action
+            weapon_ok = bool(act) and (
+                "finesse" in (getattr(act, "properties", []) or [])
+                or act.range > 5)
+            if sa_dice and weapon_ok:
                 # Check conditions for Sneak Attack (PHB p.96):
                 # advantage on the roll, OR an ally within 5 ft of the
                 # target while the roll is NOT at disadvantage.
@@ -3269,7 +3278,8 @@ class TacticalAI:
                     bonus_parts.append(f"Divine Smite ({ordinal} slot) {smite_dice}={smite_dmg}")
 
         # --- PALADIN: Improved Divine Smite ---
-        if entity.has_feature("improved_divine_smite") and step.is_hit:
+        if (entity.has_feature("improved_divine_smite") and step.is_hit
+                and step.action and step.action.range <= 5):
             ids_dmg = roll_dice_critical("1d8") if step.is_crit else roll_dice("1d8")
             step.bonus_damage += ids_dmg
             step.damage += ids_dmg
@@ -3672,7 +3682,7 @@ class TacticalAI:
                     )]
                 # Step of the Wind: Disengage or Dash as bonus action (1 ki)
                 # Use when ranged-threatened or need to close distance
-                if entity.has_feature("step_of_the_wind"):
+                if entity.has_feature("step_of_wind"):
                     # Disengage if we're a ranged monk surrounded
                     if threats and self._get_combat_preference(entity) == "ranged":
                         entity.ki_points_left -= 1

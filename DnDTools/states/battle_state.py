@@ -1415,9 +1415,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                              target, "effect", step.spell.name)
 
         elif outcome == "save":
-            # Half damage (usually), no condition
-            half_dmg = dmg // 2
-            
+            # Half damage on save — UNLESS the spell negates on save
+            # (half_on_save=False, e.g. Sacred Flame, Poison Spray).
+            negates = bool(step.spell) and not getattr(
+                step.spell, "half_on_save", True)
+            half_dmg = 0 if negates else dmg // 2
+
             # Evasion (Success): No damage instead of half
             if step.save_ability == "Dexterity" and target.has_feature("evasion"):
                 half_dmg = 0
