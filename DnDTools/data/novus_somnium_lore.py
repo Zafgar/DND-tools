@@ -44,15 +44,22 @@ KINGDOM_LOC = {
 CITIES: List[dict] = [
     # ---- TARMAAS (teknologia & teollisuus) -------------------------
     dict(key="old_vaisil", name="Old Vaisil", kingdom="tarmaas",
-         loc_id="loc_old_vaisil", type="port", population=22_000,
-         biome="coast", industry="merenkulku & kauppa",
+         loc_id="loc_old_vaisil", type="port", population=80_000,
+         biome="coast", industry="merenkulku, kauppa & sota",
          religion="Auringonkirkko", ruler="npc_efauxer",
-         description="Vilkas ja kaunis eteläinen satamakaupunki, joka on "
-                     "irtautunut Tarmaaksesta osaksi Vapaan Etelän "
-                     "Koalitiota. Eläköityneitä aatelisia ja "
-                     "kauppakomppanioita; oikeusjohtajana gobliini "
-                     "Gilhard Blacktooth. Salamurhayrityksiä, "
-                     "laivojen uppoamisia ja Chrith Lar -salakuljetusta."),
+         description="Tarmaaksen eteläkärjen loisteliaan kaunis, "
+                     "arabityylinen satama- ja eläkekaupunki (~80 000 as.) "
+                     "— nyt Vapaan Etelän Koalition taloudellinen ja "
+                     "aatteellinen sydän ja mantereenlaajuisen sodan "
+                     "hermokeskus. Irtautui Tarmaaksesta yhdessä Aesican ja "
+                     "Maclebar Islen kanssa, katkaisten Tarmaas–Oblitus "
+                     "-kauppareitit. Satamassa massiivinen rekrytointi; "
+                     "hirttoaukiolla jaetaan armotonta oikeutta orjakaupasta "
+                     "ja korruptiosta. Uhkina Chrith Lar -huumekriisi, "
+                     "Kraken satamassa, vakoojat/salamurhaajat ja "
+                     "pakolaisvirrat.",
+         demographics={"Human": 30, "Dwarf": 20, "Halfling": 20,
+                       "Half-Orc": 10, "Other": 20}),
     dict(key="ravenstone", name="Ravenstone", kingdom="tarmaas",
          loc_id="loc_ravenstone", type="city", population=14_000,
          biome="grim", industry="savikaivokset",
@@ -467,6 +474,40 @@ SUBLOCATIONS: List[dict] = [
                      "palojen kanssa (Krusk). Herättäminen asettaa armeijan "
                      "välittömästi Kruskin tappo-ohjelmointiin. Avautuu vain "
                      "Walker-verellä ja -sinettisormuksella (Blitz)."),
+    # ---- Old Vaisil (Tarmaas) sisäiset alueet ----------------------
+    dict(key="ov_harbor", name="Old Vaisilin satama", parent="loc_old_vaisil",
+         type="port", biome="coast", loc_id="loc_ov_harbor",
+         description="Massiivinen kaupan ja laivaston keskus; saapuvat "
+                     "laivat joutuvat tiukkaan seulaan. Kääpiö Undur "
+                     "Stunrack hoitaa uuden armeijan rekrytointia. "
+                     "Krakenin uhka pitää kalastajat satamassa."),
+    dict(key="grand_garden", name="Grand Garden (Suurpuutarha)",
+         parent="loc_old_vaisil", type="building", biome="coast",
+         loc_id="loc_grand_garden",
+         description="Cunaen toiseksi arvostetuin puutarha — kaunis kulissi, "
+                     "jossa tapahtui Efauxerin salamurhayritys ja jossa "
+                     "Blitz kuoli. Kätki salamurhaaja Gersnetin ja petollisen "
+                     "hovimestari Orienin juonet."),
+    dict(key="ov_villas", name="Rikkaiden alue ja huvilat",
+         parent="loc_old_vaisil", type="district", biome="coast",
+         loc_id="loc_ov_villas",
+         description="Ylellinen huvila-alue: Efauxerin huvila toimii "
+                     "liittolaisten turvapaikkana, ja Richard & Rose Walker "
+                     "asuvat täällä raskaasti vartioituina (Mat, Tomas, "
+                     "Darien)."),
+    dict(key="maddy_shop", name="Maddy Diblofin taikakauppa",
+         parent="loc_old_vaisil", type="shop", biome="coast",
+         loc_id="loc_maddy_shop",
+         description="Kääpiötaikuri Maddy Diblofin taikakauppa; "
+                     "erikoisuuksia kuten Coral Scepter. Maddy tutkii "
+                     "Chronicles of the Deep -kirjaa."),
+    dict(key="adelf_base", name="Adelf Beliod III:n tukikohta",
+         parent="loc_old_vaisil", type="building", biome="coast",
+         loc_id="loc_adelf_base",
+         description="Metallilohikäärmeratsastaja Adelf Beliod III:n "
+                     "tukikohta ja Old Vaisilin tiedon ja historian keskus. "
+                     "Hopealohikäärme Thalorian ja apulaiset Elara "
+                     "Silverleaf ja Tormek Ironfoot."),
 ]
 
 
@@ -998,26 +1039,156 @@ NPCS: List[dict] = [
                      "pyöreät lasit, punaiset liivit ja karhunpäinen "
                      "kävelykeppi.",
          personality="Maltillinen, viisas bisnesmies; lämmin sydän.",
-         notes="Kruskin isoisä. Rahoittaa salaa orjien vapautusta ja Vapaan "
-               "Etelän kapinaa Emnaria vastaan; koalition pääarkkitehti "
-               "Antos Oracin kanssa.",
+         notes="Kaupungin johtaja ja Vapaan Etelän Koalition pääarkkitehti; "
+               "Kruskin isoisä. Ohjaa sotaa Tarmaasta ja Emnaria vastaan. "
+               "Selvisi juuri Kultaisen Rattaan tilaamasta "
+               "salamurhayrityksestä (jossa Blitz kuoli).",
          tags=["ruler", "ally"]),
     dict(id="npc_gilhard", name="Gilhard Blacktooth", race="Goblin", age="",
          occupation="Oikeusjohtaja", title="Old Vaisilin oikeusjohtaja",
          faction="Old Vaisil", alignment="Lawful Neutral",
          loc="loc_old_vaisil", stat="monster:Goblin Boss", wealth="comfortable",
          appearance="Terävähampainen, hyvin pukeutunut gobliini.",
-         personality="Tarkka, lainkuuliainen.",
-         notes="Hoitaa Old Vaisilin oikeuslaitosta.",
+         personality="Tarkka, armottoman lainkuuliainen.",
+         notes="Vastaa kaupungin armottoman oikeusjärjestelmän ja lakien "
+               "toimeenpanosta (hirttoaukio); hoitaa myös pakolaisvirtaa.",
          tags=["law"]),
     dict(id="npc_gersnet", name="Gersnet", race="Human", age="",
          occupation="Salamurhaaja", title="", faction="",
-         alignment="Neutral Evil", loc="", stat="monster:Assassin",
-         wealth="comfortable",
+         alignment="Neutral Evil", loc="loc_grand_garden",
+         stat="monster:Assassin", wealth="comfortable",
          appearance="Huomaamaton, ammattimainen.",
          personality="Kylmä, tehokas.",
-         notes="Yritti murhata Efauxerin; tappoi Blitz Walkerin.",
+         notes="Yritti murhata Efauxerin Grand Gardenissa; tappoi Blitz "
+               "Walkerin. Juonitteli petollisen hovimestari Orienin kanssa.",
          tags=["assassin"]),
+    dict(id="npc_rose_walker", name="Rose Walker", race="Human", age="",
+         occupation="Eläkeläinen", title="", faction="Vapaan Etelän Koalitio",
+         alignment="Neutral Good", loc="loc_ov_villas", stat="monster:Noble",
+         wealth="wealthy",
+         appearance="Arvokas, lämmin aatelisrouva.",
+         personality="Suojeleva äiti; surun murtama.",
+         notes="Blitzin äiti; viettää eläkepäiviä Efauxerin suojeluksessa "
+               "Old Vaisilissa (vartijoina Mat, Tomas, Darien).",
+         tags=["ally"]),
+    dict(id="npc_delma", name="Delma", race="Human", age="",
+         occupation="Vakooja / kuulustelija", title="", faction="Old Vaisil",
+         alignment="Lawful Neutral", loc="loc_old_vaisil", stat="monster:Spy",
+         wealth="comfortable",
+         appearance="Tarkkaavainen, huomaamaton taustavaikuttaja.",
+         personality="Terävä, epäluuloinen, lojaali Redfei-linjalle.",
+         notes="Efauxerin luotettu vakooja ja kuulustelija; arvioi "
+               "tulijoiden motiivit.",
+         tags=["spy", "law"]),
+    dict(id="npc_dumblo", name="Kapteeni Dumblo Foofant", race="Halfling",
+         age="", occupation="Sotilaskomentaja", title="", faction="Old Vaisil",
+         alignment="Lawful Good", loc="loc_old_vaisil", stat="monster:Scout",
+         wealth="comfortable",
+         appearance="Karaistunut, luotettava komentaja.",
+         personality="Uskollinen, sisukas.",
+         notes="Efauxerin pitkäaikainen ystävä ja Old Vaisilin "
+               "sotilaskomentaja.",
+         tags=["soldier", "ally"]),
+    dict(id="npc_giluan", name="Giluan Vasemot", race="Human", age="",
+         occupation="Sataman päävastaava", title="Old Vaisil Sea Co:n johtaja",
+         faction="", alignment="Neutral", loc="loc_ov_harbor",
+         stat="monster:Noble", wealth="wealthy", alive=False,
+         appearance="Entinen arvostettu satamaruhtinas.",
+         personality="Määrätietoinen kauppias.",
+         notes="MURHATTU — löydettiin raa'asti tapettuna, pää viety. "
+               "Takana Emnarin palkkaama örkki Volden (45 000 kullan "
+               "palkkio).",
+         tags=["harbor", "deceased"]),
+    dict(id="npc_volden", name="Volden", race="Orc", age="",
+         occupation="Palkkasoturi", title="", faction="",
+         alignment="Neutral Evil", loc="", stat="monster:Assassin",
+         wealth="wealthy",
+         appearance="Jäntevä, arpinen örkkipalkkasoturi.",
+         personality="Kylmä ammattilainen.",
+         notes="Emnar Redfein palkkaama; murhasi Giluan Vasemotin ja lunasti "
+               "45 000 kullan palkkion. Yksi kaupungin monista "
+               "salamurhaajista.",
+         tags=["assassin", "mercenary"]),
+    dict(id="npc_undur", name="Undur Stunrack", race="Dwarf", age="",
+         occupation="Rekrytoija", title="", faction="Old Vaisil",
+         alignment="Lawful Neutral", loc="loc_ov_harbor", stat="monster:Guard",
+         wealth="modest",
+         appearance="Jäntevä kääpiö-aliupseeri.",
+         personality="Suorapuheinen, tehokas.",
+         notes="Hoitaa uuden armeijan rekrytointia satamassa (sotilaille "
+               "1 gp/pv, 10 gp taistelupäiviltä).",
+         tags=["soldier"]),
+    dict(id="npc_orien", name="Orien", race="Human", age="",
+         occupation="Hovimestari", title="", faction="",
+         alignment="Neutral Evil", loc="loc_grand_garden", stat="monster:Spy",
+         wealth="modest",
+         appearance="Sileä, moitteeton hovimestari.",
+         personality="Petollinen, kaksinaamainen.",
+         notes="Petollinen hovimestari, joka juonitteli Gersnetin kanssa "
+               "Grand Gardenin salamurhayrityksessä.",
+         tags=["spy", "traitor"]),
+    dict(id="npc_beon", name="Beon Vildman", race="Human", age="",
+         occupation="Huumeongelman selvittäjä", title="", faction="Old Vaisil",
+         alignment="Lawful Neutral", loc="loc_old_vaisil", stat="monster:Spy",
+         wealth="modest",
+         appearance="Tarkkaavainen, väsynyt tutkija.",
+         personality="Sinnikäs, huolestunut.",
+         notes="Efauxerin asettama hoitamaan paisuvaa Chrith Lar "
+               "-huumekriisiä, joka uhkaa kaupungin vakautta.",
+         tags=["law"]),
+    dict(id="npc_maddy", name="Maddy Diblof", race="Dwarf", age="",
+         occupation="Taikuri / kauppias", title="", faction="",
+         alignment="Neutral", loc="loc_maddy_shop", stat="monster:Archmage",
+         wealth="wealthy",
+         appearance="Eksentrinen kääpiötaikuri.",
+         personality="Utelias, salaperäinen.",
+         notes="Pitää taikakauppaa Old Vaisilissa; omistaa Coral Scepterin "
+               "ja tutkii Chronicles of the Deep -kirjaa valmistautuen "
+               "tapaamaan Efauxeria. Stat-proxy: Archmage.",
+         tags=["merchant", "scholar"]),
+    dict(id="npc_adelf", name="Adelf Beliod III", race="Human", age="",
+         occupation="Lohikäärmeratsastaja / oppinut", title="",
+         faction="", alignment="Neutral Good", loc="loc_adelf_base",
+         stat="monster:Noble", wealth="wealthy",
+         appearance="Arvokas, rauhaarakastava oppinut.",
+         personality="Viisas; ei pidä taistelusta.",
+         notes="Metallilohikäärmeratsastaja (hopealohikäärme Thalorian); "
+               "toimii Old Vaisilin tiedon ja historian keskuksena. "
+               "Apulaiset Elara Silverleaf ja Tormek Ironfoot.",
+         tags=["scholar", "dragon_rider"]),
+    dict(id="npc_thalorian", name="Thalorian", race="Silver Dragon", age="",
+         occupation="Ratsulohikäärme", title="", faction="",
+         alignment="Lawful Good", loc="loc_adelf_base",
+         stat="monster:Adult Silver Dragon", wealth="",
+         appearance="Jalo hopealohikäärme.",
+         personality="Viisas, rauhallinen.",
+         notes="Adelf Beliod III:n ratsulohikäärme.",
+         tags=["dragon"]),
+    dict(id="npc_elara_silverleaf", name="Elara Silverleaf", race="Half-Elf",
+         age="", occupation="Apulainen", title="", faction="",
+         alignment="Neutral Good", loc="loc_adelf_base", stat="monster:Scout",
+         wealth="modest",
+         appearance="Tarkkaavainen puolihaltia-oppinut.",
+         personality="Avulias, utelias.",
+         notes="Adelf Beliod III:n apulainen tiedon keskuksessa.",
+         tags=["scholar"]),
+    dict(id="npc_tormek", name="Tormek Ironfoot", race="Dwarf", age="",
+         occupation="Apulainen", title="", faction="",
+         alignment="Neutral Good", loc="loc_adelf_base", stat="monster:Guard",
+         wealth="modest",
+         appearance="Vankka kääpiö-vartija.",
+         personality="Uskollinen, käytännöllinen.",
+         notes="Adelf Beliod III:n apulainen ja suojelija.",
+         tags=["soldier"]),
+    dict(id="npc_gobroim", name="Gobroim (Kraken)", race="Kraken", age="",
+         occupation="Merihirviö", title="", faction="",
+         alignment="Chaotic Evil", loc="", stat="monster:Kraken", wealth="",
+         appearance="Valtava läntinen meriolento.",
+         personality="Nälkäinen, tuhoisa.",
+         notes="Lännestä siirtynyt Kraken, joka hyökkäilee laivojen "
+               "kimppuun ravinnon puutteen vuoksi ja lamauttaa Old "
+               "Vaisilin merenkulun.",
+         tags=["monster", "threat"]),
 
     # ===== RAVENSTONE — vampyyrien sisällissota =====
     dict(id="npc_jugorai", name="Jugorai Millwind", race="Human (Vampyyri)",
@@ -1143,7 +1314,7 @@ NPCS: List[dict] = [
          tags=["undead"]),
     dict(id="npc_isabel", name="Isabel Millwind", race="Human (Vampyyri)",
          age="", occupation="Paronin tytär", title="", faction="",
-         alignment="Neutral", loc="loc_ravenstone",
+         alignment="Neutral", loc="loc_ravenstone", alive=False,
          stat="monster:Vampire Spawn", wealth="wealthy",
          appearance="Kaunis, murheellinen nuori nainen.",
          personality="Kärsivä, kuolemaa kaipaava.",
@@ -1979,6 +2150,20 @@ NPC_LINKS: List[tuple] = [
     ("npc_carlo", "npc_rommiparta", "ally", "\"Rapulaivan\" miehistö."),
     ("npc_rommiparta", "npc_carlo", "ally", "Perämies."),
     ("npc_gediroi", "npc_blitz", "ally", "Lojaali tukija linnakkeessa."),
+    # Old Vaisil
+    ("npc_efauxer", "npc_delma", "subordinate", "Luotettu vakooja."),
+    ("npc_efauxer", "npc_dumblo", "ally", "Pitkäaikainen ystävä & komentaja."),
+    ("npc_efauxer", "npc_beon", "subordinate", "Huumeongelman selvittäjä."),
+    ("npc_efauxer", "npc_richard_walker", "ally", "Suojelee Walker-sukua."),
+    ("npc_richard_walker", "npc_rose_walker", "family", "Puoliso."),
+    ("npc_rose_walker", "npc_blitz", "family", "Äiti."),
+    ("npc_volden", "npc_giluan", "enemy", "Murhasi Giluanin (pää viety)."),
+    ("npc_emnar", "npc_volden", "subordinate", "Palkkasi Voldenin (45k)."),
+    ("npc_orien", "npc_gersnet", "ally", "Grand Gardenin salamurhajuoni."),
+    ("npc_adelf", "npc_thalorian", "ally", "Ratsastaja ja hopealohikäärme."),
+    ("npc_adelf", "npc_elara_silverleaf", "subordinate", "Apulainen."),
+    ("npc_adelf", "npc_tormek", "subordinate", "Apulainen & suojelija."),
+    ("npc_undur", "npc_dumblo", "subordinate", "Rekrytoi komentajalle."),
     # Talo Icharyd — Caznan varjoperhe
     ("npc_xalyra", "npc_cazna", "family", "Äiti; 'Kuiskaaja verhon takana'."),
     ("npc_cazna", "npc_xalyra", "family", "Ohjaava äiti varjoissa."),
@@ -2091,7 +2276,8 @@ def build_lore_npcs(world) -> None:
             title=spec.get("title", ""), faction=spec.get("faction", ""),
             alignment=spec.get("alignment", ""), notes=spec.get("notes", ""),
             location_id=loc_id, stat_source=spec.get("stat", ""),
-            tags=list(spec.get("tags", [])), alive=True, active=True,
+            tags=list(spec.get("tags", [])),
+            alive=spec.get("alive", True), active=spec.get("active", True),
         )
         tier = spec.get("wealth", "")
         if tier:
@@ -2807,6 +2993,17 @@ def lore_campaign_notes():
          "Walker-veri + sinettisormus (Blitz), joka on juuri herätetty "
          "kuolleista (Nundai). Linnakkeessa on myös kosminen kartta "
          "(kristallikupu + Phlogiston)."),
+        ("OLD VAISIL — SODAN HERMOKESKUS — Tarmaaksen eteläkärjen "
+         "arabityylinen satama- ja eläkekaupunki (~80 000 as.) irtautui "
+         "Tarmaaksesta ja muodosti Vapaan Etelän Koalition Aesican ja "
+         "Maclebar Islen kanssa, katkaisten Tarmaas–Oblitus-kauppareitit. "
+         "Efauxer Redfei johtaa; satamassa massiivinen rekrytointi (Undur "
+         "Stunrack), hirttoaukiolla armoton oikeus (Gilhard Blacktooth). "
+         "Uhat: Chrith Lar -huumekriisi (Beon Vildman), Kraken Gobroim "
+         "satamassa, Emnarin/Tarmaaksen vakoojat ja palkkasoturit (Volden "
+         "murhasi satamaruhtinas Giluanin), sabotaasi ja pakolaisvirrat. "
+         "Grand Gardenissa tapahtui salamurhayritys jossa Blitz kuoli "
+         "(Gersnet + petturi-hovimestari Orien)."),
     ]
     return [CampaignNote(text=t, category="lore") for t in specs]
 
