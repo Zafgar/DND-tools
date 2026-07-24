@@ -100,6 +100,11 @@ class GameManager:
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("D&D 5e AI Encounter Manager – Endgame Edition")
 
+        # Non-fatal error banner: set when a frame/state raises so the
+        # user sees a readable message instead of a black hung window.
+        self.error_banner = ""
+        self._error_font = None
+
         # Seed the Novus Somnium starter campaign on first run. Idempotent:
         # existing campaigns (including user edits) are left alone.
         try:
@@ -127,27 +132,36 @@ class GameManager:
             self.server_thread.start()
 
     def change_state(self, state_name: str, **kwargs):
-        # Recreate certain states fresh each time
-        if state_name == "HERO_CREATOR":
-            self.states["HERO_CREATOR"] = HeroCreatorState(self)
-        elif state_name == "COMBAT_ROSTER":
-            self.states["COMBAT_ROSTER"] = CombatRosterState(self)
-        elif state_name == "CAMPAIGN":
-            campaign = kwargs.get("campaign")
-            self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)
-        elif state_name == "MAP_EDITOR":
-            world_map = kwargs.get("world_map")
-            if world_map is None:
-                logging.warning("MAP_EDITOR requires world_map kwarg; ignoring change.")
-                return
-            self.states["MAP_EDITOR"] = MapEditorState(
-                self,
-                world_map,
-                campaign=kwargs.get("campaign"),
-                world=kwargs.get("world"),
-                back_state=kwargs.get("back_state", ""),
-                callbacks=kwargs.get("callbacks"),
-            )
+        # Recreate certain states fresh each time. Building a state can
+        # fail (bad save data, missing asset, environment quirk); if it
+        # does, log the full traceback and stay on the current screen
+        # with an on-screen error rather than crashing to a black window.
+        try:
+            if state_name == "HERO_CREATOR":
+                self.states["HERO_CREATOR"] = HeroCreatorState(self)
+            elif state_name == "COMBAT_ROSTER":
+                self.states["COMBAT_ROSTER"] = CombatRosterState(self)
+            elif state_name == "CAMPAIGN":
+                campaign = kwargs.get("campaign")
+                self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)
+            elif state_name == "MAP_EDITOR":
+                world_map = kwargs.get("world_map")
+                if world_map is None:
+                    logging.warning("MAP_EDITOR requires world_map kwarg; ignoring change.")
+                    return
+                self.states["MAP_EDITOR"] = MapEditorState(
+                    self,
+                    world_map,
+                    campaign=kwargs.get("campaign"),
+                    world=kwargs.get("world"),
+                    back_state=kwargs.get("back_state", ""),
+                    callbacks=kwargs.get("callbacks"),
+                )
+        except Exception:
+            logging.critical(f"Failed to open state '{state_name}':", exc_info=True)
+            self.error_banner = (f"Could not open {state_name} — see "
+                                 f"crash_log.txt. Press ESC to dismiss.")
+            return
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
 
@@ -170,24 +184,67 @@ class GameManager:
     def quit(self):
         self.running = False
 
+    def _draw_error_banner(self):
+        """Draw the non-fatal error message so the user is never left
+        staring at a black screen with no explanation."""
+        if not self.error_banner:
+            return
+        if self._error_font is None:
+            # Font(None, ...) is the built-in default font — always
+            # available, unlike SysFont which may miss a named face.
+            self._error_font = pygame.font.Font(None, 24)
+        w = self.screen.get_width()
+        band_h = 64
+        band = pygame.Surface((w, band_h), pygame.SRCALPHA)
+        band.fill((140, 30, 30, 235))
+        self.screen.blit(band, (0, 0))
+        for i, line in enumerate(self.error_banner.split("\n")[:2]):
+            surf = self._error_font.render(line, True, (255, 255, 255))
+            self.screen.blit(surf, (16, 10 + i * 26))
+
     def run(self):
+        logging.info("Game starting...")
         try:
-            logging.info("Game starting...")
             while self.running:
                 events = pygame.event.get()
                 for event in events:
                     if event.type == pygame.QUIT:
                         self.running = False
-                # Process any external updates from Flask thread (thread-safe)
-                self._process_external_updates()
-                self.current_state.handle_events(events)
-                self.current_state.update()
-                self.current_state.draw(self.screen)
+                    elif (event.type == pygame.KEYDOWN
+                          and event.key == pygame.K_ESCAPE and self.error_banner):
+                        self.error_banner = ""  # dismiss the banner
+                # Each phase is isolated: one bad frame logs its traceback
+                # and shows a banner, but the app keeps running instead of
+                # dying to a black window. Repeated failures still scroll
+                # the log so the root cause is captured.
+                try:
+                    self._process_external_updates()
+                    self.current_state.handle_events(events)
+                    self.current_state.update()
+                    self.current_state.draw(self.screen)
+                except Exception:
+                    broken = type(self.current_state).__name__
+                    logging.critical(f"Frame error in {broken}:", exc_info=True)
+                    self.error_banner = (
+                        f"Error in {broken} — see crash_log.txt. Returned to "
+                        "menu.\nPress ESC to dismiss; your data on disk is safe.")
+                    # Fall back to the known-good menu so the user isn't
+                    # trapped re-crashing the same screen every frame.
+                    menu = self.states.get("MENU")
+                    if menu is not None and self.current_state is not menu:
+                        self.current_state = menu
+                        try:
+                            self.current_state.draw(self.screen)
+                        except Exception:
+                            self.screen.fill((20, 20, 24))
+                    else:
+                        self.screen.fill((20, 20, 24))
+                self._draw_error_banner()
                 pygame.display.flip()
                 self.clock.tick(FPS)
-        except Exception as e:
-            logging.critical("CRITICAL ERROR - GAME CRASHED:", exc_info=True)
-            raise e
+        except Exception:
+            logging.critical("CRITICAL ERROR - GAME LOOP CRASHED:", exc_info=True)
+            raise
         finally:
             pygame.quit()
 
