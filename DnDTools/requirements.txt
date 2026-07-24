@@ -1,2 +1,4 @@
 pygame==2.5.2
+# Optional: only powers live TaleSpire mini-position sync. The DM tool
+# runs without it (a note is printed and sync stays off).
 flask==3.0.0
