@@ -80,7 +80,7 @@ class MenuState(GameState):
         """Paint an immediate 'loading' frame so the window never looks
         frozen/black while a heavy state is being constructed."""
         try:
-            scr = self.manager.screen
+            scr = pygame.display.get_surface() or self.manager.screen
             scr.fill(COLORS["bg"])
             t = fonts.header.render(text, True, COLORS["accent"])
             scr.blit(t, (scr.get_width() // 2 - t.get_width() // 2,

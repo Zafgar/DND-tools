@@ -97,7 +97,20 @@ class GameManager:
 
         pygame.init()
         pygame.key.set_repeat(400, 50)  # Enable key repeat: 400ms delay, 50ms interval
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+        # SCALED keeps the logical surface at SCREEN_WIDTH x SCREEN_HEIGHT
+        # no matter how the OS sizes the window (smaller screen, maximize,
+        # DPI scaling): SDL scales the output and the mouse coordinates.
+        # Without it, resizing a RESIZABLE window makes pygame-ce replace
+        # the display surface, and everything drawn to the old reference
+        # silently vanishes -> "black screen". Fall back to plain
+        # RESIZABLE where SCALED isn't supported (e.g. dummy driver).
+        try:
+            self.screen = pygame.display.set_mode(
+                (SCREEN_WIDTH, SCREEN_HEIGHT),
+                pygame.RESIZABLE | pygame.SCALED)
+        except pygame.error:
+            self.screen = pygame.display.set_mode(
+                (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("D&D 5e AI Encounter Manager – Endgame Edition")
 
         # Non-fatal error banner: set when a frame/state raises so the
@@ -186,6 +199,20 @@ class GameManager:
     def quit(self):
         self.running = False
 
+    def _sync_display_surface(self):
+        """Rebind self.screen to the live display surface.
+
+        pygame-ce can REPLACE the display surface when a RESIZABLE
+        window is resized/maximized. Anything drawn to the old surface
+        object then silently disappears — the window freezes on the
+        last presented frame (looks like a black/blank screen). Fetching
+        the current surface every frame makes that impossible."""
+        live = pygame.display.get_surface()
+        if live is not None and live is not self.screen:
+            logging.info("[DISPLAY] surface replaced (%sx%s) — rebinding",
+                         live.get_width(), live.get_height())
+            self.screen = live
+
     def _draw_error_banner(self):
         """Draw the non-fatal error message so the user is never left
         staring at a black screen with no explanation."""
@@ -212,9 +239,14 @@ class GameManager:
                 for event in events:
                     if event.type == pygame.QUIT:
                         self.running = False
+                    elif event.type == pygame.VIDEORESIZE:
+                        logging.info("[DISPLAY] window resized to %sx%s",
+                                     event.w, event.h)
                     elif (event.type == pygame.KEYDOWN
                           and event.key == pygame.K_ESCAPE and self.error_banner):
                         self.error_banner = ""  # dismiss the banner
+                # Always draw to the LIVE display surface (see docstring).
+                self._sync_display_surface()
                 # Each phase is isolated: one bad frame logs its traceback
                 # and shows a banner, but the app keeps running instead of
                 # dying to a black window. Repeated failures still scroll

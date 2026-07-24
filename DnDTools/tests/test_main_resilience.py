@@ -141,5 +141,45 @@ class TestChangeStateResilience(unittest.TestCase):
         self.assertIs(m.current_state, menu)  # stayed on the safe screen
 
 
+class TestDisplaySurfaceSync(unittest.TestCase):
+    """pygame-ce can replace the display surface on window resize;
+    drawing must always target the live surface or the window freezes
+    on the last frame ("black screen")."""
+
+    @classmethod
+    def setUpClass(cls):
+        pygame.init()
+        pygame.display.set_mode((400, 300))
+        cls.mod = _load_main()
+
+    def _manager(self):
+        m = self.mod.GameManager.__new__(self.mod.GameManager)
+        m.screen = pygame.display.get_surface()
+        return m
+
+    def test_stale_surface_is_rebound(self):
+        m = self._manager()
+        m.screen = pygame.Surface((400, 300))   # stale, not the display
+        m._sync_display_surface()
+        self.assertIs(m.screen, pygame.display.get_surface())
+
+    def test_live_surface_untouched(self):
+        m = self._manager()
+        live = pygame.display.get_surface()
+        m.screen = live
+        m._sync_display_surface()
+        self.assertIs(m.screen, live)
+
+    def test_scaled_flag_has_fallback(self):
+        # GameManager.__init__ wraps SCALED in try/except; verify the
+        # fallback expression itself works under the dummy driver.
+        try:
+            scr = pygame.display.set_mode((400, 300),
+                                          pygame.RESIZABLE | pygame.SCALED)
+        except pygame.error:
+            scr = pygame.display.set_mode((400, 300), pygame.RESIZABLE)
+        self.assertIsNotNone(scr)
+
+
 if __name__ == "__main__":
     unittest.main()
