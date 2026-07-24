@@ -4,3 +4,6 @@ __pycache__/
 *.pyd
 .Python
 *.pyc
+
+# Transient battle autosave (runtime artifact, not a real save)
+DnDTools/saves/_autosave.json
