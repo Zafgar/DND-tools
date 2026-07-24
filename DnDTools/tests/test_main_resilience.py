@@ -170,15 +170,18 @@ class TestDisplaySurfaceSync(unittest.TestCase):
         m._sync_display_surface()
         self.assertIs(m.screen, live)
 
-    def test_scaled_flag_has_fallback(self):
-        # GameManager.__init__ wraps SCALED in try/except; verify the
-        # fallback expression itself works under the dummy driver.
-        try:
-            scr = pygame.display.set_mode((400, 300),
-                                          pygame.RESIZABLE | pygame.SCALED)
-        except pygame.error:
-            scr = pygame.display.set_mode((400, 300), pygame.RESIZABLE)
-        self.assertIsNotNone(scr)
+    def test_window_size_clamped_to_desktop(self):
+        size = self.mod.GameManager._initial_window_size
+        # Big desktop: full design size.
+        self.assertEqual(size((2560, 1440)), (1920, 1080))
+        # 1920x1200: fits fully (1200-80 >= 1080).
+        self.assertEqual(size((1920, 1200)), (1920, 1080))
+        # Exactly 1080p: leave room for the title bar / taskbar.
+        self.assertEqual(size((1920, 1080)), (1920, 1000))
+        # Small laptop: clamp both axes.
+        self.assertEqual(size((1366, 768)), (1366, 688))
+        # Degenerate desktop never goes below a usable height.
+        self.assertEqual(size((800, 500))[1], 600)
 
 
 if __name__ == "__main__":

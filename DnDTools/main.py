@@ -33,6 +33,21 @@ sys.excepthook = handle_exception
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Windows DPI awareness — MUST run before the window is created. Without
+# this, display scaling (125%/150% on most laptops) makes Windows
+# bitmap-stretch the window: the UI renders zoomed and cropped, and a
+# 1920x1080 window no longer fits the screen. With it, one window pixel
+# is one physical pixel and the layout is crisp.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 import pygame
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from states.game_states import MenuState, BattleState, EncounterSetupState
@@ -97,20 +112,22 @@ class GameManager:
 
         pygame.init()
         pygame.key.set_repeat(400, 50)  # Enable key repeat: 400ms delay, 50ms interval
-        # SCALED keeps the logical surface at SCREEN_WIDTH x SCREEN_HEIGHT
-        # no matter how the OS sizes the window (smaller screen, maximize,
-        # DPI scaling): SDL scales the output and the mouse coordinates.
-        # Without it, resizing a RESIZABLE window makes pygame-ce replace
-        # the display surface, and everything drawn to the old reference
-        # silently vanishes -> "black screen". Fall back to plain
-        # RESIZABLE where SCALED isn't supported (e.g. dummy driver).
+        # Size the window to actually FIT the desktop (leaving room for
+        # the title bar / taskbar). The layout is designed for
+        # 1920x1080; on smaller desktops the window is clamped and the
+        # right/bottom edge of the layout is cropped rather than the OS
+        # shrinking or stretching the window behind our back.
+        # (SCALED was tried and reverted: with Windows DPI scaling it
+        # zoom-cropped the whole UI.)
         try:
-            self.screen = pygame.display.set_mode(
-                (SCREEN_WIDTH, SCREEN_HEIGHT),
-                pygame.RESIZABLE | pygame.SCALED)
-        except pygame.error:
-            self.screen = pygame.display.set_mode(
-                (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+            desktop = pygame.display.get_desktop_sizes()[0]
+        except Exception:
+            desktop = (SCREEN_WIDTH, SCREEN_HEIGHT)
+        win_w, win_h = self._initial_window_size(desktop)
+        logging.info("[DISPLAY] desktop %sx%s -> window %sx%s",
+                     desktop[0], desktop[1], win_w, win_h)
+        self.screen = pygame.display.set_mode((win_w, win_h),
+                                              pygame.RESIZABLE)
         pygame.display.set_caption("D&D 5e AI Encounter Manager – Endgame Edition")
 
         # Non-fatal error banner: set when a frame/state raises so the
@@ -198,6 +215,15 @@ class GameManager:
 
     def quit(self):
         self.running = False
+
+    @staticmethod
+    def _initial_window_size(desktop):
+        """Clamp the 1920x1080 design size to the desktop, reserving
+        ~80px for the title bar / taskbar so the window always fits."""
+        desk_w, desk_h = desktop
+        win_w = min(SCREEN_WIDTH, desk_w)
+        win_h = min(SCREEN_HEIGHT, max(600, desk_h - 80))
+        return win_w, win_h
 
     def _sync_display_surface(self):
         """Rebind self.screen to the live display surface.
