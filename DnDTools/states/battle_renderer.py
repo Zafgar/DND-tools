@@ -9,6 +9,12 @@ import re
 from settings import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT, CREATURE_TYPE_COLORS, CREATURE_ICONS, SIZE_RADIUS
 from ui.components import Button, Panel, fonts, hp_bar, TabBar, Badge, Divider, draw_gradient_rect, Tooltip
 from data.conditions import CONDITIONS
+from data.library import library
+from data.heroes import hero_list
+from data.ability_help_fi import (
+    explain_action, explain_condition, explain_feature, summarize_ai_plan_fi,
+    target_rationale_fi, difficulty_read_fi,
+)
 from engine.terrain import TERRAIN_TYPES
 from engine.win_probability import assess_encounter_danger
 
@@ -417,6 +423,8 @@ class BattleRendererMixin:
             self._draw_roll_result_modal(screen)
         if self.reaction_pending:
             self._draw_reaction_modal(screen, mp)
+        if self.pending_conc_checks:
+            self._draw_conc_check_modal(screen, mp)
         if self.current_aura_trigger:
             self._draw_aura_highlight(screen)
             self._draw_aura_modal(screen, mp)
@@ -492,6 +500,7 @@ class BattleRendererMixin:
         self.btn_menu.draw(screen, pygame.mouse.get_pos())
 
         # Initiative cards
+        self.init_order_zones = []   # (rect, cb) — turn-order edit arrows
         card_x = round_bg.right + 15
         card_w, card_h = 120, 88
         for i, ent in enumerate(self.battle.entities):
@@ -575,6 +584,20 @@ class BattleRendererMixin:
             if ent.conditions:
                 cond_txt = fonts.tiny.render(f"{len(ent.conditions)} cond", True, COLORS["spell"])
                 screen.blit(cond_txt, (card_x + card_w - cond_txt.get_width() - 4, 54))
+
+            # Turn-order edit: the selected card gets ◀ ▶ arrows that
+            # move it earlier/later in initiative (DM edit).
+            if ent is self.selected_entity and self.battle.combat_started:
+                for sym, direc, ax in (("<", -1, card_x + card_w - 42),
+                                       (">", 1, card_x + card_w - 21)):
+                    ar = pygame.Rect(ax, 34, 18, 18)
+                    pygame.draw.rect(screen, COLORS["panel"], ar, border_radius=4)
+                    pygame.draw.rect(screen, COLORS["accent"], ar, 1, border_radius=4)
+                    s = fonts.small_bold.render(sym, True, COLORS["text_main"])
+                    screen.blit(s, (ar.centerx - s.get_width() // 2,
+                                    ar.centery - s.get_height() // 2))
+                    self.init_order_zones.append(
+                        (ar, lambda e=ent, d=direc: self._move_in_order(e, d)))
 
             card_x += card_w + 5
 
@@ -1069,10 +1092,8 @@ class BattleRendererMixin:
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_env, self.btn_add_entity):
+        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_env, self.btn_dm_move, self.btn_add_entity):
             b.draw(screen, mp)
-        # Auto mode button always visible next to AUTO
-        self.btn_auto_mode.draw(screen, mp)
         # Auto battle controls (pause + speed) - only visible when auto battle is active
         if self.auto_battle:
             self.btn_pause.draw(screen, mp)
@@ -1278,6 +1299,44 @@ class BattleRendererMixin:
             else self.collapsed_sections.add(k))))
         return y + 20, collapsed
 
+    def _get_ai_suggestion_fi(self, sel):
+        """Laske (ja välimuistita) AI:n suomenkielinen toimintaehdotus
+        annetulle hahmolle. Uudelleenlasketaan vain kun hahmo tai kierros
+        vaihtuu, jottei jokainen frame kuormita AI-laskentaa."""
+        key = (id(sel), getattr(self.battle, "round", 0),
+               sel.hp, len(sel.conditions))
+        cache = getattr(self, "_ai_sugg_cache", None)
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        lines, rationale, diff = [], "", ""
+        try:
+            if sel.hp > 0:
+                plan = self.battle.compute_ai_turn(sel)
+                lines = summarize_ai_plan_fi(plan)
+                # Kohdeperuste: etsi ensimmäinen kohteellinen hyökkäys/loitsu
+                # (myös AoE-loitsun ensimmäinen kohde targets-listasta).
+                tgt = None
+                for st in getattr(plan, "steps", []) or []:
+                    if getattr(st, "step_type", "") not in (
+                            "attack", "multiattack", "bonus_attack",
+                            "legendary", "spell"):
+                        continue
+                    if getattr(st, "target", None) is not None:
+                        tgt = st.target
+                        break
+                    tl = getattr(st, "targets", None) or []
+                    if tl:
+                        tgt = tl[0]
+                        break
+                if tgt is not None:
+                    rationale = target_rationale_fi(tgt, self.battle)
+            diff = difficulty_read_fi(self.battle)
+        except Exception:
+            pass
+        result = {"lines": lines, "rationale": rationale, "difficulty": diff}
+        self._ai_sugg_cache = (key, result)
+        return result
+
     def _draw_stats_tab(self, screen, sel, x0, y, mp):
 
         def ln(text, color=COLORS["text_main"], indent=0):
@@ -1315,6 +1374,25 @@ class BattleRendererMixin:
             ln(f"Cond Imm: {', '.join(sel.stats.condition_immunities)}", COLORS["text_dim"])
 
         ln("")
+
+        # AI-ehdotus: mitä tekoäly tekisi tällä hahmolla (suomeksi),
+        # koko kenttä huomioiden. Auttaa ajamaan NPC:n käsin nopeasti.
+        try:
+            sugg = self._get_ai_suggestion_fi(sel)
+        except Exception:
+            sugg = {}
+        if sugg and sugg.get("lines"):
+            ln("AI EHDOTTAA:", COLORS["legendary"])
+            for line in sugg["lines"][:4]:
+                ln(f"→ {line}", COLORS["warning"], 8)
+            if sugg.get("rationale"):
+                # rivitä peruste
+                r = f"Kohde: {sugg['rationale']}"
+                for i in range(0, len(r), 46):
+                    ln(("  " + r[i:i+46]).rstrip(), COLORS["text_dim"], 8)
+            if sugg.get("difficulty"):
+                ln(sugg["difficulty"], COLORS["accent_hover"], 8)
+            ln("")
 
         # Ability scores (collapsible)
         y, collapsed = self._draw_section_header(screen, "ABILITIES", "ABILITIES / SAVES / SKILLS", x0, y, mp)
@@ -1480,12 +1558,26 @@ class BattleRendererMixin:
             bg = COLORS["accent"] if is_active else (45,47,52)
             if r.collidepoint(mp):
                 bg = COLORS["accent_hover"] if is_active else (60,62,67)
-                self.active_tooltip = f"{cond}: {desc}"
+                fi = explain_condition(cond)
+                self.active_tooltip = f"{cond}: {fi}" if fi else f"{cond}: {desc}"
             pygame.draw.rect(screen, bg, r, border_radius=3)
             self.ui_click_zones.append((r, lambda c=cond: self._toggle_condition(c)))
             ct = fonts.tiny.render(cond, True, COLORS["text_main"])
             screen.blit(ct, (r.x+4, r.y+3))
         y = start_y + (((len(CONDITIONS)-1)//4)+1) * row_h + 8
+
+        # Active conditions with remaining duration / end-of-turn save
+        if sel.conditions:
+            durs = getattr(sel, "condition_durations", {})
+            for cond in sorted(sel.conditions):
+                extras = []
+                if cond in durs:
+                    extras.append(f"{durs[cond]} vuoro(a) jäljellä")
+                meta = sel.condition_metadata.get(cond)
+                if meta and meta.get("save"):
+                    extras.append(f"save DC {meta['dc']} {meta['save'][:3].upper()}")
+                ln(f"• {cond}" + (f"  ({', '.join(extras)})" if extras else ""),
+                   COLORS["warning"], 8)
 
         # Active Effects
         if sel.active_effects:
@@ -1526,7 +1618,7 @@ class BattleRendererMixin:
 
                     if line_rect.collidepoint(mp):
                         s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
-                        self.active_tooltip = f"{feat.name}: {feat.description}"
+                        self.active_tooltip = f"{feat.name}: {explain_feature(feat)}"
 
                     # Click to use feature (if it has uses)
                     if feat.uses_per_day > 0 or feat.recharge:
@@ -1570,25 +1662,11 @@ class BattleRendererMixin:
                 
                 if line_rect.collidepoint(mp):
                     s = fonts.small.render(summary, True, COLORS["accent_hover"])
-                    # Generate tooltip description
-                    desc = act.description
-                    if not desc:
-                        parts = []
-                        if act.is_multiattack:
-                            parts.append(f"Multiattack: {act.multiattack_count} attacks ({', '.join(act.multiattack_targets)})")
-                        else:
-                            parts.append(f"Type: {act.action_type}")
-                            if act.range: parts.append(f"Range: {act.range}ft")
-                            if act.attack_bonus: parts.append(f"Hit: +{act.attack_bonus}")
-                            if act.damage_dice: 
-                                d = act.damage_dice
-                                if act.damage_bonus: d += f"+{act.damage_bonus}"
-                                parts.append(f"Damage: {d} {act.damage_type}")
-                            if act.applies_condition:
-                                c = f"Applies {act.applies_condition}"
-                                if act.condition_dc: c += f" (DC {act.condition_dc} {act.condition_save})"
-                                parts.append(c)
-                        desc = ". ".join(parts)
+                    # Suomenkielinen täsmäselite käsin pelaamista varten;
+                    # jos statblokissa on oma kuvaus, näytä se perässä.
+                    desc = explain_action(act)
+                    if act.description:
+                        desc += f"  ({act.description})"
                     self.active_tooltip = f"{act.name}: {desc}"
 
                 # Click to target action
@@ -1621,8 +1699,19 @@ class BattleRendererMixin:
             ln("No spellcasting", COLORS["text_dim"])
             return y
 
-        # Spell slots
-        ln("SPELL SLOTS (click pip to use):", COLORS["text_dim"])
+        # Spell slots (click = use, right-click = restore one)
+        hdr_s = fonts.small.render("SPELL SLOTS (klikkaa=käytä, oikea=palauta):",
+                                   True, COLORS["text_dim"])
+        screen.blit(hdr_s, (x0, y))
+        restore_r = pygame.Rect(x0 + hdr_s.get_width() + 10, y - 2, 118, 18)
+        pygame.draw.rect(screen, COLORS["panel"], restore_r, border_radius=4)
+        pygame.draw.rect(screen, COLORS["spell"], restore_r, 1, border_radius=4)
+        rs = fonts.tiny.render("PALAUTA KAIKKI", True, COLORS["spell"])
+        screen.blit(rs, (restore_r.centerx - rs.get_width() // 2,
+                         restore_r.centery - rs.get_height() // 2))
+        self.ui_click_zones.append(
+            (restore_r, lambda s=sel: self._restore_all_slots(s)))
+        y += 20
         _LEVEL_NAMES = {1:"1st",2:"2nd",3:"3rd",4:"4th",5:"5th",6:"6th",7:"7th",8:"8th",9:"9th"}
         for lvl in range(1, 10):
             key = _LEVEL_NAMES[lvl]
@@ -2025,6 +2114,18 @@ class BattleRendererMixin:
                        "reaction":COLORS["reaction"],"bonus_attack":COLORS["warning"]}.get(step.step_type, COLORS["text_main"])
         type_lbl = fonts.body.render(f"[{step.step_type.upper()}]", True, step_type_c)
         screen.blit(type_lbl, (bx+14, y))
+        # Acting creature's statuses right on the dialog so the DM sees
+        # how conditions shape this turn (durations included).
+        if plan.entity is not None and (plan.entity.conditions
+                                        or plan.entity.concentrating_on):
+            durs = getattr(plan.entity, "condition_durations", {})
+            bits = [f"{c}({durs[c]})" if c in durs else c
+                    for c in sorted(plan.entity.conditions)]
+            if plan.entity.concentrating_on:
+                bits.append(f"C:{plan.entity.concentrating_on.name}")
+            cond_s = fonts.small.render("Tilat: " + ", ".join(bits)[:60],
+                                        True, COLORS["warning"])
+            screen.blit(cond_s, (bx + 140, y + 3))
         y += 30
 
         # Description (wrap)
@@ -2108,10 +2209,17 @@ class BattleRendererMixin:
         
         self.btn_approve_all.rect.topleft = (bx + bw//2 - 150, by + bh - 100)
         self.btn_cancel_ai.rect.topleft  = (bx + bw//2 + 20,  by + bh - 100)
+        self.btn_reroll.rect.topleft = (bx + 14, by + bh - 100)
         self.btn_confirm.draw(screen, mp)
         self.btn_deny.draw(screen, mp)
         self.btn_approve_all.draw(screen, mp)
         self.btn_cancel_ai.draw(screen, mp)
+        self.btn_reroll.draw(screen, mp)
+        hint = fonts.tiny.render(
+            "Klikkaa RESULT-ruutua muuttaaksesi osuma/ohi/save — "
+            "raahaa tokenia kartalla siirtääksesi (AI laskee uuden ehdotuksen)",
+            True, COLORS["text_dim"])
+        screen.blit(hint, (bx + 14, by + bh - 20))
 
     # --- Reaction / Opportunity Attack Modal ---
     def _draw_reaction_modal(self, screen, mp):
@@ -2137,7 +2245,10 @@ class BattleRendererMixin:
         ov.fill((0,0,0,170))
         screen.blit(ov, (0,0))
 
-        bw, bh = 500, 250
+        # List the reactor's reaction toolbox so the table remembers
+        # every option the character actually has.
+        options = self._list_reaction_options(reactor)[:6]
+        bw, bh = 540, 250 + len(options) * 20 + (26 if options else 0)
         bx = SCREEN_WIDTH//2 - bw//2
         by = SCREEN_HEIGHT//2 - bh//2
 
@@ -2152,8 +2263,20 @@ class BattleRendererMixin:
         msg1 = fonts.body.render(msg_text, True, COLORS["text_main"])
         screen.blit(msg1, (bx+20, y))
         y += 30
-        msg2 = fonts.small.render("Allow this reaction?", True, COLORS["text_dim"])
+        msg2 = fonts.small.render("Sallitaanko reaktio? "
+                                  "(pelaaja päättää pöydässä)", True, COLORS["text_dim"])
         screen.blit(msg2, (bx+20, y))
+        y += 26
+
+        if options:
+            hdr = fonts.small_bold.render(f"{reactor.name} — käytettävissä "
+                                          "olevat reaktiot:", True, COLORS["reaction"])
+            screen.blit(hdr, (bx+20, y))
+            y += 22
+            for opt in options:
+                s = fonts.small.render(f"• {opt}"[:78], True, COLORS["text_main"])
+                screen.blit(s, (bx+28, y))
+                y += 20
 
         # Buttons
         btn_y = by + bh - 60
@@ -2173,6 +2296,52 @@ class BattleRendererMixin:
         self.ui_click_zones.append((r_deny, lambda: self._resolve_reaction(False)))
 
 
+
+    # --- Deferred player concentration check (the table rolls) ---
+    def _draw_conc_check_modal(self, screen, mp):
+        self.ui_click_zones.clear()
+        chk = self.pending_conc_checks[0]
+        ent, dc, dmg, spell = chk["entity"], chk["dc"], chk["dmg"], chk["spell"]
+
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 170))
+        screen.blit(ov, (0, 0))
+
+        bw, bh = 560, 260
+        bx = SCREEN_WIDTH // 2 - bw // 2
+        by = SCREEN_HEIGHT // 2 - bh // 2
+        pygame.draw.rect(screen, (38, 40, 44), (bx, by, bw, bh), border_radius=10)
+        pygame.draw.rect(screen, COLORS["concentration"], (bx, by, bw, 44),
+                         border_top_left_radius=10, border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (bx, by, bw, bh), 2, border_radius=10)
+
+        title = fonts.header.render("CONCENTRATION-HEITTO!", True, (0, 0, 0))
+        screen.blit(title, (bx + 14, by + 8))
+
+        y = by + 58
+        for line, col in (
+                (f"{ent.name} otti {dmg} vahinkoa keskittyessään loitsuun:", COLORS["text_main"]),
+                (f"{spell}", COLORS["concentration"]),
+                (f"CON-pelastusheitto DC {dc} — pelaaja heittää pöydässä.", COLORS["text_main"]),
+                (f"(CON-save bonus: {ent.get_save_bonus('Constitution'):+d}"
+                 + (", War Caster: etu" if ent.has_feature("war_caster") else "") + ")",
+                 COLORS["text_dim"])):
+            s = fonts.body.render(line, True, col) if col != COLORS["text_dim"] \
+                else fonts.small.render(line, True, col)
+            screen.blit(s, (bx + 20, y))
+            y += 30
+
+        btn_y = by + bh - 60
+        for label, cb, col, x in (
+                ("SÄILYY", lambda: self._resolve_conc_check(True), COLORS["success"], bx + 20),
+                ("KATKEAA", lambda: self._resolve_conc_check(False), COLORS["danger"], bx + 200),
+                ("HEITÄ", lambda: self._roll_conc_check(), COLORS["accent"], bx + 380)):
+            r = pygame.Rect(x, btn_y, 160, 45)
+            pygame.draw.rect(screen, col, r, border_radius=5)
+            lbl = fonts.body.render(label, True, (255, 255, 255))
+            screen.blit(lbl, (r.centerx - lbl.get_width() // 2,
+                              r.centery - lbl.get_height() // 2))
+            self.ui_click_zones.append((r, cb))
 
     def _draw_aura_highlight(self, screen):
         trig = self.current_aura_trigger
@@ -2533,18 +2702,31 @@ class BattleRendererMixin:
         ent = self.condition_reminder
         if not ent:
             return
-        lines = [f"=== {ent.name}'s Turn ==="]
+        lines = [f"=== {ent.name} — vuoron alku ==="]
         if ent.concentrating_on:
-            lines.append(f"[C] Concentrating: {ent.concentrating_on.name}")
+            lines.append(f"[C] Keskittyy: {ent.concentrating_on.name} — "
+                         "vahinko vaatii CON-saven (DC 10 tai puolet vahingosta)")
+        durations = getattr(ent, "condition_durations", {})
         for cond in sorted(ent.conditions):
-            desc = CONDITIONS.get(cond, "")
-            lines.append(f"• {cond}: {desc[:70]}")
+            desc = explain_condition(cond) or CONDITIONS.get(cond, "")
+            desc = desc.split("\n")[0]
+            extra = []
+            if cond in durations:
+                extra.append(f"{durations[cond]} vuoro(a) jäljellä")
+            meta = ent.condition_metadata.get(cond)
+            if meta and meta.get("save"):
+                extra.append(f"save DC {meta['dc']} {meta['save'][:3].upper()} "
+                             "vuoron lopussa")
+            suffix = f"  [{', '.join(extra)}]" if extra else ""
+            lines.append(f"• {cond}: {desc[:76]}{suffix}")
+        for eff, rounds in sorted(getattr(ent, "active_effects", {}).items()):
+            lines.append(f"+ {eff}: {rounds} kierros(ta) jäljellä")
         lines.append("")
-        lines.append("(Click anywhere to dismiss)")
+        lines.append("(Sulje klikkaamalla)")
 
         pad = 14
         line_h = 22
-        bw = 580
+        bw = 720
         bh = pad * 2 + len(lines) * line_h + 10
         bx = SCREEN_WIDTH // 2 - bw // 2
         by = TOP_BAR_H + 20
@@ -2567,6 +2749,8 @@ class BattleRendererMixin:
                 t = fonts.small.render(line, True, COLORS["concentration"])
             elif line.startswith("•"):
                 t = fonts.small.render(line, True, COLORS["warning"])
+            elif line.startswith("+"):
+                t = fonts.small.render(line, True, COLORS["success"])
             else:
                 t = fonts.tiny.render(line, True, COLORS["text_dim"])
             screen.blit(t, (bx + pad, y))
@@ -3050,14 +3234,21 @@ class BattleRendererMixin:
         st = fonts.small.render(f"Search: {self.add_entity_search}_", True, COLORS["text_main"])
         screen.blit(st, (bx + 15, search_y + 4))
 
-        # Player/Enemy toggle
-        toggle_r = pygame.Rect(bx + bw - 85, search_y, 75, 28)
+        # Side toggle — decides which team a placed entity joins. This is
+        # the authority: any creature (monster OR hero) can be added to
+        # EITHER side, so e.g. a summoned ally monster or a turncoat hero
+        # works. Shown prominently since it drives placement.
+        toggle_r = pygame.Rect(bx + bw - 130, search_y, 120, 28)
         toggle_c = COLORS["player"] if self.add_entity_is_player else COLORS["enemy"]
         pygame.draw.rect(screen, toggle_c, toggle_r, border_radius=4)
-        toggle_txt = "PLAYER" if self.add_entity_is_player else "ENEMY"
+        toggle_txt = ("ADD TO: ALLIES" if self.add_entity_is_player
+                       else "ADD TO: ENEMIES")
         tt = fonts.tiny.render(toggle_txt, True, (255, 255, 255))
         screen.blit(tt, (toggle_r.centerx - tt.get_width() // 2, toggle_r.centery - tt.get_height() // 2))
         self.ui_click_zones.append((toggle_r, lambda: setattr(self, 'add_entity_is_player', not self.add_entity_is_player)))
+        # Hint under the toggle
+        hint = fonts.tiny.render("(click to switch side)", True, COLORS["text_dim"])
+        screen.blit(hint, (toggle_r.right - hint.get_width(), toggle_r.bottom + 2))
 
         # Monster/Hero list
         list_y = search_y + 36
@@ -3088,7 +3279,11 @@ class BattleRendererMixin:
             c = COLORS["player"] if is_hero else COLORS["text_main"]
             s = fonts.tiny.render(label, True, c)
             screen.blit(s, (r.x + 6, r.y + 4))
-            self.ui_click_zones.append((r, lambda st=stats, ip=is_hero: self._add_entity_to_battle(st, is_player=ip)))
+            # Side comes from the toggle, NOT from whether the entry is a
+            # hero or a monster — this is what lets the DM pick the side.
+            self.ui_click_zones.append(
+                (r, lambda st=stats: self._add_entity_to_battle(
+                    st, is_player=self.add_entity_is_player)))
 
         # Scroll indicator
         if len(combined) > max_visible:

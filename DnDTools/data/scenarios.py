@@ -590,6 +590,189 @@ SCENARIOS: List[Scenario] = [
         ],
         party_spawns=[(13, 6), (13, 10), (12, 8), (14, 8)],
     ),
+
+    # ================================================================= #
+    # LVL 12 -MÖKKISESSIO — tasapainotetut nimikkokohtaamiset
+    # (Novus Somnium). Kaikki hirviöt ovat data/monsters/lvl12_foes.py.
+    # ================================================================= #
+
+    # --- Kohtaaminen 1: Aterterra — Velve Dro -Eliittipartio ---
+    Scenario(
+        id="lvl12_velve_dro_patrol",
+        name="Aterterra — Velve Dro -Eliittipartio",
+        category="cave",
+        description="Kenraali Dantrag Dyrrin fanaattinen drow-partio iskee "
+                    "pimeistä tunneleista. Kapteeni eristää loitsijat "
+                    "Silencellä; kiipeilijäliskot iskevät katosta.",
+        recommended_party_size=5,
+        recommended_level_min=12, recommended_level_max=12,
+        ceiling_ft=30,
+        tags=("underdark", "drow", "ambush", "darkness"),
+        tiles=_scatter("rock", [(12, 3), (13, 11), (17, 4), (20, 10)])
+              + _scatter("difficult", [(14, 6), (15, 8), (16, 7)])
+              + _scatter("pillar", [(11, 5), (11, 9), (22, 5), (22, 9)]),
+        monsters=[
+            ScenarioMonster("Velve Dro Invisiittori", 19, 7),
+            ScenarioMonster("Velve Dro Varjoterä", 16, 5),
+            ScenarioMonster("Velve Dro Varjoterä", 16, 9),
+            ScenarioMonster("Faerzress-Kiipeilijalisko", 21, 4),
+            ScenarioMonster("Faerzress-Kiipeilijalisko", 21, 10),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
+
+    # --- Kohtaaminen 2: Ravenstone — Dimeriuksen Pimeä Verho ---
+    Scenario(
+        id="lvl12_ravenstone_veil",
+        name="Ravenstone — Dimeriuksen Pimeä Verho",
+        category="urban",
+        description="Vampyyri-kreivitär valvoo kattojen rajassa ja "
+                    "ghoul-murskaajat yrittävät halvaannuttaa ryhmän. "
+                    "Sumuiset, autiot kadut.",
+        recommended_party_size=5,
+        recommended_level_min=12, recommended_level_max=12,
+        weather="Fog",
+        tags=("undead", "vampire", "city", "night"),
+        tiles=_scatter("rubble", [(13, 4), (14, 11), (18, 6), (20, 9)])
+              + _scatter("crate", [(15, 5), (19, 5)])
+              + _scatter("difficult", [(16, 8), (17, 7)]),
+        monsters=[
+            ScenarioMonster("Kreivitar Vila Norgrad", 21, 7),
+            ScenarioMonster("Ravenstonen Ghoul-murskaaja", 15, 5),
+            ScenarioMonster("Ravenstonen Ghoul-murskaaja", 15, 9),
+            ScenarioMonster("Ravenstonen Ghoul-murskaaja", 18, 6),
+            ScenarioMonster("Ravenstonen Ghoul-murskaaja", 18, 10),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
+
+    # --- Kohtaaminen 3: Maclebar Isle — Riskin Eliminointi ---
+    Scenario(
+        id="lvl12_aegis_protocol",
+        name="Maclebar Isle — Riskin Eliminointi -Protokolla",
+        category="dungeon",
+        description="Walker-suvun automaatio lukitsee ovet ja vapauttaa "
+                    "raskaan A.E.G.I.S.-titaanin sekä kellopeli-eliminoijat. "
+                    "Poison Breath hallitsee tilaa.",
+        recommended_party_size=5,
+        recommended_level_min=12, recommended_level_max=12,
+        ceiling_ft=25,
+        tags=("construct", "golem", "indoor", "portal_room"),
+        tiles=_walls_rect(11, 3, 15, 11)
+              + _scatter("door_locked", [(11, 7), (25, 7)])
+              + _scatter("pillar", [(15, 5), (15, 11), (21, 5), (21, 11)]),
+        monsters=[
+            ScenarioMonster("A.E.G.I.S. Titaani", 20, 7),
+            ScenarioMonster("Kellopeli-Eliminoija", 16, 5),
+            ScenarioMonster("Kellopeli-Eliminoija", 16, 9),
+        ],
+        party_spawns=[(13, 5), (13, 7), (13, 9), (14, 6), (14, 8)],
+    ),
+
+    # --- Kohtaaminen 4: Oblitus — Emnarin Vihreän Armeijan Iskujoukko ---
+    Scenario(
+        id="lvl12_shug_orgar_strike",
+        name="Oblitus — Emnarin Iskujoukko (Shug Orgar)",
+        category="outdoor",
+        description="Raskaasti panssaroitu örkkietujoukko käyttää buletteja "
+                    "piirityskoneina. Sotapäällikkö Battle Cry, Verimaagi "
+                    "Haste ja Blight; bulettet kaivautuvat ja hyppäävät.",
+        recommended_party_size=5,
+        recommended_level_min=12, recommended_level_max=12,
+        tags=("orc", "siege", "outdoor", "burrow"),
+        tiles=_scatter("rock", [(12, 4), (13, 10), (18, 3), (22, 11)])
+              + _scatter("difficult", [(14, 6), (15, 8), (16, 5), (17, 9)])
+              + _scatter("crate", [(20, 6), (21, 8)]),
+        monsters=[
+            ScenarioMonster("Shug Orgar -Sotapaallikko", 18, 7),
+            ScenarioMonster("Emnarin Verimaagi", 22, 7),
+            ScenarioMonster("Panssaroitu Sota-Bulette", 15, 5),
+            ScenarioMonster("Panssaroitu Sota-Bulette", 15, 9),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
+
+    # --- 1 vs 1: Krusk vs. Death's Vigilin Puhdistaja ---
+    Scenario(
+        id="lvl12_krusk_vs_purifier",
+        name="Krusk vs. Vigilin Puhdistaja (1 vs 1)",
+        category="outdoor",
+        description="Mortem-jumalan inkvisiittori haastaa Kruskin "
+                    "kaksintaisteluun. Spirit Guardians rajoittaa liikettä; "
+                    "raaka kestävyystaistelu barbaarille.",
+        recommended_party_size=1,
+        recommended_level_min=12, recommended_level_max=12,
+        tags=("duel", "1v1", "cleric", "krusk"),
+        tiles=_scatter("rubble", [(12, 5), (13, 9), (20, 6), (21, 10)])
+              + _scatter("difficult", [(15, 7), (16, 8)]),
+        monsters=[
+            ScenarioMonster("Vigilin Puhdistaja", 18, 7),
+        ],
+        party_spawns=[(8, 7)],
+    ),
+
+    # --- 1 vs 1: Krusk vs. Dimeriuksen Verilähettiläs ---
+    Scenario(
+        id="lvl12_krusk_vs_herald",
+        name="Krusk vs. Verilähettiläs (1 vs 1)",
+        category="urban",
+        description="Dimeriuksen kammottava vampyyri-luomus testaa Kruskia "
+                    "ja toimittaa psykologisen iskun. Mist Step ja "
+                    "Vampiric Bite; kuollessaan räjähtää veripilveksi.",
+        recommended_party_size=1,
+        recommended_level_min=12, recommended_level_max=12,
+        weather="Fog",
+        tags=("duel", "1v1", "vampire", "krusk"),
+        tiles=_scatter("crate", [(14, 5), (19, 9)])
+              + _scatter("rubble", [(16, 7), (17, 6)]),
+        monsters=[
+            ScenarioMonster("Verilahettilas", 17, 7),
+        ],
+        party_spawns=[(8, 7)],
+    ),
+
+    # --- 1 vs 1: Padak vs. Ravenstonen Yövaanija ---
+    Scenario(
+        id="lvl12_padak_vs_stalker",
+        name="Padak vs. Crimson Night-Stalker (1 vs 1)",
+        category="urban",
+        description="Gargoylen ja vampyyrin risteytys metsästää Padakia. "
+                    "Yhtä nopea kuin Padak: Pounce katosta, Terrifying Howl "
+                    "estää pakenemasta. Puhdasta selviytymiskauhua.",
+        recommended_party_size=1,
+        recommended_level_min=12, recommended_level_max=12,
+        weather="Fog",
+        tags=("duel", "1v1", "undead", "padak"),
+        tiles=_scatter("rubble", [(13, 5), (14, 10), (19, 4), (20, 11)])
+              + _scatter("pillar", [(16, 6), (18, 9)]),
+        monsters=[
+            ScenarioMonster("Crimson Night-Stalker", 18, 7),
+        ],
+        party_spawns=[(8, 7)],
+    ),
+
+    # --- Ryhmä vs. Red Dagger -Salamurhaajat ---
+    Scenario(
+        id="lvl12_red_dagger_ambush",
+        name="Frand — Red Dagger -Salamurhaajat",
+        category="urban",
+        description="Red Dagger -kilta iskee monesta suunnasta savua ja "
+                    "myrkkyä hyödyntäen. Pyöveli sitoo raskaat iskijät reach "
+                    "10:llä; varjokulkijat iskevät loitsijoihin varjoista.",
+        recommended_party_size=5,
+        recommended_level_min=12, recommended_level_max=12,
+        tags=("assassin", "ambush", "city", "poison"),
+        tiles=_scatter("crate", [(13, 4), (14, 11), (19, 5), (21, 10)])
+              + _scatter("rubble", [(15, 7), (16, 8), (18, 6)])
+              + _scatter("difficult", [(17, 9)]),
+        monsters=[
+            ScenarioMonster("Red Dagger -Pyoveli", 18, 7),
+            ScenarioMonster("Red Dagger -Varjokulkija", 15, 4),
+            ScenarioMonster("Red Dagger -Varjokulkija", 15, 10),
+            ScenarioMonster("Red Dagger -Varjokulkija", 21, 7),
+        ],
+        party_spawns=_PARTY_WEST,
+    ),
 ]
 
 

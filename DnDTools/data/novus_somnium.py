@@ -499,6 +499,8 @@ def build_novus_somnium() -> Campaign:
     from data import novus_somnium_lore as _lore
     _lore.augment_campaign(camp, world)
     camp.world_data = _serialize_world_for_campaign(world)
+    # Deep Aterterra / cosmology reveals as DM lore notes.
+    camp.notes.extend(_lore.lore_campaign_notes())
     # Cross-link: Frand city → world location id
     tarmaas = _kg.find_kingdom(camp, "tarmaas")
     if tarmaas:

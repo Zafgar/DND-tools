@@ -238,6 +238,12 @@ class CreatureStats:
     spell_slots: Dict[str, int] = field(default_factory=dict)
     spells_known: List[SpellInfo] = field(default_factory=list)
     cantrips: List[SpellInfo] = field(default_factory=list)
+    # Preferred authoring: reference spells by NAME so the single central
+    # library (data/spells.py) is the source of truth. When set, these are
+    # resolved into spells_known/cantrips at construction — stat blocks no
+    # longer hand-hold their own SpellInfo copies.
+    spell_names: List[str] = field(default_factory=list)
+    cantrip_names: List[str] = field(default_factory=list)
     # Traits and special abilities
     features: List[Feature] = field(default_factory=list)
     legendary_action_count: int = 0
@@ -270,3 +276,23 @@ class CreatureStats:
                                        # gems worth 100 gp each", etc.)
     habitat: str = ""                 # "Mountain", "Underdark", "Abyss"
     sources: str = ""                 # "MM p.286", "VGM p.135"
+
+    def __post_init__(self):
+        # Resolve name-referenced spells from the central library so a
+        # stat block only needs to list spell NAMES. The library
+        # (data/spells.py) stays the single source of truth. Lazy import
+        # avoids a models<->spells circular import.
+        if self.spell_names or self.cantrip_names:
+            try:
+                from data.spells import get_spell
+            except Exception:
+                get_spell = None
+            if get_spell is not None:
+                if self.spell_names and not self.spells_known:
+                    self.spells_known = [get_spell(n) for n in self.spell_names]
+                if self.cantrip_names and not self.cantrips:
+                    self.cantrips = [
+                        get_spell(n, attack_bonus_fixed=self.spell_attack_bonus)
+                        if self.spell_attack_bonus else get_spell(n)
+                        for n in self.cantrip_names
+                    ]

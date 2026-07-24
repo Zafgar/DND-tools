@@ -137,6 +137,14 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.auto_timer = 0         # Timer for auto-play ticks
         self.auto_battle_speed = 10 # Frames per tick (lower = faster). Options: 3, 6, 10, 20, 40
         self.auto_battle_mode = "full"  # "full" = AI plays everyone, "npc" = AI plays NPCs only
+        # DM-facing AI mode (one dial for the whole table flow):
+        #   "manual"    – no automation, DM drives everything
+        #   "suggest"   – DEFAULT: at each NPC turn the AI queues a plan
+        #                 and the DM approves / fails / re-rolls each step
+        #   "npc_auto"  – AI plays NPC turns to completion, pauses when a
+        #                 PLAYER could react (Counterspell, OA, saves)
+        #   "full_auto" – full simulation, AI plays both sides
+        self.ai_mode = "suggest"
         self.log_filter_mode = "all" # "all", "selected", "damage", "healing", "conditions", "rolls"
 
         # Direct HP input mode (type "-17" Enter to apply damage)
@@ -176,6 +184,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # Aura / Turn Start triggers
         self.aura_triggers = []
         self.current_aura_trigger = None
+
+        # Deferred PLAYER concentration checks — at a physical table the
+        # player rolls; each queued dict: {entity, dc, dmg, spell}.
+        self.pending_conc_checks: list = []
+        import engine.entities as _entities_mod
+        _entities_mod.CONCENTRATION_PROMPT_HOOK = self._concentration_hook
 
         # Context menu
         self.ctx_open = False
@@ -309,22 +323,23 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._open_save_modal,      color=COLORS["panel"])
         self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
         self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
-        self.btn_save_map = Button(696, SCREEN_HEIGHT-65, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
-        self.btn_env     = Button(783, SCREEN_HEIGHT-65, 60, 35, "ENV",     self._open_env_modal,       color=COLORS["panel"])
+        self.btn_save_map = Button(750, SCREEN_HEIGHT-65, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
+        self.btn_env     = Button(838, SCREEN_HEIGHT-65, 60, 35, "ENV",     self._open_env_modal,       color=COLORS["panel"])
         self.map_save_menu_open = False
         self._env_modal = None
         self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
         self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
-        self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 72, 35, "AUTO",      self._toggle_auto_battle,   color=COLORS["panel"])
-        self.btn_auto_mode = Button(530, SCREEN_HEIGHT-65, 50, 35, "FULL",    self._toggle_auto_mode,     color=COLORS["accent"])
+        self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 126, 35, "AI: EHDOTA", self._cycle_ai_mode,      color=COLORS["spell"])
         self.btn_pause   = Button(454, SCREEN_HEIGHT-28, 72, 24, "PAUSE",     self._toggle_pause_auto,    color=COLORS["panel"])
         self.btn_speed_down = Button(530, SCREEN_HEIGHT-28, 24, 24, "-",       self._auto_speed_down,      color=COLORS["panel"])
         self.btn_speed_lbl  = Button(554, SCREEN_HEIGHT-28, 36, 24, "1x",      lambda: None,               color=COLORS["text_dim"])
         self.btn_speed_up   = Button(590, SCREEN_HEIGHT-28, 24, 24, "+",       self._auto_speed_up,        color=COLORS["panel"])
-        self.btn_advisor = Button(532, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
-        self.btn_maps    = Button(618, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
+        self.btn_advisor = Button(586, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
+        self.btn_maps    = Button(672, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
         self.map_browser_open = False
-        self.btn_add_entity = Button(784, SCREEN_HEIGHT-65, 72, 35, "ADD", self._toggle_add_entity_modal, color=COLORS["spell"])
+        self.btn_dm_move = Button(904, SCREEN_HEIGHT-65, 94, 35, "DM SIIRTO", self._toggle_dm_move,      color=COLORS["panel"])
+        self.dm_move_mode = False   # DM free move: no movement cost, no OA (ALT-drag works too)
+        self.btn_add_entity = Button(1004, SCREEN_HEIGHT-65, 72, 35, "ADD", self._toggle_add_entity_modal, color=COLORS["spell"])
         self.add_entity_open = False
         self.add_entity_search = ""
         self.add_entity_scroll = 0
@@ -352,6 +367,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                                       "APPROVE ALL", lambda: self._approve_all(), color=COLORS["accent"])
         self.btn_cancel_ai  = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+225, 130, 38,
                                       "DO MANUALLY", lambda: self._cancel_ai_plan(), color=COLORS["warning"])
+        self.btn_reroll = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+270, 130, 38,
+                                 "UUSI EHDOTUS", lambda: self._reroll_ai_plan(), color=COLORS["spell"])
 
         # Player action buttons
         self.player_action_btns = [
@@ -366,52 +383,80 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             Button(0, 0, 120, 35, "Done",      lambda: self._close_player_panel(),  color=COLORS["text_dim"]),
         ]
 
-    def _toggle_auto_battle(self):
-        self.auto_battle = not self.auto_battle
+    # ------------------------------------------------------------------ #
+    # AI mode dial: MANUAALI -> EHDOTA -> NPC-AUTO -> TÄYSI SIM
+    # ------------------------------------------------------------------ #
+    _AI_MODES = ("manual", "suggest", "npc_auto", "full_auto")
+    _AI_MODE_LABELS = {
+        "manual":    ("AI: POIS",     "panel"),
+        "suggest":   ("AI: EHDOTA",   "spell"),
+        "npc_auto":  ("AI: NPC-AUTO", "accent"),
+        "full_auto": ("AI: TÄYSI SIM", "success"),
+    }
+    _AI_MODE_DESCS = {
+        "manual":    "DM ohjaa kaiken itse.",
+        "suggest":   "AI ehdottaa NPC-vuorot; DM hyväksyy/failaa/pyytää uuden.",
+        "npc_auto":  "AI pelaa NPC:t loppuun; pysähtyy pelaajien reaktioihin.",
+        "full_auto": "Täysi simulaatio – AI pelaa molemmat puolet.",
+    }
+
+    def _cycle_ai_mode(self):
+        idx = self._AI_MODES.index(self.ai_mode)
+        self._set_ai_mode(self._AI_MODES[(idx + 1) % len(self._AI_MODES)])
+
+    def _set_ai_mode(self, mode):
+        self.ai_mode = mode
         self.auto_battle_paused = False
-        if self.auto_battle:
-            # Phase 11a: if the DM hits AUTO before clicking START
-            # COMBAT, auto-start so the toggle isn't a silent no-op.
+        if mode in ("npc_auto", "full_auto"):
+            # Auto modes: if the DM flips the dial before START COMBAT,
+            # auto-start so the toggle isn't a silent no-op.
             if not self.battle.combat_started:
                 if not self.battle.entities:
-                    self._log("[SYSTEM] Auto-Battle aborted — "
-                               "no entities on the field.")
-                    self.auto_battle = False
-                    return
-                try:
-                    self.battle.start_combat()
-                    self._log("[SYSTEM] Auto-Battle: combat auto-started "
-                               "(no manual START COMBAT needed).")
-                except Exception as ex:
-                    self._log(f"[SYSTEM] Auto-Battle could not start "
-                               f"combat: {ex}.")
-                    self.auto_battle = False
-                    return
-            self.btn_auto.color = COLORS["success"]
-            self.btn_auto.text = "STOP"
-            self.btn_pause.color = COLORS["warning"]
-            self.btn_pause.text = "PAUSE"
-            mode_label = "FULL (Players+NPCs)" if self.auto_battle_mode == "full" else "NPC Only"
-            self._log(f"[SYSTEM] Auto-Battle STARTED – Mode: {mode_label}")
-        else:
-            self.btn_auto.color = COLORS["panel"]
-            self.btn_auto.text = "AUTO"
-            self.btn_pause.color = COLORS["panel"]
-            self.btn_pause.text = "PAUSE"
-            self._log("[SYSTEM] Auto-Battle STOPPED.")
+                    self._log("[SYSTEM] AI-tila hylätty — kentällä ei hahmoja.")
+                    self.ai_mode = "suggest"
+                    mode = "suggest"
+                else:
+                    try:
+                        self.battle.start_combat()
+                        self._log("[SYSTEM] Taistelu käynnistetty automaattisesti.")
+                    except Exception as ex:
+                        self._log(f"[SYSTEM] Taistelun käynnistys epäonnistui: {ex}.")
+                        self.ai_mode = "suggest"
+                        mode = "suggest"
+        self.auto_battle = mode in ("npc_auto", "full_auto")
+        self.auto_battle_mode = "full" if mode == "full_auto" else "npc"
+        label, colkey = self._AI_MODE_LABELS[mode]
+        self.btn_auto.text = label
+        self.btn_auto.color = COLORS[colkey]
+        self.btn_pause.color = COLORS["warning"] if self.auto_battle else COLORS["panel"]
+        self.btn_pause.text = "PAUSE"
+        self._log(f"[SYSTEM] {label} — {self._AI_MODE_DESCS[mode]}")
+        # Entering suggest mode mid-NPC-turn: queue a suggestion at once.
+        if (mode == "suggest" and self.battle.combat_started
+                and not self.pending_plan):
+            try:
+                curr = self.battle.get_current_entity()
+                if not curr.is_player and curr.hp > 0 and not curr.action_used:
+                    self._do_ai_turn()
+            except ValueError:
+                pass
+
+    def _toggle_auto_battle(self):
+        """Legacy toggle kept for muscle memory/tests: flips between the
+        full simulation and the default suggest mode."""
+        self._set_ai_mode("suggest" if self.auto_battle else "full_auto")
 
     def _toggle_auto_mode(self):
-        """Toggle between 'full' (AI plays everyone) and 'npc' (AI plays NPCs only)."""
-        if self.auto_battle_mode == "full":
-            self.auto_battle_mode = "npc"
-            self.btn_auto_mode.text = "NPC"
-            self.btn_auto_mode.color = COLORS["panel"]
-            self._log("[SYSTEM] Auto mode: NPC only (players manual).")
-        else:
-            self.auto_battle_mode = "full"
-            self.btn_auto_mode.text = "FULL"
-            self.btn_auto_mode.color = COLORS["accent"]
-            self._log("[SYSTEM] Auto mode: FULL (AI plays everyone).")
+        """Legacy toggle kept for tests: NPC-auto <-> full sim."""
+        self._set_ai_mode("npc_auto" if self.auto_battle_mode == "full"
+                          else "full_auto")
+
+    def _toggle_dm_move(self):
+        self.dm_move_mode = not self.dm_move_mode
+        self.btn_dm_move.color = COLORS["warning"] if self.dm_move_mode else COLORS["panel"]
+        self._log("[DM] Vapaa siirto: " +
+                  ("PÄÄLLÄ — raahaus ei kuluta liikettä eikä provosoi (ALT-raahaus toimii aina)."
+                   if self.dm_move_mode else "pois."))
 
     def _toggle_pause_auto(self):
         if not self.auto_battle:
@@ -456,8 +501,20 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._resolve_aura(success)
             return
 
-        # 2. Handle Reactions (smart AI decisions)
+        # 1b. Deferred player concentration checks: in full sim they are
+        # auto-rolled; in NPC-auto the DM/player resolves the modal.
+        if self.pending_conc_checks:
+            if self.auto_battle_mode == "full":
+                self._roll_conc_check()
+            return
+
+        # 2. Handle Reactions (smart AI decisions). In NPC-auto mode a
+        # PLAYER's reaction (Counterspell, opportunity attack...) pauses
+        # the sim so the player decides at the table.
         if self.reaction_pending:
+            if (self.auto_battle_mode == "npc"
+                    and self.reaction_pending[0].is_player):
+                return  # reaction modal stays up for the DM/player
             if self.reaction_type == "counterspell":
                 reactor = self.reaction_pending[0]
                 ctx = self.reaction_context or {}
@@ -477,8 +534,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 self._resolve_reaction(True)
             return
 
-        # 3. Handle Pending Saves modal (auto-roll in auto battle)
+        # 3. Handle Pending Saves modal (auto-roll in auto battle).
+        # NPC-auto: a PLAYER's end-of-turn save stays with the table.
         if self.save_modal_open and self.pending_saves:
+            if (self.auto_battle_mode == "npc"
+                    and self.pending_saves[0][0].is_player):
+                return
             self._auto_resolve_pending_saves()
             return
 
@@ -621,8 +682,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
     def _spawn_damage_text(self, entity, amount, is_heal=False, damage_type=""):
         color = COLORS["success"] if is_heal else COLORS["danger"]
-        prefix = "+" if is_heal else "-"
-        text = f"{prefix}{abs(amount)}"
+        # ``amount`` may be a numeric delta or a label string ("Shield!",
+        # "Parry!", "Absorb!", "Dodge!", ...). Labels render verbatim.
+        if isinstance(amount, str):
+            text = amount
+        else:
+            prefix = "+" if is_heal else "-"
+            text = f"{prefix}{abs(amount)}"
         ft = FloatingText(entity.grid_x, entity.grid_y, text, color)
         self.floating_texts.append(ft)
         # Impact flash effect
@@ -711,10 +777,22 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log("Combat started! Initiative rolled.")
             curr = self.battle.get_current_entity()
             self._log(f"--- Round {self.battle.round}: {curr.name}'s turn ---")
+            self.selected_entity = curr
+            if curr.is_player and (curr.conditions or curr.concentrating_on):
+                self.condition_reminder = curr
+            # EHDOTA mode: if an NPC wins initiative, queue its plan at
+            # once so the DM has a suggestion from the very first turn.
+            if (self.ai_mode == "suggest" and not curr.is_player
+                    and curr.hp > 0 and not curr.is_incapacitated()):
+                self._do_ai_turn()
         except ValueError as e:
             self._log(f"[ERROR] Failed to start combat: {e}")
 
     def _do_next_turn(self):
+        if self.pending_conc_checks:
+            self._log("[MUISTUTUS] Ratkaise concentration-heitto ensin "
+                      "(SÄILYY / KATKEAA / HEITÄ).")
+            return
         self._save_undo_snapshot()
         # 1. Check for pending Legendary Actions from the previous turn
         leg_ent, leg_step = self.battle.get_pending_legendary_action()
@@ -739,13 +817,15 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     if meta.get("save") and meta.get("dc"):
                         saves.append((curr, cond, meta["save"], meta["dc"]))
                 if saves:
-                    if self.auto_battle:
+                    auto_roll = self.auto_battle and (
+                        self.auto_battle_mode == "full" or not curr.is_player)
+                    if auto_roll:
                         # Auto-roll all saves immediately
                         self.pending_saves = saves
                         self._auto_resolve_pending_saves()
                         return
                     elif curr.is_player:
-                        # Manual mode: show save modal for players
+                        # Table mode: the player rolls — show save modal
                         self.pending_saves = saves
                         self.save_modal_open = True
                         return
@@ -781,6 +861,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         else:
             self.dm_suggestion_cache = None
             self.dm_rating_cache = None
+            # EHDOTA mode (the default table flow): queue the AI's plan
+            # for this NPC immediately so the DM only reviews/approves.
+            if (self.ai_mode == "suggest" and self.battle.combat_started
+                    and curr.hp > 0 and not curr.is_incapacitated()
+                    and not self.pending_plan):
+                self._do_ai_turn()
 
         # Track that entity is active this round
         self.battle.stats_tracker.record_round_active(curr.name, curr.is_player)
@@ -884,6 +970,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             "grid_x": curr.grid_x,
             "grid_y": curr.grid_y,
             "reckless_attack_active": curr.reckless_attack_active,
+            "potion_used_this_turn": getattr(curr, "potion_used_this_turn", False),
         }
         plan = self.battle.compute_ai_turn(curr)
         if plan.skipped:
@@ -963,6 +1050,27 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     self.reaction_type = "counterspell"
                     self.reaction_context = {"caster": step.attacker, "level": lvl, "step_idx": self.pending_step_idx}
                     return # Pause confirmation to ask for reaction
+
+            # --- Opportunity Attack Check (AI movement) ---
+            # The move step's new position was already applied during
+            # planning. If leaving an enemy's reach provokes OAs, revert
+            # to the origin, hand off to the same reaction flow the
+            # player-drag path uses, and resume the AI turn afterwards.
+            if step.step_type == "move" and step.attacker and not step.counter_checked:
+                step.counter_checked = True
+                mover = step.attacker
+                new_x, new_y = mover.grid_x, mover.grid_y
+                oas = self.battle.check_opportunity_attacks(
+                    mover, step.old_x, step.old_y)
+                if oas:
+                    mover.grid_x, mover.grid_y = step.old_x, step.old_y
+                    self.reaction_pending = list(oas)
+                    self.reaction_type = "oa"
+                    self.pending_move = (mover, new_x, new_y)
+                    self.reaction_context = {"resume_ai_step": True}
+                    self._log(f"[REACTION] {mover.name}'s move provokes "
+                              f"{len(oas)} opportunity attack(s)!")
+                    return  # Pause; _resolve_reaction resumes the plan
 
             # Handle summon spawning
             if step.step_type == "summon" and step.summon_name:
@@ -1076,6 +1184,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             entity.grid_x = self._pre_plan_state.get("grid_x", entity.grid_x)
             entity.grid_y = self._pre_plan_state.get("grid_y", entity.grid_y)
             entity.reckless_attack_active = self._pre_plan_state.get("reckless_attack_active", False)
+            entity.potion_used_this_turn = self._pre_plan_state.get("potion_used_this_turn", False)
             self._pre_plan_state = None
 
         self.pending_plan = None
@@ -1083,6 +1192,130 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.current_step_outcomes = {}
         self.current_step_rolls = {}
         self._log(f"[AI] Plan cancelled ({remaining} step(s) remaining). Take over manually.")
+
+    def _reroll_ai_plan(self):
+        """DM asks for a fresh suggestion: discard the pending plan
+        (restoring the actor's action economy/position) and re-plan."""
+        if not self.pending_plan:
+            return
+        entity = self.pending_plan.entity
+        self._cancel_ai_plan()
+        self._log("[AI] Lasketaan uusi ehdotus...")
+        if entity is not None:
+            self._do_ai_turn()
+
+    # ------------------------------------------------------------------ #
+    # DM free move — reposition tokens without spending movement or
+    # provoking; the AI immediately re-evaluates its suggestion.
+    # ------------------------------------------------------------------ #
+    def _dm_move_entity(self, entity, gx, gy):
+        if self.battle.is_occupied(gx, gy, exclude=entity):
+            self._log("[DM] Ruutu on varattu.")
+            return False
+        self._save_undo_snapshot()
+        entity.grid_x = gx
+        entity.grid_y = gy
+        self._log(f"[DM SIIRTO] {entity.name} -> ({gx:.0f},{gy:.0f}) "
+                  "(ei liikettä, ei provosointia).")
+        # A pending AI plan was computed against the old positions —
+        # recompute so the suggestion reflects the new board state.
+        if self.pending_plan is not None:
+            planner = self.pending_plan.entity
+            self._cancel_ai_plan()
+            if planner is not None and planner.hp > 0:
+                self._log("[AI] Ehdotus päivitetty uuden sijainnin mukaan.")
+                self._do_ai_turn()
+        return True
+
+    # ------------------------------------------------------------------ #
+    # Player concentration checks — deferred to the table
+    # ------------------------------------------------------------------ #
+    def _concentration_hook(self, entity, dc, dmg):
+        """Called by the engine when a PLAYER takes damage while
+        concentrating. Returns True to claim the check (the player rolls
+        at the table); False lets the engine auto-roll (simulation)."""
+        # Only claim checks for creatures in THIS battle (the hook is a
+        # module global — a stale BattleState must never hijack others).
+        if entity not in self.battle.entities:
+            return False
+        if not self.battle.combat_started:
+            return False
+        if self.auto_battle and self.auto_battle_mode == "full":
+            return False
+        spell = entity.concentrating_on.name if entity.concentrating_on else "?"
+        self.pending_conc_checks.append(
+            {"entity": entity, "dc": dc, "dmg": dmg, "spell": spell})
+        self._log(f"[CONCENTRATION] {entity.name} otti {dmg} vahinkoa — "
+                  f"CON-save DC {dc} tai {spell} katkeaa! (pelaaja heittää)")
+        return True
+
+    def _resolve_conc_check(self, kept: bool):
+        if not self.pending_conc_checks:
+            return
+        chk = self.pending_conc_checks.pop(0)
+        ent = chk["entity"]
+        if kept:
+            self._log(f"[CONCENTRATION] {ent.name}: save onnistui — "
+                      f"{chk['spell']} säilyy.")
+        else:
+            ent.drop_concentration()
+            self._cleanup_dropped_spell_terrain()
+            self._spawn_damage_text(ent, "Conc!", is_heal=False)
+            self._log(f"[CONCENTRATION] {ent.name}: save epäonnistui — "
+                      f"{chk['spell']} katkeaa!")
+
+    def _roll_conc_check(self):
+        """DM asks the tool to roll the deferred concentration save
+        (War Caster advantage respected)."""
+        if not self.pending_conc_checks:
+            return
+        chk = self.pending_conc_checks[0]
+        ent = chk["entity"]
+        bonus = ent.get_save_bonus("Constitution")
+        r1 = random.randint(1, 20)
+        roll = r1 + bonus
+        note = f"d20={r1}"
+        if ent.has_feature("war_caster"):
+            r2 = random.randint(1, 20)
+            roll = max(r1, r2) + bonus
+            note = f"d20={r1}/{r2} (etu, War Caster)"
+        kept = roll >= chk["dc"]
+        self._log(f"[CONCENTRATION] {ent.name} heitto {roll} ({note}) "
+                  f"vs DC {chk['dc']}.")
+        self._resolve_conc_check(kept)
+
+    def _restore_all_slots(self, entity):
+        """Quick spell-slot refill for the selected creature (short-rest
+        fudge / DM fiat) — table play needs this fast."""
+        if not entity or not entity.stats.spell_slots:
+            return
+        self._save_undo_snapshot()
+        entity.spell_slots = dict(entity.stats.spell_slots)
+        self._log(f"[DM] {entity.name}: kaikki loitsupaikat palautettu.")
+
+    # Reaction spells a character might be able to throw as a reaction.
+    _REACTION_SPELLS = ("Shield", "Counterspell", "Absorb Elements",
+                        "Hellish Rebuke", "Silvery Barbs", "Feather Fall")
+
+    def _list_reaction_options(self, reactor):
+        """All reaction tools this creature has — shown in the reaction
+        modal so the table remembers what the character could do."""
+        opts = []
+        if reactor.reaction_used:
+            return ["(reaktio jo käytetty tällä kierroksella)"]
+        for f in reactor.stats.features:
+            if f.feature_type == "reaction":
+                opts.append(f.name)
+            elif f.mechanic == "uncanny_dodge":
+                opts.append("Uncanny Dodge (puolita osuman vahinko)")
+        known = {s.name for s in (reactor.stats.spells_known or [])}
+        for sp in self._REACTION_SPELLS:
+            if sp in known:
+                lvl = 1 if sp != "Counterspell" else 3
+                if sp == "Feather Fall" or reactor.has_spell_slot(lvl):
+                    opts.append(f"{sp} (loitsu)")
+        opts.append("Opportunity Attack (kun vihollinen poistuu ulottuvilta)")
+        return opts
 
     def _resolve_target_outcome(self, step, target, outcome):
         """Apply effects based on user choice."""
@@ -1248,7 +1481,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     evasion_on_fail = True
 
                 old_hp = target.hp
-                dealt, broke = target.take_damage(dmg, step.damage_type, is_magical=step.is_magical)
+                dealt, broke = target.take_damage(
+                    dmg, step.damage_type, is_magical=step.is_magical,
+                    source=step.attacker,
+                    is_crit=bool(getattr(step, "is_crit", False)))
 
                 # --- AI REACTION CHECK (Hellish Rebuke) ---
                 if not target.is_player and not target.reaction_used and dealt > 0 and step.attacker:
@@ -1321,12 +1557,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                             killer_is_player=step.attacker.is_player if step.attacker else False,
                             target_is_player=target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Damage at 0 HP → death save failures are applied inside
+                # take_damage (1 normally, 2 on a crit, instant death if
+                # damage >= HP max). We only log the resulting state here.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    failures = 2 if outcome == "crit" else 1
-                    target.death_save_failures += failures
-                    target.death_save_history.extend(["F"] * failures)
-                    self._log(f"  -> {target.name} suffers {failures} death save failure(s)!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3.")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
                         # Record kill if not already recorded
@@ -1353,6 +1589,11 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     dropped_spell = step.attacker.start_concentration(step.spell)
                     if dropped_spell:
                         self._log(f"  -> {step.attacker.name} stops concentrating on {dropped_spell.name}.")
+                    # Link the applied condition to the caster's
+                    # concentration so it ends the moment
+                    # concentration breaks (PHB p.203).
+                    step.attacker.register_concentration_effect(
+                        target, "condition", cond)
                 self._log(f"  -> {target.name} is {cond}")
 
                 # Special handling for Banishment: Remove from map immediately
@@ -1399,11 +1640,20 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                      
                      target.active_effects[step.spell.name] = rounds
                      self._log(f"  -> {step.spell.name} applied ({rounds} rnds)")
+                     # Buffs sustained by concentration (Bless, Haste,
+                     # …) must vanish when the caster's concentration
+                     # ends — link them to the caster.
+                     if step.spell.concentration and step.attacker:
+                         step.attacker.register_concentration_effect(
+                             target, "effect", step.spell.name)
 
         elif outcome == "save":
-            # Half damage (usually), no condition
-            half_dmg = dmg // 2
-            
+            # Half damage on save — UNLESS the spell negates on save
+            # (half_on_save=False, e.g. Sacred Flame, Poison Spray).
+            negates = bool(step.spell) and not getattr(
+                step.spell, "half_on_save", True)
+            half_dmg = 0 if negates else dmg // 2
+
             # Evasion (Success): No damage instead of half
             if step.save_ability == "Dexterity" and target.has_feature("evasion"):
                 half_dmg = 0
@@ -1426,11 +1676,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 if target.hp <= 0 and old_hp > 0:
                     self.battle.stats_tracker.record_downed(rnd, target.name, target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Death save failures applied inside take_damage; log only.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    target.death_save_failures += 1
-                    target.death_save_history.append("F")
-                    self._log(f"  -> {target.name} suffers 1 death save failure!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3.")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
 
@@ -1455,7 +1704,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
             if final_dmg > 0:
                 old_hp = target.hp
-                dealt, broke = target.take_damage(final_dmg, step.damage_type, is_magical=step.is_magical)
+                dealt, broke = target.take_damage(
+                    final_dmg, step.damage_type, is_magical=step.is_magical,
+                    source=step.attacker, is_crit=True)
                 self._log(f"  -> {target.name} takes {dealt} {step.damage_type} (CRIT)")
                 self._spawn_damage_text(target, dealt)
                 self.battle.stats_tracker.record_damage(
@@ -1471,12 +1722,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                             killer_is_player=step.attacker.is_player if step.attacker else False,
                             target_is_player=target.is_player)
                 
-                # Check for death save failure (Damage at 0 HP)
+                # Death save failures (2 on crit) applied inside take_damage.
                 elif target.hp <= 0 and old_hp <= 0 and target.is_player:
-                    failures = 2 # Crits cause 2 failures
-                    target.death_save_failures += failures
-                    target.death_save_history.extend(["F"] * failures)
-                    self._log(f"  -> {target.name} suffers {failures} death save failures (CRIT)!")
+                    self._log(f"  -> {target.name}: kuolinheitto-epäonnistumisia "
+                              f"{target.death_save_failures}/3 (CRIT).")
                     if target.death_save_failures >= 3:
                         self._log(f"  -> {target.name} has DIED!")
 
@@ -1602,6 +1851,11 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self._log(f"[DM] {sel.name} {action_str}. HP: {sel.hp}/{sel.max_hp}")
         self._update_win_probability()
         self._check_battle_end()
+
+    def _move_in_order(self, entity, direction):
+        """Turn-order edit from the initiative bar arrows."""
+        self._save_undo_snapshot()
+        self.battle.move_in_initiative(entity, direction)
 
     def _modify_init(self, delta):
         if self.selected_entity:
@@ -2415,7 +2669,17 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 mover.grid_x = dest_x
                 mover.grid_y = dest_y
                 self.pending_move = None
-        
+                # If this OA interrupted an AI move step, advance the AI
+                # plan past that step now that the reaction is resolved.
+                if (self.reaction_context or {}).get("resume_ai_step") \
+                        and self.pending_plan:
+                    self.reaction_context = {}
+                    self.pending_step_idx += 1
+                    self._prepare_step_outcomes()
+                    if self.pending_step_idx >= len(self.pending_plan.steps):
+                        self.pending_plan = None
+                        self._log("[AI] Turn complete.")
+
         elif self.reaction_type == "counterspell":
             if allowed:
                 self._log(f"[REACTION] {reactor.name} uses Counterspell (Slot expended).")

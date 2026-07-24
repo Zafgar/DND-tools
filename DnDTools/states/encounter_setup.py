@@ -18,6 +18,7 @@ class EncounterSetupState(GameState):
         self.roster = []
         self.scroll_monster = 0
         self.scroll_hero    = 0
+        self.scroll_cr      = 0
         self.importing = False
         self.ts_last_update = 0
         all_monsters = library.get_all_monsters()
@@ -72,10 +73,14 @@ class EncounterSetupState(GameState):
                    self._export_heroes_file, color=COLORS["neutral"]),
             Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-385, 230, 45, "Load Scenario...",
                    self._open_scenario_picker, color=COLORS["accent"]),
+            Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-440, 230, 45, "Load Party...",
+                   self._open_party_picker, color=COLORS["spell"]),
         ]
 
         # Scenario picker modal (lazy — created on first open)
         self._scenario_picker = None
+        # Party picker modal (lazy — created on first open)
+        self._party_picker = None
         # Pending scenario to apply on _start_battle (terrain/ceiling/bg)
         self._pending_scenario = None
 
@@ -319,7 +324,26 @@ class EncounterSetupState(GameState):
         )
         self._pending_scenario = scenario
 
+    def _open_party_picker(self):
+        from states.party_picker_modal import PartyPickerModal
+        if self._party_picker is None:
+            self._party_picker = PartyPickerModal(
+                on_load=self._apply_party_pick
+            )
+        self._party_picker.open()
+
+    def _apply_party_pick(self, preset):
+        """DM confirmed a party preset — add its available members to the
+        roster (skipping any already present or not yet in the library)."""
+        from data.party_presets import preset_as_entities
+        self.roster.extend(preset_as_entities(preset, self.roster))
+
     def handle_events(self, events):
+        # Party modal intercepts all events when open
+        if self._party_picker is not None and self._party_picker.is_open:
+            for event in events:
+                self._party_picker.handle_event(event)
+            return
         # Scenario modal intercepts all events when open
         if self._scenario_picker is not None and self._scenario_picker.is_open:
             for event in events:
@@ -341,11 +365,21 @@ class EncounterSetupState(GameState):
                 self._update_monster_list()
 
             if event.type == pygame.MOUSEWHEEL:
-                if pygame.mouse.get_pos()[0] < 160:
-                    self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
-                else:
+                # Scroll the column under the cursor: CR list, monster
+                # list or hero list. (Previously the CR column scrolled
+                # the hero list and could itself never scroll, leaving
+                # CR 21+ unreachable below the screen edge.)
+                mx = pygame.mouse.get_pos()[0]
+                if mx < 160:
+                    self.scroll_cr = min(0, self.scroll_cr + event.y * 25)
+                elif mx < 430:
                     self.scroll_monster = min(0, self.scroll_monster + event.y * 25)
-            for b in self.action_btns + self.cr_btns + [self.btn_plane, self.btn_lair]:
+                elif mx < 700:
+                    self.scroll_hero = min(0, self.scroll_hero + event.y * 25)
+            for b in self.action_btns + [self.btn_plane, self.btn_lair]:
+                b.handle_event(event)
+            for i, b in enumerate(self.cr_btns):
+                b.rect.y = 130 + i * 40 + self.scroll_cr
                 b.handle_event(event)
             for i, b in enumerate(self.hero_btns):
                 b.rect.y = 130 + i * 40 + self.scroll_hero
@@ -382,11 +416,15 @@ class EncounterSetupState(GameState):
         # Column labels
         for lbl, x in [("CR Level", 30), ("Monsters", 160), ("Heroes", 430), ("Roster", 700)]:
             screen.blit(fonts.small.render(lbl, True, COLORS["text_dim"]), (x, 110))
-        # CR buttons
-        for b in self.cr_btns:
+        # CR buttons (clipped + scrollable)
+        clip_cr = pygame.Rect(0, 120, 160, SCREEN_HEIGHT - 130)
+        screen.set_clip(clip_cr)
+        for i, b in enumerate(self.cr_btns):
+            b.rect.y = 130 + i * 40 + self.scroll_cr
             if self.selected_cr is not None and b.text == (f"CR {self.selected_cr:.3g}" if self.selected_cr % 1 != 0 else f"CR {int(self.selected_cr)}"):
                 pygame.draw.rect(screen, COLORS["accent"], b.rect.inflate(4, 4), 2, border_radius=6)
             b.draw(screen, mp)
+        screen.set_clip(None)
         # Monster buttons (clipped)
         clip = pygame.Rect(160, 120, 260, SCREEN_HEIGHT - 200)
         screen.set_clip(clip)
@@ -469,6 +507,8 @@ class EncounterSetupState(GameState):
         # Modal on top
         if self._scenario_picker is not None:
             self._scenario_picker.draw(screen)
+        if self._party_picker is not None:
+            self._party_picker.draw(screen)
 
     def _draw_win_probability_bar(self, screen, win_prob_cache, x, y, w, h):
         """Draw the win probability bar on the UI (setup screen version)."""

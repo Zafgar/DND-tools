@@ -645,6 +645,14 @@ def make_saving_throw(entity: "Entity", ability: str, dc: int,
         if ability_lower in ("intelligence", "wisdom", "charisma", "int", "wis", "cha"):
             advantage = True
 
+    # Condition-driven save disadvantage (e.g. Restrained → DEX saves,
+    # PHB p.292). Reads the flag straight from the conditions data.
+    if ability_lower in ("dexterity", "dex"):
+        for cond in entity.conditions:
+            if CONDITION_EFFECTS.get(cond, {}).get("dex_save_disadvantage"):
+                disadvantage = True
+                break
+
     # PHB p.291: Exhaustion level 3+ gives disadvantage on attack rolls AND saving throws
     if entity.exhaustion >= 3:
         disadvantage = True

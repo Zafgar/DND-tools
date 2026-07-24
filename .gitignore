@@ -4,3 +4,10 @@ __pycache__/
 *.pyd
 .Python
 *.pyc
+
+# Transient battle autosave (runtime artifact, not a real save)
+DnDTools/saves/_autosave.json
+
+# Runtime crash/debug log (overwritten every launch)
+DnDTools/crash_log.txt
+crash_log.txt

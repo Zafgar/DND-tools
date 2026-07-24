@@ -202,7 +202,9 @@ class CampaignManagerState:
 
         # UI state
         self.active_tab = 0  # 0=Party, 1=Encounters, 2=Areas, 3=Notes, 4=World
-        self.tabs = TabBar(250, 15, 900, ["Party", "Encounters", "Areas", "Notes", "World"],
+        # Tabs start at x=430 so the campaign title (drawn at x=150)
+        # has room and never disappears under the tab bar.
+        self.tabs = TabBar(430, 15, 830, ["Party", "Encounters", "Areas", "Notes", "World"],
                            active=0, on_change=self._on_tab_change)
         self.scroll_y = 0
         self.selected_member_idx = -1
@@ -213,6 +215,17 @@ class CampaignManagerState:
         self.selected_location_id = ""
         self.selected_npc_id = ""
         self.world_view = "locations"  # "locations", "npcs", "shop_detail"
+        # Pre-select the campaign's current area (or the first root
+        # location) so the detail panel is never an empty half-screen.
+        if self.world.locations:
+            cur = (self.campaign.current_area or "").strip().lower()
+            match = next((l.id for l in self.world.locations.values()
+                          if l.name.strip().lower() == cur), "")
+            if not match:
+                roots = [l for l in self.world.locations.values()
+                         if not l.parent_id]
+                match = roots[0].id if roots else ""
+            self.selected_location_id = match
         # Phase 16: lazy-instantiated widgets (town view / shop panel
         # / relationship matrix). Each widget has its own is_open flag
         # and opens via the matching toggle below.
@@ -222,6 +235,12 @@ class CampaignManagerState:
         self.npc_search = ""
         self.npc_search_active = False
         self.world_location_expanded: set = set()  # Expanded location IDs in tree
+        # Expand the ancestors of the pre-selected location so the
+        # selection is visible in the tree on first open.
+        anc = self.world.locations.get(self.selected_location_id)
+        while anc is not None and anc.parent_id:
+            self.world_location_expanded.add(anc.parent_id)
+            anc = self.world.locations.get(anc.parent_id)
         self.shop_item_search = ""
         self.shop_item_search_active = False
         self.tooltip_item = ""  # Item name for tooltip popup
@@ -329,41 +348,44 @@ class CampaignManagerState:
         self.btn_back = Button(20, 15, 100, 35, "< Menu",
                                lambda: self.manager.change_state("MENU"),
                                color=COLORS["panel"])
-        self.btn_save = Button(SCREEN_WIDTH - 130, 15, 110, 35, "Save",
+        # Top-right cluster, row 1 (y=15) — right-aligned with 8px
+        # gaps so nothing ever overlaps: Yleiskatsaus | Rules | Save | Nopat
+        self.btn_save = Button(SCREEN_WIDTH - 223, 15, 100, 35, "Save",
                                self._save_campaign, color=COLORS["success"])
-        self.btn_rules = Button(SCREEN_WIDTH - 250, 15, 110, 35, "Rules",
+        self.btn_rules = Button(SCREEN_WIDTH - 331, 15, 100, 35, "Rules",
                                 self._open_variant_rules_modal, color=COLORS["accent"])
         # Phase 20a: dashboard banner toggle
-        self.btn_dashboard = Button(SCREEN_WIDTH - 380, 15, 120, 35,
+        self.btn_dashboard = Button(SCREEN_WIDTH - 464, 15, 125, 35,
                                        "Yleiskatsaus",
                                        self._toggle_dashboard,
                                        color=COLORS["spell"])
         self._dashboard_widget = None
 
-        # Time of day buttons
+        # Row 2 (y=58, below the header bar) — time-of-day cycler and
+        # calendar advance buttons in one right-aligned strip.
         self.time_buttons = []
         times = [("Dawn", "dawn"), ("Day", "day"), ("Dusk", "dusk"), ("Night", "night")]
         for i, (label, val) in enumerate(times):
             self.time_buttons.append(
-                Button(SCREEN_WIDTH - 490 + i * 85, 15, 80, 35, label,
+                Button(SCREEN_WIDTH - 748 + i * 88, 58, 80, 30, label,
                        lambda v=val: self._set_time(v),
                        color=COLORS["panel"])
             )
 
         # Phase 20e: calendar advance buttons (in-game day + time
-        # cycler). Live just below the time-of-day buttons.
+        # cycler). Continue the same strip after the time-of-day row.
         self.btn_advance_tod = Button(
-            SCREEN_WIDTH - 490, 55, 165, 30,
+            SCREEN_WIDTH - 396, 58, 150, 30,
             "Edistä aikaa", self._cmd_advance_tod,
             color=COLORS["accent"],
         )
         self.btn_advance_day = Button(
-            SCREEN_WIDTH - 320, 55, 105, 30,
+            SCREEN_WIDTH - 238, 58, 105, 30,
             "+ 1 päivä", self._cmd_advance_day,
             color=COLORS["spell"],
         )
         self.btn_advance_week = Button(
-            SCREEN_WIDTH - 210, 55, 105, 30,
+            SCREEN_WIDTH - 125, 58, 105, 30,
             "+ 7 päivää", self._cmd_advance_week,
             color=COLORS["legendary"],
         )
@@ -485,7 +507,7 @@ class CampaignManagerState:
         # Phase 39 — NPC search / directory
         self.btn_npc_search = Button(670, SCREEN_HEIGHT - 60,
                                          120, 45,
-                                         "🔍 NPC-haku",
+                                         "NPC-haku",
                                          self._open_npc_search,
                                          color=COLORS["accent"])
         # Phase 42 — relationship graph
@@ -497,10 +519,57 @@ class CampaignManagerState:
         # Phase 45 — always-available dice tray (toggle with D)
         from states.dice_tray_widget import DiceTrayWidget
         self._dice_tray = DiceTrayWidget()
-        self.btn_dice = Button(SCREEN_WIDTH - 120, 12, 100, 32,
-                                  "🎲 Nopat",
+        self.btn_dice = Button(SCREEN_WIDTH - 115, 15, 95, 35,
+                                  "Nopat",
                                   self._dice_tray.toggle,
                                   color=COLORS["accent"])
+
+        # ---- World-tab action rows: layout pass ---------------------
+        # The rows above accumulated buttons over many phases with
+        # hand-picked x offsets, which ended in overlaps. Re-flow both
+        # rows left→right with fixed gaps and one colour scheme:
+        # green = create, blue = open/browse, purple = tools/import.
+        def _flow_row(y, entries, x0=20, gap=8, height=45):
+            x = x0
+            for btn, width, colour in entries:
+                btn.rect.x = x
+                btn.rect.y = y
+                btn.rect.width = width
+                btn.rect.height = height
+                btn.color = colour
+                btn.hover_color = Button._brighten(colour, 25)
+                x += width + gap
+
+        _create, _browse, _tool = (
+            COLORS["success"], COLORS["accent"], COLORS["spell"])
+        _flow_row(SCREEN_HEIGHT - 115, [
+            (self.btn_open_town,      150, _browse),
+            (self.btn_open_shop,      140, _browse),
+            (self.btn_open_rels,      110, _browse),
+            (self.btn_open_kingdoms,  140, _browse),
+            (self.btn_open_orgs,      150, _browse),
+            (self.btn_open_quest_log, 170, _browse),
+            (self.btn_npc_portrait,   150, _tool),
+            (self.btn_quick_npc,      130, _create),
+            (self.btn_quick_quest,    130, _create),
+        ])
+        _flow_row(SCREEN_HEIGHT - 60, [
+            (self.btn_add_location,    140, _create),
+            (self.btn_add_npc,         110, _create),
+            (self.btn_add_quest,       110, _create),
+            (self.btn_world_npcs_view, 120, _browse),
+            (self.btn_npc_search,      120, _browse),
+            (self.btn_npc_graph,       140, _browse),
+            (self.btn_world_shops_view, 100, _browse),
+            (self.btn_world_quests,    100, _browse),
+            (self.btn_world_services,  110, _browse),
+            (self.btn_world_templates, 115, _browse),
+            (self.btn_world_travel,     95, _browse),
+            (self.btn_world_map_view,   80, _browse),
+            (self.btn_open_map_editor, 140, _tool),
+            (self.btn_import_text,     145, _tool),
+        ])
+
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
         self._kingdom_nav_open = False
@@ -1265,6 +1334,7 @@ class CampaignManagerState:
                                           False),
             on_navigate_npc=self._jump_to_npc_via_detail,
             on_open_org=self._jump_to_organisation,
+            on_open_stats=self._open_monster_lore,
         )
         self._npc_detail_modal.open()
         self._npc_detail_open = True
@@ -2591,6 +2661,27 @@ class CampaignManagerState:
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
                 loc.notes = self.input_text
+        elif self.input_active and self.input_active.startswith("locfact_"):
+            # Generic lore-fact editor (known_for, government, religion...)
+            loc = self.world.locations.get(self.selected_location_id)
+            field = self.input_active[len("locfact_"):]
+            if loc and hasattr(loc, field):
+                if field == "population":
+                    try:
+                        loc.population = int(
+                            self.input_text.replace(" ", "") or 0)
+                    except ValueError:
+                        pass
+                else:
+                    setattr(loc, field, self.input_text)
+        elif self.input_active == "npc_title":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.title = self.input_text
+        elif self.input_active == "npc_faction":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.faction = self.input_text
         elif self.input_active == "npc_name":
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
@@ -2801,19 +2892,14 @@ class CampaignManagerState:
             screen.blit(hint, (name_rect.right + 6, 20))
         screen.blit(nt, (150, 14))
 
-        # Time of day indicator
+        # Time of day → the active time button below is tinted with
+        # this colour, so no separate "Time:" label is needed.
         tod = self.campaign.time_of_day
         tod_colors = {
             "dawn": (255, 180, 100), "day": (255, 240, 180),
             "dusk": (180, 100, 140), "night": (60, 60, 120),
         }
         tod_col = tod_colors.get(tod, (200, 200, 200))
-        tod_txt = fonts.body.render(f"Time: {tod.capitalize()}", True, tod_col)
-        screen.blit(tod_txt, (SCREEN_WIDTH - 500, 48))
-
-        # Session number
-        sess = fonts.small.render(f"Session #{self.campaign.session_number}", True, COLORS["text_dim"])
-        screen.blit(sess, (SCREEN_WIDTH - 280, 48))
 
         # Draw buttons
         self.btn_back.draw(screen, mp)
@@ -2828,25 +2914,28 @@ class CampaignManagerState:
             else:
                 tb.color = COLORS["panel"]
             tb.draw(screen, mp)
-        # Phase 20e: in-game date label + advance buttons
+        # Phase 20e: in-game date + session label — one right-aligned
+        # line under the time strip so nothing collides.
         try:
             from data.campaign_calendar import format_date
             date_str = format_date(self.campaign)
         except Exception:
             date_str = ""
+        info = f"Session #{self.campaign.session_number}"
         if date_str:
-            screen.blit(fonts.small.render(
-                date_str, True,
-                COLORS.get("text_dim", (160, 160, 160))),
-                (SCREEN_WIDTH - 490, 90))
+            info += f"  ·  {date_str}"
+        info_surf = fonts.small.render(
+            info, True, COLORS.get("text_dim", (160, 160, 160)))
+        screen.blit(info_surf, (SCREEN_WIDTH - 20 - info_surf.get_width(), 94))
         self.btn_advance_tod.draw(screen, mp)
         self.btn_advance_day.draw(screen, mp)
         self.btn_advance_week.draw(screen, mp)
 
-        # Status message
+        # Status message — right-aligned into the free slot between the
+        # tab bar and the top-right button cluster.
         if hasattr(self, '_status_timer') and self._status_timer > 0:
             sm = fonts.small.render(self._status_msg, True, COLORS["success"])
-            screen.blit(sm, (SCREEN_WIDTH - 350, 38))
+            screen.blit(sm, (SCREEN_WIDTH - 474 - sm.get_width(), 25))
 
         # Draw active tab content
         clip_rect = pygame.Rect(0, 60, SCREEN_WIDTH, SCREEN_HEIGHT - 120)
@@ -2954,12 +3043,15 @@ class CampaignManagerState:
             if (getattr(self, "_feat_picker_open", False)
                     and self._feat_picker_modal is not None):
                 self._feat_picker_modal.draw(screen)
-            if (getattr(self, "_monster_lore_open", False)
-                    and self._monster_lore_modal is not None):
-                self._monster_lore_modal.draw(screen)
+            # NPC detail first, then the stat sheet ON TOP so the sheet
+            # opened from the detail card's "Statit / Lore" button is
+            # visible above it.
             if (getattr(self, "_npc_detail_open", False)
                     and self._npc_detail_modal is not None):
                 self._npc_detail_modal.draw(screen)
+            if (getattr(self, "_monster_lore_open", False)
+                    and self._monster_lore_modal is not None):
+                self._monster_lore_modal.draw(screen)
             if (getattr(self, "_npc_search_open", False)
                     and self._npc_search_modal is not None):
                 self._npc_search_modal.draw(screen)
@@ -3858,7 +3950,19 @@ class CampaignManagerState:
             "wilderness": COLORS["success"], "cave": COLORS["text_dim"],
         }
         tc = type_colors.get(loc.location_type, COLORS["text_dim"])
-        tt = fonts.tiny.render(loc.location_type[:5].upper(), True, tc)
+        # Readable fixed-width abbreviations instead of raw 5-char cuts
+        # ("COUNT", "CASTL", "REGIO" → "CNTRY", "CASTLE", "REGION").
+        type_abbr = {
+            "country": "CNTRY", "region": "REGION", "city": "CITY",
+            "town": "TOWN", "village": "VILLG", "district": "DISTR",
+            "building": "BLDG", "tavern": "TAVRN", "shop": "SHOP",
+            "temple": "TEMPL", "dungeon": "DNGN", "room": "ROOM",
+            "wilderness": "WILDS", "cave": "CAVE", "castle": "CASTLE",
+            "port": "PORT", "camp": "CAMP", "ruins": "RUINS",
+        }
+        label = type_abbr.get(loc.location_type,
+                              loc.location_type[:6].upper())
+        tt = fonts.tiny.render(label, True, tc)
         screen.blit(tt, (indent + 18, y + 10))
 
         # Name
@@ -3882,15 +3986,72 @@ class CampaignManagerState:
         loc = self.world.locations.get(self.selected_location_id)
         if not loc:
             return
-        y = 70
+        # Start below the top-right time/date strip (buttons y58-88,
+        # info line y94) so long breadcrumbs never run under it.
+        y = 100
 
-        # Breadcrumb
+        # Breadcrumb — every crumb is clickable so "missä sijaitsee"
+        # is one click away (Kingdom > Region > City > District ...).
         path = get_location_path(self.world, loc.id)
         if len(path) > 1:
-            crumbs = " > ".join(p.name for p in path)
-            bt = fonts.tiny.render(crumbs, True, COLORS["text_muted"])
-            screen.blit(bt, (start_x, y))
+            cx = start_x
+            for i, p in enumerate(path):
+                is_last = (i == len(path) - 1)
+                col = COLORS["text_muted"] if is_last else COLORS["accent"]
+                bt = fonts.tiny.render(p.name, True, col)
+                crumb_rect = pygame.Rect(cx, y, bt.get_width(), 16)
+                if not is_last and crumb_rect.collidepoint(mp):
+                    pygame.draw.line(screen, COLORS["accent"],
+                                     (cx, y + 14), (cx + bt.get_width(), y + 14))
+                    if pygame.mouse.get_pressed()[0]:
+                        self.selected_location_id = p.id
+                screen.blit(bt, (cx, y))
+                cx += bt.get_width()
+                if not is_last:
+                    sep = fonts.tiny.render("  >  ", True, COLORS["text_muted"])
+                    screen.blit(sep, (cx, y))
+                    cx += sep.get_width()
             y += 18
+
+        # Location image (right side): thumbnail + add/change button so
+        # every place can carry a picture.
+        img_w, img_h = 170, 120
+        img_x = SCREEN_WIDTH - img_w - 24
+        img_y = 100
+        img_path = getattr(loc, "map_image_path", "")
+        if not hasattr(self, "_loc_img_cache"):
+            self._loc_img_cache = {}
+        if img_path:
+            surf = self._loc_img_cache.get(img_path)
+            if surf is None:
+                try:
+                    raw = pygame.image.load(img_path)
+                    surf = pygame.transform.smoothscale(raw, (img_w, img_h))
+                except Exception:
+                    surf = False
+                self._loc_img_cache[img_path] = surf
+            if surf:
+                pygame.draw.rect(screen, COLORS["border"],
+                                 (img_x - 2, img_y - 2, img_w + 4, img_h + 4),
+                                 border_radius=4)
+                screen.blit(surf, (img_x, img_y))
+        img_btn = pygame.Rect(img_x, img_y + (img_h + 6 if img_path else 0),
+                              img_w, 22)
+        pygame.draw.rect(screen, COLORS["hover"] if img_btn.collidepoint(mp)
+                         else COLORS["panel"], img_btn, border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], img_btn, 1, border_radius=4)
+        cap = "Vaihda kuva" if img_path else "+ Kuva paikalle"
+        capt = fonts.tiny.render(cap, True, COLORS["accent"])
+        screen.blit(capt, (img_btn.centerx - capt.get_width() // 2,
+                           img_btn.y + 5))
+        now_ms = pygame.time.get_ticks()
+        if (img_btn.collidepoint(mp) and pygame.mouse.get_pressed()[0]
+                and now_ms - getattr(self, "_img_btn_cooldown", -9999) > 700):
+            self._img_btn_cooldown = now_ms
+            src = self._pick_image_file()
+            if src:
+                loc.map_image_path = self._import_map_image(src)
+                self._loc_img_cache.pop(loc.map_image_path, None)
 
         # Name (editable)
         hdr = fonts.header.render(loc.name, True, COLORS["accent"])
@@ -3919,7 +4080,7 @@ class CampaignManagerState:
             pt = fonts.tiny.render(lt, True, COLORS["text_bright"] if is_active else COLORS["text_dim"])
             screen.blit(pt, (tx + 6, y + 3))
             tx += pill_w + 4
-            if tx > SCREEN_WIDTH - 50:
+            if tx > SCREEN_WIDTH - 240:   # keep clear of the image column
                 tx = start_x + 50
                 y += 24
         y += 28
@@ -3964,33 +4125,128 @@ class CampaignManagerState:
             lx += lw + 4
         y += 30
 
-        # Description
+        # Sub-areas: clickable chips for drilling into districts/rooms.
+        children = [self.world.locations[cid] for cid in loc.children_ids
+                    if cid in self.world.locations]
+        if children:
+            cl = fonts.small_bold.render(f"Alialueet ({len(children)}):",
+                                         True, COLORS["text_dim"])
+            screen.blit(cl, (start_x, y))
+            chx = start_x + cl.get_width() + 8
+            for child in children:
+                cw = fonts.tiny.size(child.name)[0] + 14
+                if chx + cw > SCREEN_WIDTH - 240:
+                    chx = start_x + 20
+                    y += 22
+                chr_ = pygame.Rect(chx, y, cw, 20)
+                hov = chr_.collidepoint(mp)
+                pygame.draw.rect(screen, COLORS["hover"] if hov
+                                 else COLORS["accent_dim"], chr_, border_radius=8)
+                ct = fonts.tiny.render(child.name, True, COLORS["text_bright"])
+                screen.blit(ct, (chx + 7, y + 3))
+                if hov and pygame.mouse.get_pressed()[0]:
+                    self.selected_location_id = child.id
+                chx += cw + 5
+            y += 26
+
+        # Lore facts — the "mikä tämä paikka on" panel. Two-column
+        # click-to-edit rows; empty fields show a ghost prompt.
+        facts = [
+            ("Tunnetaan", "known_for"), ("Väkiluku", "population"),
+            ("Hallinto", "government"), ("Rodut", "dominant_races"),
+            ("Kielet", "languages"), ("Uskonto", "religion"),
+            ("Vauraus", "wealth_level"), ("Puolustus", "defenses"),
+        ]
+        col_w2 = (SCREEN_WIDTH - start_x - 240) // 2
+        fx0, fy0 = start_x, y
+        for i, (label, field) in enumerate(facts):
+            fx = fx0 + (i % 2) * col_w2
+            fy = fy0 + (i // 2) * 21
+            val = getattr(loc, field, "") or ""
+            if field == "population":
+                val = f"{loc.population:,}".replace(",", " ") if loc.population else ""
+            fl = fonts.tiny.render(f"{label}:", True, COLORS["text_dim"])
+            screen.blit(fl, (fx, fy + 2))
+            vr = pygame.Rect(fx + 78, fy, col_w2 - 90, 19)
+            hov = vr.collidepoint(mp)
+            if hov:
+                pygame.draw.rect(screen, COLORS["hover"], vr, border_radius=3)
+            vt = fonts.tiny.render(val[:52] if val else "(lisää…)", True,
+                                   COLORS["text_main"] if val
+                                   else COLORS["text_muted"])
+            screen.blit(vt, (vr.x + 3, fy + 2))
+            if hov and pygame.mouse.get_pressed()[0]:
+                self.input_active = f"locfact_{field}"
+                self.input_text = "" if field == "population" and not loc.population \
+                    else (str(loc.population) if field == "population" else val)
+                self.modal = ("edit_field", f"locfact_{field}")
+        y = fy0 + ((len(facts) + 1) // 2) * 21 + 8
+
+        # Description — word-wrapped over up to 5 lines so the longer
+        # lore descriptions are actually readable (was a single line
+        # hard-cut at 90 chars).
         desc_label = fonts.small_bold.render("Description:", True, COLORS["text_dim"])
         screen.blit(desc_label, (start_x, y))
         y += 18
-        desc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, 40)
-        pygame.draw.rect(screen, COLORS["input_bg"], desc_rect, border_radius=4)
-        pygame.draw.rect(screen, COLORS["border"], desc_rect, 1, border_radius=4)
         dt = loc.description or "(Click to add description)"
         dc = COLORS["text_main"] if loc.description else COLORS["text_muted"]
-        ds = fonts.small.render(dt[:90], True, dc)
-        screen.blit(ds, (start_x + 5, y + 5))
+        avail_w = SCREEN_WIDTH - start_x - 40
+        lines, cur = [], ""
+        for word in dt.split():
+            test = (cur + " " + word).strip()
+            if fonts.small.size(test)[0] <= avail_w:
+                cur = test
+            else:
+                lines.append(cur)
+                cur = word
+                if len(lines) == 5:
+                    lines[-1] += " …"
+                    cur = ""
+                    break
+        if cur:
+            lines.append(cur)
+        box_h = 12 + max(1, len(lines)) * 18
+        desc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, box_h)
+        pygame.draw.rect(screen, COLORS["input_bg"], desc_rect, border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], desc_rect, 1, border_radius=4)
+        for i, line in enumerate(lines):
+            screen.blit(fonts.small.render(line, True, dc),
+                        (start_x + 5, y + 5 + i * 18))
         if desc_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
             self.input_active = "location_desc"
             self.input_text = loc.description
             self.modal = ("edit_field", "location_desc")
-        y += 48
+        y += box_h + 8
 
-        # NPCs at this location
+        # NPCs at this location. Cap the list so the notes box and the
+        # Delete button below always stay above the bottom action rows —
+        # previously a long NPC list pushed the flow-positioned Delete
+        # button underneath the action buttons, where a click on e.g.
+        # "+ Pika-NPC" could silently delete the selected location.
         npcs = get_npcs_at_location(self.world, loc.id)
         nl = fonts.small_bold.render(f"NPCs here ({len(npcs)}):", True, COLORS["text_dim"])
         screen.blit(nl, (start_x, y))
         y += 20
+        npc_area_bottom = SCREEN_HEIGHT - 265
+        shown = 0
         for npc in npcs:
+            if y + 40 > npc_area_bottom and shown < len(npcs) - 1:
+                more = fonts.small.render(
+                    f"… ja {len(npcs) - shown} lisää — avaa \"All NPCs\"",
+                    True, COLORS["text_muted"])
+                screen.blit(more, (start_x + 8, y + 4))
+                y += 26
+                break
+            shown += 1
             npc_rect = pygame.Rect(start_x, y, SCREEN_WIDTH - start_x - 30, 35)
             is_hover = npc_rect.collidepoint(mp)
             bg = COLORS["hover"] if is_hover else COLORS["panel"]
             pygame.draw.rect(screen, bg, npc_rect, border_radius=4)
+            # Row click opens the NPC's sheet (navigation both ways:
+            # place -> people here -> person -> back to place).
+            if is_hover and pygame.mouse.get_pressed()[0]:
+                self.selected_npc_id = npc.id
+                self.world_view = "npcs"
 
             # Shopkeeper badge
             nx = start_x + 8
@@ -4041,7 +4297,10 @@ class CampaignManagerState:
                          del_rect, border_radius=4)
         dlt = fonts.small.render("Delete Location", True, COLORS["text_bright"])
         screen.blit(dlt, (start_x + 10, del_y + 6))
-        if is_del_hover and pygame.mouse.get_pressed()[0]:
+        # Safety: never accept a delete click in the bottom action-row
+        # band, even if layout ever pushes the button down there again.
+        if (is_del_hover and pygame.mouse.get_pressed()[0]
+                and del_rect.bottom < SCREEN_HEIGHT - 125):
             self._delete_world_location(loc.id)
 
     def _draw_world_npcs(self, screen, mp):
@@ -4178,6 +4437,8 @@ class CampaignManagerState:
             ("Race", npc.race, "npc_race"),
             ("Gender", npc.gender, "npc_gender"),
             ("Age", npc.age, "npc_age"),
+            ("Title", npc.title, "npc_title"),
+            ("Faction", npc.faction, "npc_faction"),
             ("Occupation", npc.occupation, "npc_occupation"),
             ("Appearance", npc.appearance, "npc_appearance"),
             ("Personality", npc.personality, "npc_personality"),
@@ -4221,12 +4482,25 @@ class CampaignManagerState:
             ax += aw + 4
         y += 28
 
-        # Location with MOVE button
+        # Location with MOVE button — the name itself is a link to the
+        # place's sheet ("missä tämä NPC on ja mikä se paikka on").
         loc = self.world.locations.get(npc.location_id)
         loc_label = fonts.small_bold.render("Location:", True, COLORS["text_dim"])
         screen.blit(loc_label, (start_x, y))
         loc_name = loc.name if loc else "(none)"
+        if loc:
+            parent = self.world.locations.get(loc.parent_id)
+            if parent:
+                loc_name = f"{loc.name}  ({parent.name})"
         lt = fonts.small.render(loc_name, True, COLORS["accent"] if loc else COLORS["text_muted"])
+        loc_link_rect = pygame.Rect(start_x + 75, y, lt.get_width(), 18)
+        if loc and loc_link_rect.collidepoint(mp):
+            pygame.draw.line(screen, COLORS["accent"],
+                             (loc_link_rect.x, y + 16),
+                             (loc_link_rect.right, y + 16))
+            if pygame.mouse.get_pressed()[0]:
+                self.selected_location_id = loc.id
+                self.world_view = "locations"
         screen.blit(lt, (start_x + 75, y))
         # Move button
         move_x = start_x + 75 + lt.get_width() + 10
@@ -4249,6 +4523,46 @@ class CampaignManagerState:
             if is_unlink_hover and pygame.mouse.get_pressed()[0]:
                 move_npc(self.world, npc.id, "")
         y += 22
+
+        # Suhteet — NPC-to-NPC links, each clickable to jump to the
+        # other character's sheet. "+ Suhde" opens the detail modal
+        # whose link form adds new relations.
+        from data import npc_directory as _npc_dir
+        links = _npc_dir.npc_links_of(self.world, npc.id)
+        rel_label = fonts.small_bold.render(
+            f"Suhteet ({len(links)}):", True, COLORS["text_dim"])
+        screen.blit(rel_label, (start_x, y))
+        add_rel = pygame.Rect(start_x + rel_label.get_width() + 10, y - 2,
+                              76, 20)
+        pygame.draw.rect(screen, COLORS["hover"] if add_rel.collidepoint(mp)
+                         else COLORS["panel"], add_rel, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], add_rel, 1, border_radius=3)
+        art = fonts.tiny.render("+ Suhde…", True, COLORS["accent"])
+        screen.blit(art, (add_rel.x + 8, add_rel.y + 3))
+        if add_rel.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self._open_npc_detail(npc)
+        y += 22
+        for link in links[:5]:
+            row = f"• {link['kind']}: {link['target_name']}"
+            if link.get("notes"):
+                row += f" — {link['notes'][:36]}"
+            rt = fonts.small.render(row[:70], True, COLORS["text_main"])
+            link_rect = pygame.Rect(start_x + 8, y, rt.get_width(), 18)
+            if link_rect.collidepoint(mp):
+                pygame.draw.line(screen, COLORS["accent"],
+                                 (link_rect.x, y + 15),
+                                 (link_rect.right, y + 15))
+                if pygame.mouse.get_pressed()[0]:
+                    self.selected_npc_id = link["target_id"]
+            screen.blit(rt, (start_x + 8, y))
+            y += 19
+        if len(links) > 5:
+            more = fonts.tiny.render(f"… ja {len(links) - 5} lisää "
+                                     "(avaa ⚔ Statit / Lore)", True,
+                                     COLORS["text_muted"])
+            screen.blit(more, (start_x + 8, y))
+            y += 17
+        y += 4
 
         # Stat source with preview
         ss_label = fonts.small_bold.render("Stats:", True, COLORS["text_dim"])
@@ -4289,10 +4603,13 @@ class CampaignManagerState:
         if npc.stat_source:
             stats = self._get_npc_stats(npc)
             if stats:
+                cr_val = stats.challenge_rating
+                cr_str = (f"{cr_val:.3g}" if cr_val and cr_val % 1
+                          else str(int(cr_val)) if cr_val else "—")
                 preview_items = [
-                    f"HP:{stats.hp}",
-                    f"AC:{stats.ac}",
-                    f"CR:{stats.cr}",
+                    f"HP:{stats.hit_points}",
+                    f"AC:{stats.armor_class}",
+                    f"CR:{cr_str}",
                 ]
                 if hasattr(stats, 'abilities') and stats.abilities:
                     preview_items.append(
@@ -4635,7 +4952,10 @@ class CampaignManagerState:
             return None
         if npc.stat_source.startswith("monster:"):
             monster_name = npc.stat_source[len("monster:"):]
-            return library.get(monster_name)
+            try:
+                return library.get_monster(monster_name)
+            except Exception:
+                return None
         return None
 
     def _find_npc_by_name(self, name):
@@ -5302,6 +5622,17 @@ class CampaignManagerState:
                 "campaign_name": "Campaign Name", "encounter_name": "Encounter Name",
                 "area_name": "Area Name", "member_note": "DM Note",
             }
+            label_map.update({
+                "npc_title": "Title", "npc_faction": "Faction",
+                "locfact_known_for": "Tunnetaan (Known for)",
+                "locfact_population": "Väkiluku (Population)",
+                "locfact_government": "Hallinto (Government)",
+                "locfact_dominant_races": "Rodut (Dominant races)",
+                "locfact_languages": "Kielet (Languages)",
+                "locfact_religion": "Uskonto (Religion)",
+                "locfact_wealth_level": "Vauraus (Wealth)",
+                "locfact_defenses": "Puolustus (Defenses)",
+            })
             # Handle relationship/quest sub-fields
             title = "Edit"
             if field_key in label_map:

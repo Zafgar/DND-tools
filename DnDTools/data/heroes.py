@@ -1182,4 +1182,23 @@ def _assign_hero_items():
         if hero.character_class and hero.character_level > 0 and not hero.items:
             hero.items = get_hero_items(hero.character_class, hero.character_level)
 
+# ============================================================================
+# Novus Somnium -kampanjan pelaajahahmot (taso 11) liitetään heroihin, jotta
+# ne näkyvät encounter setupissa ja voi asettaa pelaajien puolelle kentälle.
+# ============================================================================
+from data.novus_party import novus_party
+hero_list.extend(novus_party)
+
+
 _assign_hero_items()
+
+
+def _bind_hero_spells_to_library():
+    """Bind every pre-built hero's spells to the central spell library so
+    the library (data/spells.py) is the single source of truth for heroes
+    as well as monsters."""
+    from data.spells import rebind_to_library
+    for hero in hero_list:
+        rebind_to_library(hero)
+
+_bind_hero_spells_to_library()

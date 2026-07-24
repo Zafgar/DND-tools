@@ -316,6 +316,12 @@ class BattleSystem:
             # Auto-remove condition if it matches effect name (e.g. Guiding Bolt)
             if current.has_condition(eff):
                 current.remove_condition(eff)
+            # PHB p.250: when Haste ends, the target loses a turn to
+            # lethargy — also on natural expiry, not just when the
+            # caster's concentration breaks.
+            if eff == "Haste":
+                current.apply_haste_lethargy()
+                self.log(f"  [HASTE] {current.name} is overcome by lethargy!")
 
         # Regeneration at start of turn (Vampire, Troll, Phoenix, etc.)
         if current.hp > 0:
@@ -509,6 +515,17 @@ class BattleSystem:
                 else:
                     self.log(f"[SAVE] {msg} -> remains {cond}.")
 
+        # Timed conditions tick down at the end of the entity's turn and
+        # expire at 0 (e.g. Blinding Powder "until end of next turn").
+        for cond in list(getattr(entity, "condition_durations", {}).keys()):
+            if cond not in entity.conditions:
+                entity.condition_durations.pop(cond, None)
+                continue
+            entity.condition_durations[cond] -= 1
+            if entity.condition_durations[cond] <= 0:
+                entity.remove_condition(cond)
+                self.log(f"[STATUS] {entity.name}: {cond} expired.")
+
     def _check_hazard_damage(self, entity: Entity):
         """Apply hazard terrain damage at the start of an entity's turn.
         Flying creatures above ground-level hazards are safe."""
@@ -620,20 +637,25 @@ class BattleSystem:
 
     def check_opportunity_attacks(self, mover: Entity, old_x: float, old_y: float):
         """Check if any hostile can make an OA against mover."""
-        if mover.is_disengaging:
-            return []
-            
         # Forced movement (e.g. Grappled/dragged, Shoved) does not provoke OAs
         # If speed is 0 (Grappled), they can't move voluntarily, so it must be forced.
         if mover.has_condition("Grappled") or mover.has_condition("Restrained") or mover.has_condition("Stunned"):
             return []
-            
+
         oas = []
         for e in self.entities:
             if e == mover or e.hp <= 0 or e.reaction_used:
                 continue
+            # A surprised or incapacitated watcher can't take the OA
+            # reaction (PHB p.189 / Incapacitated).
+            if getattr(e, "is_surprised", False) or e.is_incapacitated():
+                continue
             if e.is_player == mover.is_player:
                 continue  # same team
+            # Disengage prevents OAs — except against a Sentinel-feat
+            # watcher (creatures ignore Disengage for Sentinel's OA).
+            if mover.is_disengaging and not e.has_feature("sentinel"):
+                continue
             
             # Calculate reach in squares (1 square = 5 ft)
             reach_squares = e.get_max_melee_reach() / 5.0
@@ -934,21 +956,25 @@ class BattleSystem:
         speed / amphibious / water_breathing) ignore the water penalty."""
         if entity and entity.is_flying:
             return 1.0
+        # PHB p.191: moving while prone = crawling, every foot costs one
+        # extra foot (doubles again in difficult terrain via the stack
+        # below). Prone no longer halves speed itself.
+        crawl_mult = 2.0 if (entity and entity.has_condition("Prone")) else 1.0
         t = self.get_terrain_at(int(x), int(y))
         if t:
             # Water: aquatic creatures move at full speed; everyone else
             # pays the PHB p.182 swim penalty (half speed).
             if t.terrain_type in ("water", "deep_water"):
                 if entity and entity.is_aquatic:
-                    return 1.0
-                return 2.0
+                    return crawl_mult
+                return 2.0 * crawl_mult
             if t.is_difficult:
-                return 2.0
+                return 2.0 * crawl_mult
             if t.is_climbable and entity and entity.is_climbing:
                 # Climbing without climb speed = half speed (2x cost)
                 if entity.stats.climb_speed <= 0:
-                    return 2.0
-        return 1.0
+                    return 2.0 * crawl_mult
+        return crawl_mult
 
     def get_entity_at(self, x: float, y: float) -> Optional[Entity]:
         for e in self.entities:
@@ -1427,6 +1453,30 @@ class BattleSystem:
         entity.initiative += delta
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
         self.turn_index = self.entities.index(current)
+
+    def move_in_initiative(self, entity: Entity, direction: int):
+        """DM turn-order edit: move ``entity`` one slot earlier
+        (direction=-1) or later (direction=+1) by swapping initiative
+        values with its neighbour. Keeps the current turn pointer on the
+        same creature."""
+        order = self.entities
+        if entity not in order:
+            return
+        idx = order.index(entity)
+        other_idx = idx + direction
+        if other_idx < 0 or other_idx >= len(order):
+            return
+        current = self.get_current_entity()
+        other = order[other_idx]
+        entity.initiative, other.initiative = other.initiative, entity.initiative
+        # Equal initiatives would make the swap a no-op after sorting —
+        # nudge so the intended order holds.
+        if entity.initiative == other.initiative:
+            entity.initiative += -direction
+        self.entities.sort(key=lambda e: e.initiative, reverse=True)
+        self.turn_index = self.entities.index(current)
+        self.log(f"[INIT] {entity.name} moved "
+                 f"{'earlier' if direction < 0 else 'later'} in turn order.")
 
     def check_battle_over(self) -> Optional[str]:
         players_alive = any(e.is_player and e.hp > 0 for e in self.entities)

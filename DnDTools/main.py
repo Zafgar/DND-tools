@@ -34,7 +34,6 @@ sys.excepthook = handle_exception
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pygame
-from flask import Flask, request, jsonify
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from states.game_states import MenuState, BattleState, EncounterSetupState
 from states.hero_creator import HeroCreatorState
@@ -42,34 +41,52 @@ from states.combat_roster import CombatRosterState
 from states.campaign_manager import CampaignManagerState
 from states.map_editor import MapEditorState
 
-# --- FLASK SERVER SETUP ---
-app = Flask(__name__)
-
-# Disable Flask logging to keep console clean
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
-
+# --- FLASK SERVER SETUP (OPTIONAL) ---
+# Flask powers only the TaleSpire mini-sync server (POST /update_minis).
+# It is entirely optional: if Flask isn't installed the core DM tool
+# still runs, just without live TaleSpire position sync. This keeps the
+# app launchable on a fresh machine with only pygame installed.
 game_instance = None  # Global reference to access GameManager from Flask route
 
 # Thread-safe queue for passing data from Flask to the main game loop
 _update_queue = queue.Queue()
 
-@app.route('/update_minis', methods=['POST'])
-def update_minis():
-    if not game_instance:
-        return jsonify({"status": "error", "message": "Game not running"}), 503
+try:
+    from flask import Flask, request, jsonify
 
-    data = request.json
-    if not data:
-        return jsonify({"status": "error", "message": "No data"}), 400
+    app = Flask(__name__)
 
-    # Enqueue data for the main thread to process safely
-    _update_queue.put(data)
+    # Disable Flask logging to keep console clean
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
 
-    return jsonify({"status": "success"})
+    @app.route('/update_minis', methods=['POST'])
+    def update_minis():
+        if not game_instance:
+            return jsonify({"status": "error", "message": "Game not running"}), 503
 
-def run_server():
-    app.run(port=5000, debug=False, use_reloader=False)
+        data = request.json
+        if not data:
+            return jsonify({"status": "error", "message": "No data"}), 400
+
+        # Enqueue data for the main thread to process safely
+        _update_queue.put(data)
+
+        return jsonify({"status": "success"})
+
+    def run_server():
+        app.run(port=5000, debug=False, use_reloader=False)
+
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+    logging.info("Flask not installed — TaleSpire mini-sync disabled. "
+                 "Install 'flask' to enable it. The DM tool runs normally.")
+    print("Note: Flask not installed — TaleSpire live sync is off. "
+          "Everything else works. (pip install flask to enable.)")
+
+    def run_server():  # no-op fallback
+        pass
 # --------------------------
 
 
@@ -103,9 +120,11 @@ class GameManager:
         }
         self.current_state = self.states["MENU"]
 
-        # Start Flask server in a background thread
-        self.server_thread = threading.Thread(target=run_server, daemon=True)
-        self.server_thread.start()
+        # Start Flask server in a background thread (only if Flask is
+        # installed; otherwise TaleSpire sync is silently disabled).
+        if FLASK_AVAILABLE:
+            self.server_thread = threading.Thread(target=run_server, daemon=True)
+            self.server_thread.start()
 
     def change_state(self, state_name: str, **kwargs):
         # Recreate certain states fresh each time

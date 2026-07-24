@@ -2097,25 +2097,33 @@ class TacticalAI:
                 continue
             clusters, (cx, cy) = result
             
+            # RAW: a breath/AoE hits friend and foe alike. Only enemies count
+            # toward the target threshold; catching an ally is a COST.
+            enemy_targets = [t for t in clusters
+                             if t.is_player != entity.is_player]
+            friendly_targets = [t for t in clusters
+                                if t.is_player == entity.is_player]
+
             # Allow single target for powerful AoEs (Breath Weapons)
             min_targets = 2
             if average_damage(action.damage_dice) > 25:
                 min_targets = 1
 
-            if not clusters or len(clusters) < min_targets:
+            if len(enemy_targets) < min_targets:
                 continue
 
             # Calculate total expected damage considering vulnerabilities/saves
-            total_dmg = 0.0
-            for t in clusters:
-                base = self._estimate_damage(action.damage_dice, action.damage_type, t)
-                # Estimate save (simplified)
-                if action.condition_save:
-                    # Assume 50% chance to fail save for estimation
-                    total_dmg += base * 0.75 # (1.0 + 0.5) / 2 roughly
-                else:
-                    total_dmg += base
-            
+            def _dmg(t):
+                base = self._estimate_damage(action.damage_dice,
+                                             action.damage_type, t)
+                # Estimate save (simplified: ~50% fail on a save-for-half)
+                return base * 0.75 if action.condition_save else base
+
+            total_dmg = sum(_dmg(t) for t in enemy_targets)
+            # Friendly fire is a heavy cost (allies matter more than the
+            # marginal enemy caught).
+            total_dmg -= sum(_dmg(t) for t in friendly_targets) * 2.0
+
             if total_dmg > best_total_dmg:
                 best_total_dmg = total_dmg
                 # Consume usage if applicable
@@ -2250,6 +2258,10 @@ class TacticalAI:
                         damage=healed, damage_type="healing"
                     )
         # Pick best healing potion (don't waste high-tier potions on small wounds)
+        # RAW: drinking a potion is an action and you may drink only one per
+        # turn — never queue a second potion the same turn.
+        if getattr(entity, "potion_used_this_turn", False):
+            return None
         hp_deficit = entity.max_hp - entity.hp
         hp_pct = entity.hp / max(entity.max_hp, 1)
         best_potion = None
@@ -2270,6 +2282,7 @@ class TacticalAI:
         if best_potion:
             if best_potion.uses > 0:
                 best_potion.uses -= 1
+            entity.potion_used_this_turn = True
             healed = roll_dice(best_potion.heals)
             return ActionStep(
                 step_type="spell",
@@ -2285,6 +2298,9 @@ class TacticalAI:
         Uses action (RAW: potions are an action to drink).
         """
         if entity.action_used:
+            return None
+        # RAW: only one potion per turn.
+        if getattr(entity, "potion_used_this_turn", False):
             return None
 
         hp_pct = entity.hp / max(entity.max_hp, 1)
@@ -2337,6 +2353,7 @@ class TacticalAI:
 
             if use:
                 item.uses -= 1
+                entity.potion_used_this_turn = True
                 desc = f"{entity.name} drinks {item.name}."
 
                 # Apply buff effects
@@ -2450,6 +2467,10 @@ class TacticalAI:
         """
         if entity.bonus_action_used:
             return None
+        # RAW: only one potion per turn — don't stack a bonus-action potion
+        # on top of one already drunk as an action this turn.
+        if getattr(entity, "potion_used_this_turn", False):
+            return None
 
         hp_pct = entity.hp / max(entity.max_hp, 1)
         if hp_pct > 0.5:
@@ -2480,6 +2501,7 @@ class TacticalAI:
         best_potion.uses -= 1
         healed = roll_dice(best_potion.heals)
         entity.bonus_action_used = True
+        entity.potion_used_this_turn = True
         return ActionStep(
             step_type="bonus_attack",
             description=f"{entity.name} drinks {best_potion.name}, healing {healed} HP.",
@@ -2680,45 +2702,62 @@ class TacticalAI:
             if not result:
                 continue
             clusters, (cx, cy) = result
-            if not clusters or len(clusters) < min_targets:
+            # RAW: an area spell hits friend and foe alike. _best_aoe_cluster
+            # folds any allies/self caught in the blast into ``clusters``, so
+            # split them out here: only enemies count toward the target
+            # threshold, and friendly fire is a COST, not a benefit.
+            enemy_targets = [t for t in clusters
+                             if t.is_player != entity.is_player]
+            friendly_targets = [t for t in clusters
+                                if t.is_player == entity.is_player]
+            if len(enemy_targets) < min_targets:
                 continue
 
             # Calculate total EV per target with precise save calculations
             total_ev = 0.0
             dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 13)
 
-            for t in clusters:
-                base = self._estimate_damage(_get_spell_damage_dice(spell, entity), spell.damage_type, t)
+            def _target_ev(t):
+                base = self._estimate_damage(
+                    _get_spell_damage_dice(spell, entity), spell.damage_type, t)
                 if base <= 0:
-                    continue
-
+                    return 0.0, 0.0
                 if spell.save_ability:
                     save_bonus = t.get_save_bonus(spell.save_ability)
-                    # Check if target has magic resistance
                     has_magic_res = t.has_feature("magic_resistance")
                     fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
                     if has_magic_res:
-                        # Advantage on save = square the success chance
                         success = 1.0 - fail_chance
                         fail_chance = 1.0 - (1.0 - (1.0 - success) ** 2)
                     fail_chance = max(0.05, min(0.95, fail_chance))
-
                     if spell.half_on_save:
                         ev = base * fail_chance + (base / 2.0) * (1.0 - fail_chance)
                     else:
                         ev = base * fail_chance
                 else:
                     ev = base
+                return base, ev
 
+            for t in enemy_targets:
+                base, ev = _target_ev(t)
+                if ev <= 0:
+                    continue
                 # Kill bonus (finishing off wounded enemies)
                 if base >= t.hp:
                     ev *= 1.2
-
                 # Concentration disruption bonus
                 if t.concentrating_on:
                     ev += 5
-
                 total_ev += ev
+
+            # Friendly fire: subtract each ally's/self's expected damage,
+            # weighted heavily — hurting your own team is worse than the
+            # marginal value of catching one more enemy. Evokers who can
+            # sculpt spells carve their allies out and pay no penalty.
+            if not can_sculpt:
+                for t in friendly_targets:
+                    _base, ev = _target_ev(t)
+                    total_ev -= ev * 2.0
 
             # Slot efficiency: compare EV per slot level
             slot_efficiency = total_ev / max(spell.level, 1)
@@ -2732,9 +2771,11 @@ class TacticalAI:
             # Decide slot: upcast by 1 for big AoEs when 3+ enemies are caught and a higher slot is free.
             # Save top-tier slots (7+) for boss moments unless the caller really wants to burn them.
             chosen_slot = spell.level
+            enemy_count = len([t for t in clusters
+                               if t.is_player != entity.is_player])
             if spell.damage_scaling:
                 highest = entity.get_highest_slot()
-                if highest > spell.level and len(clusters) >= 3 and highest <= 6:
+                if highest > spell.level and enemy_count >= 3 and highest <= 6:
                     # Upcast one level to gain scaling damage on a crowd
                     if entity.spell_slots.get(entity._LEVEL_KEYS.get(spell.level + 1, ""), 0) > 0:
                         chosen_slot = spell.level + 1
@@ -3096,13 +3137,24 @@ class TacticalAI:
             spell, target, dc, atk_bonus, extra = best_step
             slot = spell.level
             if spell.level > 0:
-                entity.use_spell_slot(slot)
-            
+                # Spend the LOWEST available slot at or above the spell's
+                # level, and scale the effect to that slot — so a burned
+                # higher slot actually delivers the upcast (extra damage /
+                # Magic Missile darts) instead of being wasted.
+                slot = next(
+                    (lvl for lvl in range(spell.level, 10)
+                     if entity.spell_slots.get(
+                         entity._LEVEL_KEYS.get(lvl, f"{lvl}th"), 0) > 0),
+                    spell.level)
+                if not entity.use_spell_slot_exact(slot):
+                    entity.use_spell_slot(spell.level)
+                    slot = spell.level
+
             if spell.concentration:
                 entity.start_concentration(spell)
 
-            # Scale cantrip damage dice by caster level
-            effective_dice = _get_spell_damage_dice(spell, entity)
+            # Cantrip scaling by level; leveled spells scale to the slot used.
+            effective_dice = _get_spell_damage_dice(spell, entity, slot_used=slot)
 
             if spell.save_ability:
                 dmg = roll_dice(effective_dice) + int(extra)
@@ -3123,13 +3175,22 @@ class TacticalAI:
                 adv = entity.has_attack_advantage(target, is_ranged=True)
                 dis = entity.has_attack_disadvantage(target, is_ranged=True, is_threatened=is_threatened, battle=battle)
                 total, nat, is_crit, is_fumble, roll_str = roll_attack(atk_bonus, adv, dis)
-                is_hit = total >= target.stats.armor_class and not is_fumble
+                # PHB p.196: cover applies to ALL attack rolls, and use
+                # the dynamic AC (Shield spell etc.), not the static
+                # stat-block value. Natural 20 always hits.
+                cover_ac = battle.get_cover_bonus(entity, target) if battle else 0
+                effective_ac = target.armor_class + cover_ac
+                # Magic Missile auto-hits (no attack roll, PHB p.257).
+                if spell.name == "Magic Missile":
+                    is_hit, is_crit, roll_str = True, False, "auto"
+                else:
+                    is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
                 dmg = roll_dice_critical(effective_dice) if is_crit else roll_dice(effective_dice)
                 dmg += int(extra)
 
                 hit_str = "CRIT! " if is_crit else "Hit? "
                 desc = (f"{entity.name} casts {spell.name} ({roll_str}+{atk_bonus}={total} "
-                        f"vs AC {target.stats.armor_class}) {hit_str}→ {target.name}")
+                        f"vs AC {effective_ac}) {hit_str}→ {target.name}")
                 return ActionStep(
                     step_type="spell", description=desc,
                     attacker=entity, target=target, spell=spell, slot_used=slot,
@@ -3208,12 +3269,22 @@ class TacticalAI:
         if (entity.has_feature("sneak_attack") and not entity.sneak_attack_used
                 and step.is_hit):
             sa_dice = entity.get_sneak_attack_dice()
-            if sa_dice:
-                # Check conditions for Sneak Attack
-                has_advantage = entity.has_attack_advantage(target,
-                                                           is_ranged=(step.action and step.action.range > 10))
+            # PHB p.96: Sneak Attack requires a finesse or ranged weapon.
+            act = step.action
+            weapon_ok = bool(act) and (
+                "finesse" in (getattr(act, "properties", []) or [])
+                or act.range > 5)
+            if sa_dice and weapon_ok:
+                # Check conditions for Sneak Attack (PHB p.96):
+                # advantage on the roll, OR an ally within 5 ft of the
+                # target while the roll is NOT at disadvantage.
+                sa_is_ranged = bool(step.action and step.action.range > 10)
+                has_advantage = entity.has_attack_advantage(
+                    target, is_ranged=sa_is_ranged, battle=battle)
+                has_disadvantage = entity.has_attack_disadvantage(
+                    target, is_ranged=sa_is_ranged, battle=battle)
                 ally_adjacent = any(battle.is_adjacent(a, target) for a in allies if a.hp > 0)
-                if has_advantage or ally_adjacent:
+                if has_advantage or (ally_adjacent and not has_disadvantage):
                     sa_dmg = roll_dice_critical(sa_dice) if step.is_crit else roll_dice(sa_dice)
                     step.bonus_damage += sa_dmg
                     step.damage += sa_dmg
@@ -3221,7 +3292,9 @@ class TacticalAI:
                     entity.sneak_attack_used = True
 
         # --- PALADIN: Divine Smite (auto-use on crits, or vs tough enemies) ---
-        if entity.has_feature("divine_smite") and step.is_hit:
+        # PHB p.85: melee weapon attacks only.
+        if (entity.has_feature("divine_smite") and step.is_hit
+                and step.action and step.action.range <= 5):
             should_smite = False
             # Always smite on crits
             if step.is_crit:
@@ -3240,22 +3313,25 @@ class TacticalAI:
                 slot_key = entity._LEVEL_KEYS.get(slot_level, "1st")
                 if entity.spell_slots.get(slot_key, 0) > 0:
                     entity.spell_slots[slot_key] -= 1
-                    # 2d8 base + 1d8 per level above 1st
-                    num_dice = 2 + (slot_level - 1)
-                    # +1d8 vs undead/fiend
+                    # 2d8 base + 1d8 per level above 1st, slot dice
+                    # capped at 5d8 BEFORE the undead/fiend bonus
+                    # (PHB p.85: max 5d8, +1d8 vs undead/fiend → 6d8).
+                    num_dice = min(2 + (slot_level - 1), 5)
                     t_type = target.stats.creature_type.lower()
                     if t_type in ("undead", "fiend"):
                         num_dice += 1
-                    num_dice = min(num_dice, 5)  # Max 5d8
 
                     smite_dice = f"{num_dice}d8"
                     smite_dmg = roll_dice_critical(smite_dice) if step.is_crit else roll_dice(smite_dice)
                     step.bonus_damage += smite_dmg
                     step.damage += smite_dmg
-                    bonus_parts.append(f"Divine Smite ({slot_level}st slot) {smite_dice}={smite_dmg}")
+                    ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(
+                        slot_level, f"{slot_level}th")
+                    bonus_parts.append(f"Divine Smite ({ordinal} slot) {smite_dice}={smite_dmg}")
 
         # --- PALADIN: Improved Divine Smite ---
-        if entity.has_feature("improved_divine_smite") and step.is_hit:
+        if (entity.has_feature("improved_divine_smite") and step.is_hit
+                and step.action and step.action.range <= 5):
             ids_dmg = roll_dice_critical("1d8") if step.is_crit else roll_dice("1d8")
             step.bonus_damage += ids_dmg
             step.damage += ids_dmg
@@ -3475,18 +3551,23 @@ class TacticalAI:
 
         # Override crit check with expanded range
         is_crit = nat >= crit_range
-        crit_auto = (target.has_condition("Paralyzed") or target.has_condition("Unconscious")) and dist <= 0.5
-        if crit_auto:
-            is_crit, is_hit = True, True
-        else:
-            # Phase 30 — Defensive Duelist: target may spend their
-            # reaction to add proficiency bonus to AC against this
-            # melee attack if it would convert a hit into a miss.
-            is_melee = action.range <= 5
-            from engine.feat_effects import defensive_duelist_ac_bonus
-            effective_ac = defensive_duelist_ac_bonus(
-                target, total, effective_ac, is_melee)
-            is_hit = total >= effective_ac and not is_fumble
+        # Phase 30 — Defensive Duelist: target may spend their
+        # reaction to add proficiency bonus to AC against this
+        # melee attack if it would convert a hit into a miss.
+        is_melee = action.range <= 5
+        from engine.feat_effects import defensive_duelist_ac_bonus
+        effective_ac = defensive_duelist_ac_bonus(
+            target, total, effective_ac, is_melee)
+        # PHB p.194: a natural 20 always hits; a natural 1 always misses.
+        is_hit = (nat == 20) or (total >= effective_ac and not is_fumble)
+        # PHB p.292: any HIT within 5 ft against a paralyzed or
+        # unconscious creature is a critical hit — but the attack must
+        # still hit first (previously this forced an unconditional hit,
+        # letting even natural 1s connect).
+        if (is_hit and dist <= 0.5
+                and (target.has_condition("Paralyzed")
+                     or target.has_condition("Unconscious"))):
+            is_crit = True
 
         dmg_str = f"{action.damage_dice}+{action.damage_bonus}" if action.damage_bonus else action.damage_dice
         dmg = roll_dice_critical(dmg_str) if is_crit else roll_dice(dmg_str)
@@ -3653,7 +3734,7 @@ class TacticalAI:
                     )]
                 # Step of the Wind: Disengage or Dash as bonus action (1 ki)
                 # Use when ranged-threatened or need to close distance
-                if entity.has_feature("step_of_the_wind"):
+                if entity.has_feature("step_of_wind"):
                     # Disengage if we're a ranged monk surrounded
                     if threats and self._get_combat_preference(entity) == "ranged":
                         entity.ki_points_left -= 1
@@ -4919,6 +5000,38 @@ class TacticalAI:
         # someone hostile.
         if not best_cluster:
             return None
+
+        # RAW: an area spell hits EVERY creature in the area, friend or
+        # foe. The scoring above steers the aim AWAY from allies, but if
+        # the best available aim still engulfs an ally, that ally takes
+        # the damage too (friendly fire). Add any such allies to the
+        # applied cluster.
+        if allies and best_aim_point is not None:
+            ax, ay = best_aim_point
+            ff_half = (math.radians(30) if shape == "cone"
+                       else math.radians(5)) if shape in ("cone", "line") else 0.0
+            ff_aim = math.atan2(ay - ecy, ax - ecx)
+            in_cluster = {id(e) for e in best_cluster}
+            for a in allies:
+                if a.hp <= 0 or id(a) in in_cluster:
+                    continue
+                if damage_type and damage_type.lower() in [
+                        x.lower() for x in a.stats.damage_immunities]:
+                    continue
+                acx, acy = get_center(a)
+                if shape in ("cone", "line"):
+                    if math.hypot(acx - ecx, acy - ecy) * 5 > radius_ft:
+                        continue
+                    diff = math.atan2(acy - ecy, acx - ecx) - ff_aim
+                    while diff > math.pi:
+                        diff -= 2 * math.pi
+                    while diff < -math.pi:
+                        diff += 2 * math.pi
+                    if abs(diff) <= ff_half:
+                        best_cluster.append(a)
+                else:
+                    if math.hypot(ax - acx, ay - acy) * 5 <= radius_ft:
+                        best_cluster.append(a)
 
         return best_cluster, best_aim_point
 

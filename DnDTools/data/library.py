@@ -9,6 +9,16 @@ from data.models import CreatureStats
 from data.serialization import deserialize
 
 
+def _rebind_spells(stats):
+    """Bind a stat block's spells to the central library (single source of
+    truth). Tolerant of any import/lookup failure."""
+    try:
+        from data.spells import rebind_to_library
+        rebind_to_library(stats)
+    except Exception:
+        pass
+
+
 class MonsterLibrary:
     def __init__(self):
         self._monsters: dict[str, CreatureStats] = {}
@@ -32,6 +42,7 @@ class MonsterLibrary:
                     data_list = json.load(f)
                 for data in data_list:
                     monster = deserialize(CreatureStats, data)
+                    _rebind_spells(monster)
                     self._monsters[monster.name.lower()] = monster
             except Exception as ex:
                 print(f"Warning: Failed to load {filename}: {ex}")
@@ -54,14 +65,22 @@ class MonsterLibrary:
             from data.monsters.cr_13 import monsters as cr13_list
             from data.monsters.cr_1416 import monsters as cr1416_list
             from data.monsters.cr_17plus import monsters as cr17_list
+            # Campaign-specific bosses & soldiers (Novus Somnium).
+            from data.monsters.baenrahel import monsters as baenrahel_list
+            from data.monsters.whitestone import monsters as whitestone_list
+            from data.monsters.zertath import monsters as zertath_list
+            from data.monsters.lvl12_foes import monsters as lvl12_list
 
             for lst in [cr018_list, cr025_list, cr05_list, cr1_list,
                         cr2_list, cr3_list, cr4_list, cr5_list, cr67_list,
-                        cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list]:
+                        cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list,
+                        baenrahel_list, whitestone_list, zertath_list,
+                        lvl12_list]:
                 for m in lst:
                     # Don't overwrite a JSON-loaded entry; Python is
                     # a fallback / supplement for the JSON catalogue.
                     if m.name.lower() not in self._monsters:
+                        _rebind_spells(m)
                         self._monsters[m.name.lower()] = m
         except ImportError as ex:
             print(f"Warning: Failed to load Python monster modules: {ex}")
