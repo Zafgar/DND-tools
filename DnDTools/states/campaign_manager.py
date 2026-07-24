@@ -2661,6 +2661,27 @@ class CampaignManagerState:
             loc = self.world.locations.get(self.selected_location_id)
             if loc:
                 loc.notes = self.input_text
+        elif self.input_active and self.input_active.startswith("locfact_"):
+            # Generic lore-fact editor (known_for, government, religion...)
+            loc = self.world.locations.get(self.selected_location_id)
+            field = self.input_active[len("locfact_"):]
+            if loc and hasattr(loc, field):
+                if field == "population":
+                    try:
+                        loc.population = int(
+                            self.input_text.replace(" ", "") or 0)
+                    except ValueError:
+                        pass
+                else:
+                    setattr(loc, field, self.input_text)
+        elif self.input_active == "npc_title":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.title = self.input_text
+        elif self.input_active == "npc_faction":
+            npc = self.world.npcs.get(self.selected_npc_id)
+            if npc:
+                npc.faction = self.input_text
         elif self.input_active == "npc_name":
             npc = self.world.npcs.get(self.selected_npc_id)
             if npc:
@@ -3969,13 +3990,68 @@ class CampaignManagerState:
         # info line y94) so long breadcrumbs never run under it.
         y = 100
 
-        # Breadcrumb
+        # Breadcrumb — every crumb is clickable so "missä sijaitsee"
+        # is one click away (Kingdom > Region > City > District ...).
         path = get_location_path(self.world, loc.id)
         if len(path) > 1:
-            crumbs = " > ".join(p.name for p in path)
-            bt = fonts.tiny.render(crumbs, True, COLORS["text_muted"])
-            screen.blit(bt, (start_x, y))
+            cx = start_x
+            for i, p in enumerate(path):
+                is_last = (i == len(path) - 1)
+                col = COLORS["text_muted"] if is_last else COLORS["accent"]
+                bt = fonts.tiny.render(p.name, True, col)
+                crumb_rect = pygame.Rect(cx, y, bt.get_width(), 16)
+                if not is_last and crumb_rect.collidepoint(mp):
+                    pygame.draw.line(screen, COLORS["accent"],
+                                     (cx, y + 14), (cx + bt.get_width(), y + 14))
+                    if pygame.mouse.get_pressed()[0]:
+                        self.selected_location_id = p.id
+                screen.blit(bt, (cx, y))
+                cx += bt.get_width()
+                if not is_last:
+                    sep = fonts.tiny.render("  >  ", True, COLORS["text_muted"])
+                    screen.blit(sep, (cx, y))
+                    cx += sep.get_width()
             y += 18
+
+        # Location image (right side): thumbnail + add/change button so
+        # every place can carry a picture.
+        img_w, img_h = 170, 120
+        img_x = SCREEN_WIDTH - img_w - 24
+        img_y = 100
+        img_path = getattr(loc, "map_image_path", "")
+        if not hasattr(self, "_loc_img_cache"):
+            self._loc_img_cache = {}
+        if img_path:
+            surf = self._loc_img_cache.get(img_path)
+            if surf is None:
+                try:
+                    raw = pygame.image.load(img_path)
+                    surf = pygame.transform.smoothscale(raw, (img_w, img_h))
+                except Exception:
+                    surf = False
+                self._loc_img_cache[img_path] = surf
+            if surf:
+                pygame.draw.rect(screen, COLORS["border"],
+                                 (img_x - 2, img_y - 2, img_w + 4, img_h + 4),
+                                 border_radius=4)
+                screen.blit(surf, (img_x, img_y))
+        img_btn = pygame.Rect(img_x, img_y + (img_h + 6 if img_path else 0),
+                              img_w, 22)
+        pygame.draw.rect(screen, COLORS["hover"] if img_btn.collidepoint(mp)
+                         else COLORS["panel"], img_btn, border_radius=4)
+        pygame.draw.rect(screen, COLORS["border"], img_btn, 1, border_radius=4)
+        cap = "Vaihda kuva" if img_path else "+ Kuva paikalle"
+        capt = fonts.tiny.render(cap, True, COLORS["accent"])
+        screen.blit(capt, (img_btn.centerx - capt.get_width() // 2,
+                           img_btn.y + 5))
+        now_ms = pygame.time.get_ticks()
+        if (img_btn.collidepoint(mp) and pygame.mouse.get_pressed()[0]
+                and now_ms - getattr(self, "_img_btn_cooldown", -9999) > 700):
+            self._img_btn_cooldown = now_ms
+            src = self._pick_image_file()
+            if src:
+                loc.map_image_path = self._import_map_image(src)
+                self._loc_img_cache.pop(loc.map_image_path, None)
 
         # Name (editable)
         hdr = fonts.header.render(loc.name, True, COLORS["accent"])
@@ -4004,7 +4080,7 @@ class CampaignManagerState:
             pt = fonts.tiny.render(lt, True, COLORS["text_bright"] if is_active else COLORS["text_dim"])
             screen.blit(pt, (tx + 6, y + 3))
             tx += pill_w + 4
-            if tx > SCREEN_WIDTH - 50:
+            if tx > SCREEN_WIDTH - 240:   # keep clear of the image column
                 tx = start_x + 50
                 y += 24
         y += 28
@@ -4048,6 +4124,63 @@ class CampaignManagerState:
             screen.blit(ft, (lx + 6, y + 3))
             lx += lw + 4
         y += 30
+
+        # Sub-areas: clickable chips for drilling into districts/rooms.
+        children = [self.world.locations[cid] for cid in loc.children_ids
+                    if cid in self.world.locations]
+        if children:
+            cl = fonts.small_bold.render(f"Alialueet ({len(children)}):",
+                                         True, COLORS["text_dim"])
+            screen.blit(cl, (start_x, y))
+            chx = start_x + cl.get_width() + 8
+            for child in children:
+                cw = fonts.tiny.size(child.name)[0] + 14
+                if chx + cw > SCREEN_WIDTH - 240:
+                    chx = start_x + 20
+                    y += 22
+                chr_ = pygame.Rect(chx, y, cw, 20)
+                hov = chr_.collidepoint(mp)
+                pygame.draw.rect(screen, COLORS["hover"] if hov
+                                 else COLORS["accent_dim"], chr_, border_radius=8)
+                ct = fonts.tiny.render(child.name, True, COLORS["text_bright"])
+                screen.blit(ct, (chx + 7, y + 3))
+                if hov and pygame.mouse.get_pressed()[0]:
+                    self.selected_location_id = child.id
+                chx += cw + 5
+            y += 26
+
+        # Lore facts — the "mikä tämä paikka on" panel. Two-column
+        # click-to-edit rows; empty fields show a ghost prompt.
+        facts = [
+            ("Tunnetaan", "known_for"), ("Väkiluku", "population"),
+            ("Hallinto", "government"), ("Rodut", "dominant_races"),
+            ("Kielet", "languages"), ("Uskonto", "religion"),
+            ("Vauraus", "wealth_level"), ("Puolustus", "defenses"),
+        ]
+        col_w2 = (SCREEN_WIDTH - start_x - 240) // 2
+        fx0, fy0 = start_x, y
+        for i, (label, field) in enumerate(facts):
+            fx = fx0 + (i % 2) * col_w2
+            fy = fy0 + (i // 2) * 21
+            val = getattr(loc, field, "") or ""
+            if field == "population":
+                val = f"{loc.population:,}".replace(",", " ") if loc.population else ""
+            fl = fonts.tiny.render(f"{label}:", True, COLORS["text_dim"])
+            screen.blit(fl, (fx, fy + 2))
+            vr = pygame.Rect(fx + 78, fy, col_w2 - 90, 19)
+            hov = vr.collidepoint(mp)
+            if hov:
+                pygame.draw.rect(screen, COLORS["hover"], vr, border_radius=3)
+            vt = fonts.tiny.render(val[:52] if val else "(lisää…)", True,
+                                   COLORS["text_main"] if val
+                                   else COLORS["text_muted"])
+            screen.blit(vt, (vr.x + 3, fy + 2))
+            if hov and pygame.mouse.get_pressed()[0]:
+                self.input_active = f"locfact_{field}"
+                self.input_text = "" if field == "population" and not loc.population \
+                    else (str(loc.population) if field == "population" else val)
+                self.modal = ("edit_field", f"locfact_{field}")
+        y = fy0 + ((len(facts) + 1) // 2) * 21 + 8
 
         # Description — word-wrapped over up to 5 lines so the longer
         # lore descriptions are actually readable (was a single line
@@ -4109,6 +4242,11 @@ class CampaignManagerState:
             is_hover = npc_rect.collidepoint(mp)
             bg = COLORS["hover"] if is_hover else COLORS["panel"]
             pygame.draw.rect(screen, bg, npc_rect, border_radius=4)
+            # Row click opens the NPC's sheet (navigation both ways:
+            # place -> people here -> person -> back to place).
+            if is_hover and pygame.mouse.get_pressed()[0]:
+                self.selected_npc_id = npc.id
+                self.world_view = "npcs"
 
             # Shopkeeper badge
             nx = start_x + 8
@@ -4299,6 +4437,8 @@ class CampaignManagerState:
             ("Race", npc.race, "npc_race"),
             ("Gender", npc.gender, "npc_gender"),
             ("Age", npc.age, "npc_age"),
+            ("Title", npc.title, "npc_title"),
+            ("Faction", npc.faction, "npc_faction"),
             ("Occupation", npc.occupation, "npc_occupation"),
             ("Appearance", npc.appearance, "npc_appearance"),
             ("Personality", npc.personality, "npc_personality"),
@@ -4342,12 +4482,25 @@ class CampaignManagerState:
             ax += aw + 4
         y += 28
 
-        # Location with MOVE button
+        # Location with MOVE button — the name itself is a link to the
+        # place's sheet ("missä tämä NPC on ja mikä se paikka on").
         loc = self.world.locations.get(npc.location_id)
         loc_label = fonts.small_bold.render("Location:", True, COLORS["text_dim"])
         screen.blit(loc_label, (start_x, y))
         loc_name = loc.name if loc else "(none)"
+        if loc:
+            parent = self.world.locations.get(loc.parent_id)
+            if parent:
+                loc_name = f"{loc.name}  ({parent.name})"
         lt = fonts.small.render(loc_name, True, COLORS["accent"] if loc else COLORS["text_muted"])
+        loc_link_rect = pygame.Rect(start_x + 75, y, lt.get_width(), 18)
+        if loc and loc_link_rect.collidepoint(mp):
+            pygame.draw.line(screen, COLORS["accent"],
+                             (loc_link_rect.x, y + 16),
+                             (loc_link_rect.right, y + 16))
+            if pygame.mouse.get_pressed()[0]:
+                self.selected_location_id = loc.id
+                self.world_view = "locations"
         screen.blit(lt, (start_x + 75, y))
         # Move button
         move_x = start_x + 75 + lt.get_width() + 10
@@ -4370,6 +4523,46 @@ class CampaignManagerState:
             if is_unlink_hover and pygame.mouse.get_pressed()[0]:
                 move_npc(self.world, npc.id, "")
         y += 22
+
+        # Suhteet — NPC-to-NPC links, each clickable to jump to the
+        # other character's sheet. "+ Suhde" opens the detail modal
+        # whose link form adds new relations.
+        from data import npc_directory as _npc_dir
+        links = _npc_dir.npc_links_of(self.world, npc.id)
+        rel_label = fonts.small_bold.render(
+            f"Suhteet ({len(links)}):", True, COLORS["text_dim"])
+        screen.blit(rel_label, (start_x, y))
+        add_rel = pygame.Rect(start_x + rel_label.get_width() + 10, y - 2,
+                              76, 20)
+        pygame.draw.rect(screen, COLORS["hover"] if add_rel.collidepoint(mp)
+                         else COLORS["panel"], add_rel, border_radius=3)
+        pygame.draw.rect(screen, COLORS["border"], add_rel, 1, border_radius=3)
+        art = fonts.tiny.render("+ Suhde…", True, COLORS["accent"])
+        screen.blit(art, (add_rel.x + 8, add_rel.y + 3))
+        if add_rel.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self._open_npc_detail(npc)
+        y += 22
+        for link in links[:5]:
+            row = f"• {link['kind']}: {link['target_name']}"
+            if link.get("notes"):
+                row += f" — {link['notes'][:36]}"
+            rt = fonts.small.render(row[:70], True, COLORS["text_main"])
+            link_rect = pygame.Rect(start_x + 8, y, rt.get_width(), 18)
+            if link_rect.collidepoint(mp):
+                pygame.draw.line(screen, COLORS["accent"],
+                                 (link_rect.x, y + 15),
+                                 (link_rect.right, y + 15))
+                if pygame.mouse.get_pressed()[0]:
+                    self.selected_npc_id = link["target_id"]
+            screen.blit(rt, (start_x + 8, y))
+            y += 19
+        if len(links) > 5:
+            more = fonts.tiny.render(f"… ja {len(links) - 5} lisää "
+                                     "(avaa ⚔ Statit / Lore)", True,
+                                     COLORS["text_muted"])
+            screen.blit(more, (start_x + 8, y))
+            y += 17
+        y += 4
 
         # Stat source with preview
         ss_label = fonts.small_bold.render("Stats:", True, COLORS["text_dim"])
@@ -5429,6 +5622,17 @@ class CampaignManagerState:
                 "campaign_name": "Campaign Name", "encounter_name": "Encounter Name",
                 "area_name": "Area Name", "member_note": "DM Note",
             }
+            label_map.update({
+                "npc_title": "Title", "npc_faction": "Faction",
+                "locfact_known_for": "Tunnetaan (Known for)",
+                "locfact_population": "Väkiluku (Population)",
+                "locfact_government": "Hallinto (Government)",
+                "locfact_dominant_races": "Rodut (Dominant races)",
+                "locfact_languages": "Kielet (Languages)",
+                "locfact_religion": "Uskonto (Religion)",
+                "locfact_wealth_level": "Vauraus (Wealth)",
+                "locfact_defenses": "Puolustus (Defenses)",
+            })
             # Handle relationship/quest sub-fields
             title = "Edit"
             if field_key in label_map:
