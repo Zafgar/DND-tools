@@ -1182,6 +1182,14 @@ def _assign_hero_items():
         if hero.character_class and hero.character_level > 0 and not hero.items:
             hero.items = get_hero_items(hero.character_class, hero.character_level)
 
+# ============================================================================
+# Novus Somnium -kampanjan pelaajahahmot (taso 11) liitetään heroihin, jotta
+# ne näkyvät encounter setupissa ja voi asettaa pelaajien puolelle kentälle.
+# ============================================================================
+from data.novus_party import novus_party
+hero_list.extend(novus_party)
+
+
 _assign_hero_items()
 
 
