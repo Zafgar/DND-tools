@@ -186,6 +186,8 @@ class MonsterLoreModal:
                                   filter_type="legendary")
         y = self._draw_actions(screen, y, "Lair Actions",
                                   filter_type="lair")
+        y = self._draw_spells(screen, y)
+        y = self._draw_inventory(screen, y)
         y = self._draw_features(screen, y)
         self._content_height = (y - (content_top - self.scroll))
         screen.set_clip(prev_clip)
@@ -411,6 +413,89 @@ class MonsterLoreModal:
                 y += 15
             y += 4
         return y + 6
+
+    def _draw_spells(self, screen, y):
+        """Spellcasting block: ability/DC/attack, slots, cantrips and
+        known spells grouped by level."""
+        s = self.stats
+        spells = list(getattr(s, "spells_known", []) or [])
+        cantrips = list(getattr(s, "cantrips", []) or [])
+        if not (spells or cantrips or s.spellcasting_ability):
+            return y
+        bright = COLORS.get("text_bright", (240, 240, 250))
+        main = COLORS.get("text_main", (220, 220, 235))
+        dim = COLORS.get("text_dim", (180, 180, 195))
+        spell_c = COLORS.get("spell", (170, 130, 230))
+
+        screen.blit(fonts.small_bold.render("Spellcasting", True, spell_c),
+                    (self.x + 20, y))
+        y += 22
+        if s.spellcasting_ability:
+            hdr = f"{s.spellcasting_ability}"
+            if s.spell_save_dc:
+                hdr += f"  ·  Save DC {s.spell_save_dc}"
+            if s.spell_attack_bonus:
+                hdr += f"  ·  +{s.spell_attack_bonus} to hit"
+            screen.blit(fonts.small.render(hdr, True, main), (self.x + 30, y))
+            y += 18
+        # Spell slots line
+        slots = getattr(s, "spell_slots", {}) or {}
+        slot_bits = [f"{lvl}: {n}" for lvl, n in slots.items() if n]
+        if slot_bits:
+            screen.blit(fonts.tiny.render("Slots — " + "   ".join(slot_bits),
+                                          True, dim), (self.x + 30, y))
+            y += 16
+        if cantrips:
+            names = ", ".join(sp.name for sp in cantrips)
+            for line in _wrap("Cantrips: " + names, fonts.small,
+                              self.WIDTH - 60):
+                screen.blit(fonts.small.render(line, True, main),
+                            (self.x + 30, y))
+                y += 17
+        # Known spells grouped by level
+        by_level = {}
+        for sp in spells:
+            by_level.setdefault(getattr(sp, "level", 0), []).append(sp.name)
+        for lvl in sorted(by_level):
+            label = "Level %d" % lvl if lvl else "Cantrip"
+            names = ", ".join(sorted(by_level[lvl]))
+            for line in _wrap(f"{label}: {names}", fonts.small,
+                              self.WIDTH - 60):
+                screen.blit(fonts.small.render(line, True, main),
+                            (self.x + 30, y))
+                y += 17
+        return y + 8
+
+    def _draw_inventory(self, screen, y):
+        """Items / gear the creature carries."""
+        s = self.stats
+        items = list(getattr(s, "items", []) or [])
+        if not items:
+            return y
+        bright = COLORS.get("text_bright", (240, 240, 250))
+        main = COLORS.get("text_main", (220, 220, 235))
+        dim = COLORS.get("text_dim", (180, 180, 195))
+        screen.blit(fonts.small_bold.render("Inventory", True, bright),
+                    (self.x + 20, y))
+        y += 22
+        for it in items:
+            name = getattr(it, "name", str(it))
+            qty = getattr(it, "uses", -1)
+            equipped = getattr(it, "equipped", False)
+            head = f"• {name}"
+            if equipped:
+                head += "  [equipped]"
+            if isinstance(qty, int) and qty > 0:
+                head += f"  ×{qty}"
+            screen.blit(fonts.small.render(head, True, main), (self.x + 30, y))
+            y += 17
+            desc = getattr(it, "description", "")
+            if desc:
+                for line in _wrap(desc, fonts.tiny, self.WIDTH - 70):
+                    screen.blit(fonts.tiny.render(line, True, dim),
+                                (self.x + 42, y))
+                    y += 14
+        return y + 8
 
     def _draw_features(self, screen, y):
         s = self.stats

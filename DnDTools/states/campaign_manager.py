@@ -438,6 +438,10 @@ class CampaignManagerState:
                                         self._add_world_location, color=COLORS["spell"])
         self.btn_add_npc = Button(200, SCREEN_HEIGHT - 60, 140, 45, "+ NPC",
                                    self._add_world_npc, color=COLORS["player"])
+        self.btn_world_locations_view = Button(350, SCREEN_HEIGHT - 60, 110, 45,
+                                                "🗺 Paikat",
+                                                self._show_locations_view,
+                                                color=COLORS["accent"])
         self.btn_world_npcs_view = Button(350, SCREEN_HEIGHT - 60, 140, 45, "All NPCs",
                                            self._toggle_npc_view, color=COLORS["accent"])
         self.btn_world_shops_view = Button(500, SCREEN_HEIGHT - 60, 100, 45, "Shops",
@@ -563,21 +567,36 @@ class CampaignManagerState:
             (self.btn_quick_quest,    130, _create),
         ])
         _flow_row(SCREEN_HEIGHT - 60, [
-            (self.btn_add_location,    140, _create),
-            (self.btn_add_npc,         110, _create),
-            (self.btn_add_quest,       110, _create),
-            (self.btn_world_npcs_view, 120, _browse),
-            (self.btn_npc_search,      120, _browse),
-            (self.btn_npc_graph,       140, _browse),
-            (self.btn_world_shops_view, 100, _browse),
-            (self.btn_world_quests,    100, _browse),
-            (self.btn_world_services,  110, _browse),
-            (self.btn_world_templates, 115, _browse),
-            (self.btn_world_travel,     95, _browse),
-            (self.btn_world_map_view,   80, _browse),
-            (self.btn_open_map_editor, 140, _tool),
-            (self.btn_import_text,     145, _tool),
+            (self.btn_add_location,    130, _create),
+            (self.btn_add_npc,         100, _create),
+            (self.btn_add_quest,       100, _create),
+            (self.btn_world_locations_view, 110, _browse),
+            (self.btn_world_npcs_view, 110, _browse),
+            (self.btn_npc_search,      110, _browse),
+            (self.btn_npc_graph,       130, _browse),
+            (self.btn_world_shops_view, 90, _browse),
+            (self.btn_world_quests,     90, _browse),
+            (self.btn_world_services,  100, _browse),
+            (self.btn_world_templates, 105, _browse),
+            (self.btn_world_travel,     85, _browse),
+            (self.btn_world_map_view,   75, _browse),
+            (self.btn_open_map_editor, 120, _tool),
+            (self.btn_import_text,     130, _tool),
         ])
+        # View-toggle buttons that should light up when their view is
+        # active, so the DM always sees where they are and how to return.
+        self._world_view_toggle_buttons = [
+            (self.btn_world_locations_view, lambda: self.world_view == "locations"
+             and not self.world_map_mode and not self.template_view
+             and not self.services_view),
+            (self.btn_world_npcs_view, lambda: self.world_view == "npcs"),
+            (self.btn_world_shops_view, lambda: self.world_view == "shops"),
+            (self.btn_world_quests, lambda: self.world_view == "quests"),
+            (self.btn_world_services, lambda: self.services_view == "services"),
+            (self.btn_world_templates, lambda: bool(self.template_view)),
+            (self.btn_world_travel, lambda: self.services_view == "travel"),
+            (self.btn_world_map_view, lambda: self.world_map_mode),
+        ]
 
         self._quick_quest_modal = None
         self._kingdom_nav_widget = None
@@ -1035,6 +1054,14 @@ class CampaignManagerState:
         npc = add_npc(self.world, f"NPC {self.world.next_id}", loc_id)
         self.selected_npc_id = npc.id
         self.world_view = "npcs"
+
+    def _show_locations_view(self):
+        """Always return to the Locations list (the World tab's home)."""
+        self.world_view = "locations"
+        self.world_map_mode = False
+        self.template_view = ""
+        self.services_view = ""
+        self.scroll_y = 0
 
     def _toggle_npc_view(self):
         self.world_view = "npcs" if self.world_view != "npcs" else "locations"
@@ -1997,6 +2024,7 @@ class CampaignManagerState:
             elif self.active_tab == 4:
                 self.btn_add_location.handle_event(event)
                 self.btn_add_npc.handle_event(event)
+                self.btn_world_locations_view.handle_event(event)
                 self.btn_world_npcs_view.handle_event(event)
                 self.btn_world_shops_view.handle_event(event)
                 self.btn_world_map_view.handle_event(event)
@@ -3000,8 +3028,17 @@ class CampaignManagerState:
         elif self.active_tab == 3:
             self.btn_new_note.draw(screen, mp)
         elif self.active_tab == 4:
+            # Highlight whichever view toggle is currently active so the
+            # DM always sees where they are (and that "🗺 Paikat" returns
+            # to the Locations list).
+            for btn, is_active in getattr(self, "_world_view_toggle_buttons", []):
+                if is_active():
+                    r = btn.rect.inflate(4, 4)
+                    pygame.draw.rect(screen, COLORS["text_bright"], r, 3,
+                                     border_radius=8)
             self.btn_add_location.draw(screen, mp)
             self.btn_add_npc.draw(screen, mp)
+            self.btn_world_locations_view.draw(screen, mp)
             self.btn_world_npcs_view.draw(screen, mp)
             self.btn_world_shops_view.draw(screen, mp)
             self.btn_world_map_view.draw(screen, mp)
@@ -4664,6 +4701,22 @@ class CampaignManagerState:
             self.input_text = ""
             self.modal = ("edit_field", "npc_add_item")
         y += 25
+
+        # Prominent full stat-sheet button: opens the big sheet with
+        # abilities, saves, actions, features, SPELLS and INVENTORY.
+        sheet_btn = pygame.Rect(start_x, y, 380, 34)
+        is_sheet_hov = sheet_btn.collidepoint(mp)
+        pygame.draw.rect(screen,
+                         COLORS["accent"] if is_sheet_hov else COLORS["spell"],
+                         sheet_btn, border_radius=6)
+        pygame.draw.rect(screen, COLORS["text_bright"], sheet_btn, 1,
+                         border_radius=6)
+        screen.blit(fonts.body_bold.render(
+            "📖 Avaa koko statlehti  (kyvyt · loitsut · tavarat)",
+            True, COLORS["text_bright"]), (sheet_btn.x + 12, y + 7))
+        if is_sheet_hov and pygame.mouse.get_pressed()[0]:
+            self._open_monster_lore(npc)
+        y += 42
 
         # Shopkeeper toggle
         shop_btn = pygame.Rect(start_x, y, 140, 28)
