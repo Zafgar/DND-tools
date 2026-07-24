@@ -621,8 +621,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
     def _spawn_damage_text(self, entity, amount, is_heal=False, damage_type=""):
         color = COLORS["success"] if is_heal else COLORS["danger"]
-        prefix = "+" if is_heal else "-"
-        text = f"{prefix}{abs(amount)}"
+        # ``amount`` may be a numeric delta or a label string ("Shield!",
+        # "Parry!", "Absorb!", "Dodge!", ...). Labels render verbatim.
+        if isinstance(amount, str):
+            text = amount
+        else:
+            prefix = "+" if is_heal else "-"
+            text = f"{prefix}{abs(amount)}"
         ft = FloatingText(entity.grid_x, entity.grid_y, text, color)
         self.floating_texts.append(ft)
         # Impact flash effect
@@ -884,6 +889,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             "grid_x": curr.grid_x,
             "grid_y": curr.grid_y,
             "reckless_attack_active": curr.reckless_attack_active,
+            "potion_used_this_turn": getattr(curr, "potion_used_this_turn", False),
         }
         plan = self.battle.compute_ai_turn(curr)
         if plan.skipped:
@@ -1097,6 +1103,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             entity.grid_x = self._pre_plan_state.get("grid_x", entity.grid_x)
             entity.grid_y = self._pre_plan_state.get("grid_y", entity.grid_y)
             entity.reckless_attack_active = self._pre_plan_state.get("reckless_attack_active", False)
+            entity.potion_used_this_turn = self._pre_plan_state.get("potion_used_this_turn", False)
             self._pre_plan_state = None
 
         self.pending_plan = None

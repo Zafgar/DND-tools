@@ -1386,6 +1386,7 @@ class Entity:
         self.bonus_action_used = False
         self.reaction_used = False
         self.movement_left = self.get_speed()
+        self.potion_used_this_turn = False   # RAW: one potion per turn
         self.sneak_attack_used = False
         self.savage_attacker_used = False
         self.is_dodging = False
@@ -1438,6 +1439,7 @@ class Entity:
         self.rage_active = False
         self.marked_target = None
         self.sneak_attack_used = False
+        self.potion_used_this_turn = False   # RAW: one potion per turn
         # Lucky feat
         if self.has_feature("lucky"):
             self.lucky_uses_left = 3

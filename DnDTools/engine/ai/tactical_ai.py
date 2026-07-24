@@ -2097,25 +2097,33 @@ class TacticalAI:
                 continue
             clusters, (cx, cy) = result
             
+            # RAW: a breath/AoE hits friend and foe alike. Only enemies count
+            # toward the target threshold; catching an ally is a COST.
+            enemy_targets = [t for t in clusters
+                             if t.is_player != entity.is_player]
+            friendly_targets = [t for t in clusters
+                                if t.is_player == entity.is_player]
+
             # Allow single target for powerful AoEs (Breath Weapons)
             min_targets = 2
             if average_damage(action.damage_dice) > 25:
                 min_targets = 1
 
-            if not clusters or len(clusters) < min_targets:
+            if len(enemy_targets) < min_targets:
                 continue
 
             # Calculate total expected damage considering vulnerabilities/saves
-            total_dmg = 0.0
-            for t in clusters:
-                base = self._estimate_damage(action.damage_dice, action.damage_type, t)
-                # Estimate save (simplified)
-                if action.condition_save:
-                    # Assume 50% chance to fail save for estimation
-                    total_dmg += base * 0.75 # (1.0 + 0.5) / 2 roughly
-                else:
-                    total_dmg += base
-            
+            def _dmg(t):
+                base = self._estimate_damage(action.damage_dice,
+                                             action.damage_type, t)
+                # Estimate save (simplified: ~50% fail on a save-for-half)
+                return base * 0.75 if action.condition_save else base
+
+            total_dmg = sum(_dmg(t) for t in enemy_targets)
+            # Friendly fire is a heavy cost (allies matter more than the
+            # marginal enemy caught).
+            total_dmg -= sum(_dmg(t) for t in friendly_targets) * 2.0
+
             if total_dmg > best_total_dmg:
                 best_total_dmg = total_dmg
                 # Consume usage if applicable
@@ -2250,6 +2258,10 @@ class TacticalAI:
                         damage=healed, damage_type="healing"
                     )
         # Pick best healing potion (don't waste high-tier potions on small wounds)
+        # RAW: drinking a potion is an action and you may drink only one per
+        # turn — never queue a second potion the same turn.
+        if getattr(entity, "potion_used_this_turn", False):
+            return None
         hp_deficit = entity.max_hp - entity.hp
         hp_pct = entity.hp / max(entity.max_hp, 1)
         best_potion = None
@@ -2270,6 +2282,7 @@ class TacticalAI:
         if best_potion:
             if best_potion.uses > 0:
                 best_potion.uses -= 1
+            entity.potion_used_this_turn = True
             healed = roll_dice(best_potion.heals)
             return ActionStep(
                 step_type="spell",
@@ -2285,6 +2298,9 @@ class TacticalAI:
         Uses action (RAW: potions are an action to drink).
         """
         if entity.action_used:
+            return None
+        # RAW: only one potion per turn.
+        if getattr(entity, "potion_used_this_turn", False):
             return None
 
         hp_pct = entity.hp / max(entity.max_hp, 1)
@@ -2337,6 +2353,7 @@ class TacticalAI:
 
             if use:
                 item.uses -= 1
+                entity.potion_used_this_turn = True
                 desc = f"{entity.name} drinks {item.name}."
 
                 # Apply buff effects
@@ -2450,6 +2467,10 @@ class TacticalAI:
         """
         if entity.bonus_action_used:
             return None
+        # RAW: only one potion per turn — don't stack a bonus-action potion
+        # on top of one already drunk as an action this turn.
+        if getattr(entity, "potion_used_this_turn", False):
+            return None
 
         hp_pct = entity.hp / max(entity.max_hp, 1)
         if hp_pct > 0.5:
@@ -2480,6 +2501,7 @@ class TacticalAI:
         best_potion.uses -= 1
         healed = roll_dice(best_potion.heals)
         entity.bonus_action_used = True
+        entity.potion_used_this_turn = True
         return ActionStep(
             step_type="bonus_attack",
             description=f"{entity.name} drinks {best_potion.name}, healing {healed} HP.",
@@ -2680,45 +2702,62 @@ class TacticalAI:
             if not result:
                 continue
             clusters, (cx, cy) = result
-            if not clusters or len(clusters) < min_targets:
+            # RAW: an area spell hits friend and foe alike. _best_aoe_cluster
+            # folds any allies/self caught in the blast into ``clusters``, so
+            # split them out here: only enemies count toward the target
+            # threshold, and friendly fire is a COST, not a benefit.
+            enemy_targets = [t for t in clusters
+                             if t.is_player != entity.is_player]
+            friendly_targets = [t for t in clusters
+                                if t.is_player == entity.is_player]
+            if len(enemy_targets) < min_targets:
                 continue
 
             # Calculate total EV per target with precise save calculations
             total_ev = 0.0
             dc = spell.save_dc_fixed or (entity.stats.spell_save_dc or 13)
 
-            for t in clusters:
-                base = self._estimate_damage(_get_spell_damage_dice(spell, entity), spell.damage_type, t)
+            def _target_ev(t):
+                base = self._estimate_damage(
+                    _get_spell_damage_dice(spell, entity), spell.damage_type, t)
                 if base <= 0:
-                    continue
-
+                    return 0.0, 0.0
                 if spell.save_ability:
                     save_bonus = t.get_save_bonus(spell.save_ability)
-                    # Check if target has magic resistance
                     has_magic_res = t.has_feature("magic_resistance")
                     fail_chance = 1.0 - ((21 + save_bonus - dc) / 20.0)
                     if has_magic_res:
-                        # Advantage on save = square the success chance
                         success = 1.0 - fail_chance
                         fail_chance = 1.0 - (1.0 - (1.0 - success) ** 2)
                     fail_chance = max(0.05, min(0.95, fail_chance))
-
                     if spell.half_on_save:
                         ev = base * fail_chance + (base / 2.0) * (1.0 - fail_chance)
                     else:
                         ev = base * fail_chance
                 else:
                     ev = base
+                return base, ev
 
+            for t in enemy_targets:
+                base, ev = _target_ev(t)
+                if ev <= 0:
+                    continue
                 # Kill bonus (finishing off wounded enemies)
                 if base >= t.hp:
                     ev *= 1.2
-
                 # Concentration disruption bonus
                 if t.concentrating_on:
                     ev += 5
-
                 total_ev += ev
+
+            # Friendly fire: subtract each ally's/self's expected damage,
+            # weighted heavily — hurting your own team is worse than the
+            # marginal value of catching one more enemy. Evokers who can
+            # sculpt spells carve their allies out and pay no penalty.
+            if not can_sculpt:
+                for t in friendly_targets:
+                    _base, ev = _target_ev(t)
+                    total_ev -= ev * 2.0
 
             # Slot efficiency: compare EV per slot level
             slot_efficiency = total_ev / max(spell.level, 1)
@@ -2732,9 +2771,11 @@ class TacticalAI:
             # Decide slot: upcast by 1 for big AoEs when 3+ enemies are caught and a higher slot is free.
             # Save top-tier slots (7+) for boss moments unless the caller really wants to burn them.
             chosen_slot = spell.level
+            enemy_count = len([t for t in clusters
+                               if t.is_player != entity.is_player])
             if spell.damage_scaling:
                 highest = entity.get_highest_slot()
-                if highest > spell.level and len(clusters) >= 3 and highest <= 6:
+                if highest > spell.level and enemy_count >= 3 and highest <= 6:
                     # Upcast one level to gain scaling damage on a crowd
                     if entity.spell_slots.get(entity._LEVEL_KEYS.get(spell.level + 1, ""), 0) > 0:
                         chosen_slot = spell.level + 1
