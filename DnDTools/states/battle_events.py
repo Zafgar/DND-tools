@@ -403,22 +403,45 @@ class BattleEventsMixin:
                                 self.battle.toggle_door_at(gx, gy)
                                 continue
 
-                # Pending AI confirmation
-                if self.pending_plan:
-                    # Check dynamic resolution buttons
+                # Deferred player concentration check (table rolls)
+                if self.pending_conc_checks:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         for rect, callback in self.ui_click_zones:
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
-                    
-                    # Global buttons
-                    if self.pending_step_idx < len(self.pending_plan.steps):
-                        self.btn_confirm.handle_event(event)
-                        self.btn_deny.handle_event(event)
-                        self.btn_approve_all.handle_event(event)
-                        self.btn_cancel_ai.handle_event(event)
                     continue
+
+                # Pending AI confirmation
+                if self.pending_plan:
+                    # Grid clicks outside the dialog fall through so the
+                    # DM can reposition tokens mid-suggestion (the drag
+                    # release becomes a free DM move and the plan is
+                    # recomputed for the new positions).
+                    dialog_rect = pygame.Rect(SCREEN_WIDTH//2 - 350,
+                                              SCREEN_HEIGHT//2 - 225, 700, 450)
+                    grid_pass = (event.type in (pygame.MOUSEBUTTONDOWN,
+                                                pygame.MOUSEBUTTONUP)
+                                 and getattr(event, "button", 0) == 1
+                                 and event.pos[0] < GRID_W
+                                 and event.pos[1] >= TOP_BAR_H
+                                 and not dialog_rect.collidepoint(event.pos))
+                    if not grid_pass:
+                        # Check dynamic resolution buttons
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            for rect, callback in self.ui_click_zones:
+                                if rect.collidepoint(event.pos):
+                                    callback()
+                                    break
+
+                        # Global buttons
+                        if self.pending_step_idx < len(self.pending_plan.steps):
+                            self.btn_confirm.handle_event(event)
+                            self.btn_deny.handle_event(event)
+                            self.btn_approve_all.handle_event(event)
+                            self.btn_cancel_ai.handle_event(event)
+                            self.btn_reroll.handle_event(event)
+                        continue
 
                 # Pending Aura Trigger
                 if self.current_aura_trigger:
@@ -451,12 +474,21 @@ class BattleEventsMixin:
 
                     # Check Top Bar (Initiative Cards) selection
                     if raw_my < TOP_BAR_H:
+                        # Turn-order edit arrows (drawn on the selected card)
+                        handled = False
+                        for rect, cb in getattr(self, "init_order_zones", []):
+                            if rect.collidepoint(event.pos):
+                                cb()
+                                handled = True
+                                break
+                        if handled:
+                            continue
                         # Calculate dynamic start X based on Round text width (matches _draw_top_bar)
                         round_text = f"ROUND {self.battle.round}"
                         rt_w = fonts.header.size(round_text)[0]
                         round_bg_w = rt_w + 20
                         card_x = 10 + round_bg_w + 15  # 10(margin) + width + 15(gap)
-                        
+
                         card_w, card_h = 120, 88
                         for ent in self.battle.entities:
                             if card_x > SCREEN_WIDTH - 180:
@@ -526,11 +558,19 @@ class BattleEventsMixin:
                             if not self.battle.is_occupied(gx, gy, exclude=self.dragging):
                                 old_x, old_y = self.dragging.grid_x, self.dragging.grid_y
 
+                                dm_free_move = (self.dm_move_mode
+                                                or (pygame.key.get_mods() & pygame.KMOD_ALT)
+                                                or self.pending_plan is not None)
                                 if not self.battle.combat_started:
                                     # Deployment phase: free placement, no OA checks
                                     self.dragging.grid_x = gx
                                     self.dragging.grid_y = gy
                                     self._log(f"[DEPLOY] {self.dragging.name} placed at ({gx:.0f}, {gy:.0f}).")
+                                elif dm_free_move:
+                                    # DM tool: reposition without movement
+                                    # cost or opportunity attacks; the AI
+                                    # re-evaluates its suggestion at once.
+                                    self._dm_move_entity(self.dragging, gx, gy)
                                 else:
                                     # Combat: check opportunity attacks
                                     self.dragging.grid_x = gx
@@ -629,7 +669,7 @@ class BattleEventsMixin:
                 self.btn_weather.handle_event(event)
                 self.btn_undo.handle_event(event)
                 self.btn_auto.handle_event(event)
-                self.btn_auto_mode.handle_event(event)
+                self.btn_dm_move.handle_event(event)
                 if self.auto_battle:
                     self.btn_pause.handle_event(event)
                     self.btn_speed_down.handle_event(event)

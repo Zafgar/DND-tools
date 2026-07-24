@@ -7,6 +7,12 @@ from typing import Optional
 from settings import COLORS
 from data.models import CreatureStats, SpellInfo, Item
 
+# Table-play hook (set by the battle UI): fn(entity, dc, damage) -> bool.
+# Returning True claims a PLAYER's concentration save — the engine skips
+# its auto-roll and the UI resolves the check (the player rolls at the
+# table). Left as None in headless/simulation use for RAW auto-rolls.
+CONCENTRATION_PROMPT_HOOK = None
+
 
 class Entity:
     def __init__(self, stats: CreatureStats, x: float, y: float, is_player: bool = False):
@@ -45,6 +51,7 @@ class Entity:
         self.conditions: set = set()
         self.condition_metadata: dict = {}  # "Condition": {"dc": 15, "save": "Wisdom"}
         self.condition_sources: dict = {}   # "Condition": Entity reference (source of Frightened/Charmed)
+        self.condition_durations: dict = {} # "Condition": rounds remaining (ticks at end of this entity's turn)
 
         # Grapple tracking (PHB p.195)
         self.grappling: list = []           # List of Entity references this entity is currently grappling
@@ -643,29 +650,38 @@ class Entity:
         broke_conc = False
         if self.concentrating_on and damage_for_concentration > 0:
             dc = max(10, damage_for_concentration // 2)
-            con_bonus = self.get_save_bonus("Constitution")
-            roll = random.randint(1, 20) + con_bonus
-            # War Caster: advantage on concentration saves
-            has_adv = self.has_feature("war_caster")
-            # Phase 30 — Mage Slayer: target has disadvantage on
-            # concentration saves caused by damage from an adjacent
-            # Mage Slayer.
-            has_dis = False
-            if source is not None:
-                from engine.feat_effects import \
-                    mage_slayer_concentration_disadvantage
-                if mage_slayer_concentration_disadvantage(source, self):
-                    has_dis = True
-            # Advantage and disadvantage cancel.
-            if has_adv and not has_dis:
-                roll2 = random.randint(1, 20) + con_bonus
-                roll = max(roll, roll2)
-            elif has_dis and not has_adv:
-                roll2 = random.randint(1, 20) + con_bonus
-                roll = min(roll, roll2)
-            if roll < dc:
-                self.drop_concentration()
-                broke_conc = True
+            # Table-play hook: at a physical table the PLAYER rolls their
+            # own concentration save. When a UI has installed the module
+            # hook and it claims this check (returns True), the auto-roll
+            # is skipped and the UI resolves the save later (keep/drop).
+            deferred = (CONCENTRATION_PROMPT_HOOK is not None
+                        and self.is_player
+                        and CONCENTRATION_PROMPT_HOOK(
+                            self, dc, damage_for_concentration))
+            if not deferred:
+                con_bonus = self.get_save_bonus("Constitution")
+                roll = random.randint(1, 20) + con_bonus
+                # War Caster: advantage on concentration saves
+                has_adv = self.has_feature("war_caster")
+                # Phase 30 — Mage Slayer: target has disadvantage on
+                # concentration saves caused by damage from an adjacent
+                # Mage Slayer.
+                has_dis = False
+                if source is not None:
+                    from engine.feat_effects import \
+                        mage_slayer_concentration_disadvantage
+                    if mage_slayer_concentration_disadvantage(source, self):
+                        has_dis = True
+                # Advantage and disadvantage cancel.
+                if has_adv and not has_dis:
+                    roll2 = random.randint(1, 20) + con_bonus
+                    roll = max(roll, roll2)
+                elif has_dis and not has_adv:
+                    roll2 = random.randint(1, 20) + con_bonus
+                    roll = min(roll, roll2)
+                if roll < dc:
+                    self.drop_concentration()
+                    broke_conc = True
 
         # PHB p.197: damage while already at 0 HP causes death save
         # failures — one, or two on a critical hit — and is instant
@@ -861,7 +877,7 @@ class Entity:
     # ------------------------------------------------------------------ #
 
     def add_condition(self, condition: str, save_ability: str = None, save_dc: int = 0,
-                      source: "Entity | None" = None):
+                      source: "Entity | None" = None, duration_rounds: int = 0):
         from data.conditions import INCAPACITATING_CONDITIONS
         immune = [x.lower() for x in self.stats.condition_immunities]
         if condition.lower() not in immune:
@@ -870,6 +886,11 @@ class Entity:
                 self.condition_metadata[condition] = {"save": save_ability, "dc": save_dc}
             if source:
                 self.condition_sources[condition] = source
+            if duration_rounds > 0:
+                # Timed condition: ticks down at the end of this entity's
+                # turn and auto-expires at 0 (e.g. Blinded until end of
+                # next turn = 1, "1 minute" effects = 10).
+                self.condition_durations[condition] = duration_rounds
             if condition in INCAPACITATING_CONDITIONS:
                 # Lethargic (Haste aftermath) blocks actions/movement but
                 # is not the Incapacitated condition — it does not break
@@ -884,6 +905,7 @@ class Entity:
         self.conditions.discard(condition)
         self.condition_metadata.pop(condition, None)
         self.condition_sources.pop(condition, None)
+        self.condition_durations.pop(condition, None)
         # If Grappled is removed, clean up grapple references
         if condition == "Grappled" and self.grappled_by:
             grappler = self.grappled_by
