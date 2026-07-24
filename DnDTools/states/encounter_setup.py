@@ -73,10 +73,14 @@ class EncounterSetupState(GameState):
                    self._export_heroes_file, color=COLORS["neutral"]),
             Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-385, 230, 45, "Load Scenario...",
                    self._open_scenario_picker, color=COLORS["accent"]),
+            Button(SCREEN_WIDTH-270, SCREEN_HEIGHT-440, 230, 45, "Load Party...",
+                   self._open_party_picker, color=COLORS["spell"]),
         ]
 
         # Scenario picker modal (lazy — created on first open)
         self._scenario_picker = None
+        # Party picker modal (lazy — created on first open)
+        self._party_picker = None
         # Pending scenario to apply on _start_battle (terrain/ceiling/bg)
         self._pending_scenario = None
 
@@ -320,7 +324,26 @@ class EncounterSetupState(GameState):
         )
         self._pending_scenario = scenario
 
+    def _open_party_picker(self):
+        from states.party_picker_modal import PartyPickerModal
+        if self._party_picker is None:
+            self._party_picker = PartyPickerModal(
+                on_load=self._apply_party_pick
+            )
+        self._party_picker.open()
+
+    def _apply_party_pick(self, preset):
+        """DM confirmed a party preset — add its available members to the
+        roster (skipping any already present or not yet in the library)."""
+        from data.party_presets import preset_as_entities
+        self.roster.extend(preset_as_entities(preset, self.roster))
+
     def handle_events(self, events):
+        # Party modal intercepts all events when open
+        if self._party_picker is not None and self._party_picker.is_open:
+            for event in events:
+                self._party_picker.handle_event(event)
+            return
         # Scenario modal intercepts all events when open
         if self._scenario_picker is not None and self._scenario_picker.is_open:
             for event in events:
@@ -484,6 +507,8 @@ class EncounterSetupState(GameState):
         # Modal on top
         if self._scenario_picker is not None:
             self._scenario_picker.draw(screen)
+        if self._party_picker is not None:
+            self._party_picker.draw(screen)
 
     def _draw_win_probability_bar(self, screen, win_prob_cache, x, y, w, h):
         """Draw the win probability bar on the UI (setup screen version)."""

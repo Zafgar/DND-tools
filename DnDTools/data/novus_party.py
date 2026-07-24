@@ -356,4 +356,274 @@ novus_party = [
                 "Maul-iskua (Topple kaataa), Great Weapon Master bonus-isku "
                 "tapoista. Sentinel lukitsee viholliset liittolaisten luo.",
     ),
+
+    # ================================================================= #
+    # DARIUS "SLICK" MORIN — Variant Human Rogue 10 (Swashbuckler)
+    # ================================================================= #
+    CreatureStats(
+        name="Darius \"Slick\" Morin",
+        character_class="Rogue", character_level=10, race="Variant Human",
+        subclass="Swashbuckler",
+        hit_points=78, armor_class=17, speed=40, hit_dice="10d8",
+        abilities=AbilityScores(strength=8, dexterity=20, constitution=14,
+                                intelligence=10, wisdom=10, charisma=18),
+        senses="Passive Perception 17",
+        languages="Common, Orc, Thieves' Cant",
+        actions=[
+            Action("Light Crossbow +1", "Ranged", 10, "1d8+6", 0, "piercing",
+                   range=80, long_range=320,
+                   properties=["ammunition", "two-handed", "loading"]),
+            Action("Rapier", "Melee", 9, "1d8+5", 0, "piercing",
+                   properties=["finesse"]),
+            Action("Shortsword", "Melee", 9, "1d6+5", 0, "piercing",
+                   properties=["finesse", "light"]),
+        ],
+        features=[
+            Feature("Sneak Attack (1/turn)", "+5d6 damage with a finesse or "
+                    "ranged weapon when you have advantage or an enemy of the "
+                    "target is within 5 ft.", mechanic="sneak_attack",
+                    mechanic_value="5d6"),
+            Feature("Cunning Action", "Bonus Action: Dash, Disengage, or "
+                    "Hide.", feature_type="class", mechanic="cunning_action"),
+            Feature("Steady Aim", "Bonus Action: advantage on your next "
+                    "attack (speed 0 this turn).", feature_type="class"),
+            Feature("Uncanny Dodge", "Reaction: halve the damage of one "
+                    "attack that hits you.", feature_type="class",
+                    mechanic="uncanny_dodge"),
+            Feature("Evasion", "On a Dex save for half damage, take none on a "
+                    "success and half on a failure.", feature_type="class",
+                    mechanic="evasion"),
+            Feature("Fancy Footwork", "A creature you make a melee attack "
+                    "against can't make opportunity attacks against you for "
+                    "the rest of the turn.", feature_type="class"),
+            Feature("Rakish Audacity", "Add CHA to initiative; you don't need "
+                    "advantage for Sneak Attack if no other creature is within "
+                    "5 ft of the target (only the target).",
+                    feature_type="class"),
+            Feature("Panache", "Action: DC 17 CHA (Persuasion) vs Insight — "
+                    "on a fail a hostile has disadvantage vs others and must "
+                    "focus you.", feature_type="class"),
+        ],
+        racial_traits=get_racial_traits("Variant Human"),
+        saving_throws={"Dexterity": 9, "Intelligence": 4},
+        skills={"Acrobatics": 9, "Deception": 12, "Stealth": 9,
+                "Persuasion": 8, "Sleight of Hand": 9, "Perception": 4},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Chaotic Neutral",
+        lore="Charlatan-taustainen Swashbuckler-veijari; nopea terä ja "
+             "sujuva kieli, iskee Sneak Attackin 1 vs 1 -tilanteissa ilman "
+             "etua Rakish Audacityn ansiosta.",
+        tactics="Rakish Audacity -aloite, sitoutuu yhteen kohteeseen ja "
+                "iskee Sneak Attackin; Fancy Footwork estää OA:t, Uncanny "
+                "Dodge + Evasion pitävät hengissä.",
+    ),
+
+    # ================================================================= #
+    # ULV — Firbolg Druid 11 (Circle of the Land: Mountain)
+    # ================================================================= #
+    CreatureStats(
+        name="ULV",
+        character_class="Druid", character_level=11, race="Firbolg",
+        subclass="Circle of the Land (Mountain)",
+        hit_points=80, armor_class=14, speed=30, swim_speed=60,
+        hit_dice="11d8",
+        abilities=AbilityScores(strength=15, dexterity=8, constitution=14,
+                                intelligence=10, wisdom=18, charisma=12),
+        senses="Passive Perception 14",
+        languages="Common, Druidic, Elvish, Giant",
+        damage_immunities=["poison"],
+        condition_immunities=["Charmed", "Frightened", "Poisoned"],
+        spellcasting_ability="Wisdom", spell_save_dc=16, spell_attack_bonus=8,
+        spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2,
+                     "6th": 1},
+        spell_names=["Faerie Fire", "Entangle", "Thunderwave", "Ice Knife",
+                     "Earth Tremor", "Moonbeam", "Heat Metal", "Hold Person",
+                     "Call Lightning", "Lightning Bolt", "Conjure Animals",
+                     "Sleet Storm", "Dispel Magic", "Wind Wall", "Cure Wounds",
+                     "Healing Word"],
+        cantrip_names=["Primal Savagery", "Produce Flame"],
+        actions=[
+            Action("Staff of the Woodlands", "Melee (+2 quarterstaff)", 8,
+                   "1d6+4", 0, "bludgeoning", properties=["versatile"]),
+            Action("Primal Savagery", "Melee spell (Acid)", 8, "3d10", 0,
+                   "acid", range=5),
+            Action("Thorn Whip", "Ranged spell (pull 10 ft)", 8, "3d6", 0,
+                   "piercing", range=30),
+        ],
+        features=[
+            Feature("Spellcasting", "WIS, DC 16, +8 to hit. Slots 4/3/3/3/2/1. "
+                    "Moonbeam, Call Lightning, Lightning Bolt, Conjure "
+                    "Animals, Sleet Storm, Wind Wall.", feature_type="class"),
+            Feature("Wild Shape", "Bonus Action (Circle of the Land: normal "
+                    "beast forms). 2/short rest.", feature_type="class",
+                    uses_per_day=2, mechanic="wild_shape",
+                    short_rest_recharge=True),
+            Feature("Circle Spells (Mountain)", "Always prepared: Spider "
+                    "Climb, Spike Growth, Lightning Bolt, Meld into Stone, "
+                    "Wall of Stone, Passwall.", feature_type="class"),
+            Feature("Natural Recovery", "Short rest: recover spell slots "
+                    "(combined level up to 6).", feature_type="class"),
+            Feature("War Caster", "Advantage on concentration saves; cast a "
+                    "spell as an opportunity attack.", feature_type="feat"),
+            Feature("Land's Stride", "Nonmagical difficult terrain costs no "
+                    "extra movement; advantage vs plant restraint.",
+                    feature_type="class"),
+        ],
+        racial_traits=get_racial_traits("Firbolg"),
+        saving_throws={"Intelligence": 4, "Wisdom": 8},
+        skills={"Nature": 4, "Perception": 8, "Medicine": 8, "Survival": 8,
+                "Animal Handling": 8},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Neutral Good",
+        lore="Firbolg-erakko ja Mountain-piirin druidi; hallitsee "
+             "myrskyloitsuja (Call Lightning, Lightning Bolt) ja muuntautuu "
+             "petoeläimeksi Wild Shapella.",
+        tactics="Moonbeam/Call Lightning kestovahinkoon, Lightning Bolt ja "
+                "Thunderwave ryhmiin, Faerie Fire/Entangle hallintaan; "
+                "Primal Savagery lähelle. War Caster suojaa keskittymistä.",
+    ),
+
+    # ================================================================= #
+    # MARDUK — Variant Human Fighter 5 / Cleric 4 (Grave) / Paladin 2
+    # ================================================================= #
+    CreatureStats(
+        name="Marduk",
+        character_class="Fighter", character_level=11,
+        race="Variant Human",
+        subclass="Fighter 5 / Cleric 4 (Grave) / Paladin 2",
+        hit_points=67, armor_class=18, speed=30,
+        hit_dice="5d10+4d8+2d10",
+        abilities=AbilityScores(strength=18, dexterity=8, constitution=12,
+                                intelligence=8, wisdom=16, charisma=13),
+        senses="Passive Perception 13",
+        languages="Common, Elvish",
+        damage_resistances=["necrotic"],
+        spellcasting_ability="Wisdom", spell_save_dc=15, spell_attack_bonus=7,
+        spell_slots={"1st": 4, "2nd": 3, "3rd": 2},
+        spell_names=["Guiding Bolt", "Bless", "Command", "Inflict Wounds",
+                     "Shield of Faith", "Sanctuary", "Spiritual Weapon",
+                     "Cure Wounds", "Healing Word", "Bane"],
+        cantrip_names=["Sacred Flame", "Toll the Dead", "Guidance"],
+        actions=[
+            Action("Multiattack", "x2 (Extra Attack)", 0, "", 0, "", range=5,
+                   is_multiattack=True, multiattack_count=2,
+                   multiattack_targets=["Greatsword +1", "Greatsword +1"]),
+            Action("Greatsword +1", "Melee (Graze)", 9, "2d6+5", 0, "slashing",
+                   properties=["heavy", "two-handed"]),
+        ],
+        features=[
+            Feature("Action Surge", "Take one additional action. "
+                    "1/short rest.", feature_type="class", uses_per_day=1,
+                    mechanic="action_surge", short_rest_recharge=True),
+            Feature("Second Wind", "Bonus Action: regain 1d10+5 HP. "
+                    "1/short rest.", feature_type="class", uses_per_day=1,
+                    mechanic="second_wind", mechanic_value="1d10+5",
+                    short_rest_recharge=True),
+            Feature("Extra Attack", "2 attacks per Attack action",
+                    feature_type="class", mechanic="extra_attack"),
+            Feature("Divine Smite", "On a melee hit, expend a spell slot for "
+                    "2d8 radiant (+1d8 per slot level above 1st, +1d8 vs "
+                    "undead/fiends).", feature_type="class",
+                    mechanic="divine_smite"),
+            Feature("Channel Divinity: Path to the Grave", "Curse a creature; "
+                    "the next attack against it has its resistances negated "
+                    "and it takes double damage from that hit.",
+                    feature_type="class", uses_per_day=1,
+                    short_rest_recharge=True),
+            Feature("Circle of Mortality", "Healing spells on a creature at 0 "
+                    "HP restore the maximum; Spare the Dying at range as a "
+                    "bonus action.", feature_type="class"),
+            Feature("Eyes of the Grave", "Action: sense undead within 60 ft. "
+                    "3/long rest.", feature_type="class", uses_per_day=3),
+            Feature("Lay on Hands", "Touch: heal from a 10 HP pool.",
+                    feature_type="class", mechanic="lay_on_hands",
+                    mechanic_value="10"),
+            Feature("Great Weapon Master", "Bonus Action attack on crit/kill; "
+                    "-5 to hit for +10 damage option.", feature_type="feat"),
+            Feature("War Caster", "Advantage on concentration saves; cast a "
+                    "spell as an opportunity attack.", feature_type="feat"),
+        ],
+        racial_traits=get_racial_traits("Variant Human"),
+        lay_on_hands_pool=10,
+        saving_throws={"Strength": 8, "Constitution": 5, "Wisdom": 7},
+        skills={"Athletics": 8, "Intimidation": 5, "Religion": 3,
+                "Perception": 3},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Lawful Neutral",
+        lore="Faction Agent -ristiritari: Fighter/Grave-Cleric/Paladin -"
+             "yhdistelmä, joka murskaa Greatswordilla ja polttaa Divine "
+             "Smitellä, erikoistunut epäkuolleiden tuhoamiseen.",
+        tactics="Path to the Grave + Divine Smite yhteen kohteeseen "
+                "purkaakseen valtavan piikin; Spiritual Weapon ja Guiding "
+                "Bolt tukena, Bless ryhmälle. War Caster pitää keskittymisen.",
+    ),
+
+    # ================================================================= #
+    # KAIRON — Changeling Bard 11 (College of Eloquence)
+    # ================================================================= #
+    CreatureStats(
+        name="Kairon",
+        character_class="Bard", character_level=11, race="Changeling",
+        subclass="College of Eloquence",
+        hit_points=80, armor_class=14, speed=30, hit_dice="11d8",
+        abilities=AbilityScores(strength=8, dexterity=14, constitution=15,
+                                intelligence=10, wisdom=10, charisma=20),
+        senses="Passive Perception 14",
+        languages="Common, Dwarvish, Elvish, Goblin",
+        spellcasting_ability="Charisma", spell_save_dc=17, spell_attack_bonus=9,
+        spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 2,
+                     "6th": 1},
+        spell_names=["Faerie Fire", "Healing Word", "Dissonant Whispers",
+                     "Silvery Barbs", "Silence", "Hypnotic Pattern",
+                     "Counterspell", "Dimension Door", "Greater Invisibility",
+                     "Synaptic Static"],
+        cantrip_names=["Vicious Mockery"],
+        actions=[
+            Action("Sun-Sever", "Melee (Sap)", 4, "1d8", 0, "slashing",
+                   properties=["versatile"]),
+            Action("Vicious Mockery", "Ranged spell (DC 17 WIS or disadvantage "
+                   "+ psychic)", 9, "2d4", 0, "psychic", range=60,
+                   applies_condition="Disadvantage", condition_save="Wisdom",
+                   condition_dc=17),
+        ],
+        features=[
+            Feature("Spellcasting", "CHA, DC 17, +9 to hit. Slots 4/3/3/3/2/1. "
+                    "Hypnotic Pattern, Counterspell, Greater Invisibility, "
+                    "Synaptic Static.", feature_type="class"),
+            Feature("Bardic Inspiration (d10)", "Bonus Action: give an ally a "
+                    "d10 to add to a check, attack, or save. 5/short rest.",
+                    feature_type="class", uses_per_day=5,
+                    mechanic="bardic_inspiration", mechanic_value="1d10",
+                    short_rest_recharge=True),
+            Feature("Unsettling Words", "Bonus Action: spend a Bardic "
+                    "Inspiration; the target subtracts the die from its next "
+                    "save.", feature_type="class"),
+            Feature("Jack of All Trades", "Add half proficiency to "
+                    "non-proficient ability checks.", feature_type="class"),
+            Feature("Font of Inspiration", "Regain all Bardic Inspiration on "
+                    "a short or long rest.", feature_type="class"),
+            Feature("Song of Rest", "Extra healing on a short rest.",
+                    feature_type="class"),
+            Feature("Countercharm", "Action: advantage vs Frightened/Charmed "
+                    "for allies within 30 ft.", feature_type="class"),
+            Feature("Universal Speech", "Action: 5 creatures understand you "
+                    "for 1 hour. 1/long rest.", feature_type="class",
+                    uses_per_day=1),
+            Feature("Shapechanger", "Action: change appearance (Changeling).",
+                    feature_type="racial"),
+        ],
+        racial_traits=get_racial_traits("Changeling"),
+        saving_throws={"Dexterity": 6, "Charisma": 9},
+        skills={"Deception": 9, "Persuasion": 9, "Performance": 9,
+                "Perception": 4, "Insight": 4},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Chaotic Neutral",
+        lore="Changeling-bardi ja College of Eloquence -mestari; "
+             "manipuloi taistelua Hypnotic Patternilla, Bardic Inspirationilla "
+             "ja Unsettling Wordsilla; muuttaa muotoaan tarpeen mukaan.",
+        tactics="Hypnotic Pattern / Synaptic Static ryhmiin, Bardic "
+                "Inspiration liittolaisille ja Unsettling Words murtamaan "
+                "vihollisen saven; Counterspell vihollisloitsijoihin, "
+                "Greater Invisibility itselle tai iskijälle.",
+    ),
 ]
