@@ -384,6 +384,200 @@ CITIES: List[dict] = [
                      "maagisesti mahdotonta; The Boundless -agentit "
                      "tuomitsevat maailman tasapainon rikkojat "
                      "Nullifikaatioon."),
+
+    # ================================================================= #
+    # LISÄYS — laajennus: puuttuvat kaupungit + ulottuvuudet
+    # ================================================================= #
+
+    # ---- TARMAAS ---------------------------------------------------- #
+    dict(key="honpa", name="Honpa", kingdom="tarmaas",
+         loc_id="loc_honpa", type="village", population=600,
+         biome="forest", industry="metsästys & keräily",
+         religion="Auringonkirkko", ruler="",
+         description="Pieni metsänsisäinen kylä; E.F.I.-agentti Blitzin "
+                     "kotikylä. On kärsinyt Auringon Veljeskunnan (Brotherhood) "
+                     "hirviökokeista — kyläläisiä on kadonnut ja metsästä "
+                     "ilmestyy epäluonnollisia petoja.",
+         demographics={"Human": 85, "Halfling": 10, "Other": 5}),
+
+    # ---- SMARDU ----------------------------------------------------- #
+    dict(key="stein_festing", name="Stein Festing (Kivikaupunki)",
+         kingdom="smardu", loc_id="loc_stein_festing", type="fortress",
+         population=4_000, biome="ice", industry="sota & louhinta",
+         religion="Jääkultti", ruler="npc_bodervak",
+         description="Maelotin vuoren sisään louhittu jääjättien kaupunki, "
+                     "jota komentaa jääjätti Bodervak. Tukikohta josta "
+                     "käydään lakkaamatonta sotaa Smardun pohjoisia kaupunkeja "
+                     "vastaan. Kylmä, brutaali ja käytännössä valloittamaton "
+                     "linnoitus.",
+         demographics={"Frost Giant": 60, "Goliath": 25, "Other": 15}),
+
+    # ---- FUNDARLA --------------------------------------------------- #
+    dict(key="nunamair", name="Nunamair", kingdom="fundarla",
+         loc_id="loc_nunamair", type="city", population=18_000,
+         biome="forest", industry="tieto & taikuus",
+         religion="Oghma / tiedon jumalat", ruler="",
+         description="Tiedon kaupunki, jossa sijaitsee Cunaen suurin "
+                     "taikakirjasto sekä Academy of Deataris -velhokoulu — "
+                     "Seekers of Demimaind -järjestön keskus. Loitsijoita, "
+                     "tutkijoita ja arkistonhoitajia joka kadulla.",
+         demographics={"High Elf": 55, "Human": 25, "Gnome": 15,
+                       "Other": 5}),
+
+    # ---- ATERTERRA (Underdark) -------------------------------------- #
+    dict(key="sshamath_ul", name="Sshamath Ul (Tulen Kaupunki)",
+         kingdom="aterterra", loc_id="loc_sshamath_ul", type="city",
+         population=22_000, biome="lava", industry="mestariseppä­työ",
+         religion="Tulen kultti", ruler="",
+         description="Laavavirran äärelle rakennettu uskomattoman kuuma "
+                     "mestariseppien kaupunki (Talo Torviir). Aterterran "
+                     "parhaat asesepät takovat täällä adamantti- ja "
+                     "faerzress-teräksiä sulan kiven hehkussa."),
+    dict(key="ghaurath_tol", name="Ghaurath Tol (Tuhkan Torni)",
+         kingdom="aterterra", loc_id="loc_ghaurath_tol", type="city",
+         population=9_000, biome="volcanic", industry="sotaratsujen kesytys",
+         religion="Xarann-papisto", ruler="",
+         description="Tulivuoren kylkeen rakennettu kaupunki, jossa "
+                     "Xarann-papit kesyttävät jättiliskoja sotaratsuiksi. "
+                     "Tuhkan peittämät terassit ja liskotarhat."),
+    dict(key="ilnauth_zen", name="Ilnauth Zen (Jään Kuiskaus)",
+         kingdom="aterterra", loc_id="loc_ilnauth_zen", type="city",
+         population=3_000, biome="ice", industry="karkotus & selviytyminen",
+         religion="—", ruler="",
+         description="Smardun vuorten alla sijaitseva äärimmäisen kylmä "
+                     "jäinen kaupunki. Lainsuojattomien ja karkotettujen "
+                     "yhteisö, jossa lämpö on arvokkaampaa kuin kulta."),
+    dict(key="zekk_und", name="Zekk'Und", kingdom="aterterra",
+         loc_id="loc_zekk_und", type="city", population=12_000,
+         biome="underground", industry="timantti- & faerzress-louhinta",
+         religion="—", ruler="",
+         description="Taloudellisesti kriittinen timanttien ja sinisen "
+                     "faerzress-kristallin kaivoskaupunki. Aterterran "
+                     "rikkauden lähde ja jatkuvan valtakamppailun kohde."),
+    dict(key="tharkozh_varr", name="Tharkozh-Varr", kingdom="aterterra",
+         loc_id="loc_tharkozh_varr", type="city", population=5_000,
+         biome="crystal", industry="kristallimagia",
+         religion="Sangurii-mysteerit", ruler="",
+         description="Syvyyden ytimessä sijaitseva kaupunki, joka on "
+                     "kokonaan kasvanut kristallista. Asukkaina salaperäiset "
+                     "Sangurii (kristallihaltiat), joiden kulttuuri on "
+                     "muille drow'lle arvoitus."),
+    dict(key="xullrae", name="Xullrae (Hämärän Vedet)",
+         kingdom="aterterra", loc_id="loc_xullrae", type="port",
+         population=8_000, biome="underground_sea", industry="merenkulku",
+         religion="—", ruler="",
+         description="Maanalaisen meren pinnalla kelluva kaupunki. "
+                     "Laituripaaluille ja jättiläiskotiloiden kuorille "
+                     "rakennettu satama, josta drow-alukset purjehtivat "
+                     "pimeille vesille."),
+    dict(key="quellan_dra", name="Quellan'Dra", kingdom="aterterra",
+         loc_id="loc_quellan_dra", type="city", population=2_500,
+         biome="underground", industry="turvapaikka",
+         religion="—", ruler="",
+         description="Piilotettu, rauhallinen sekayhteisö ja turvasatama "
+                     "drow-puoliverisille ja pakolaisille. Harvinainen "
+                     "paikka Aterterrassa, jossa matriarkkojen sääntö ei "
+                     "yllä — vapauden saareke pimeydessä."),
+
+    # ---- Maclebar Isle: kolmas kylä --------------------------------- #
+    dict(key="ivory_hollow", name="Ivory Hollow", kingdom="",
+         parent="loc_maclebar", loc_id="loc_ivory_hollow", type="village",
+         population=900, biome="coast", industry="marmori & kalastus",
+         religion="—", ruler="",
+         description="Maclebar Islen toinen kalastaja- ja marmorikylä "
+                     "Pearl Bayn rinnalla, Fort Whitestonen varjossa."),
+
+    # ================================================================= #
+    # ULOTTUVUUDET — omat ylätason valtakuntansa (kingdom="").
+    # Realm ensin, sitten sen kaupungit parent-linkillä.
+    # ================================================================= #
+
+    # ---- CELESTE (High Heavens) ------------------------------------- #
+    dict(key="celeste", name="Celeste (High Heavens)", kingdom="",
+         loc_id="loc_celeste", type="plane", population=0,
+         biome="celestial", industry="sielujen kierto", religion="Valo",
+         ruler="",
+         description="Taivaallinen ulottuvuus — valon, sielujen ja "
+                     "jumalallisten olentojen valtakunta pilvien yläpuolella."),
+    dict(key="aurea_porta", name="Aurea Porta", kingdom="",
+         parent="loc_celeste", loc_id="loc_aurea_porta", type="city",
+         population=0, biome="celestial", industry="sielujen vastaanotto",
+         religion="Valo", ruler="",
+         description="\"Aamunkynnyksen kaupunki\": kultaiset portit, joiden "
+                     "läpi kuolleiden sielut otetaan vastaan ja punnitaan "
+                     "Celesteen saapuessaan."),
+    dict(key="arx_mnemosyne", name="Arx Mnemosyne", kingdom="",
+         parent="loc_celeste", loc_id="loc_arx_mnemosyne", type="tower",
+         population=0, biome="celestial", industry="tieto & muisti",
+         religion="Valo", ruler="",
+         description="\"Kirjojen kaupunki\" / muistin torni, johon on "
+                     "tallennettu kaikkien elettyjen elämien muistot ja "
+                     "maailman historia."),
+    dict(key="gossamer_grove", name="Gossamer Grove", kingdom="",
+         parent="loc_celeste", loc_id="loc_gossamer_grove", type="wilderness",
+         population=0, biome="celestial_garden", industry="sielunkierto",
+         religion="Valo", ruler="",
+         description="Haltioiden sielunkierron puutarha — hopeanhohtoinen "
+                     "lehto, jossa mennyt ja tuleva elämä kohtaavat."),
+
+    # ---- INFERNAL DISC (9 Hells) ------------------------------------ #
+    dict(key="infernal_disc", name="Infernal Disc (9 Hells)", kingdom="",
+         loc_id="loc_infernal_disc", type="plane", population=0,
+         biome="infernal", industry="sopimukset & sielukauppa",
+         religion="Helvetin hierarkia", ruler="",
+         description="Helvetin rengasmaailma — sopimusten, byrokratian ja "
+                     "sieluvelkojen yhdeksänkehäinen ulottuvuus."),
+    dict(key="brassharbor", name="Brassharbor", kingdom="",
+         parent="loc_infernal_disc", loc_id="loc_brassharbor", type="city",
+         population=0, biome="infernal", industry="pörssi & kolikkomintut",
+         religion="Helvetin hierarkia", ruler="",
+         description="Helvetin pörssi- ja rahapajakaupunki, jossa "
+                     "sieluvelat noteerataan ja messinkikolikot lyödään."),
+    dict(key="veilmire", name="Veilmire", kingdom="",
+         parent="loc_infernal_disc", loc_id="loc_veilmire", type="city",
+         population=0, biome="infernal", industry="sensuuri & vakoilu",
+         religion="Helvetin hierarkia", ruler="",
+         description="Sensuurin ja vakoilun sumukaupunki — jokainen kuiskaus "
+                     "kuullaan ja arkistoidaan usvan verhossa."),
+    dict(key="hingehold", name="Hingehold", kingdom="",
+         parent="loc_infernal_disc", loc_id="loc_hingehold", type="city",
+         population=0, biome="infernal", industry="porttien logistiikka",
+         religion="Helvetin hierarkia", ruler="",
+         description="Porttien logistiikkasolmu: kaikki kehien väliset "
+                     "kulkuväylät ja saraviät kulkevat tämän kaupungin läpi."),
+    dict(key="chainledger", name="Chainledger", kingdom="",
+         parent="loc_infernal_disc", loc_id="loc_chainledger", type="city",
+         population=0, biome="infernal", industry="sopimusarkistot",
+         religion="Helvetin hierarkia", ruler="",
+         description="Sopimusarkistojen kaupunki, jossa jokainen koskaan "
+                     "solmittu helvetillinen sopimus säilytetään kahleisiin "
+                     "sidottuina foliantteina."),
+
+    # ---- REGNUM FATARUM (Feywild) ----------------------------------- #
+    dict(key="regnum_fatarum", name="Regnum Fatarum (Feywild)", kingdom="",
+         loc_id="loc_regnum_fatarum", type="plane", population=0,
+         biome="feywild", industry="unet & sopimukset", religion="Fae-hovit",
+         ruler="",
+         description="Fae-olentojen valtakunta — unen, vuodenaikojen ja "
+                     "arvaamattomien sopimusten arkkityyppinen ulottuvuus."),
+    dict(key="pale_diadem", name="Pale Diadem", kingdom="",
+         parent="loc_regnum_fatarum", loc_id="loc_pale_diadem", type="city",
+         population=0, biome="feywild_winter", industry="talvihovi",
+         religion="Fae-hovit", ruler="",
+         description="Kullattu hallakaupunki — Talvihovin kimalteleva, "
+                     "jäätävän kaunis valtaistuinkaupunki."),
+    dict(key="bonehaven", name="Bonehaven", kingdom="",
+         parent="loc_regnum_fatarum", loc_id="loc_bonehaven", type="city",
+         population=0, biome="feywild", industry="kuoleman rituaalit",
+         religion="Fae-hovit", ruler="",
+         description="Nekropolis Feywildin sydämessä, jossa fae-kuolema "
+                     "ja jälleensyntymä kietoutuvat yhteen."),
+    dict(key="spindlehaven", name="Spindlehaven", kingdom="",
+         parent="loc_regnum_fatarum", loc_id="loc_spindlehaven", type="port",
+         population=0, biome="feywild_sea", industry="unimeren satama",
+         religion="Fae-hovit", ruler="",
+         description="Unimeren satama, josta fae-alukset purjehtivat "
+                     "nukkuvien mielten ja tarinoiden meriä pitkin."),
 ]
 
 
@@ -2687,6 +2881,24 @@ def augment_campaign(camp, world) -> None:
     build_lore_npcs(world)
     wire_lore_relationships(world)
     add_lore_cities_to_kingdoms(camp)
+
+
+def refresh_lore(camp, world) -> int:
+    """Additively merge any NEW canon lore into an already-existing
+    campaign/world (e.g. cities added to CITIES after the save was
+    created). Purely additive: the location/NPC builders skip ids that
+    already exist, so the DM's own edits are never overwritten. Returns
+    the number of canon locations newly added, so the caller can decide
+    whether to re-serialise the world."""
+    before = len(world.locations)
+    build_lore_locations(world)
+    build_lore_npcs(world)
+    wire_lore_relationships(world)
+    try:
+        add_lore_cities_to_kingdoms(camp)
+    except Exception:
+        pass
+    return len(world.locations) - before
 
 
 # --------------------------------------------------------------------- #

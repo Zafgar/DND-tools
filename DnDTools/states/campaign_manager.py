@@ -632,7 +632,7 @@ class CampaignManagerState:
             try:
                 from data.world import _deserialize_location, _deserialize_npc, _deserialize_route, _deserialize_quest, MapRoute
                 wd = self.campaign.world_data
-                return World(
+                world = World(
                     name=wd.get("name", self.campaign.name),
                     description=wd.get("description", ""),
                     created=wd.get("created", ""),
@@ -645,9 +645,30 @@ class CampaignManagerState:
                     map_image_path=wd.get("map_image_path", ""),
                     map_positions=wd.get("map_positions", {}),
                 )
+                self._merge_new_canon_lore(world)
+                return world
             except Exception:
                 pass
         return World(name=self.campaign.name)
+
+    def _merge_new_canon_lore(self, world) -> None:
+        """Additively pull any NEW canon Novus Somnium locations/NPCs into
+        an existing save (cities added to the lore after it was created).
+        Only runs for the canon campaign, never overwrites DM edits, and
+        re-serialises so the additions persist on the next save."""
+        try:
+            from data.novus_somnium import NOVUS_SOMNIUM_NAME
+            if self.campaign.name != NOVUS_SOMNIUM_NAME:
+                return
+            from data import novus_somnium_lore as _lore
+            from data.novus_somnium import _serialize_world_for_campaign
+            added = _lore.refresh_lore(self.campaign, world)
+            if added > 0:
+                self.campaign.world_data = _serialize_world_for_campaign(world)
+                logging.info("[LORE] merged %d new canon location(s) into "
+                             "the campaign.", added)
+        except Exception:
+            logging.warning("[LORE] canon lore refresh skipped:", exc_info=True)
 
     def _serialize_world(self) -> dict:
         """Serialize World to dict for campaign save."""
