@@ -812,14 +812,14 @@ def save_world(world: World, filepath: str = ""):
     }
 
     os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     return filepath
 
 
 def load_world(filepath: str) -> World:
     """Load world from JSON file."""
-    with open(filepath) as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
 
     return World(

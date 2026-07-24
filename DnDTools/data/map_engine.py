@@ -561,13 +561,13 @@ def save_world_map(wm: WorldMap, directory: str = MAPS_DIR) -> str:
     os.makedirs(directory, exist_ok=True)
     wm.last_modified = _now_stamp()
     path = os.path.join(directory, f"{wm.id}.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(serialize_world_map(wm), f, indent=2)
     return path
 
 
 def load_world_map(path: str) -> WorldMap:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return deserialize_world_map(json.load(f))
 
 

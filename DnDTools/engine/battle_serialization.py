@@ -93,7 +93,7 @@ def save_state(battle, filepath: str):
     """Serialize full combat state to JSON file."""
     data = get_state_dict(battle)
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
@@ -267,7 +267,7 @@ def battle_from_save(filepath: str, log_callback: Callable[[str], None]):
     # Import BattleSystem lazily to avoid circular import
     from engine.battle import BattleSystem
 
-    with open(filepath) as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
 
     sys_obj = object.__new__(BattleSystem)

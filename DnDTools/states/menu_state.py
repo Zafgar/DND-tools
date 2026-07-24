@@ -76,22 +76,43 @@ class MenuState(GameState):
         """Open campaign picker: list existing campaigns or create new one."""
         self.campaign_modal = CampaignPickerModal(self._on_campaign_selected)
 
+    def _show_loading_frame(self, text):
+        """Paint an immediate 'loading' frame so the window never looks
+        frozen/black while a heavy state is being constructed."""
+        try:
+            scr = self.manager.screen
+            scr.fill(COLORS["bg"])
+            t = fonts.header.render(text, True, COLORS["accent"])
+            scr.blit(t, (scr.get_width() // 2 - t.get_width() // 2,
+                         scr.get_height() // 2 - t.get_height() // 2))
+            pygame.display.flip()
+            pygame.event.pump()   # keep Windows from marking us unresponsive
+        except Exception:
+            pass
+
     def _on_campaign_selected(self, result):
         """Called when a campaign is selected or 'new' is chosen."""
+        import logging
         self.campaign_modal = None
         if result is None:
             return
         from engine import variant_rules
+        self._show_loading_frame("Ladataan kampanjaa...")
         if result == "__new__":
             campaign = Campaign(name="New Campaign", created=_timestamp())
             variant_rules.load_from_campaign(campaign.settings)
             self.manager.change_state("CAMPAIGN", campaign=campaign)
         elif isinstance(result, str) and os.path.exists(result):
             try:
+                logging.info("[LOAD] campaign file: %s", result)
                 campaign = load_campaign(result)
+                logging.info("[LOAD] parsed OK: %s (party=%d, encounters=%d)",
+                             campaign.name, len(campaign.party),
+                             len(campaign.encounters))
                 variant_rules.load_from_campaign(campaign.settings)
                 self.manager.change_state("CAMPAIGN", campaign=campaign)
             except Exception as ex:
+                logging.critical("[LOAD] campaign load failed:", exc_info=True)
                 print(f"Campaign load error: {ex}")
 
     def handle_events(self, events):

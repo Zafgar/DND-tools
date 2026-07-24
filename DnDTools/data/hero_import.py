@@ -28,20 +28,20 @@ def export_hero_to_file(hero: CreatureStats, filepath: str):
     """Export hero to a JSON file."""
     data = export_hero(hero)
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
 def import_hero_from_file(filepath: str) -> CreatureStats:
     """Import a hero from a JSON file."""
-    with open(filepath) as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
     return import_hero(data)
 
 
 def import_heroes_from_file(filepath: str) -> List[CreatureStats]:
     """Import multiple heroes from a JSON file (supports both single and array)."""
-    with open(filepath) as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, list):
         return [import_hero(h) for h in data]
@@ -52,5 +52,5 @@ def export_heroes_to_file(heroes: List[CreatureStats], filepath: str):
     """Export multiple heroes to a JSON file."""
     data = [export_hero(h) for h in heroes]
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)

@@ -393,7 +393,7 @@ def format_report_text(report: dict) -> str:
 def save_report(report: dict, filepath: str):
     """Save report as JSON file."""
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
 
 
@@ -401,5 +401,5 @@ def save_report_text(report: dict, filepath: str):
     """Save report as readable text file."""
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
     text = format_report_text(report)
-    with open(filepath, "w") as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(text)

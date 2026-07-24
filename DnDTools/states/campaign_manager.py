@@ -194,11 +194,17 @@ class CampaignManagerState:
     """Off-combat campaign management view."""
 
     def __init__(self, manager, campaign: Campaign = None):
+        # Breadcrumb logging: if opening a campaign ever hangs or dies,
+        # crash_log.txt shows exactly which phase was reached last.
+        logging.info("[CAMPAIGN] init start: %s",
+                     getattr(campaign, "name", "(new)"))
         self.manager = manager
         self.campaign = campaign or Campaign(name="New Campaign", created=_timestamp())
 
         # World data — linked to campaign
         self.world = self._load_world_from_campaign()
+        logging.info("[CAMPAIGN] world loaded: %d locations, %d npcs",
+                     len(self.world.locations), len(self.world.npcs))
 
         # UI state
         self.active_tab = 0  # 0=Party, 1=Encounters, 2=Areas, 3=Notes, 4=World
@@ -280,6 +286,7 @@ class CampaignManagerState:
         # Location positions on map (id -> (x, y) percentage)
         self._location_map_positions: dict = {}
         self._load_map_positions()
+        logging.info("[CAMPAIGN] map positions loaded")
 
         # Map background image and route mode
         self._map_bg_surface = None  # pygame.Surface for custom map background
@@ -292,6 +299,7 @@ class CampaignManagerState:
         self._map_pin_mode = False  # True = click to place a new pin
         self.selected_pin_id = ""  # Currently selected map pin ID
         self._load_map_background()
+        logging.info("[CAMPAIGN] map background loaded")
 
         # Map tokens
         self._map_dragging_token = ""  # Token ID being dragged
@@ -342,6 +350,7 @@ class CampaignManagerState:
 
         # Build buttons
         self._build_buttons()
+        logging.info("[CAMPAIGN] init complete")
 
     def _build_buttons(self):
         """Build all UI buttons."""

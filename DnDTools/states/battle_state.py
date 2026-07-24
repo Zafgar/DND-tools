@@ -2965,7 +2965,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         filepath = os.path.join(maps_dir, name)
         data = {"terrain": [t.to_dict() for t in self.battle.terrain],
                 "grid_size": self.battle.grid_size}
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         self._log(f"[MAP] Saved map to {name}")
         self.map_save_menu_open = False
@@ -2976,7 +2976,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self.map_save_menu_open = False
             return
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
             new_terrain = []
             for t in data.get("terrain", []):

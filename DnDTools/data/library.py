@@ -38,7 +38,7 @@ class MonsterLibrary:
                 continue
             filepath = os.path.join(json_dir, filename)
             try:
-                with open(filepath) as f:
+                with open(filepath, encoding="utf-8") as f:
                     data_list = json.load(f)
                 for data in data_list:
                     monster = deserialize(CreatureStats, data)

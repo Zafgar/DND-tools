@@ -136,6 +136,7 @@ class GameManager:
         # fail (bad save data, missing asset, environment quirk); if it
         # does, log the full traceback and stay on the current screen
         # with an on-screen error rather than crashing to a black window.
+        logging.info(f"[STATE] opening '{state_name}'...")
         try:
             if state_name == "HERO_CREATOR":
                 self.states["HERO_CREATOR"] = HeroCreatorState(self)
@@ -164,6 +165,7 @@ class GameManager:
             return
         if self.states.get(state_name):
             self.current_state = self.states[state_name]
+            logging.info(f"[STATE] '{state_name}' active.")
 
     def _process_external_updates(self):
         """Process all queued external updates on the main thread (thread-safe)."""
