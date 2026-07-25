@@ -11,3 +11,7 @@ DnDTools/saves/_autosave.json
 # Runtime crash/debug log (overwritten every launch)
 DnDTools/crash_log.txt
 crash_log.txt
+
+# User campaign saves written by the app at runtime (incl. the seeded
+# Novus Somnium). Canon data lives in code (data/novus_somnium*.py), not here.
+DnDTools/campaigns/
