@@ -52,13 +52,12 @@ class TestPartyGroupSeed(unittest.TestCase):
         for name in ("Beatrice", "Balthazar", "Kairon", "Magnus Dragonius"):
             self.assertIn(name, by["pg_aterterra"], name)
         self.assertEqual(sorted(by["pg_maclebar"]),
-                         ["Carlo", "Venris Galanodel"])
+                         ["Blitz Walker", "Carlo", "Venris Galanodel"])
         self.assertEqual(by["pg_ravenstone"], ["Padak Onslaught"])
         self.assertEqual(by["pg_pinwud"], ["Marduk"])
 
     def test_npc_companions_attached(self):
         comp = {g.id: g.companion_npc_ids for g in self.camp.party_groups}
-        self.assertIn("npc_blitz", comp["pg_maclebar"])
         self.assertIn("npc_sam_undercave", comp["pg_ravenstone"])
 
     def test_seed_is_idempotent(self):
@@ -77,7 +76,8 @@ class TestPartyGroupSaveLoad(unittest.TestCase):
         self.assertEqual(len(loaded.party_groups), 4)
         self.assertEqual(loaded.active_group_id, "pg_aterterra")
         groups = {g.id: g for g in loaded.party_groups}
-        self.assertIn("npc_blitz", groups["pg_maclebar"].companion_npc_ids)
+        self.assertIn("npc_sam_undercave",
+                      groups["pg_ravenstone"].companion_npc_ids)
         # members keep their group tag
         by = {m.hero_data.get("name"): m.group_id for m in loaded.party}
         self.assertEqual(by["Marduk"], "pg_pinwud")

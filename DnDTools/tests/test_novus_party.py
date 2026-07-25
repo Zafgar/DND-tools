@@ -33,6 +33,7 @@ PARTY = {
     "Krusk": ("Barbarian", 11),
     "Beatrice": ("Warlock", 11),
     "Carlo": ("Barbarian", 11),
+    "Blitz Walker": ("Ranger", 11),
 }
 
 

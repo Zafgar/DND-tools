@@ -72,18 +72,21 @@ class TestPartyPresets(unittest.TestCase):
         aes, _ = pp.resolve_members(pp.get_preset("aesica"))
         self.assertEqual([h.name for h in aes], ["Krusk"])
 
-    def test_future_members_skipped_not_error(self):
-        # Beatrice is now built, so the Aterterra preset resolves fully.
-        found, missing = pp.resolve_members(pp.get_preset("aterterra"))
-        names = [h.name for h in found]
-        for n in ("Magnus Dragonius", "Kairon", "Beatrice"):
-            self.assertIn(n, names, n)
-        self.assertEqual(missing, [])
-        # Maclebar still lists a not-yet-built member (Blitz), which must
-        # be skipped silently rather than raising.
-        found2, missing2 = pp.resolve_members(pp.get_preset("maclebar"))
-        self.assertIn("Carlo", [h.name for h in found2])
-        self.assertIn("Blitz", missing2)
+    def test_all_canon_members_now_built(self):
+        # Every canon party PC now exists as a hero, so all presets resolve
+        # fully with no missing members.
+        for pid in ("aterterra", "maclebar", "ravenstone", "aesica"):
+            _found, missing = pp.resolve_members(pp.get_preset(pid))
+            self.assertEqual(missing, [], f"{pid} has unbuilt members: {missing}")
+
+    def test_unknown_member_skipped_not_error(self):
+        # A genuinely unknown name is skipped silently, never raises.
+        from data.party_presets import PartyPreset
+        ghost = PartyPreset(id="x", name="x", location="x", description="x",
+                            members=["Magnus Dragonius", "Nobody McGhost"])
+        found, missing = pp.resolve_members(ghost)
+        self.assertIn("Magnus Dragonius", [h.name for h in found])
+        self.assertEqual(missing, ["Nobody McGhost"])
 
     def test_entities_are_players(self):
         ents = pp.preset_as_entities(pp.get_preset("full"))

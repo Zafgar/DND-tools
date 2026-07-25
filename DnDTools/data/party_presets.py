@@ -36,7 +36,7 @@ PARTY_PRESETS: List[PartyPreset] = [
         location="Kaikki",
         description="Kaikki tunnetut pelaajahahmot yhdessä kentälle.",
         members=["Magnus Dragonius", "Balthazar", "Kairon", "Beatrice",
-                 "Venris Galanodel", "Carlo", "Blitz", "Padak Onslaught",
+                 "Venris Galanodel", "Carlo", "Blitz Walker", "Padak Onslaught",
                  "Krusk", "Marduk", "Darius \"Slick\" Morin", "ULV"],
     ),
     PartyPreset(
@@ -51,7 +51,7 @@ PARTY_PRESETS: List[PartyPreset] = [
         name="Maclebar Isle — Fort Whitestone",
         location="Maclebar Isle",
         description="Walker-suvun automaatiota (A.E.G.I.S.) tutkiva ryhmä.",
-        members=["Venris Galanodel", "Carlo", "Blitz"],
+        members=["Venris Galanodel", "Carlo", "Blitz Walker"],
     ),
     PartyPreset(
         id="ravenstone",

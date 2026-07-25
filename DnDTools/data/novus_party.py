@@ -789,4 +789,80 @@ novus_party = [
                 "lukitsee kovimman vihollisen; Relentless Rage pitää "
                 "pystyssä.",
     ),
+
+    # ================================================================= #
+    # BLITZ WALKER — Variant Human Ranger 11 (Horizon Walker, gunslinger)
+    # ================================================================= #
+    CreatureStats(
+        name="Blitz Walker",
+        character_class="Ranger", character_level=11, race="Variant Human",
+        subclass="Horizon Walker",
+        hit_points=92, armor_class=16, speed=35,
+        climb_speed=35, swim_speed=35, hit_dice="11d10",
+        abilities=AbilityScores(strength=10, dexterity=18, constitution=14,
+                                intelligence=10, wisdom=14, charisma=10),
+        senses="Passive Perception 16",
+        languages="Common, Deep Speech, Dwarvish, Elvish, Halfling, Orc, "
+                  "Undercommon",
+        spellcasting_ability="Wisdom", spell_save_dc=14, spell_attack_bonus=6,
+        spell_slots={"1st": 4, "2nd": 3, "3rd": 3},
+        spell_names=["Hunter's Mark", "Absorb Elements", "Misty Step",
+                     "Revivify", "Haste"],
+        actions=[
+            Action("Multiattack", "x2 (Extra Attack)", 0, "", 0, "",
+                   is_multiattack=True, multiattack_count=2,
+                   multiattack_targets=["Aeorian Rifle", "Aeorian Rifle"]),
+            Action("Aeorian Rifle", "Ranged firearm (Archery)", 10, "2d10+4",
+                   0, "piercing", range=80, long_range=240,
+                   properties=["two-handed", "ammunition"]),
+            Action("Flintlock Pistol of Aspicio", "Ranged firearm", 10,
+                   "1d10+4", 0, "piercing", range=60, long_range=240),
+            Action("Shortsword", "Melee", 8, "1d6+4", 0, "piercing",
+                   properties=["finesse", "light"]),
+            Action("Planar Warrior", "Bonus: next hit vs target deals +2d8 "
+                   "force instead of the weapon's type", 0, "2d8", 0, "force",
+                   range=30, action_type="bonus"),
+        ],
+        features=[
+            Feature("Fighting Style: Archery", "+2 to ranged weapon attacks "
+                    "(folded into the firearms).", feature_type="class",
+                    mechanic="fighting_style"),
+            Feature("Extra Attack", "2 attacks per Attack action",
+                    feature_type="class", mechanic="extra_attack"),
+            Feature("Planar Warrior", "Bonus Action: mark a creature within "
+                    "30 ft; your next hit on it deals +2d8 force damage "
+                    "(instead of the weapon's type).", feature_type="class"),
+            Feature("Distant Strike", "When you take the Attack action you "
+                    "can teleport 10 ft before each attack, and may strike a "
+                    "third different creature once per turn.",
+                    feature_type="class"),
+            Feature("Ethereal Step", "Bonus Action: cast Etherealness free "
+                    "(ends at end of turn). 1/short rest.",
+                    feature_type="class", uses_per_day=1,
+                    short_rest_recharge=True),
+            Feature("Detect Portal", "Action: sense the nearest planar portal "
+                    "within 1 mile. 1/short rest.", feature_type="class",
+                    uses_per_day=1, short_rest_recharge=True),
+            Feature("Nature's Veil", "Bonus Action: become invisible until "
+                    "the start of your next turn. 4/long rest.",
+                    feature_type="class", uses_per_day=4),
+            Feature("Deft Explorer: Tireless", "Action: gain 1d8+2 temp HP. "
+                    "4/long rest.", feature_type="class", uses_per_day=4),
+            Feature("Sharpshooter", "Ignore long-range disadvantage, half/"
+                    "three-quarters cover; -5 to hit for +10 damage option.",
+                    feature_type="feat"),
+        ],
+        racial_traits=get_racial_traits("Variant Human"),
+        saving_throws={"Strength": 4, "Dexterity": 8},
+        skills={"Perception": 6, "Investigation": 4, "Stealth": 8,
+                "Survival": 6, "Insight": 6, "Acrobatics": 8},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Lawful Neutral",
+        lore="Walker-suvun etsivä-tarkka-ampuja ja E.F.I.-agentti Fort "
+             "Whitestonesta; Horizon Walker joka jäljittää ulottuvuuksien "
+             "portteja ja iskee force-vahingolla planaarisin asein.",
+        tactics="Planar Warrior kovimpaan uhkaan, sitten kaksi kivääri-iskua "
+                "(Sharpshooter, +2d8 force); Haste itselle. Nature's Veil ja "
+                "Distant Strike pitävät ulottumattomissa; Misty Step paetaan.",
+    ),
 ]
