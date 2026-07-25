@@ -73,11 +73,17 @@ class TestPartyPresets(unittest.TestCase):
         self.assertEqual([h.name for h in aes], ["Krusk"])
 
     def test_future_members_skipped_not_error(self):
+        # Beatrice is now built, so the Aterterra preset resolves fully.
         found, missing = pp.resolve_members(pp.get_preset("aterterra"))
         names = [h.name for h in found]
-        self.assertIn("Magnus Dragonius", names)
-        self.assertIn("Kairon", names)
-        self.assertIn("Beatrice", missing)  # not yet added
+        for n in ("Magnus Dragonius", "Kairon", "Beatrice"):
+            self.assertIn(n, names, n)
+        self.assertEqual(missing, [])
+        # Maclebar still lists a not-yet-built member (Blitz), which must
+        # be skipped silently rather than raising.
+        found2, missing2 = pp.resolve_members(pp.get_preset("maclebar"))
+        self.assertIn("Carlo", [h.name for h in found2])
+        self.assertIn("Blitz", missing2)
 
     def test_entities_are_players(self):
         ents = pp.preset_as_entities(pp.get_preset("full"))

@@ -31,6 +31,8 @@ PARTY = {
     "Venris Galanodel": ("Wizard", 11),
     "Padak Onslaught": ("Fighter", 11),
     "Krusk": ("Barbarian", 11),
+    "Beatrice": ("Warlock", 11),
+    "Carlo": ("Barbarian", 11),
 }
 
 
@@ -78,6 +80,28 @@ class TestNovusPartySpells(unittest.TestCase):
         h = _by_name()
         self.assertEqual(len(h["Krusk"].spells_known), 0)
         self.assertEqual(len(h["Padak Onslaught"].spells_known), 0)
+        self.assertEqual(len(h["Carlo"].spells_known), 0)
+
+    def test_beatrice_is_hexblade(self):
+        b = _by_name()["Beatrice"]
+        self.assertEqual((b.armor_class, b.hit_points), (17, 89))
+        known = {s.name for s in b.spells_known}
+        self.assertIn("Shadow of Moil", known)
+        self.assertIn("Hex", known)
+        self.assertIn("Eldritch Blast", {s.name for s in b.cantrips})
+        # Hexblade's Curse + pact-weapon extra attack are modelled.
+        feats = {f.name for f in b.features}
+        self.assertIn("Hexblade's Curse", feats)
+        glaive = next(a for a in b.actions if a.name == "Pact Glaive")
+        self.assertEqual(glaive.reach, 10)
+
+    def test_carlo_is_berserker(self):
+        c = _by_name()["Carlo"]
+        self.assertEqual((c.armor_class, c.hit_points), (16, 115))
+        self.assertEqual(c.rage_count, 4)
+        feats = {f.name for f in c.features}
+        self.assertIn("Frenzy", feats)
+        self.assertIn("Intimidating Presence", feats)
 
 
 class TestNovusPartyCombat(unittest.TestCase):

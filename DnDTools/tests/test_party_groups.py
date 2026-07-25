@@ -49,17 +49,16 @@ class TestPartyGroupSeed(unittest.TestCase):
         by = {}
         for m in self.camp.party:
             by.setdefault(m.group_id, []).append(m.hero_data.get("name"))
-        self.assertIn("Magnus Dragonius", by["pg_aterterra"])
-        self.assertIn("Balthazar", by["pg_aterterra"])
-        self.assertIn("Kairon", by["pg_aterterra"])
-        self.assertEqual(by["pg_maclebar"], ["Venris Galanodel"])
+        for name in ("Beatrice", "Balthazar", "Kairon", "Magnus Dragonius"):
+            self.assertIn(name, by["pg_aterterra"], name)
+        self.assertEqual(sorted(by["pg_maclebar"]),
+                         ["Carlo", "Venris Galanodel"])
         self.assertEqual(by["pg_ravenstone"], ["Padak Onslaught"])
         self.assertEqual(by["pg_pinwud"], ["Marduk"])
 
     def test_npc_companions_attached(self):
         comp = {g.id: g.companion_npc_ids for g in self.camp.party_groups}
         self.assertIn("npc_blitz", comp["pg_maclebar"])
-        self.assertIn("npc_carlo", comp["pg_maclebar"])
         self.assertIn("npc_sam_undercave", comp["pg_ravenstone"])
 
     def test_seed_is_idempotent(self):

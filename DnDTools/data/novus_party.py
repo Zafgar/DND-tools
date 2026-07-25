@@ -626,4 +626,167 @@ novus_party = [
                 "vihollisen saven; Counterspell vihollisloitsijoihin, "
                 "Greater Invisibility itselle tai iskijälle.",
     ),
+
+    # ================================================================= #
+    # BEATRICE VYLARIEN BAENRAHEL — Drow Half-Elf Sorcerer 1 / Warlock 10
+    # (The Hexblade, Pact of the Blade)
+    # ================================================================= #
+    CreatureStats(
+        name="Beatrice",
+        character_class="Warlock", character_level=11,
+        race="Drow Half-Elf", subclass="The Hexblade (+ Divine Soul 1)",
+        hit_points=89, armor_class=17, speed=30, hit_dice="1d6+10d8",
+        abilities=AbilityScores(strength=8, dexterity=14, constitution=16,
+                                intelligence=9, wisdom=13, charisma=18),
+        senses="Darkvision 120 ft.",
+        languages="Common, Elvish, Undercommon, Celestial",
+        condition_immunities=["Magical Sleep"],
+        spellcasting_ability="Charisma", spell_save_dc=16,
+        spell_attack_bonus=8,
+        # Pact Magic: two 5th-level slots (short rest) + 2 sorcerer 1st.
+        spell_slots={"1st": 2, "5th": 2},
+        spell_names=["Hex", "Armor of Agathys", "Shield", "Absorb Elements",
+                     "Faerie Fire", "Cure Wounds", "Darkness", "Fly",
+                     "Shadow of Moil", "Dimension Door", "Synaptic Static"],
+        cantrip_names=["Eldritch Blast", "Shocking Grasp", "Lightning Lure",
+                       "Mage Hand"],
+        actions=[
+            Action("Multiattack", "x2 Glaive (Thirsting Blade)", 0, "", 0, "",
+                   range=10, is_multiattack=True, multiattack_count=2,
+                   multiattack_targets=["Pact Glaive", "Pact Glaive"]),
+            Action("Pact Glaive", "Melee reach 10 ft (CHA-based, Graze)", 9,
+                   "1d10+5", 0, "slashing", range=10, reach=10,
+                   properties=["heavy", "reach", "two-handed"]),
+            Action("Eldritch Blast", "Ranged (3 beams)", 8, "1d10", 0,
+                   "force", range=120, is_multiattack=True,
+                   multiattack_count=3,
+                   multiattack_targets=["Eldritch Blast Beam",
+                                        "Eldritch Blast Beam",
+                                        "Eldritch Blast Beam"]),
+            Action("Eldritch Blast Beam", "Ranged spell", 8, "1d10", 0,
+                   "force", range=120),
+            Action("Longbow", "Ranged", 9, "1d8+5", 0, "piercing",
+                   range=150, long_range=600,
+                   properties=["heavy", "two-handed", "ammunition"]),
+        ],
+        features=[
+            Feature("Pact Magic", "CHA, DC 16, +8 to hit. Two 5th-level pact "
+                    "slots (recover on a short rest).", feature_type="class"),
+            Feature("Hexblade's Curse", "Bonus Action: curse a creature within "
+                    "30 ft for 1 min — +4 damage vs it, crits on 19-20, regain "
+                    "14 HP if it dies. 1/short rest.", feature_type="class",
+                    uses_per_day=1, short_rest_recharge=True),
+            Feature("Armor of Hexes", "Reaction: when the cursed target hits "
+                    "you, roll d6 — on 4+ the attack misses instead.",
+                    feature_type="reaction"),
+            Feature("Pact of the Blade", "Summon a pact weapon; it uses CHA "
+                    "for attack and damage (Improved Pact Weapon).",
+                    feature_type="class"),
+            Feature("Thirsting Blade", "Attack twice with the pact weapon "
+                    "when you take the Attack action.", feature_type="class",
+                    mechanic="extra_attack"),
+            Feature("Eldritch Smite", "Once per turn on a pact-weapon hit, "
+                    "expend a slot for 1d8 force per slot level +1 and knock "
+                    "Large-or-smaller Prone.", feature_type="class"),
+            Feature("Devil's Sight", "See normally in magical and nonmagical "
+                    "darkness out to 120 ft.", mechanic="devils_sight"),
+            Feature("Eldritch Mind", "Advantage on CON saves to maintain "
+                    "concentration.", mechanic="war_caster"),
+            Feature("Accursed Specter", "When you slay a humanoid, raise its "
+                    "spirit as a specter ally. 1/long rest.",
+                    feature_type="class", uses_per_day=1),
+            Feature("Great Weapon Master", "Bonus Action attack on crit/kill; "
+                    "-5 to hit for +10 damage option.", feature_type="feat"),
+            Feature("Fey Ancestry", "Advantage vs Charmed; magic can't put "
+                    "you to sleep.", mechanic="fey_ancestry"),
+            Feature("Drow Magic", "Dancing Lights cantrip; Faerie Fire and "
+                    "Darkness 1/long rest each.", feature_type="racial"),
+        ],
+        racial_traits=get_racial_traits("Drow"),
+        saving_throws={"Wisdom": 5, "Charisma": 8},
+        skills={"Deception": 8, "Persuasion": 8, "Intimidation": 8,
+                "Perception": 5, "Athletics": 2},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Neutral",
+        lore="Talo Baenrahelin drow-puoliverinen perillinen ja Hexblade-"
+             "sopimusvelho. Elaraen ja Dravinin siskopuoli — kirottu terä "
+             "ja varjojen taika kulkevat käsi kädessä.",
+        tactics="Hexblade's Curse kovimpaan uhkaan, sitten kaksi Pact Glaive "
+                "-iskua reach 10:llä; Eldritch Smite piikkiin. Shadow of Moil "
+                "tai Darkness + Devil's Sight antaa edun ja suojan; Armor of "
+                "Hexes torjuu kirotun kohteen iskuja.",
+    ),
+
+    # ================================================================= #
+    # CARLO "FLEXMASTER" — Human Barbarian 11 (Path of the Berserker)
+    # ================================================================= #
+    CreatureStats(
+        name="Carlo",
+        character_class="Barbarian", character_level=11, race="Human",
+        subclass="Path of the Berserker",
+        hit_points=115, armor_class=16, speed=40, hit_dice="11d12",
+        abilities=AbilityScores(strength=18, dexterity=16, constitution=17,
+                                intelligence=9, wisdom=10, charisma=10),
+        senses="Passive Perception 14",
+        languages="Common, Dwarvish, Giant",
+        actions=[
+            Action("Multiattack", "x2 (Extra Attack)", 0, "", 0, "", range=5,
+                   is_multiattack=True, multiattack_count=2,
+                   multiattack_targets=["Greataxe", "Greataxe"]),
+            Action("Greataxe", "Melee (rage sisältyy)", 8, "1d12", 7,
+                   "slashing", properties=["heavy", "two-handed"]),
+            Action("Javelin", "Ranged / Melee", 8, "1d6", 4, "piercing",
+                   range=30, long_range=120, properties=["thrown"]),
+            Action("Unarmed Strike", "Melee", 8, "1d1+4", 0, "bludgeoning"),
+        ],
+        features=[
+            Feature("Rage", "Bonus Action: +3 melee damage, resistance to "
+                    "B/P/S, advantage on STR checks/saves. 4/long rest.",
+                    feature_type="class", uses_per_day=4, mechanic="rage"),
+            Feature("Rage Damage +3", "+3 melee damage while raging",
+                    feature_type="class", mechanic="rage_damage",
+                    mechanic_value="3"),
+            Feature("Frenzy", "While raging, make a single melee weapon "
+                    "attack as a Bonus Action each turn (exhaustion when the "
+                    "rage ends).", feature_type="class"),
+            Feature("Reckless Attack", "First attack: advantage on melee STR "
+                    "attacks, but attacks against you have advantage.",
+                    feature_type="class", mechanic="reckless_attack"),
+            Feature("Danger Sense", "Advantage on DEX saves you can see",
+                    feature_type="class", mechanic="danger_sense"),
+            Feature("Extra Attack", "2 attacks per Attack action",
+                    feature_type="class", mechanic="extra_attack"),
+            Feature("Fast Movement", "+10 ft speed",
+                    feature_type="class", mechanic="fast_movement"),
+            Feature("Feral Instinct", "Advantage on initiative",
+                    feature_type="class", mechanic="feral_instinct"),
+            Feature("Mindless Rage", "Can't be Charmed or Frightened while "
+                    "raging.", feature_type="class"),
+            Feature("Brutal Critical", "Roll 1 extra weapon die on a crit",
+                    feature_type="class", mechanic="brutal_critical",
+                    mechanic_value="1"),
+            Feature("Intimidating Presence", "Action: DC 14 WIS save or "
+                    "Frightened until the end of your next turn.",
+                    feature_type="class", save_dc=14, save_ability="Wisdom",
+                    applies_condition="Frightened"),
+            Feature("Relentless Rage", "Drop to 1 HP instead of 0 (DC 10+ "
+                    "CON save) while raging.", feature_type="class"),
+            Feature("Unarmored Defense", "AC = 10 + DEX + CON",
+                    feature_type="class",
+                    mechanic="unarmored_defense_barbarian"),
+        ],
+        racial_traits=get_racial_traits("Human"),
+        rage_count=4,
+        saving_throws={"Strength": 8, "Constitution": 7},
+        skills={"Athletics": 8, "Survival": 4, "Nature": 3,
+                "Perception": 4, "Intimidation": 4},
+        challenge_rating=6.0, proficiency_bonus=4,
+        alignment="Chaotic Good",
+        lore="Outlander-taustainen ihmisbarbaari ja Maclebar-ryhmän "
+             "perämies — \"Flexmaster\", joka murtaa esteet raivon voimalla.",
+        tactics="Feral Instinct -aloite, Rage + Reckless Attack heti; kaksi "
+                "Greataxe-iskua ja Frenzy-bonusisku. Intimidating Presence "
+                "lukitsee kovimman vihollisen; Relentless Rage pitää "
+                "pystyssä.",
+    ),
 ]
