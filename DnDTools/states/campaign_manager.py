@@ -256,6 +256,9 @@ class CampaignManagerState:
         # NPC location picker
         self._npc_location_picker_open = False
         self._npc_stat_link_mode = False
+        # When set, the location picker targets this party group instead
+        # of an NPC (reuses the same overlay).
+        self._group_loc_picker_gid = ""
 
         # Template browser state
         self.template_view = ""  # "", "inn_templates", "shop_templates"
@@ -661,12 +664,17 @@ class CampaignManagerState:
             if self.campaign.name != NOVUS_SOMNIUM_NAME:
                 return
             from data import novus_somnium_lore as _lore
-            from data.novus_somnium import _serialize_world_for_campaign
+            from data.novus_somnium import (_serialize_world_for_campaign,
+                                            seed_party_groups)
             added = _lore.refresh_lore(self.campaign, world)
             if added > 0:
                 self.campaign.world_data = _serialize_world_for_campaign(world)
                 logging.info("[LORE] merged %d new canon location(s) into "
                              "the campaign.", added)
+            # Seed the canon sub-parties into older saves that predate them.
+            groups = seed_party_groups(self.campaign)
+            if groups > 0:
+                logging.info("[PARTY] seeded %d canon party group(s).", groups)
         except Exception:
             logging.warning("[LORE] canon lore refresh skipped:", exc_info=True)
 
@@ -769,15 +777,70 @@ class CampaignManagerState:
         return CreatureStats(name="Unknown")
 
     def _add_hero_to_party(self, hero_stats: CreatureStats):
-        """Add a hero to the campaign party."""
+        """Add a hero to the campaign party (into the active group)."""
         hero_data = export_hero(hero_stats)
         member = PartyMember(
             hero_data=hero_data,
             current_hp=hero_stats.hit_points,
+            group_id=getattr(self.campaign, "active_group_id", "") or "",
         )
         self.campaign.party.append(member)
         self._hero_stats_cache.clear()
         self.hero_picker_open = False
+
+    # ------------------------------------------------------------------ #
+    # Party groups (sub-parties operating in different places)
+    # ------------------------------------------------------------------ #
+    def _party_groups(self):
+        return list(getattr(self.campaign, "party_groups", []) or [])
+
+    def _active_group(self):
+        gid = getattr(self.campaign, "active_group_id", "")
+        for g in self._party_groups():
+            if g.id == gid:
+                return g
+        groups = self._party_groups()
+        return groups[0] if groups else None
+
+    def _set_active_group(self, gid):
+        self.campaign.active_group_id = gid
+        self.selected_member_idx = -1
+        self.scroll_y = 0
+
+    def _visible_party_indices(self):
+        """Indices into campaign.party shown for the active group.
+        ``active_group_id == ""`` (the 'Kaikki' pseudo-group) shows all."""
+        gid = getattr(self.campaign, "active_group_id", "")
+        out = []
+        for i, m in enumerate(self.campaign.party):
+            if not gid or getattr(m, "group_id", "") == gid:
+                out.append(i)
+        return out
+
+    def _cycle_member_group(self, member_idx, step=1):
+        """Quick-move a member to the next/previous party group."""
+        groups = self._party_groups()
+        if not groups or not (0 <= member_idx < len(self.campaign.party)):
+            return
+        m = self.campaign.party[member_idx]
+        ids = [g.id for g in groups]
+        cur = m.group_id if m.group_id in ids else ids[0]
+        m.group_id = ids[(ids.index(cur) + step) % len(ids)]
+        name = next((g.name for g in groups if g.id == m.group_id), "?")
+        self._status_msg = f"{m.hero_data.get('name','?')} → {name}"
+        self._status_timer = 120
+
+    def _add_party_group(self):
+        from data.campaign import PartyGroup
+        import uuid
+        g = PartyGroup(id="pg_" + uuid.uuid4().hex[:8],
+                       name=f"Ryhmä {len(self._party_groups()) + 1}")
+        self.campaign.party_groups.append(g)
+        self.campaign.active_group_id = g.id
+
+    def _open_group_location_picker(self, gid):
+        self._group_loc_picker_gid = gid
+        self._npc_location_picker_open = True   # reuse the same overlay
 
     def _remove_member(self, idx):
         if 0 <= idx < len(self.campaign.party):
@@ -1622,7 +1685,7 @@ class CampaignManagerState:
         # Push to disk so the merged data survives a crash
         try:
             from data.campaign import save_campaign
-            self.campaign.world_data = self._serialize_world(self.world)
+            self.campaign.world_data = self._serialize_world()
             save_campaign(self.campaign)
         except Exception as ex:
             logging.warning(f"[IMPORT] auto-save failed: {ex}")
@@ -1644,18 +1707,6 @@ class CampaignManagerState:
         except Exception:
             return None
         return None
-
-    def _serialize_world(self, world) -> dict:
-        """Best-effort World → dict for campaign.world_data."""
-        try:
-            from data.serialization import serialize
-            return serialize(world)
-        except Exception:
-            try:
-                from dataclasses import asdict
-                return asdict(world)
-            except Exception:
-                return {}
 
     def _pick_image_file(self):
         """Open a native file picker for selecting an image. Returns path or ''."""
@@ -3154,6 +3205,92 @@ class CampaignManagerState:
 
     # ---- Party Tab Drawing ----
 
+    def _draw_party_group_bar(self, screen, mp, y):
+        """Chip row for the sub-parties: pick the active group, see its
+        current world location (click to change) and NPC companions."""
+        groups = self._party_groups()
+        active_gid = getattr(self.campaign, "active_group_id", "")
+        x = 40
+        chips = [("", "Kaikki", None)] + [(g.id, g.name, g) for g in groups]
+        for gid, label, g in chips:
+            count = (len(self.campaign.party) if not gid
+                     else sum(1 for m in self.campaign.party
+                              if getattr(m, "group_id", "") == gid))
+            txt = f"{label} ({count})"
+            w = fonts.small.size(txt)[0] + 20
+            if x + w > SCREEN_WIDTH - 260:
+                x = 40
+                y += 30
+            chip = pygame.Rect(x, y, w, 26)
+            is_active = (gid == active_gid) or (not gid and not active_gid)
+            base = COLORS["accent"] if is_active else COLORS["panel"]
+            if chip.collidepoint(mp) and not is_active:
+                base = COLORS["hover"]
+            pygame.draw.rect(screen, base, chip, border_radius=13)
+            if is_active:
+                pygame.draw.rect(screen, COLORS["text_bright"], chip, 1,
+                                 border_radius=13)
+            screen.blit(fonts.small.render(txt, True, COLORS["text_bright"]),
+                        (x + 10, y + 4))
+            if chip.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                self._set_active_group(gid)
+            x += w + 8
+        # "+ ryhmä" button
+        addg = pygame.Rect(x, y, 90, 26)
+        pygame.draw.rect(screen, COLORS["success"] if addg.collidepoint(mp)
+                         else COLORS["panel"], addg, border_radius=13)
+        screen.blit(fonts.small.render("+ ryhmä", True, COLORS["text_bright"]),
+                    (x + 10, y + 4))
+        if addg.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+            self._add_party_group()
+        y += 32
+
+        # Active group's location + companions (only when a real group
+        # is selected, not the "Kaikki" pseudo-group).
+        g = self._active_group() if active_gid else None
+        if g is not None:
+            loc = self.world.locations.get(g.location_id)
+            loc_name = loc.name if loc else "(ei sijaintia)"
+            parent = self.world.locations.get(loc.parent_id) if loc else None
+            if parent:
+                loc_name += f"  ({parent.name})"
+            lbl = fonts.small_bold.render("Sijainti:", True, COLORS["text_dim"])
+            screen.blit(lbl, (40, y))
+            lt = fonts.small.render(loc_name, True, COLORS["accent"])
+            lr = pygame.Rect(40 + lbl.get_width() + 8, y, lt.get_width() + 60, 20)
+            screen.blit(lt, (40 + lbl.get_width() + 8, y))
+            # "vaihda" button
+            chg = pygame.Rect(40 + lbl.get_width() + 12 + lt.get_width() + 8,
+                              y - 1, 74, 20)
+            pygame.draw.rect(screen, COLORS["hover"] if chg.collidepoint(mp)
+                             else COLORS["panel"], chg, border_radius=4)
+            screen.blit(fonts.tiny.render("vaihda…", True, COLORS["accent"]),
+                        (chg.x + 8, chg.y + 3))
+            if chg.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                self._open_group_location_picker(g.id)
+            # jump-to-location if it has one
+            if loc and lr.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
+                self.active_tab = 4
+                self.world_view = "locations"
+                self.selected_location_id = loc.id
+            y += 22
+            # Companions
+            if g.companion_npc_ids:
+                names = []
+                for nid in g.companion_npc_ids:
+                    npc = self.world.npcs.get(nid)
+                    names.append(npc.name if npc else nid)
+                ct = fonts.small.render("Mukana (NPC): " + ", ".join(names),
+                                        True, COLORS["text_main"])
+                screen.blit(ct, (40, y))
+                y += 20
+            if g.notes:
+                nt = fonts.tiny.render(g.notes[:110], True, COLORS["text_dim"])
+                screen.blit(nt, (40, y))
+                y += 16
+        y += 6
+        return y
+
     def _draw_party_tab(self, screen, mp):
         y = 70 + self.scroll_y
         is_night = self.campaign.time_of_day in ("night", "dusk")
@@ -3178,12 +3315,20 @@ class CampaignManagerState:
             (40, purse_y))
         y += 24
 
+        # ---- Party-group chips: filter + active-group location -------
+        groups = self._party_groups()
+        if groups:
+            y = self._draw_party_group_bar(screen, mp, y)
+
         if not self.campaign.party:
             txt = fonts.header.render("No heroes in party. Click '+ Add Hero' to begin.", True, COLORS["text_dim"])
             screen.blit(txt, (40, y))
             return
 
+        visible = set(self._visible_party_indices())
         for i, member in enumerate(self.campaign.party):
+            if i not in visible:
+                continue
             data = member.hero_data
             name = data.get("name", "Unknown")
             cls = data.get("character_class", "")
@@ -3294,6 +3439,25 @@ class CampaignManagerState:
                     return
             rx = fonts.small.render("X", True, COLORS["text_dim"])
             screen.blit(rx, (remove_rect.x + 5, remove_rect.y + 1))
+
+            # Move-to-next-group button (⇄) + current group name — the
+            # one-click way to shuffle a PC between sub-parties.
+            if self._party_groups():
+                move_rect = pygame.Rect(card_rect.right - 130, y + 14, 92, 22)
+                gname = next((g.name for g in self._party_groups()
+                              if g.id == getattr(member, "group_id", "")), "—")
+                short = gname.split("·")[0].strip() if "·" in gname else gname[:8]
+                pygame.draw.rect(screen, COLORS["hover"]
+                                 if move_rect.collidepoint(mp)
+                                 else COLORS["panel"], move_rect, border_radius=4)
+                screen.blit(fonts.tiny.render(f"⇄ {short}", True,
+                                              COLORS["accent"]),
+                            (move_rect.x + 6, move_rect.y + 4))
+                if (move_rect.collidepoint(mp)
+                        and pygame.mouse.get_pressed()[0]
+                        and self._click_cooldown <= 0):
+                    self._click_cooldown = 12
+                    self._cycle_member_group(i)
 
             y += 60
 
@@ -5599,7 +5763,9 @@ class CampaignManagerState:
         pygame.draw.rect(screen, COLORS["panel_dark"], panel_rect)
         pygame.draw.rect(screen, COLORS["border_light"], panel_rect, 2)
 
-        ht = fonts.header.render("Move NPC to...", True, COLORS["accent"])
+        picking_group = bool(getattr(self, "_group_loc_picker_gid", ""))
+        title = "Ryhmän sijainti..." if picking_group else "Move NPC to..."
+        ht = fonts.header.render(title, True, COLORS["accent"])
         screen.blit(ht, (panel_x + 10, 60))
 
         # Close button
@@ -5610,6 +5776,7 @@ class CampaignManagerState:
         screen.blit(cx, (close_rect.x + 15, close_rect.y + 3))
         if close_rect.collidepoint(mp) and pygame.mouse.get_pressed()[0]:
             self._npc_location_picker_open = False
+            self._group_loc_picker_gid = ""
 
         # Location list (flat, sorted by path)
         y = 95
@@ -5617,7 +5784,7 @@ class CampaignManagerState:
             if y > SCREEN_HEIGHT - 130:
                 break
             path = get_location_path(self.world, loc_id)
-            path_str = " > ".join(path) if path else loc.name
+            path_str = " > ".join(p.name for p in path) if path else loc.name
             item_rect = pygame.Rect(panel_x + 10, y, 270, 28)
             is_hover = item_rect.collidepoint(mp)
             bg = COLORS["hover"] if is_hover else COLORS["panel"]
@@ -5627,9 +5794,16 @@ class CampaignManagerState:
             it = fonts.tiny.render(f"[{icon}] {path_str}", True, COLORS["text_bright"])
             screen.blit(it, (item_rect.x + 5, item_rect.y + 6))
             if is_hover and pygame.mouse.get_pressed()[0]:
-                npc = self.world.npcs.get(self.selected_npc_id)
-                if npc:
-                    move_npc(self.world, npc.id, loc_id)
+                if picking_group:
+                    gid = self._group_loc_picker_gid
+                    for g in self._party_groups():
+                        if g.id == gid:
+                            g.location_id = loc_id
+                    self._group_loc_picker_gid = ""
+                else:
+                    npc = self.world.npcs.get(self.selected_npc_id)
+                    if npc:
+                        move_npc(self.world, npc.id, loc_id)
                 self._npc_location_picker_open = False
             y += 32
 

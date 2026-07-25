@@ -513,7 +513,88 @@ def build_novus_somnium() -> Campaign:
     _wire_brotherhood_npcs(camp)
     _lore.add_lore_organisations(camp)
     _orgs.sync_organisations_to_campaign(camp)
+    seed_party_groups(camp)
     return camp
+
+
+# The canonical split of the table into travelling sub-parties.
+# members = hero names in data.heroes.hero_list; companions = World NPC ids.
+NOVUS_PARTY_GROUPS = [
+    dict(id="pg_aterterra", name="1 · Aterterra-ryhmä",
+         location_id="loc_zertath_lanke", color="#7C5CFF",
+         members=["Beatrice", "Balthazar", "Kairon", "Magnus Dragonius"],
+         companions=[],
+         notes="Soluttautuu Aterterran drow-kaupunkeihin."),
+    dict(id="pg_maclebar", name="2 · Maclebar-ryhmä",
+         location_id="loc_fort_whitestone", color="#33B0FF",
+         members=["Venris Galanodel"],
+         companions=["npc_blitz", "npc_carlo"],
+         notes="Tutkii Fort Whitestonen automaatiota. Blitz & Carlo mukana."),
+    dict(id="pg_ravenstone", name="3 · Padak (Ravenstone)",
+         location_id="loc_ravenstone", color="#C05B8C",
+         members=["Padak Onslaught"],
+         companions=["npc_sam_undercave"],
+         notes="Padak ja E.F.I.-agentti Sam Ravenstonen kaduilla."),
+    dict(id="pg_pinwud", name="4 · Marduk (Pinwud)",
+         location_id="loc_pinwud", color="#E0A030",
+         members=["Marduk"],
+         companions=[],
+         notes="Marduk Death's Vigilin päämajassa Pinwudissa."),
+]
+
+
+def seed_party_groups(camp) -> int:
+    """Create the canon Novus Somnium sub-parties, assign the PCs that
+    exist as heroes to their group, and attach NPC companions. Idempotent:
+    only seeds when the campaign has no groups yet, and never duplicates a
+    hero already in the party. Missing heroes (e.g. Beatrice before she is
+    built) are simply skipped and can be added to the group later.
+
+    Returns the number of groups created (0 if already seeded)."""
+    from data.campaign import PartyGroup, PartyMember
+    if getattr(camp, "party_groups", None):
+        return 0
+    try:
+        from data.heroes import hero_list
+        from data.hero_import import export_hero
+    except Exception:
+        hero_list, export_hero = [], None
+    heroes = {h.name: h for h in hero_list}
+    existing_names = set()
+    for m in camp.party:
+        try:
+            existing_names.add(m.hero_data.get("name", ""))
+        except Exception:
+            pass
+
+    created = 0
+    for spec in NOVUS_PARTY_GROUPS:
+        camp.party_groups.append(PartyGroup(
+            id=spec["id"], name=spec["name"],
+            location_id=spec["location_id"], color=spec.get("color", ""),
+            notes=spec.get("notes", ""),
+            companion_npc_ids=list(spec.get("companions", [])),
+        ))
+        created += 1
+        for hero_name in spec["members"]:
+            h = heroes.get(hero_name)
+            if h is None or export_hero is None:
+                continue  # hero not built yet — add later from the picker
+            if hero_name in existing_names:
+                # already on the roster — just tag its group
+                for m in camp.party:
+                    if m.hero_data.get("name") == hero_name:
+                        m.group_id = spec["id"]
+                continue
+            camp.party.append(PartyMember(
+                hero_data=export_hero(h),
+                current_hp=h.hit_points,
+                group_id=spec["id"],
+            ))
+            existing_names.add(hero_name)
+    if camp.party_groups and not camp.active_group_id:
+        camp.active_group_id = camp.party_groups[0].id
+    return created
 
 
 def ensure_default_campaign(campaigns_dir: Optional[str] = None,

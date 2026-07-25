@@ -71,6 +71,22 @@ class HeroRelationship:
 
 
 @dataclass
+class PartyGroup:
+    """A named party/group of PCs. Campaigns often split the table into
+    several sub-parties operating in different parts of the world (e.g.
+    one group in Aterterra, another on Maclebar Isle). Each group tracks
+    where it currently is via ``location_id`` (a World location id)."""
+    id: str = ""
+    name: str = "Party"
+    location_id: str = ""         # World location the group is currently at
+    color: str = ""               # optional hex tint for the chip
+    notes: str = ""
+    # NPC companions travelling with the group (World NPC ids), shown
+    # alongside the PC members.
+    companion_npc_ids: List[str] = field(default_factory=list)
+
+
+@dataclass
 class PartyMember:
     """Wrapper for a hero in the campaign party with campaign-specific state."""
     hero_data: dict = field(default_factory=dict)  # Serialized CreatureStats
@@ -87,6 +103,9 @@ class PartyMember:
     # Phase 15a: PC carries personal gold separately from any
     # shared party purse (see Campaign.party_gold below).
     gold: float = 0.0
+    # Which PartyGroup this PC belongs to (Campaign.party_groups id).
+    # "" = the default/first group; kept optional for backward compat.
+    group_id: str = ""
     # Relationships with NPCs and other heroes
     relationships: List[HeroRelationship] = field(default_factory=list)
     # Hyperlinks to external resources (character sheet, backstory doc, etc.)
@@ -102,6 +121,10 @@ class Campaign:
     last_modified: str = ""
     # Party
     party: List[PartyMember] = field(default_factory=list)
+    # Named sub-parties (groups) and which one the DM is currently
+    # viewing. Empty list = single implicit party (legacy behaviour).
+    party_groups: List[PartyGroup] = field(default_factory=list)
+    active_group_id: str = ""
     # Phase 15a: shared party purse + group-loot inventory. Useful
     # for parties that pool gold ("Mä laitan kymppi yhteiseen
     # kassaan, ostetaan keto-ravintoa") or carry common loot.
@@ -167,6 +190,8 @@ def save_campaign(campaign: Campaign, filepath: str = ""):
         "created": campaign.created,
         "last_modified": campaign.last_modified,
         "party": [serialize(m) for m in campaign.party],
+        "party_groups": [serialize(g) for g in campaign.party_groups],
+        "active_group_id": campaign.active_group_id,
         "party_gold": campaign.party_gold,
         "party_inventory": list(campaign.party_inventory),
         "time_of_day": campaign.time_of_day,
@@ -203,6 +228,8 @@ def load_campaign(filepath: str) -> Campaign:
         created=data.get("created", ""),
         last_modified=data.get("last_modified", ""),
         party=[deserialize(PartyMember, m) for m in data.get("party", [])],
+        party_groups=[deserialize(PartyGroup, g) for g in data.get("party_groups", [])],
+        active_group_id=data.get("active_group_id", ""),
         party_gold=float(data.get("party_gold", 0.0)),
         party_inventory=list(data.get("party_inventory", [])),
         time_of_day=data.get("time_of_day", "day"),
