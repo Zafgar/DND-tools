@@ -154,6 +154,9 @@ class MonsterLoreModal:
         # Header strip (always visible — not scrolled)
         self._draw_header(screen, rect)
 
+        # Hover-to-explain targets collected while drawing rows this frame:
+        # list of (rect, finnish_explanation).
+        self._hover_targets = []
         # Scrollable content area
         content_top = self.y + 90
         content_rect = pygame.Rect(self.x + 4, content_top,
@@ -196,6 +199,31 @@ class MonsterLoreModal:
         self.btn_close.rect.x = rect.right - 110
         self.btn_close.rect.y = rect.bottom - 44
         self.btn_close.draw(screen, mp)
+
+        # Finnish hover explanation for the action/feature the mouse is on.
+        self._draw_hover_explanation(screen, mp, content_rect)
+
+    def _draw_hover_explanation(self, screen, mp, content_rect):
+        if not content_rect.collidepoint(mp):
+            return
+        for rrect, fi in getattr(self, "_hover_targets", []):
+            if not rrect.collidepoint(mp) or not fi:
+                continue
+            lines = _wrap(fi, fonts.small, 360)[:8]
+            box_w = 390
+            box_h = 16 + len(lines) * 20
+            bx = min(mp[0] + 16, SCREEN_WIDTH - box_w - 10)
+            by = min(mp[1] + 12, SCREEN_HEIGHT - box_h - 10)
+            pygame.draw.rect(screen, (18, 20, 26), (bx, by, box_w, box_h),
+                             border_radius=6)
+            pygame.draw.rect(screen, COLORS.get("accent", (110, 130, 220)),
+                             (bx, by, box_w, box_h), 1, border_radius=6)
+            ty = by + 8
+            for ln in lines:
+                screen.blit(fonts.small.render(ln, True, (230, 230, 240)),
+                            (bx + 10, ty))
+                ty += 20
+            break
 
     # ------------------------------------------------------------------ #
     def _draw_header(self, screen, rect):
@@ -377,10 +405,17 @@ class MonsterLoreModal:
             head = a.name
             if a.is_multiattack:
                 head = f"{head} (Multiattack)"
-            screen.blit(fonts.small_bold.render(
-                head, True,
-                COLORS.get("text_main", (220, 220, 235))),
-                (self.x + 30, y))
+            hs = fonts.small_bold.render(
+                head, True, COLORS.get("text_main", (220, 220, 235)))
+            screen.blit(hs, (self.x + 30, y))
+            try:
+                from data.ability_help_fi import explain_action
+                fi = explain_action(a)
+            except Exception:
+                fi = ""
+            if fi:
+                self._hover_targets.append(
+                    (pygame.Rect(self.x + 30, y, hs.get_width() + 40, 18), fi))
             y += 18
             desc_parts = []
             if a.description:
@@ -513,10 +548,17 @@ class MonsterLoreModal:
                 head += f"  · recharge {f.recharge}"
             if f.uses_per_day > 0:
                 head += f"  · {f.uses_per_day}/day"
-            screen.blit(fonts.small_bold.render(
-                head, True,
-                COLORS.get("text_main", (220, 220, 235))),
-                (self.x + 30, y))
+            hs = fonts.small_bold.render(
+                head, True, COLORS.get("text_main", (220, 220, 235)))
+            screen.blit(hs, (self.x + 30, y))
+            try:
+                from data.ability_help_fi import explain_feature
+                fi = explain_feature(f)
+            except Exception:
+                fi = ""
+            if fi:
+                self._hover_targets.append(
+                    (pygame.Rect(self.x + 30, y, hs.get_width() + 40, 18), fi))
             y += 18
             for line in _wrap(f.description, fonts.tiny,
                                  self.WIDTH - 70):

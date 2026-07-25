@@ -665,7 +665,8 @@ class CampaignManagerState:
                 return
             from data import novus_somnium_lore as _lore
             from data.novus_somnium import (_serialize_world_for_campaign,
-                                            seed_party_groups)
+                                            seed_party_groups,
+                                            seed_area_encounters)
             added = _lore.refresh_lore(self.campaign, world)
             if added > 0:
                 self.campaign.world_data = _serialize_world_for_campaign(world)
@@ -675,6 +676,10 @@ class CampaignManagerState:
             groups = seed_party_groups(self.campaign)
             if groups > 0:
                 logging.info("[PARTY] seeded %d canon party group(s).", groups)
+            # Seed the canon level-12 area encounters into older saves.
+            encs = seed_area_encounters(self.campaign)
+            if encs > 0:
+                logging.info("[ENC] seeded %d canon area encounter(s).", encs)
         except Exception:
             logging.warning("[LORE] canon lore refresh skipped:", exc_info=True)
 
@@ -955,10 +960,14 @@ class CampaignManagerState:
         enc = self.campaign.encounters[self.selected_encounter_idx]
         roster = []
 
-        # Add party members
+        # Add party members — only the active sub-party's PCs when groups
+        # are in use, so the right party goes into the fight.
+        gid = getattr(self.campaign, "active_group_id", "")
         px, py = 3, 2
         for member in self.campaign.party:
             if not member.active:
+                continue
+            if gid and getattr(member, "group_id", "") != gid:
                 continue
             stats = self._rebuild_stats(member)
             if stats:
@@ -999,6 +1008,65 @@ class CampaignManagerState:
             bs = BattleState(self.manager, roster)
             self.manager.states["BATTLE"] = bs
             self.manager.change_state("BATTLE")
+
+    def _launch_party_to_combat(self, gid=""):
+        """Drop the active sub-party's PCs (and its NPC companions) onto a
+        fresh battle map, ready for the DM to add monsters or drag tokens.
+        Applies each PC's current campaign HP/conditions."""
+        from engine.entities import Entity
+        roster = []
+        gid = gid or getattr(self.campaign, "active_group_id", "")
+        px, py = 3, 2
+        for member in self.campaign.party:
+            if not member.active:
+                continue
+            if gid and getattr(member, "group_id", "") != gid:
+                continue
+            stats = self._rebuild_stats(member)
+            if not stats:
+                continue
+            ent = Entity(stats, px, py, is_player=True)
+            if member.current_hp >= 0:
+                ent.hp = member.current_hp
+            ent.temp_hp = member.temp_hp
+            for cond in member.conditions:
+                ent.add_condition(cond)
+            ent.exhaustion = member.exhaustion
+            roster.append(ent)
+            py += 2
+        # NPC companions of the group join as allies (player side).
+        grp = next((g for g in self._party_groups() if g.id == gid), None)
+        if grp is not None:
+            cy = 2
+            for nid in grp.companion_npc_ids:
+                stats = self._get_npc_stats(self.world.npcs.get(nid))
+                if stats is None:
+                    continue
+                roster.append(Entity(copy.deepcopy(stats), 6, cy,
+                                     is_player=True))
+                cy += 2
+        if not roster:
+            self._status_msg = "Ryhmässä ei ole aktiivisia hahmoja."
+            self._status_timer = 150
+            return
+        from states.game_states import BattleState
+        self.manager.states["BATTLE"] = BattleState(self.manager, roster)
+        self.manager.change_state("BATTLE")
+
+    def _roll_d20(self, who, label, modifier):
+        """Roll a d20 + modifier into the dice tray, labelled for this PC.
+        Used by the click-to-roll ability/save/skill boxes."""
+        sign = f"+{modifier}" if modifier >= 0 else str(modifier)
+        expr = f"1d20{sign}" if modifier else "1d20"
+        self._dice_tray.expr = expr
+        self._dice_tray.label = f"{who}: {label}"
+        self._dice_tray.open()
+        try:
+            self._dice_tray.tray.roll(expr, label=self._dice_tray.label)
+        except Exception:
+            pass
+        self._status_msg = f"{who} heittää {label} ({expr})"
+        self._status_timer = 120
 
     def _rebuild_stats(self, member: PartyMember) -> CreatureStats:
         """Rebuild CreatureStats from member hero_data."""
@@ -3249,6 +3317,21 @@ class CampaignManagerState:
         # is selected, not the "Kaikki" pseudo-group).
         g = self._active_group() if active_gid else None
         if g is not None:
+            # One-click: bring THIS party into a fresh combat map.
+            combat_btn = pygame.Rect(SCREEN_WIDTH - 250, y - 30, 210, 26)
+            hov = combat_btn.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["danger"] if hov
+                             else COLORS.get("danger_dim", (120, 40, 40)),
+                             combat_btn, border_radius=6)
+            pygame.draw.rect(screen, COLORS["text_bright"], combat_btn, 1,
+                             border_radius=6)
+            screen.blit(fonts.small_bold.render("⚔ Vie ryhmä taisteluun",
+                                                True, COLORS["text_bright"]),
+                        (combat_btn.x + 14, combat_btn.y + 4))
+            if hov and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                self._click_cooldown = 15
+                self._launch_party_to_combat(g.id)
+                return y
             loc = self.world.locations.get(g.location_id)
             loc_name = loc.name if loc else "(ei sijaintia)"
             parent = self.world.locations.get(loc.parent_id) if loc else None
@@ -3484,24 +3567,32 @@ class CampaignManagerState:
         screen.blit(hdr, (30, y))
         y += 35
 
-        # Ability Scores
+        # Ability Scores — click a box to roll a d20 + that modifier.
         abilities = data.get("abilities", {})
         ab_names = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
         ax = 30
+        rlbl = fonts.tiny.render("(klikkaa = heitä)", True, COLORS["text_dim"])
+        screen.blit(rlbl, (ax + 6 * 75 + 6, y + 20))
         for ab in ab_names:
             score = abilities.get(ab, 10)
             mod = (score - 10) // 2
             sign = "+" if mod >= 0 else ""
             label = ab[:3].upper()
-            # Score box
-            pygame.draw.rect(screen, COLORS["panel_light"], (ax, y, 65, 50), border_radius=4)
-            pygame.draw.rect(screen, COLORS["border"], (ax, y, 65, 50), 1, border_radius=4)
+            box = pygame.Rect(ax, y, 65, 50)
+            hov = box.collidepoint(mp)
+            pygame.draw.rect(screen, COLORS["hover"] if hov
+                             else COLORS["panel_light"], box, border_radius=4)
+            pygame.draw.rect(screen, COLORS["accent"] if hov
+                             else COLORS["border"], box, 1, border_radius=4)
             lt = fonts.tiny.render(label, True, COLORS["text_dim"])
             screen.blit(lt, (ax + 32 - lt.get_width() // 2, y + 2))
             sv = fonts.header.render(str(score), True, COLORS["text_bright"])
             screen.blit(sv, (ax + 32 - sv.get_width() // 2, y + 14))
             mv = fonts.small.render(f"{sign}{mod}", True, COLORS["accent"])
             screen.blit(mv, (ax + 32 - mv.get_width() // 2, y + 36))
+            if hov and pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                self._click_cooldown = 12
+                self._roll_d20(name, f"{label}-heitto", mod)
             ax += 75
         y += 60
 
@@ -3563,31 +3654,47 @@ class CampaignManagerState:
             screen.blit(ft, (160, y))
         y += 25
 
-        # Saving throws
+        # Saving throws — click to roll d20 + save bonus.
         saves = data.get("saving_throws", {})
         if saves:
-            st = fonts.small_bold.render("Saving Throws:", True, COLORS["text_dim"])
+            st = fonts.small_bold.render("Saving Throws (klikkaa = heitä):",
+                                         True, COLORS["text_dim"])
             screen.blit(st, (30, y))
-            sx = 160
+            sx = 320
             for ab, val in saves.items():
                 sign = "+" if val >= 0 else ""
-                sv = fonts.small.render(f"{ab[:3]} {sign}{val}", True, COLORS["text_main"])
+                sv = fonts.small.render(f"{ab[:3]} {sign}{val}", True,
+                                        COLORS["text_main"])
+                r = pygame.Rect(sx - 3, y - 1, sv.get_width() + 6, 18)
+                if r.collidepoint(mp):
+                    pygame.draw.rect(screen, COLORS["hover"], r, border_radius=3)
+                    if pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                        self._click_cooldown = 12
+                        self._roll_d20(name, f"{ab[:3]}-pelastus", val)
                 screen.blit(sv, (sx, y))
                 sx += sv.get_width() + 15
             y += 22
 
-        # Skills
+        # Skills — click to roll d20 + skill bonus.
         if skills:
-            sk_label = fonts.small_bold.render("Skills:", True, COLORS["text_dim"])
+            sk_label = fonts.small_bold.render("Skills (klikkaa = heitä):",
+                                               True, COLORS["text_dim"])
             screen.blit(sk_label, (30, y))
-            sx = 100
+            sx = 280
             for skill, val in sorted(skills.items()):
                 sign = "+" if val >= 0 else ""
-                sv = fonts.small.render(f"{skill} {sign}{val}", True, COLORS["text_main"])
+                sv = fonts.small.render(f"{skill} {sign}{val}", True,
+                                        COLORS["text_main"])
+                r = pygame.Rect(sx - 3, y - 1, sv.get_width() + 6, 18)
+                if r.collidepoint(mp):
+                    pygame.draw.rect(screen, COLORS["hover"], r, border_radius=3)
+                    if pygame.mouse.get_pressed()[0] and self._click_cooldown <= 0:
+                        self._click_cooldown = 12
+                        self._roll_d20(name, skill, val)
                 screen.blit(sv, (sx, y))
                 sx += sv.get_width() + 15
                 if sx > SCREEN_WIDTH - 100:
-                    sx = 100
+                    sx = 280
                     y += 18
             y += 22
 
@@ -5195,7 +5302,7 @@ class CampaignManagerState:
 
     def _get_npc_stats(self, npc):
         """Get CreatureStats for an NPC from stat_source."""
-        if not npc.stat_source:
+        if npc is None or not npc.stat_source:
             return None
         if npc.stat_source.startswith("monster:"):
             monster_name = npc.stat_source[len("monster:"):]

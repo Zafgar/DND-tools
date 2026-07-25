@@ -155,6 +155,100 @@ def _build_encounters() -> list:
     ]
 
 
+# Canon level-12 encounters, one per party-hotspot. Each carries real
+# monster slots (names match data/monsters/lvl12_foes.py) so the DM can
+# launch them straight into combat. Balanced for the tier-3 party.
+LVL12_ENCOUNTERS = [
+    dict(name="Aterterra — Velve Dro -eliittipartio",
+         area="Zer'tath Lanke", difficulty="Deadly",
+         desc="Kenraali Dantrag Dyrrin drow-partio iskee pimeistä "
+              "tunneleista. Kapteeni eristää loitsijat Silencellä; "
+              "kiipeilijäliskot iskevät katosta.",
+         slots=[("Velve Dro Invisiittori", 1), ("Velve Dro Varjoterä", 2),
+                ("Faerzress-Kiipeilijalisko", 2)]),
+    dict(name="Ravenstone — Dimeriuksen pimeä verho",
+         area="Ravenstone", difficulty="Deadly",
+         desc="Vampyyri-kreivitär valvoo kattojen rajassa ja "
+              "ghoul-murskaajat yrittävät halvaannuttaa ryhmän.",
+         slots=[("Kreivitar Vila Norgrad", 1),
+                ("Ravenstonen Ghoul-murskaaja", 4)]),
+    dict(name="Maclebar Isle — Riskin eliminointi",
+         area="Fort Whitestone (Silex Alpus)", difficulty="Deadly",
+         desc="Walker-suvun automaatio vapauttaa A.E.G.I.S.-titaanin ja "
+              "kellopeli-eliminoijat. Poison Breath hallitsee tilaa.",
+         slots=[("A.E.G.I.S. Titaani", 1), ("Kellopeli-Eliminoija", 2)]),
+    dict(name="Oblitus — Emnarin iskujoukko (Shug Orgar)",
+         area="Aesica", difficulty="Deadly",
+         desc="Örkkietujoukko käyttää buletteja piirityskoneina. "
+              "Sotapäällikkö Battle Cry, Verimaagi Haste ja Blight.",
+         slots=[("Shug Orgar -Sotapaallikko", 1), ("Emnarin Verimaagi", 1),
+                ("Panssaroitu Sota-Bulette", 2)]),
+    dict(name="Krusk vs. Vigilin Puhdistaja (1v1)",
+         area="Aesica", difficulty="Hard",
+         desc="Mortem-jumalan inkvisiittori haastaa Kruskin "
+              "kaksintaisteluun. Spirit Guardians rajoittaa liikettä.",
+         slots=[("Vigilin Puhdistaja", 1)]),
+    dict(name="Krusk vs. Verilähettiläs (1v1)",
+         area="Aesica", difficulty="Hard",
+         desc="Dimeriuksen vampyyri-luomus testaa Kruskia. Mist Step ja "
+              "Vampiric Bite; kuollessaan räjähtää veripilveksi.",
+         slots=[("Verilahettilas", 1)]),
+    dict(name="Padak vs. Crimson Night-Stalker (1v1)",
+         area="Ravenstone", difficulty="Hard",
+         desc="Gargoylen ja vampyyrin risteytys metsästää Padakia. "
+              "Pounce katosta, Terrifying Howl estää pakenemasta.",
+         slots=[("Crimson Night-Stalker", 1)]),
+    dict(name="Frand — Red Dagger -salamurhaajat",
+         area="Frand", difficulty="Deadly",
+         desc="Red Dagger -kilta iskee savua ja myrkkyä hyödyntäen. "
+              "Pyöveli sitoo raskaat iskijät; varjokulkijat loitsijoihin.",
+         slots=[("Red Dagger -Pyoveli", 1), ("Red Dagger -Varjokulkija", 3)]),
+]
+
+
+def _make_lvl12_encounter(spec):
+    from data.campaign import EncounterSlot
+    return CampaignEncounter(
+        name=spec["name"], description=spec["desc"],
+        area_name=spec["area"], difficulty_hint=spec["difficulty"],
+        slots=[EncounterSlot(creature_name=n, count=c, side="enemy")
+               for n, c in spec["slots"]],
+        notes="Lvl 12 kanon-kohtaaminen. Viholliset: "
+              "data/monsters/lvl12_foes.py.")
+
+
+def seed_area_encounters(camp) -> int:
+    """Add the canon level-12 encounters to the campaign encounter list
+    (with real monster slots) if they aren't already there, and make sure
+    each referenced area exists as a browsable CampaignArea. Idempotent by
+    name. Returns the number of encounters added."""
+    from data.campaign import CampaignArea
+    have = {e.name for e in camp.encounters}
+    area_names = {a.name for a in camp.areas}
+    added = 0
+    for spec in LVL12_ENCOUNTERS:
+        # Ensure the area exists so the encounter is filed under it.
+        if spec["area"] not in area_names:
+            underground = spec["area"] in ("Zer'tath Lanke",)
+            camp.areas.append(CampaignArea(
+                name=spec["area"],
+                description=f"Kanon-taistelupaikka: {spec['area']}.",
+                environment="underground" if underground else "outdoor",
+                lighting="darkness" if underground else "bright",
+                encounter_names=[]))
+            area_names.add(spec["area"])
+        if spec["name"] in have:
+            continue
+        camp.encounters.append(_make_lvl12_encounter(spec))
+        have.add(spec["name"])
+        added += 1
+        # Cross-link the encounter onto its area.
+        for a in camp.areas:
+            if a.name == spec["area"] and spec["name"] not in a.encounter_names:
+                a.encounter_names.append(spec["name"])
+    return added
+
+
 def _build_notes() -> list:
     return [
         CampaignNote(
@@ -514,6 +608,7 @@ def build_novus_somnium() -> Campaign:
     _lore.add_lore_organisations(camp)
     _orgs.sync_organisations_to_campaign(camp)
     seed_party_groups(camp)
+    seed_area_encounters(camp)
     return camp
 
 
