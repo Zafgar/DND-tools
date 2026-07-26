@@ -44,6 +44,15 @@ _ABBR_TO_FULL = {
     "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma",
 }
 
+# The feat catalogue stores a placeholder in mechanic_value for feats
+# that ask the player to pick something. Treating that literal string as
+# a real choice meant Resilient silently granted no proficiency at all.
+_UNCHOSEN = {"", "chosen_ability", "choose", "chosen", "any"}
+
+
+def _is_unchosen(value) -> bool:
+    return str(value or "").strip().lower() in _UNCHOSEN
+
 
 class FeatPickerModal:
     WIDTH = 880
@@ -148,8 +157,10 @@ class FeatPickerModal:
             mechanic=feat.mechanic,
             mechanic_value=feat.mechanic_value,
         ))
-        # Resilient asks for a save type; default to CON if blank
-        if feat.mechanic == "resilient" and not feat.mechanic_value:
+        # Resilient asks for a save type; default to CON until the DM
+        # picks one. The catalogue ships the placeholder
+        # "chosen_ability", which is NOT a real ability abbreviation.
+        if feat.mechanic == "resilient" and _is_unchosen(feat.mechanic_value):
             self._working[-1].mechanic_value = "CON"
         self._status = f"Lisätty {feat.name}."
 
@@ -188,8 +199,10 @@ class FeatPickerModal:
         # Resilient: add ability save to saving_throws dict if missing.
         # mechanic_value carries the ability abbreviation.
         for f in self._working:
-            if f.mechanic == "resilient" and f.mechanic_value:
-                full = _ABBR_TO_FULL.get(f.mechanic_value.upper())
+            if f.mechanic == "resilient":
+                if _is_unchosen(f.mechanic_value):
+                    f.mechanic_value = "CON"
+                full = _ABBR_TO_FULL.get(str(f.mechanic_value).upper())
                 if not full:
                     continue
                 saves = cs.setdefault("saving_throws", {})

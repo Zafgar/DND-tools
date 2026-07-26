@@ -778,6 +778,58 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if vfx is not None:
             self.impact_flashes.append(vfx)
 
+    def _spawn_outcome_vfx(self, step, target, outcome):
+        """Crit starburst / miss sparks at the moment of resolution."""
+        if step is None or target is None:
+            return
+        if outcome not in ("crit", "miss"):
+            return
+        try:
+            from states.battle_vfx import make_outcome_vfx
+        except ImportError:
+            return
+        vfx = make_outcome_vfx(step.attacker, target, outcome,
+                               damage_type=step.damage_type or "slashing")
+        if vfx is not None:
+            self.impact_flashes.append(vfx)
+
+    def _spawn_condition_vfx(self, target, condition):
+        """Badge rising off a token when a condition actually lands."""
+        if target is None or not condition:
+            return
+        try:
+            from states.battle_vfx import make_condition_vfx
+        except ImportError:
+            return
+        vfx = make_condition_vfx(target, condition)
+        if vfx is not None:
+            self.impact_flashes.append(vfx)
+
+    def _spawn_summon_vfx(self, entity):
+        """Rotating summoning circle under a creature that just arrived."""
+        if entity is None:
+            return
+        try:
+            from states.battle_vfx import SummonRune
+        except ImportError:
+            return
+        self.impact_flashes.append(
+            SummonRune(entity.grid_x, entity.grid_y,
+                       cells=getattr(entity, "size_in_squares", 1)))
+
+    def _spawn_teleport_vfx(self, from_xy, to_xy):
+        """Two puffs: one where the creature left, one where it landed."""
+        try:
+            from states.battle_vfx import TeleportPuff
+        except ImportError:
+            return
+        if from_xy:
+            self.impact_flashes.append(
+                TeleportPuff(from_xy[0], from_xy[1], inward=True))
+        if to_xy:
+            self.impact_flashes.append(
+                TeleportPuff(to_xy[0], to_xy[1], inward=False))
+
     def _save_undo_snapshot(self):
         """Save current state to undo stack."""
         state = self.battle.get_state_dict()
@@ -1120,6 +1172,15 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                               f"{len(oas)} opportunity attack(s)!")
                     return  # Pause; _resolve_reaction resumes the plan
 
+            # Blink spells (Misty Step, Dimension Door) relocate the
+            # caster during planning, so puff both ends here — otherwise
+            # a token simply jumps and reads as a bug.
+            if (step.step_type == "spell" and step.attacker
+                    and (step.old_x or step.old_y)
+                    and (step.old_x, step.old_y) != (step.new_x, step.new_y)):
+                self._spawn_teleport_vfx((step.old_x, step.old_y),
+                                         (step.new_x, step.new_y))
+
             # Handle summon spawning
             if step.step_type == "summon" and step.summon_name:
                 new_ent = self.battle.spawn_summon(
@@ -1135,6 +1196,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                     spell_name=step.summon_spell or "",
                 )
                 self._log(f"  [SUMMON] {step.description}")
+                # Rotating summoning circle under the new arrival.
+                self._spawn_summon_vfx(new_ent)
                 
                 # Handle immediate attack (e.g. Spiritual Weapon on cast)
                 if step.summon_immediate_attack and step.target and new_ent.stats.actions:
@@ -1394,6 +1457,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # so AoE auras still appear.
         if outcome in ("hit", "crit", "fail"):
             self._spawn_attack_vfx_for_step(step, target)
+        # Outcome feedback: a starburst on a crit, skidding sparks on a
+        # miss. The table should be able to read the result off the map
+        # without watching the log.
+        self._spawn_outcome_vfx(step, target, outcome)
 
         if is_attack:
             is_hit = outcome in ("hit", "crit", "fail")
@@ -1628,6 +1695,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 # Pass source entity for source-dependent conditions (Frightened, Charmed, Banished)
                 condition_source = step.attacker if cond in ("Frightened", "Charmed", "Banished") else None
                 target.add_condition(cond, save_ability=save_ab, save_dc=dc, source=condition_source)
+                self._spawn_condition_vfx(target, cond)
                 self.battle.stats_tracker.record_condition(
                     rnd, target.name, cond, applied_by=attacker_name,
                     target_is_player=target.is_player,
@@ -1783,6 +1851,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 save_ab = step.save_ability
                 condition_source = step.attacker if cond in ("Frightened", "Charmed") else None
                 target.add_condition(cond, save_ability=save_ab, save_dc=dc, source=condition_source)
+                self._spawn_condition_vfx(target, cond)
 
         # Track spell usage
         if step.spell and step.spell.level > 0:

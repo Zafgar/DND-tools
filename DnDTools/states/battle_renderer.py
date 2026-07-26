@@ -79,12 +79,24 @@ class BattleRendererMixin:
         type_color = CREATURE_TYPE_COLORS.get(ctype, (160, 160, 160))
         type_icon = CREATURE_ICONS.get(ctype, "??")
 
-        # Drop shadow (larger, softer)
-        shadow_size = radius * 2 + 10
-        shadow_surf = pygame.Surface((shadow_size, shadow_size), pygame.SRCALPHA)
-        pygame.draw.circle(shadow_surf, (0, 0, 0, 50), (shadow_size//2, shadow_size//2), radius + 3)
-        pygame.draw.circle(shadow_surf, (0, 0, 0, 30), (shadow_size//2, shadow_size//2), radius + 5)
-        screen.blit(shadow_surf, (cx - shadow_size//2, cy - shadow_size//2))
+        # Elevation-aware drop shadow: a flying creature's shadow slides
+        # away and softens, which is the cue that actually reads as
+        # "this thing is 30 ft up".
+        try:
+            from states import token_art
+            token_art.draw_shadow(
+                screen, cx, cy, radius,
+                elevation_ft=getattr(entity, "elevation", 0),
+                is_flying=getattr(entity, "is_flying", False))
+        except Exception:
+            shadow_size = radius * 2 + 10
+            shadow_surf = pygame.Surface((shadow_size, shadow_size),
+                                         pygame.SRCALPHA)
+            pygame.draw.circle(shadow_surf, (0, 0, 0, 50),
+                               (shadow_size // 2, shadow_size // 2),
+                               radius + 3)
+            screen.blit(shadow_surf,
+                        (cx - shadow_size // 2, cy - shadow_size // 2))
 
         # Phase 17a: prefer the linked Actor's portrait when one
         # exists. The actor_id is set when the entity comes from a
@@ -114,14 +126,14 @@ class BattleRendererMixin:
             pygame.draw.circle(mask_surf, (255,255,255,255), (radius, radius), radius)
             scaled.blit(mask_surf, (0,0), special_flags=pygame.BLEND_RGBA_MIN)
             screen.blit(scaled, (cx - radius, cy - radius))
-            # Polished border
-            if entity.is_player:
-                border = (255, 215, 0)
-                pygame.draw.circle(screen, border, (cx, cy), radius, 3)
-                pygame.draw.circle(screen, (255, 240, 150), (cx, cy), radius + 1, 1)
-            else:
-                border = type_color
-                pygame.draw.circle(screen, border, (cx, cy), radius, 3)
+            # Bevelled base ring instead of a flat outline.
+            rim = (255, 205, 70) if entity.is_player else type_color
+            try:
+                from states import token_art
+                token_art.draw_base_ring(screen, cx, cy, radius, rim,
+                                         thickness=4)
+            except Exception:
+                pygame.draw.circle(screen, rim, (cx, cy), radius, 3)
         else:
             # HP-based border color
             hp_pct = entity.hp / entity.max_hp if entity.max_hp > 0 else 0
@@ -140,7 +152,12 @@ class BattleRendererMixin:
                 inner = tuple(max(0, c - 40) for c in type_color)
 
             if entity.has_condition("Prone"):
-                pygame.draw.ellipse(screen, border_outer, (cx-radius, cy-radius//2, radius*2, radius))
+                try:
+                    from states import token_art
+                    token_art.draw_prone_base(screen, cx, cy, radius,
+                                              border_outer)
+                except Exception:
+                    pygame.draw.ellipse(screen, border_outer, (cx-radius, cy-radius//2, radius*2, radius))
                 pygame.draw.ellipse(screen, COLORS["bg_dark"], (cx-radius+3, cy-radius//2+3, radius*2-6, radius-6))
                 pygame.draw.ellipse(screen, inner, (cx-radius+6, cy-radius//2+6, radius*2-12, radius-12), 4)
             else:
@@ -148,6 +165,13 @@ class BattleRendererMixin:
                 pygame.draw.circle(screen, border_outer, (cx, cy), radius)
                 # Dark fill
                 pygame.draw.circle(screen, COLORS["bg_dark"], (cx, cy), radius - 3)
+                # Bevel the rim so the token reads as a miniature base.
+                try:
+                    from states import token_art
+                    token_art.draw_base_ring(screen, cx, cy, radius,
+                                             border_outer, thickness=4)
+                except Exception:
+                    pass
 
                 # Procedural character (Phase 9c) — drawn inside the
                 # ring so the team colour stays visible. Uses a small
@@ -1167,12 +1191,46 @@ class BattleRendererMixin:
             cy = int(sy + pixel_w // 2)
             r = (pixel_w // 2) - 3
 
-            if ent == sel:
-                pygame.draw.circle(screen, COLORS["warning"], (cx, cy), r+6, 2)
-            if ent == curr:
-                pygame.draw.circle(screen, (255,255,255,80), (cx, cy), r+2)
-            
+            # Selection and turn markers are visually distinct: a dashed
+            # ring is "the DM picked this one", a breathing halo is "this
+            # one is acting right now".
+            try:
+                from states import token_art
+                have_token_art = True
+            except Exception:
+                token_art = None
+                have_token_art = False
+
+            if have_token_art:
+                if ent == curr:
+                    token_art.draw_turn_pulse(screen, cx, cy, r,
+                                              pygame.time.get_ticks())
+                if ent == sel:
+                    token_art.draw_selection_ring(screen, cx, cy, r)
+            else:
+                if ent == sel:
+                    pygame.draw.circle(screen, COLORS["warning"], (cx, cy),
+                                       r + 6, 2)
+                if ent == curr:
+                    pygame.draw.circle(screen, (255, 255, 255, 80),
+                                       (cx, cy), r + 2)
+
             self._draw_token(screen, ent, cx, cy, r)
+
+            if have_token_art:
+                # HP burned into the rim: readable across the table
+                # without parsing the bar underneath.
+                token_art.draw_hp_arc(screen, cx, cy, r, ent.hp, ent.max_hp)
+                # Rim ticks so a CR 13 priest is never mistaken for one of
+                # the CR 4 choir.
+                if not ent.is_player:
+                    token_art.draw_threat_notches(
+                        screen, cx, cy, r,
+                        getattr(ent.stats, "challenge_rating", 0))
+                # Outer rim tinted by the most disabling condition.
+                token_art.draw_condition_ring(screen, cx, cy, r,
+                                              ent.conditions)
+
             hp_bar.draw(screen, cx, cy+r+4, pixel_w-10, ent.hp, ent.max_hp)
             # Dead X
             if ent.hp <= 0:

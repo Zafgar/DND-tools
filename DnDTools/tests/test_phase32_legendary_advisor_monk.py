@@ -399,6 +399,33 @@ class TestFeatPickerModal(unittest.TestCase):
         # PB at level 5 = 3, CON 16 → mod 3 → Constitution save 6
         saves = npc.custom_stats.get("saving_throws", {})
         self.assertIn("Constitution", saves)
+        self.assertEqual(saves["Constitution"], 6)
+
+    def test_resilient_placeholder_is_not_treated_as_a_choice(self):
+        """Katalogissa mechanic_value on paikanpitäjä 'chosen_ability'.
+        Jos sitä luulee oikeaksi valinnaksi, Resilient ei anna mitään."""
+        from states.feat_picker_modal import FeatPickerModal, _is_unchosen
+        from data.feats import get_feat
+        self.assertTrue(_is_unchosen(get_feat("Resilient").mechanic_value))
+        npc = self._npc()
+        m = FeatPickerModal(npc)
+        m.open()
+        m._add_feat("Resilient")
+        chosen = next(f for f in m._working if f.name == "Resilient")
+        self.assertEqual(chosen.mechanic_value, "CON")
+
+    def test_resilient_respects_an_explicit_choice(self):
+        from states.feat_picker_modal import FeatPickerModal
+        npc = self._npc()
+        m = FeatPickerModal(npc)
+        m.open()
+        m._add_feat("Resilient")
+        next(f for f in m._working
+             if f.name == "Resilient").mechanic_value = "WIS"
+        m._save()
+        saves = npc.custom_stats.get("saving_throws", {})
+        self.assertIn("Wisdom", saves)
+        self.assertNotIn("Constitution", saves)
 
 
 if __name__ == "__main__":

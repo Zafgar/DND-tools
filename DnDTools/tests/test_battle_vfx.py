@@ -15,7 +15,7 @@ except ImportError:
     PYGAME_AVAILABLE = False
 
 from states.battle_vfx import (
-    Projectile, Beam, SpellAura, SlashTrail, HealAura,
+    Projectile, Beam, SpellAura, SlashTrail, HealAura, Explosion,
     make_attack_vfx, make_spell_vfx,
 )
 
@@ -26,17 +26,20 @@ def _ent(x, y):
     return e
 
 
-def _action(rng=5, damage_type="slashing"):
+def _action(rng=5, damage_type="slashing", aoe_radius=0, aoe_shape=""):
     a = MagicMock()
     a.range = rng
     a.damage_type = damage_type
+    a.aoe_radius = aoe_radius
+    a.aoe_shape = aoe_shape
     return a
 
 
-def _spell(damage_type="fire", aoe_radius=0):
+def _spell(damage_type="fire", aoe_radius=0, aoe_shape=""):
     s = MagicMock()
     s.damage_type = damage_type
     s.aoe_radius = aoe_radius
+    s.aoe_shape = aoe_shape
     return s
 
 
@@ -99,11 +102,17 @@ class TestAttackFactory(unittest.TestCase):
 
 
 class TestSpellFactory(unittest.TestCase):
-    def test_aoe_spell_makes_aura(self):
+    def test_aoe_spell_makes_a_burst(self):
+        """Fire AoE now gets a proper fireball rather than a generic
+        aura; a damage type with no dedicated burst still falls back to
+        SpellAura."""
         caster = _ent(0, 0); tgt = _ent(5, 5)
         vfx = make_spell_vfx(caster, tgt, _spell("fire", aoe_radius=20))
-        self.assertIsInstance(vfx, SpellAura)
+        self.assertIsInstance(vfx, Explosion)
         self.assertGreaterEqual(vfx.radius_cells, 1.0)
+        plain = make_spell_vfx(caster, tgt,
+                               _spell("bludgeoning", aoe_radius=20))
+        self.assertIsInstance(plain, SpellAura)
 
     def test_single_target_makes_beam(self):
         caster = _ent(0, 0); tgt = _ent(10, 0)
@@ -113,7 +122,7 @@ class TestSpellFactory(unittest.TestCase):
     def test_self_aoe_uses_caster_position(self):
         caster = _ent(7, 7)
         vfx = make_spell_vfx(caster, None, _spell("fire", aoe_radius=15))
-        self.assertIsInstance(vfx, SpellAura)
+        self.assertIsInstance(vfx, Explosion)
         self.assertEqual(vfx.gx, 7)
         self.assertEqual(vfx.gy, 7)
 

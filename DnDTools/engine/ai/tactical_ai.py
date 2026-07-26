@@ -1480,8 +1480,18 @@ class TacticalAI:
         
         if best_spot:
             entity.use_spell_slot(spell.level)
+            from_x, from_y = entity.grid_x, entity.grid_y
             entity.grid_x, entity.grid_y = best_spot
-            return ActionStep(step_type="spell", description=f"{entity.name} casts {spell.name} to escape!", attacker=entity, spell=spell, slot_used=spell.level, action_name=spell.name)
+            # Record both ends so the renderer can puff the departure and
+            # the arrival — a blink that just relocates a token reads as
+            # a bug at the table.
+            return ActionStep(step_type="spell",
+                              description=f"{entity.name} casts {spell.name} to escape!",
+                              attacker=entity, spell=spell,
+                              slot_used=spell.level, action_name=spell.name,
+                              old_x=from_x, old_y=from_y,
+                              new_x=float(best_spot[0]),
+                              new_y=float(best_spot[1]))
         return None
 
     def _move_toward_point(self, entity, tx, ty, battle):

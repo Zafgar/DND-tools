@@ -62,10 +62,15 @@ def _state_offsets(state: str, phase: float) -> dict:
     """
     p = max(0.0, min(1.0, float(phase)))
     if state == "walk":
+        # Cosine, not sine: sin() is zero at BOTH p=0 and p=0.5, so the
+        # legs met in the middle on half the cycle and the two opposite
+        # frames of the walk rendered identically. With cosine the limbs
+        # are fully forward at p=0 and fully back at p=0.5 — an actual
+        # stride. Arms counter-swing against the legs.
         return {
             "body_y":     int(2 * math.sin(p * math.tau * 2)),
-            "arm_swing":  0.4 * math.sin(p * math.tau),
-            "leg_swing":  0.5 * math.sin(p * math.tau),
+            "arm_swing":  -0.4 * math.cos(p * math.tau),
+            "leg_swing":  0.5 * math.cos(p * math.tau),
             "weapon_arc": 0.0,
             "shake_x":    0,
             "red_flash":  0.0,
