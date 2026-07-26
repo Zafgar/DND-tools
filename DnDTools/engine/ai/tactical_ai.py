@@ -46,15 +46,34 @@ class TacticalAI:
             result.append(e)
         return result
 
-    def _can_ranged_attack(self, entity, target, battle, range_ft: float = 0) -> bool:
-        """Check if a ranged attack/spell is valid: LOS + range."""
+    def _can_ranged_attack(self, entity, target, battle, range_ft: float = 0,
+                           *, is_weapon: bool = False) -> bool:
+        """Check if a ranged attack/spell is valid: LOS + range.
+
+        ``is_weapon`` additionally checks for a Wind Wall in the way —
+        it stops arrows and bolts but not spells, and since it does not
+        block sight the LOS check never saw it.
+        """
         if not self._can_see_target(entity, target, battle):
             return False
         if range_ft > 0:
             dist_ft = battle.get_distance(entity, target) * 5
             if dist_ft > range_ft:
                 return False
+        if is_weapon:
+            try:
+                if battle.wind_wall_between(entity, target):
+                    return False
+            except Exception:
+                pass
         return True
+
+    def _can_cast(self, entity, battle, spell=None) -> bool:
+        """False when the caster is standing in a Silence zone."""
+        try:
+            return battle.can_cast_here(entity, spell)
+        except Exception:
+            return True
 
     def _get_terrain_advantage_score(self, entity, battle, x, y) -> float:
         """Score a position for tactical terrain advantage."""
@@ -78,6 +97,17 @@ class TacticalAI:
                 adj_t = battle.get_terrain_at(int(x) + dx, int(y) + dy)
                 if adj_t and adj_t.provides_cover:
                     score += adj_t.cover_bonus * 0.5
+
+        # Ending a turn inside a spell zone is a real cost: the tile bites
+        # again at the start of the next turn. Without this the AI would
+        # happily park in a Cloudkill because the square had nice cover.
+        if t is not None and t.is_hazard and not entity.is_flying:
+            score -= self._terrain_hazard_cost(t, entity) * 0.8
+        # Standing in a zone that blocks sight blinds the creature too.
+        if t is not None and t.blocks_los and not entity.has_feature("truesight"):
+            pref = self._get_combat_preference(entity)
+            if pref != "melee":
+                score -= 6.0
 
         return score
 
@@ -1225,8 +1255,38 @@ class TacticalAI:
             return True
         t = battle.get_terrain_at(int(x), int(y))
         if t and t.is_hazard:
-            return False
+            # A permanent hazard (lava, a fire pit) is a hard no. A spell
+            # zone like Spike Growth is difficult terrain you CAN cross —
+            # treating it as a wall let a party lock the AI out of the
+            # fight with one 2nd-level spell. It is allowed here and
+            # priced by _terrain_hazard_cost so the AI walks around it
+            # when there is a sane route and pushes through when there
+            # is not.
+            if not t.is_spell_terrain:
+                return False
+            if self._terrain_hazard_cost(t, entity) >= entity.hp:
+                return False    # crossing this would drop it
         return True
+
+    @staticmethod
+    def _terrain_hazard_cost(t, entity) -> float:
+        """Expected damage from standing in / crossing a hazard tile."""
+        if t is None or not t.is_hazard:
+            return 0.0
+        try:
+            expected = average_damage(t.hazard_damage)
+        except Exception:
+            return 0.0
+        # A save halves it on average; a condition is worth about as much
+        # again because losing your turn is worse than the dice.
+        if getattr(t, "save_dc", 0):
+            expected *= 0.75
+        if getattr(t, "applies_condition", ""):
+            expected += 8.0
+        if entity is not None and entity.name in (
+                getattr(t, "exempt", None) or ()):
+            return 0.0
+        return expected
 
     def _enter_cell_allowed(self, battle, entity, nx, ny) -> bool:
         """May ``entity`` actually finish a step into cell (nx, ny)?
@@ -1327,6 +1387,12 @@ class TacticalAI:
                     move_cost = battle.get_terrain_movement_cost(nx, ny, entity)
                     # Doors cost extra (object interaction)
                     t = battle.get_terrain_at(int(nx), int(ny))
+                    # Walking through a spell hazard has a price: one grid
+                    # unit of cost per ~6 expected damage, so a short cut
+                    # through Spike Growth is taken only when the detour
+                    # is genuinely longer.
+                    if t is not None and t.is_hazard and not entity.is_flying:
+                        move_cost += self._terrain_hazard_cost(t, entity) / 6.0
                     if t and t.is_door and not t.door_open:
                         move_cost += 0.5  # Small penalty so AI prefers open paths
                     # Gaps cost extra (jump cost = gap width in movement feet)
@@ -1423,6 +1489,7 @@ class TacticalAI:
                         break
 
                 old_x, old_y = entity.grid_x, entity.grid_y
+                prev_cell = (int(old_x), int(old_y))
                 # If jumping over gap, use is_jumping=True to avoid falling
                 if is_jump:
                     battle.move_entity_with_elevation(entity, nx, ny, is_jumping=True)
@@ -1430,6 +1497,13 @@ class TacticalAI:
                 else:
                     entity.grid_x, entity.grid_y = nx, ny
                 entity.movement_left -= cost
+                # Spike Growth bites per 5 ft moved; Web and Black
+                # Tentacles bite the moment you set foot in them.
+                battle.apply_movement_terrain(
+                    entity, nx, ny,
+                    entering=(int(nx), int(ny)) != prev_cell)
+                if entity.hp <= 0 or entity.is_incapacitated():
+                    break
 
                 # PHB p.195: Drag grappled creatures along when moving
                 for grappled_target in entity.grappling:
@@ -1529,12 +1603,18 @@ class TacticalAI:
                 if not is_jump and not self._enter_cell_allowed(
                         battle, entity, nx, ny):
                     break
+                prev_cell = (int(entity.grid_x), int(entity.grid_y))
                 if is_jump:
                     battle.move_entity_with_elevation(entity, nx, ny, is_jumping=True)
                     jumped = True
                 else:
                     entity.grid_x, entity.grid_y = nx, ny
                 entity.movement_left -= cost
+                battle.apply_movement_terrain(
+                    entity, nx, ny,
+                    entering=(int(nx), int(ny)) != prev_cell)
+                if entity.hp <= 0 or entity.is_incapacitated():
+                    break
 
         moved_cost = start_movement - entity.movement_left
         dist_moved = math.hypot(entity.grid_x - start_x, entity.grid_y - start_y)
@@ -1669,6 +1749,11 @@ class TacticalAI:
         slots_before = dict(entity.spell_slots)
         candidates = []
 
+        # A creature standing in a Silence zone cannot cast at all, so
+        # every spell branch below is skipped — which is exactly why an
+        # AI caster should walk out of the zone first.
+        can_cast = self._can_cast(entity, battle)
+
         # --- Channel Divinity (Turn Undead etc.) ---
         if entity.has_feature("channel_divinity") and entity.channel_divinity_left > 0:
             tu_step = self._try_turn_undead(entity, enemies, battle)
@@ -1676,7 +1761,7 @@ class TacticalAI:
                 candidates.append((35.0, "turn_undead", [tu_step]))
 
         # --- Self-buff (Mirror Image, etc.) ---
-        buff_step = self._try_self_buff(entity, enemies, battle)
+        buff_step = self._try_self_buff(entity, enemies, battle) if can_cast else None
         if buff_step:
             # Score based on how threatened we are
             threats = [e for e in enemies if battle.is_adjacent(entity, e) and e.hp > 0]
@@ -1701,7 +1786,7 @@ class TacticalAI:
                 candidates.append((dodge_score, "dodge", [dodge_step]))
 
         # --- AoE spell ---
-        if entity.has_spell_slot(1) or entity.stats.cantrips:
+        if can_cast and (entity.has_spell_slot(1) or entity.stats.cantrips):
             aoe_step = self._try_aoe_spell(entity, enemies, allies, battle)
             if aoe_step:
                 # Score AoE based on expected total damage
@@ -1709,7 +1794,7 @@ class TacticalAI:
                 candidates.append((aoe_score, "aoe_spell", [aoe_step]))
 
         # --- Debuff spell (high-value control) ---
-        if entity.has_spell_slot(1):
+        if can_cast and entity.has_spell_slot(1):
             debuff_step = self._try_debuff_spell(entity, enemies, allies, battle)
             if debuff_step:
                 # Score debuff based on condition value and target value
@@ -1717,7 +1802,7 @@ class TacticalAI:
                 candidates.append((debuff_score, "debuff", [debuff_step]))
 
         # --- Terrain-creating spell (non-damage: Darkness, Fog Cloud, Silence) ---
-        if entity.has_spell_slot(1):
+        if can_cast and entity.has_spell_slot(1):
             terrain_step = self._try_terrain_spell(entity, enemies, allies, battle)
             if terrain_step:
                 candidates.append((terrain_step[0], "terrain_spell", terrain_step[1]))
@@ -1725,14 +1810,14 @@ class TacticalAI:
         # --- Summon a creature (Shadowspawn / Construct / Draconic ...) ---
         # Valued by the summon's staying power: a body on the field soaks
         # hits and adds damage every round, so it competes with a nuke.
-        if entity.stats.spells_known:
+        if can_cast and entity.stats.spells_known:
             summon_step = self._try_summon_creature_spell(entity, enemies, battle)
             if summon_step:
                 s_score = 18.0 + summon_step.summon_hp * 0.35
                 candidates.append((s_score, "summon_spell", [summon_step]))
 
         # --- Damage spell / cantrip ---
-        if entity.stats.spells_known or entity.stats.cantrips:
+        if can_cast and (entity.stats.spells_known or entity.stats.cantrips):
             spell_step = self._try_damage_spell(entity, enemies, battle)
             if spell_step:
                 spell_score = spell_step.damage * (0.65 if spell_step.is_hit or spell_step.save_ability else 0.3)
@@ -1761,7 +1846,8 @@ class TacticalAI:
                 candidates.append((sa_score, "single_attack", sa_steps))
 
         # --- Heal wounded ally (not emergency - tactical healing) ---
-        heal_ally_step = self._try_heal_wounded_ally(entity, allies, battle)
+        heal_ally_step = (self._try_heal_wounded_ally(entity, allies, battle)
+                          if can_cast else None)
         if heal_ally_step:
             # Score based on ally HP deficit and danger
             candidates.append((heal_ally_step[0], "heal_ally", heal_ally_step[1]))
@@ -3125,6 +3211,9 @@ class TacticalAI:
 
         best_score = 0
         best_step = None
+        best_spell = None
+        best_cluster = []
+        best_centre = (0.0, 0.0)
 
         for spell in terrain_spells:
             # Find best cluster of enemies to cover
@@ -3182,19 +3271,29 @@ class TacticalAI:
 
             if score > best_score:
                 best_score = score
-                slot = spell.level
-                dc = entity.stats.spell_save_dc or (8 + entity.stats.proficiency_bonus +
-                      entity.get_modifier(entity.stats.spellcasting_ability))
-                entity.use_spell_slot(slot)
-                entity.start_concentration(spell)
-                best_step = ActionStep(
-                    step_type="spell",
-                    description=f"{entity.name} casts {spell.name} (slot {slot}).",
-                    attacker=entity, targets=clusters, spell=spell, slot_used=slot,
-                    damage=0, damage_type="",
-                    action_name=spell.name, aoe_center=(cx, cy),
-                    save_dc=dc,
-                )
+                best_spell = spell
+                best_cluster = clusters
+                best_centre = (cx, cy)
+
+        if best_step is None and best_score > 0:
+            # Only the WINNING spell pays. The slot used to be spent
+            # inside the scoring loop, so evaluating three terrain spells
+            # burned three slots and cast one.
+            spell = best_spell
+            slot = spell.level
+            dc = entity.stats.spell_save_dc or (
+                8 + entity.stats.proficiency_bonus
+                + entity.get_modifier(entity.stats.spellcasting_ability))
+            entity.use_spell_slot(slot)
+            entity.start_concentration(spell)
+            best_step = ActionStep(
+                step_type="spell",
+                description=f"{entity.name} casts {spell.name} (slot {slot}).",
+                attacker=entity, targets=best_cluster, spell=spell,
+                slot_used=slot, damage=0, damage_type="",
+                action_name=spell.name, aoe_center=best_centre,
+                save_dc=dc,
+            )
 
         if best_step:
             return (best_score, [best_step])

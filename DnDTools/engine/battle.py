@@ -19,6 +19,49 @@ from engine.win_probability import WinProbabilityCalculator
 from data.models import CreatureStats
 
 
+# Terrain that bites while you walk through it rather than at the start
+# of a turn (PHB: "for every 5 feet it moves through the area").
+_PER_5FT_TERRAIN = {"spike_growth", "wall_thorns", "wall_fire"}
+# Terrain that bites the moment you set foot in it, and again each turn.
+_ON_ENTER_TERRAIN = {"black_tentacles", "web", "entangle", "sleet_storm",
+                     "moonbeam"}
+# Terrain that only harms creatures other than its caster.
+_SPARES_CASTER = {"spirit_guardians", "moonbeam"}
+
+
+def _spell_terrain_rules(spell, caster) -> dict:
+    """Carry a spell's saving throw, condition and timing onto its tiles.
+
+    ``spawn_spell_terrain`` used to keep only the colour and the damage
+    dice, so every area spell landed as a flat damage carpet with no
+    save and no condition: Web restrained nobody and Cloudkill allowed
+    no Constitution save.
+    """
+    terrain_type = getattr(spell, "creates_terrain", "") or ""
+    if terrain_type in _PER_5FT_TERRAIN:
+        trigger = "per_5ft"
+    elif terrain_type in _ON_ENTER_TERRAIN:
+        trigger = "enter"
+    else:
+        trigger = "turn_start"
+    exempt = []
+    if terrain_type in _SPARES_CASTER and caster is not None:
+        exempt.append(caster.name)
+    dc = 0
+    if getattr(spell, "save_ability", ""):
+        dc = getattr(spell, "save_dc_fixed", 0) or 0
+        if not dc and caster is not None:
+            dc = getattr(caster.stats, "spell_save_dc", 0) or 0
+    return {
+        "save_dc": int(dc),
+        "save_ability": getattr(spell, "save_ability", "") or "",
+        "applies_condition": getattr(spell, "applies_condition", "") or "",
+        "half_on_save": bool(getattr(spell, "half_on_save", True)),
+        "trigger": trigger,
+        "exempt": exempt,
+    }
+
+
 class BattleSystem:
     def __init__(self, log_callback: Callable[[str], None], initial_entities: List[Entity] = None):
         self.grid_size = 60             # pixels per square
@@ -544,10 +587,145 @@ class BattleSystem:
         if entity.is_flying:
             return  # Flying above hazards
         t = self.get_terrain_at(int(entity.grid_x), int(entity.grid_y))
-        if t and t.is_hazard:
+        if t is None:
+            return
+        # Per-5-ft terrain (Spike Growth, Wall of Thorns) only bites while
+        # a creature moves through it — standing still in brambles is not
+        # a fresh 2d4 every round.
+        if t.is_spell_terrain and t.trigger == "per_5ft":
+            return
+        self.apply_terrain_effect(entity, t, reason="turn start")
+
+    def apply_terrain_effect(self, entity: Entity, t, *, reason: str = "") -> int:
+        """Resolve one tile's damage, saving throw and condition.
+
+        Returns the damage actually dealt. Honours ``exempt`` (a cleric
+        is untouched by their own Spirit Guardians), rolls the spell's
+        saving throw when the tile carries one, halves on a success when
+        the spell says so, and applies the condition on a failure.
+        """
+        if t is None or entity.hp <= 0:
+            return 0
+        if entity.name in (getattr(t, "exempt", None) or ()):
+            return 0
+        dc = getattr(t, "save_dc", 0) or 0
+        ability = getattr(t, "save_ability", "") or ""
+        condition = getattr(t, "applies_condition", "") or ""
+        if not t.is_hazard and not condition:
+            return 0
+
+        saved = False
+        if dc > 0 and ability:
+            try:
+                from engine.rules import make_saving_throw
+                saved, _roll, _msg = make_saving_throw(
+                    entity, ability, dc, battle=self)
+            except Exception:
+                bonus = entity.get_save_bonus(ability)
+                saved = (random.randint(1, 20) + bonus) >= dc
+
+        dealt = 0
+        if t.is_hazard:
             dmg = roll_dice(t.hazard_damage)
-            dealt, _ = entity.take_damage(dmg, t.hazard_damage_type)
-            self.log(f"  [HAZARD] {entity.name} takes {dealt} {t.hazard_damage_type} from {t.label}!")
+            if saved:
+                dmg = dmg // 2 if getattr(t, "half_on_save", True) else 0
+            if dmg > 0:
+                dealt, _broke = entity.take_damage(dmg, t.hazard_damage_type)
+                where = f" ({reason})" if reason else ""
+                self.log(f"  [HAZARD] {entity.name} takes {dealt} "
+                         f"{t.hazard_damage_type} from {t.label}{where}"
+                         f"{' — saved for half' if saved else ''}!")
+
+        if condition and not saved and not entity.has_condition(condition):
+            if condition in (entity.stats.condition_immunities or []):
+                self.log(f"  [TERRAIN] {entity.name} is immune to "
+                         f"{condition}.")
+            else:
+                entity.add_condition(condition, save_ability=ability,
+                                     save_dc=dc)
+                self.log(f"  [TERRAIN] {entity.name} is {condition} "
+                         f"({t.label})!")
+        return dealt
+
+    def is_silenced(self, entity: Entity) -> bool:
+        """Is this creature inside a Silence zone?
+
+        PHB: no sound can be created within or pass through the area, so
+        a creature inside cannot cast a spell with a verbal component.
+        The spell library does not record components for most entries,
+        and virtually every spell has V, so the rule here is "silenced =
+        cannot cast" unless the creature has a feature that removes the
+        requirement (Subtle Spell and the like).
+        """
+        if entity is None:
+            return False
+        t = self.get_terrain_at(int(entity.grid_x), int(entity.grid_y))
+        if t is None or t.terrain_type != "silence":
+            return False
+        for feat in (entity.stats.features or []):
+            blob = f"{feat.name} {feat.description}".lower()
+            if "subtle" in blob or "without verbal" in blob \
+                    or "no v/s" in blob:
+                return False
+        return True
+
+    def can_cast_here(self, entity: Entity, spell=None) -> bool:
+        """False when a Silence zone gags the caster."""
+        if not self.is_silenced(entity):
+            return True
+        if spell is not None:
+            comps = (getattr(spell, "components", "") or "").upper()
+            # Only a spell explicitly recorded as having no verbal
+            # component still works.
+            if comps and "V" not in comps:
+                return True
+        return False
+
+    def wind_wall_between(self, a: Entity, b: Entity) -> bool:
+        """Does a Wind Wall stand between these two?
+
+        PHB: the wall stops ordinary ranged weapon attacks (arrows,
+        bolts, thrown weapons) and gases. It does not block sight, so
+        the LOS check never noticed it.
+        """
+        if a is None or b is None or not self.terrain:
+            return False
+        walls = [t for t in self.terrain
+                 if t.terrain_type == "wall_wind"]
+        if not walls:
+            return False
+        x1, y1 = int(a.grid_x), int(a.grid_y)
+        x2, y2 = int(b.grid_x), int(b.grid_y)
+        steps = max(abs(x2 - x1), abs(y2 - y1))
+        if steps <= 0:
+            return False
+        for i in range(1, steps):
+            cx = x1 + round((x2 - x1) * i / steps)
+            cy = y1 + round((y2 - y1) * i / steps)
+            for w in walls:
+                if w.occupies(cx, cy):
+                    return True
+        return False
+
+    def apply_movement_terrain(self, entity: Entity, gx: int, gy: int,
+                               *, entering: bool) -> int:
+        """Terrain that triggers from movement rather than the clock.
+
+        ``entering`` distinguishes the first step into a tile (Web,
+        Black Tentacles) from continuing through it (Spike Growth, which
+        bites for every 5 ft moved).
+        """
+        if entity.is_flying or entity.hp <= 0:
+            return 0
+        t = self.get_terrain_at(int(gx), int(gy))
+        if t is None or not t.is_spell_terrain:
+            return 0
+        trigger = getattr(t, "trigger", "turn_start")
+        if trigger == "per_5ft":
+            return self.apply_terrain_effect(entity, t, reason="moving through")
+        if trigger == "enter" and entering:
+            return self.apply_terrain_effect(entity, t, reason="entering")
+        return 0
 
     def _handle_regeneration(self, entity: Entity):
         """Handle start-of-turn regeneration for creatures with the Regeneration feature.
@@ -1152,6 +1330,7 @@ class BattleSystem:
                     spell_owner=caster.name,
                     spell_name=spell.name,
                     is_spell_terrain=True,
+                    **_spell_terrain_rules(spell, caster),
                 )
                 self.add_terrain(t)
                 tiles_created += 1

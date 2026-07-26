@@ -8,7 +8,7 @@ and line-of-sight blocking.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 
 # elevation_ft: default ground elevation for this type (in feet)
@@ -236,6 +236,27 @@ TERRAIN_TYPES = {
     "brazier":     {"color": (200, 120, 30),"passable": False, "label": "Brazier",
                   "icon": "BZ", "blocks_los": False, "elevation_ft": 4,
                   "description": "Burning brazier. Dim light 20ft."},
+    # --- Spell terrain that had no type, so the spell created nothing ---
+    "black_tentacles": {
+        "color": (40, 25, 55), "passable": True, "difficult": True,
+        "hazard_damage": "3d6", "damage_type": "bludgeoning",
+        "label": "Black Tentacles", "icon": "BT", "blocks_los": False,
+        "description": "Evard's Black Tentacles. DEX save or Restrained; "
+                       "3d6 bludgeoning on entry and at the start of each "
+                       "turn spent inside. Difficult terrain."},
+    "wall_force": {
+        "color": (150, 110, 235), "passable": False, "label": "Wall of Force",
+        "icon": "WF", "blocks_los": False, "cover_bonus": 0,
+        "description": "Invisible, impassable barrier. Nothing physical "
+                       "crosses it and it cannot be damaged — only "
+                       "Disintegrate or Dispel Magic removes it. Does not "
+                       "block sight."},
+    "forcecage": {
+        "color": (170, 130, 245), "passable": False, "label": "Forcecage",
+        "icon": "FC", "blocks_los": False,
+        "description": "A cage of force. The creature inside cannot leave "
+                       "without teleporting (CHA save), and nothing can "
+                       "pass the bars."},
 }
 
 
@@ -253,6 +274,22 @@ class TerrainObject:
     spell_owner: str = ""    # caster entity name
     spell_name: str = ""     # spell that created this terrain
     is_spell_terrain: bool = False  # True if created by a spell
+    # Rules carried over from the spell that made this tile. Without
+    # these the engine applied hazard damage with no saving throw and
+    # dropped every condition the spell was supposed to inflict —
+    # Web never restrained anybody, Cloudkill allowed no CON save.
+    save_dc: int = 0             # 0 = no save allowed
+    save_ability: str = ""       # "Dexterity", "Constitution", …
+    applies_condition: str = ""  # condition inflicted on a failed save
+    half_on_save: bool = True    # damage halved rather than negated
+    # When the tile bites:
+    #   "turn_start" — at the start of a turn spent inside (clouds)
+    #   "enter"      — the first time a creature enters it (tentacles)
+    #   "per_5ft"    — for every 5 ft moved through it (Spike Growth)
+    trigger: str = "turn_start"
+    # Names of creatures immune to this tile — a cleric is not hurt by
+    # their own Spirit Guardians.
+    exempt: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.name:
@@ -399,6 +436,12 @@ class TerrainObject:
             d["spell_owner"] = self.spell_owner
             d["spell_name"] = self.spell_name
             d["is_spell_terrain"] = True
+            d["save_dc"] = self.save_dc
+            d["save_ability"] = self.save_ability
+            d["applies_condition"] = self.applies_condition
+            d["half_on_save"] = self.half_on_save
+            d["trigger"] = self.trigger
+            d["exempt"] = list(self.exempt)
         return d
 
     @staticmethod
@@ -415,6 +458,12 @@ class TerrainObject:
             spell_owner=d.get("spell_owner", ""),
             spell_name=d.get("spell_name", ""),
             is_spell_terrain=d.get("is_spell_terrain", False),
+            save_dc=d.get("save_dc", 0),
+            save_ability=d.get("save_ability", ""),
+            applies_condition=d.get("applies_condition", ""),
+            half_on_save=d.get("half_on_save", True),
+            trigger=d.get("trigger", "turn_start"),
+            exempt=list(d.get("exempt", [])),
         )
 
 

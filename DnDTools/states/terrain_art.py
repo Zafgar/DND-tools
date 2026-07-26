@@ -920,6 +920,56 @@ def _paint_fog_cloud(surf, w, h, base, ticks):
     _paint_cloud(surf, w, h, (200, 205, 212), ticks, alpha=180)
 
 
+
+def _paint_black_tentacles(surf, w, h, base, ticks):
+    """Writhing tentacles bursting out of the ground."""
+    surf.fill(_alpha((26, 16, 34), 205))
+    t = ticks * 0.004
+    for i in range(5):
+        bx = int(w * (0.15 + i * 0.18))
+        by = h - 1
+        pts = []
+        for k in range(7):
+            f = k / 6.0
+            sway = math.sin(t + i * 1.4 + f * 3.0) * w * 0.10 * f
+            pts.append((bx + sway, by - h * 0.85 * f))
+        if len(pts) >= 2:
+            pygame.draw.lines(surf, (58, 34, 76), False, pts,
+                              max(2, w // 12))
+            pygame.draw.lines(surf, (96, 60, 122), False, pts,
+                              max(1, w // 22))
+            tipx, tipy = pts[-1]
+            pygame.draw.circle(surf, (120, 80, 150),
+                               (int(tipx), int(tipy)), max(1, w // 18))
+
+
+def _paint_wall_force(surf, w, h, base, ticks):
+    """Barely-there pane of force: a faint sheen and a bright edge."""
+    surf.fill(_alpha(base, 45))
+    shimmer = int(40 + 30 * math.sin(ticks * 0.005))
+    for i in range(0, w + h, max(5, w // 3)):
+        pygame.draw.line(surf, (*_shade(base, 1.5), shimmer),
+                         (i, 0), (i - h, h), 1)
+    pygame.draw.rect(surf, (*_shade(base, 1.6), 190),
+                     pygame.Rect(0, 0, w, h), 2)
+
+
+def _paint_forcecage(surf, w, h, base, ticks):
+    """Bars of force — a cage you can see through but not leave."""
+    surf.fill(_alpha(base, 40))
+    glow = int(150 + 60 * math.sin(ticks * 0.006))
+    bars = 4
+    for i in range(bars):
+        x = int(w * (i + 0.5) / bars)
+        pygame.draw.line(surf, (*_shade(base, 1.5), glow), (x, 0), (x, h), 2)
+    for i in range(3):
+        y = int(h * (i + 0.5) / 3)
+        pygame.draw.line(surf, (*_shade(base, 1.2), glow // 2),
+                         (0, y), (w, y), 1)
+    pygame.draw.rect(surf, (*_shade(base, 1.7), 210),
+                     pygame.Rect(0, 0, w, h), 2)
+
+
 # --------------------------------------------------------------------- #
 # Dispatcher
 # --------------------------------------------------------------------- #
@@ -1008,6 +1058,9 @@ _PAINTERS_TICKS = {
     "entangle":          _paint_entangle,
     "moonbeam":          _paint_moonbeam,
     "spirit_guardians":  _paint_spirit_guardians,
+    "black_tentacles":   _paint_black_tentacles,
+    "wall_force":        _paint_wall_force,
+    "forcecage":         _paint_forcecage,
 }
 
 _PAINTERS_NO_BASE = {
