@@ -78,9 +78,11 @@ class TestLibraryMonstersUseCentralSpells(unittest.TestCase):
 
     def test_converted_boss_has_spells_from_library(self):
         cazna = self.lib.get_monster("Cazna Icharyd")
-        self.assertEqual(len(cazna.spells_known), 16)
-        self.assertEqual(len(cazna.cantrips), 3)
-        self.assertTrue(all(c.attack_bonus_fixed == 13 for c in cazna.cantrips))
+        # CR 26 archmage: the full 9th-level list, resolved by name from
+        # the central library.
+        self.assertGreaterEqual(len(cazna.spells_known), 30)
+        self.assertEqual(len(cazna.cantrips), 5)
+        self.assertTrue(all(c.attack_bonus_fixed == 17 for c in cazna.cantrips))
         # Every known spell exists in the central library (no orphans).
         for s in cazna.spells_known:
             self.assertTrue(has_spell(s.name), f"{s.name} not in library")

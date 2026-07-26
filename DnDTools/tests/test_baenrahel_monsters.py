@@ -121,7 +121,10 @@ class TestZertathBosses(unittest.TestCase):
         self.lib = MonsterLibrary()
 
     def test_present_with_correct_cr(self):
-        for name, cr in [("Cazna Icharyd", 20.0), ("Dantrag Dyrr", 14.0),
+        # Cazna moved to data/monsters/legends.py and was canonised at
+        # CR 26 (mythic) alongside Emperor Tarquvas; the rest of the
+        # Zer'tath court is unchanged.
+        for name, cr in [("Cazna Icharyd", 26.0), ("Dantrag Dyrr", 14.0),
                          ("Nhilymra Zaer'vyn", 13.0),
                          ("Zhindia Oblodra", 14.0),
                          ('"Murtunut" Thol', 6.0)]:
@@ -130,7 +133,7 @@ class TestZertathBosses(unittest.TestCase):
     def test_cazna_is_mythic_caster(self):
         m = self.lib.get_monster("Cazna Icharyd")
         self.assertEqual(m.legendary_resistance_count, 5)
-        self.assertEqual(m.spell_save_dc, 21)
+        self.assertEqual(m.spell_save_dc, 25)
         self.assertTrue(m.spells_known)
 
     def test_existing_npcs_repointed_to_new_blocks(self):

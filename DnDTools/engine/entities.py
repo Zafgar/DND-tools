@@ -647,11 +647,16 @@ class Entity:
         hp_before_damage = self.hp
         self.hp -= amount
 
-        # Relentless Endurance (Half-Orc): Drop to 1 HP instead of 0
+        # Relentless Endurance (Half-Orc): Drop to 1 HP instead of 0.
+        # PHB: once per long rest. The use MUST actually be consumed —
+        # otherwise a sheet that forgot uses_per_day (or that carries the
+        # trait only as a RacialTrait, which never seeds feature_uses)
+        # makes the character immortal: every hit parks them at exactly
+        # 1 HP forever and combat can never end.
         if self.hp <= 0 and self.hp > -self.max_hp:
-            if self.has_feature("relentless_endurance") and self.can_use_feature("Relentless Endurance"):
+            if (self.has_feature("relentless_endurance")
+                    and self._consume_relentless_endurance()):
                 self.hp = 1
-                self.use_feature("Relentless Endurance")
 
         self.hp = max(self.hp, 0 if not self.is_player else -self.max_hp)
 
@@ -1165,6 +1170,26 @@ class Entity:
             if f.name == name:
                 return f
         return None
+
+    _RELENTLESS_NAME = "Relentless Endurance"
+
+    def _consume_relentless_endurance(self) -> bool:
+        """Spend the one Relentless Endurance use. True if one was left.
+
+        The counter is seeded lazily and defaults to the PHB's 1/long
+        rest, so the trait works whether the sheet declares it as a
+        Feature with ``uses_per_day``, as a Feature that forgot it, or
+        only as a RacialTrait.
+        """
+        name = self._RELENTLESS_NAME
+        if name not in self.feature_uses:
+            feat = self.get_feature_by_name(name)
+            uses = feat.uses_per_day if feat and feat.uses_per_day > 0 else 1
+            self.feature_uses[name] = uses
+        if self.feature_uses[name] <= 0:
+            return False
+        self.feature_uses[name] -= 1
+        return True
 
     def can_use_feature(self, name: str) -> bool:
         """Check if a limited-use feature has uses remaining."""

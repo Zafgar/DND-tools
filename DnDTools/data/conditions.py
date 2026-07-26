@@ -44,6 +44,11 @@ CONDITIONS = {
     "Incapacitated": (
         "An incapacitated creature can't take actions or reactions."
     ),
+    "Outlined": (
+        "The creature is outlined in light (Faerie Fire) and sheds dim light in a "
+        "10-foot radius. Any attack roll against it has advantage, and it can't "
+        "benefit from being invisible."
+    ),
     "Invisible": (
         "An invisible creature is impossible to see without the aid of magic or a "
         "special sense. The creature's location can be detected by noise or tracks. "
@@ -121,6 +126,12 @@ CONDITION_EFFECTS = {
         "cannot_move_toward_source": True,
     },
     "Guiding Bolt": {
+        "attacked_advantage": True,
+    },
+    # Faerie Fire declared applies_condition="Outlined", but the condition
+    # itself was never defined — so the spell's whole point (advantage on
+    # every attack against the target) silently did nothing.
+    "Outlined": {
         "attacked_advantage": True,
     },
     "Grappled": {

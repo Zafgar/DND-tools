@@ -74,6 +74,9 @@ CONDITION_HELP_FI = {
                 "ylös (nopeus 0).",
     "Guiding Bolt": "Guiding Bolt -merkki: seuraava hyökkäys tätä olentoa "
                     "vastaan saa EDUN (kertakäyttöinen).",
+    "Outlined": "Valaistu (Faerie Fire): kohde hehkuu, jokainen hyökkäys "
+                "sitä vastaan saa EDUN eikä se voi hyötyä "
+                "näkymättömyydestä.",
     "Incapacitated": "Toimintakyvytön: ei voi tehdä toimintoja eikä "
                      "reaktioita.",
     "Invisible": "Näkymätön: hyökkäykset sitä vastaan saavat HAITAN, sen "

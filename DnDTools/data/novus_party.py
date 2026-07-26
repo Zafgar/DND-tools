@@ -341,7 +341,7 @@ novus_party = [
                     feature_type="feat"),
             Feature("Relentless Endurance", "Drop to 1 HP instead of 0 once "
                     "per long rest.", feature_type="racial",
-                    mechanic="relentless_endurance"),
+                    mechanic="relentless_endurance", uses_per_day=1),
         ],
         racial_traits=get_racial_traits("Half-Orc"),
         rage_count=4,

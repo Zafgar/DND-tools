@@ -2025,8 +2025,53 @@ NPCS: List[dict] = [
                "Sarrukh-sielukonetta Kristallijärven pohjassa ('Syvyyden "
                "Kaste' — tuomitut pudotetaan elävinä kuiluun); tämä pitää "
                "hänet ikuisesti nuorena. Eristi drowt maan alle "
-               "suojellakseen konetta ja peittääkseen valheen.",
-         tags=["ruler", "drow", "antagonist"]),
+               "suojellakseen konetta ja peittääkseen valheen. "
+               "STATIT: CR 26 (myyttinen) — AC 22 (Shield 27, Terälaulu 31), "
+               "HP 350, INT 28, DC 25, kaksi 9. tason loitsupaikkaa. "
+               "Archmage Supreme = KAKSI loitsua per vuoro. Ei ole avuton "
+               "lähitaistelussa: 3 500 vuoden miekkamestari ja bladesinger, "
+               "joka lyö Icharydin sielumiekalla ja loitsii samalla "
+               "vuorolla. Vanqurionin sielukone siirtää ensimmäiset 5 "
+               "vahinkoa vangittuihin sieluihin — Aterterrassa häntä ei voi "
+               "vahingoittaa ennen kuin yhteys katkaistaan. Mythic-vaihe "
+               "alle puolessa HP:ssä: 3 ylimääräistä reaktiota + Foresight. "
+               "VOITTI TARQUVASIN, mutta ei yksin: liitto Esmerin ja "
+               "Vendilien kanssa + Dimeriuksen petos + Imprisonment "
+               "kruunun timanttiin.",
+         tags=["ruler", "drow", "antagonist", "mythic", "boss"]),
+    dict(id="npc_tarquvas", name="Keisari Tarquvas Redfei",
+         race="Puoliörkki (Garruthan jatke)", age="kuoli n. 2 000 v sitten",
+         occupation="Aki'korkezin keisari", title="Unohdettu Keisari",
+         faction="Aki'korkez", alignment="Lawful Evil",
+         loc="loc_zertath_lanke",
+         stat="monster:Keisari Tarquvas Redfei", wealth="aristocratic",
+         appearance="Valtava örkkisoturi kauniissa, lähes valkoisessa "
+                     "titaaniluu-täyshaarniskassa; kantaa täysin mustaa, "
+                     "obsidiaaninväristä kahden käden miekkaa Aki'kor. Iho "
+                     "on tatuoitu hehkuvilla Faerzress-kristalleilla, "
+                     "selkään on sidottu elävällä lihalla kolme Veru-ihon "
+                     "palasta.",
+         personality="Ei hullu vaan johdonmukainen: hän näki totuuden ja "
+                     "päätti purkaa maailman joka rakentui valheen päälle. "
+                     "Ei koskaan peräänny, ei koskaan neuvottele.",
+         notes="KAMPANJAN TÄRKEIN ANTAGONISTI (menneisyydessä). Syntyi "
+               "sorrettuun örkkien ja puoliörkkien Aki'korkez-imperiumiin. "
+               "25-vuotiaana kaatoi kymmeniä miehiä yksin ja taisteli "
+               "lohikäärmettä vastaan. Murtautui drowien maagisen "
+               "suodattimen läpi Aterterraan, altistui Faerzressille ja näki "
+               "kahlitun maailmantitaani Garruthan. Keräsi 3/5 Veru-ihon "
+               "palasista ja jauhoi Faerzress-kristallia vereensä. "
+               "STATIT: CR 28 (myyttinen) — AC 25, HP 750, STR/CON 30, "
+               "Verun regeneraatio 50 HP/vuoro, Faerzress-tatuoinnit "
+               "(etu taikuutta vastaan; tason 5 tai alle loitsut EIVÄT "
+               "VAIKUTA), Unstoppable Will (0 HP → 400 HP + toinen vaihe), "
+               "Garruthan raivo 90 ft kartio 15d10 force joka tuhoaa "
+               "voimakentät, 3 legendaarista toimintoa + lair-toiminnot. "
+               "EI VOI KUOLLA KENTÄLLÄ — vain sielun vangitseminen "
+               "toimii. Hänen sielunsa on YHÄ Matriarkka Caznan kruunun "
+               "vihreässä timantissa. Dimerius Blackfeet, hänen paras "
+               "ystävänsä ja kenraalinsa, petti hänet.",
+         tags=["antagonist", "boss", "mythic", "history", "secret"]),
     dict(id="npc_altheon", name="Altheon Vylarien Baenrahel", race="Drow",
          age="", occupation="Aether-arkistojen johtaja", title="Lordi",
          faction="Talo Baenrahel", alignment="Lawful Evil",
@@ -2733,6 +2778,28 @@ NPC_LINKS: List[tuple] = [
     ("npc_seraphina", "npc_altheon", "lover", "Beatricen isä Aterterrassa."),
     ("npc_cazna", "npc_altheon", "subordinate",
      "Altheon on matriarkan oikea käsi ja arkistojen johtaja."),
+    # Kampanjan kaksi tärkeintä hahmoa — konflikti joka muokkasi maailman
+    ("npc_cazna", "npc_tarquvas", "enemy",
+     "Kauhistui kun keisari kertoi tietävänsä sielukoneesta ja titaanin "
+     "tuskasta. Telkesi Tarquvasin sielun kruununsa vihreään timanttiin "
+     "ikuiseen kidutukseen — ei voittanut yksin vaan liitolla ja petoksella."),
+    ("npc_tarquvas", "npc_cazna", "enemy",
+     "Aikoi tuhota drowien kuolemattomuuden lähteen ja uskonnon valheen. "
+     "Hänen sielunsa on yhä matriarkan kruunussa; haavat eivät sulkeudu "
+     "mutta kuolema ei tule."),
+    ("npc_tarquvas", "npc_dimerius", "enemy",
+     "Oikea käsi, kenraali ja PARHAIN YSTÄVÄ, joka petti hänet "
+     "ratkaisevalla hetkellä — juuri kun keisari sitoi kolmatta "
+     "Veru-palasta ja oli haavoittuvaisimmillaan. Dimerius kantoi "
+     "Veru-laitteen avainta, Clavise-miekkaa."),
+    ("npc_dimerius", "npc_tarquvas", "enemy",
+     "Petti keisarin. Aikoo nyt imeä tämän sielun kruunusta itseensä."),
+    ("npc_dimerius", "npc_cazna", "rival",
+     "Petoksen jälkeinen liittolainen josta tuli kilpailija: Dimerius "
+     "haluaa kruunun jonka Cazna kantaa."),
+    ("npc_krusk", "npc_tarquvas", "enemy",
+     "Kantaa nykyään niitä samoja 3/5 Veru-palasta jotka olivat keisarin "
+     "selässä — sama polku, sama valinta edessä."),
     # Talo Baenrahel — sisarukset & palvelijoiden talo
     ("npc_altheon", "npc_elarae", "family", "Virallinen perijä."),
     ("npc_altheon", "npc_dravin", "family", "Poika, Velve Dro -upseeri."),

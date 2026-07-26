@@ -9,82 +9,11 @@ from data.models import CreatureStats, AbilityScores, Action, Feature
 
 
 monsters = [
-    # ================================================================= #
-    # CR 20 — Matriarkka Cazna Icharyd (mythic arch-tyranni)
-    # ================================================================= #
-    CreatureStats(
-        name="Cazna Icharyd", size="Medium", creature_type="Humanoid",
-        native_plane="Underdark", alignment="Chaotic Evil", armor_class=18,
-        armor_type="Mage Armor (21) / Shield (26)", hit_points=300,
-        hit_dice="34d8+136", speed=30, fly_speed=20,
-        abilities=AbilityScores(strength=8, dexterity=16, constitution=18,
-                                intelligence=22, wisdom=20, charisma=20),
-        saving_throws={"Constitution": 11, "Intelligence": 13,
-                       "Wisdom": 12, "Charisma": 12},
-        skills={"Arcana": 13, "History": 13, "Insight": 12,
-                "Perception": 12},
-        senses="Darkvision 120 ft., Truesight 30 ft.",
-        languages="Elvish, Undercommon, Deep Speech, Abyssal",
-        damage_resistances=["force", "necrotic"],
-        spellcasting_ability="Intelligence", spell_save_dc=21,
-        spell_attack_bonus=13,
-        spell_slots={"1st": 4, "2nd": 3, "3rd": 3, "4th": 3, "5th": 3,
-                     "6th": 2, "7th": 2, "8th": 1, "9th": 1},
-        spell_names=[
-            "Shield", "Misty Step", "Counterspell", "Dispel Magic",
-            "Fireball", "Lightning Bolt", "Banishment",
-            "Greater Invisibility", "Cone of Cold", "Wall of Force",
-            "Synaptic Static", "Chain Lightning", "Hold Monster",
-            "Telekinesis", "Power Word Stun", "Finger of Death",
-        ],
-        cantrip_names=["Fire Bolt", "Ray of Frost", "Mage Hand"],
-        actions=[
-            Action("Multiattack", "x2 Soul Lash", 0, "", 0, "",
-                   is_multiattack=True, multiattack_count=2,
-                   multiattack_targets=["Soul Lash", "Soul Lash"]),
-            Action("Soul Lash", "Ranged spell", 13, "4d10", 0, "necrotic",
-                   range=120),
-        ],
-        features=[
-            Feature("Legendary Resistance", "5/day: choose to succeed on a "
-                    "failed save", feature_type="passive", uses_per_day=5),
-            Feature("Magic Resistance", "Advantage on saving throws against "
-                    "spells and other magical effects",
-                    mechanic="magic_resistance"),
-            Feature("Soul-Crown of Tarquvas", "Whenever a creature dies "
-                    "within 60 ft, Cazna regains one expended spell slot "
-                    "(max 5th) and 15 temp HP. Carries the imprisoned soul "
-                    "of Emperor Tarquvas."),
-            Feature("Crown Strain", "The screaming crown costs her: at the "
-                    "start of each of her turns she takes 10 psychic damage "
-                    "(ignored while she has temp HP)."),
-            Feature("Lair Actions", "In the Crystal-Lake palace (init 20): "
-                    "raise a faerzress wall; force a creature to make a DC "
-                    "21 WIS save or be frightened; drain 3d6 necrotic from "
-                    "one creature and heal herself."),
-            Feature("Cantrip", "Legendary Action (1): cast a cantrip.",
-                    feature_type="legendary", legendary_cost=1),
-            Feature("Shadow Step", "Legendary Action (1): teleport up to "
-                    "60 ft (Misty Step).", feature_type="legendary",
-                    legendary_cost=1),
-            Feature("Soul Drain", "Legendary Action (2): creatures within "
-                    "20 ft make a DC 21 CON save or take 6d8 necrotic (half "
-                    "on success); Cazna heals for half the total.",
-                    feature_type="legendary", legendary_cost=2),
-            Feature("Spellcasting", "INT, DC 21, +13 to hit; full 9th-level "
-                    "caster (Wizard 18 / Cleric 4). Notables: Time Stop, "
-                    "Power Word Kill, Finger of Death, Chain Lightning, "
-                    "Wall of Force, Banishment, Counterspell."),
-        ],
-        legendary_action_count=3, legendary_resistance_count=5,
-        lore="Aterterran ikuinen (3500+) matriarkka, joka kantaa keisari "
-             "Tarquvasin sielukruunua ja ruokkii Vanqurionin sielukonetta. "
-             "Kärsii kosmisesta PTSD:stä — kuulee kahlitun titaanin huudon.",
-        tactics="Taistelee palatsissaan Lair Actioneilla; Wall of Force + "
-                "Banishment eristää, Chain Lightning/Cone of Cold nitistää, "
-                "Soul-Crown palauttaa slotteja jokaisesta kuolemasta.",
-        habitat="Underdark", challenge_rating=20.0, xp=25000,
-        proficiency_bonus=6),
+    # NOTE: Matriarkka Cazna Icharyd asui aiemmin tässä CR 20 -blockina.
+    # Pelinjohtajan kanonisoinnin myötä hän on kampanjan kahden
+    # tärkeimmän hahmon toinen puoli (CR 26, myyttinen, miekkamestari
+    # + arkkimaagi), joten hänen statblockinsa on nyt
+    # data/monsters/legends.py:ssä keisari Tarquvas Redfein rinnalla.
 
     # ================================================================= #
     # CR 14 — Sotapäällikkö Dantrag Dyrr (kaksoismiekka-komentaja)

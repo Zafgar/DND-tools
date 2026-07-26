@@ -24,7 +24,8 @@ from typing import List
 
 
 CATEGORIES = [
-    "kosmologia", "artefaktit", "historia", "ryhmittymät", "uhat", "paikat",
+    "kosmologia", "hahmot", "artefaktit", "historia", "ryhmittymät", "uhat",
+    "paikat",
 ]
 
 
@@ -355,6 +356,182 @@ CODEX: List[LoreEntry] = [
         see_also=["kristallikupu", "veru", "kruskin_valinta"],
         npc_ids=["npc_blitz"],
         location_ids=["loc_fort_whitestone", "loc_aequitas"]),
+
+    # ================================================================= #
+    # HAHMOT — kampanjan kaksi tärkeintä yksilöä
+    # ================================================================= #
+    LoreEntry(
+        key="tarquvas_redfei",
+        title="Keisari Tarquvas Redfei — CR 28, myyttinen",
+        category="hahmot", spoiler=True,
+        summary="Pysäyttämätön fyysinen jumala: AC 25, HP 750, "
+                "regeneraatio 50/vuoro, immuuni tason 5 ja alle loitsuille. "
+                "Ei voi kuolla kentällä — vain sielun vangitseminen toimii.",
+        body="Tarquvas syntyi sorrettuun örkkien ja puoliörkkien kansaan "
+             "(Aki'korkez-imperiumi). Hän oli poikkeusyksilö: jo "
+             "25-vuotiaana hän kaatoi kymmeniä miehiä yksin ja taisteli "
+             "yksin lohikäärmettä vastaan.\n\n"
+             "Nuorena hän murtautui drowien maagisen suodattimen läpi "
+             "Aterterraan, altistui Faerzressille ja NÄKI TOTUUDEN "
+             "kahlitusta maailmantitaani Garruthasta. Sen jälkeen hän "
+             "keräsi 3/5 Veru-ihon palasista, jauhoi Faerzress-kristallia "
+             "vereensä ja tatuoi sen ihoonsa — hänestä tuli kirjaimellisesti "
+             "Garruthan ruumiin ja voiman jatke. Tavoite: purkaa vanha "
+             "maailma, vapauttaa titaani ja alistaa kaikki muut rodut.\n\n"
+             "ULKONÄKÖ: valtava örkkisoturi kauniissa, lähes valkoisessa "
+             "titaaniluu-täyshaarniskassa. Aseena täysin musta, "
+             "obsidiaaninvärinen kahden käden miekka Aki'kor, joka ei "
+             "heijasta valoa lainkaan. Iho hehkuu Faerzress-tatuoinneista; "
+             "selkään on sidottu elävällä lihalla kolme Veru-ihon palasta.\n\n"
+             "PELIMEKANIIKKA (CR 28, 120 000 XP):\n"
+             "  • AC 25, HP 750, STR 30, CON 30, nopeus 40\n"
+             "  • Verun regeneraatio: 50 HP jokaisen vuoron alussa. "
+             "Mikään yksittäinen vahinkotyyppi ei sammuta sitä.\n"
+             "  • Faerzress-tatuoinnit: etu KAIKKIIN pelastusheittoihin "
+             "taikuutta vastaan, ja tason 5 tai sitä matalammat loitsut "
+             "eivät vaikuta häneen lainkaan — älä edes pyydä "
+             "pelastusheittoa, kerro että loitsu hajoaa tatuointeihin.\n"
+             "  • Kristallimagia: ihoon upotetut kristallit loitsivat hänen "
+             "puolestaan (DC 23) — force-, salama- ja "
+             "todellisuudenvääntömagiaa, ei keskittymistä, ei "
+             "komponentteja.\n"
+             "  • Multiattack: 4 iskua Aki'korilla (+19) tai paljain "
+             "käsin (4d12 force + Prone).\n"
+             "  • Garruthan raivo (recharge 5–6): 90 ft kartio, 15d10 "
+             "force, ja KAIKKI voimakentät alueella tuhoutuvat ilman "
+             "pelastusheittoa (Wall of Force, Forcecage, Globe of "
+             "Invulnerability).\n"
+             "  • Unstoppable Will (mythic): 0 HP:ssä Oknar-toteemi ottaa "
+             "vallan — 400 HP takaisin, ylimääräinen vuoro heti, ja "
+             "jokainen isku tekee lisäksi force- ja lightning-vahinkoa. "
+             "Laske kohtaaminen kahtena taisteluna.\n"
+             "  • 3 legendaarista toimintoa, Legendary Resistance 5, "
+             "lair-toiminnot Veru-paikalla.\n\n"
+             "MIKSI HÄNTÄ EI VOI TAPOTTAA: taistelukentillä häntä ja hänen "
+             "kenraalejaan silvottiin toistuvasti, eivätkä he kuolleet. "
+             "Ainoa tapa poistaa hänet pelistä on vangita hänen SIELUNSA — "
+             "juuri niin Cazna teki.",
+        keywords=["tarquvas", "tarquvas redfei", "keisari", "emperor",
+                  "unohdettu keisari", "forgotten emperor", "aki'kor",
+                  "aki'korkez", "obsidiaanimiekka", "obsidian",
+                  "haarniska", "plate", "oknar", "cr 28", "statblock",
+                  "statit", "boss", "örkki", "orc", "titaani",
+                  "regeneraatio", "faerzress", "tatuoinnit"],
+        see_also=["cazna_icharyd", "tarquvas_vs_cazna", "tarquvas",
+                  "redfei_verilinja", "veru", "garrutha",
+                  "dimerius_tavoite"],
+        npc_ids=["npc_tarquvas", "npc_dimerius", "npc_krusk"],
+        location_ids=["loc_zertath_lanke"]),
+
+    LoreEntry(
+        key="cazna_icharyd",
+        title="Matriarkka Cazna Icharyd — CR 26, myyttinen",
+        category="hahmot", spoiler=True,
+        summary="3 500-vuotias arkkimaagi JA miekkamestari: DC 25, kaksi "
+                "loitsua per vuoro, sielukone nollaa ensimmäiset 5 "
+                "vahinkoa Aterterrassa. Ei ota iskuja vastaan — vääntää "
+                "säännöt.",
+        body="Cazna on Aterterran ikuinen hallitsija, yli 3 500 vuotta "
+             "vanha arkkimaagi ja Talo Icharydin matriarkka. Hänen ja hänen "
+             "sukunsa kuolemattomuus — ja käsittämätön taistelukokemus — "
+             "perustuu Vanqurionin muinaiseen Sarrukh-sielukoneeseen, joka "
+             "imee satojen tuhansien kuolevien sieluja heidän voimakseen.\n\n"
+             "Hän ei ole paha pahuudesta vaan kosmisesta PTSD:stä. "
+             "Puhdasveriset drowt kuulevat Faerzressin säteilyn kauniina "
+             "\"Syvyyden Unena\"; Cazna kuulee sen sellaisena kuin se on: "
+             "kahlitun titaani Garruthan raastavana huutona. Kun Tarquvas "
+             "katsoi häntä silmiin ja kertoi tietävänsä sielukoneesta ja "
+             "titaanin tuskasta, Cazna kauhistui — keisari aikoi tuhota "
+             "drowien varjellun kuolemattomuuden lähteen ja heidän "
+             "uskontonsa valheen.\n\n"
+             "PELIMEKANIIKKA (CR 26, 90 000 XP):\n"
+             "  • AC 22 (Mage Armor + DEX + sielukilpi; Shield 27, "
+             "Terälaulu 31), HP 350, INT 28, DC 25, +17 osumaan\n"
+             "  • Vanqurionin sielukone: niin kauan kuin Cazna on "
+             "ATERTERRASSA, hän siirtää ottamansa vahingon vangittuihin "
+             "sieluihin — ensimmäiset 5 vahinkoa ovat NOLLA. Pelaajien on "
+             "katkaistava yhteys (ankkurikristalli, AC 22 / 150 HP) tai "
+             "vietävä Cazna pois tasolta.\n"
+             "  • Archmage Supreme: KAKSI loitsua samalla vuorolla (yksi "
+             "toimintona, yksi bonustoimintona). Kaksi 9. tason "
+             "loitsupaikkaa.\n"
+             "  • MIEKKA: hän ei ole avuton lähitaistelussa. 3 500 vuoden "
+             "harjoittelu tekee hänestä bladesingerin — Icharydin "
+             "sielumiekka (+17, 2d8+3d10 necrotic, imee max HP:tä) ja "
+             "Terälaulu (+9 AC, +1d8 force) samalla vuorolla kuin loitsu.\n"
+             "  • Tarquvasin kruunu: kauhuaura 60 ft (DC 25 WIS tai "
+             "Frightened). Hän voi juoda kruunusta 60 HP tai pakottaa "
+             "vihollisen näkemään Tarquvasin muiston mantereen "
+             "räjäyttämisestä (8d10 psychic + Stunned).\n"
+             "  • Sielujen purkaus (recharge 5–6): 60 ft, 10d10 necrotic, "
+             "OHITTAA sekä necrotic-resistanssin että -immuniteetin.\n"
+             "  • At-will vastatoimet: Counterspell, Shield, Dispel Magic, "
+             "Misty Step. Pääloitsut: Time Stop, Meteor Swarm, Feeblemind, "
+             "Imprisonment, Power Word Kill, Forcecage.\n"
+             "  • Mythic trait: kun siirrot loppuvat ja HP < 50 %, aika "
+             "hidastuu — 3 ylimääräistä reaktiota per kierros ja "
+             "Foresight (etu kaikkeen, vihollisilla haitta).\n\n"
+             "JOS KRUUNU TUHOTAAN, Tarquvas vapautuu. Se on kampanjan "
+             "pahin mahdollinen lopputulos.",
+        keywords=["cazna", "cazna icharyd", "matriarkka", "matriarch",
+                  "arkkimaagi", "archmage", "drow", "icharyd",
+                  "sielukone", "soul machine", "vanqurion", "sarrukh",
+                  "kruunu", "crown", "terälaulu", "bladesong", "miekka",
+                  "sielumiekka", "cr 26", "statblock", "statit", "boss",
+                  "aterterra", "zer'tath", "foresight", "imprisonment"],
+        see_also=["tarquvas_redfei", "tarquvas_vs_cazna", "sarrukhit",
+                  "garrutha", "tarquvas", "dimerius_tavoite"],
+        npc_ids=["npc_cazna", "npc_tarquvas", "npc_altheon"],
+        location_ids=["loc_zertath_lanke"]),
+
+    LoreEntry(
+        key="tarquvas_vs_cazna",
+        title="Miten Cazna voitti Tarquvasin",
+        category="historia", spoiler=True,
+        summary="Ei reilussa taistelussa: kosminen liittouma + Dimeriuksen "
+                "petos + ikuisen kidutuksen magia. Tämä konflikti aloitti "
+                "Time of Guidance -ajanlaskun.",
+        body="Tarquvasin fysiikka ja Verun tuoma regeneraatio tekivät "
+             "hänestä käytännössä voittamattoman: vaikka häntä ja hänen "
+             "kenraalejaan silvottiin taistelukentillä, he eivät kuolleet. "
+             "Cazna on yksi maailman voimakkaimmista maageista, mutta HÄN "
+             "EI VOITTANUT TARQUVASIA YKSIN REILUSSA TAISTELUSSA.\n\n"
+             "Voitto perustui kolmeen asiaan:\n\n"
+             "1. KOSMINEN LIITTOUMA — Cazna solmi epäpyhän allianssin "
+             "Arkkimaagi Esmerin ja Cunaen Vendilien (Nimfritei, Klorham, "
+             "Hailufoi) kanssa. Rintamassa oli jumalallista magiaa, ei vain "
+             "arkaanista.\n\n"
+             "2. DIMERIUS BLACKFEETIN PETOS — Tarquvasin oikea käsi, "
+             "kenraali ja PARHAIN YSTÄVÄ petti hänet ratkaisevalla "
+             "hetkellä. Dimerius kantoi Veru-laitteen avainta, "
+             "Clavise-miekkaa. Petos tapahtui juuri silloin, kun Tarquvas "
+             "oli haavoittuvaisimmillaan: hän yritti kivuliaasti sitoa "
+             "itseensä kolmatta Veru-palasta.\n\n"
+             "3. IKUISEN KIDUTUKSEN MAGIA — kun puolustus murtui petoksen "
+             "vuoksi, Cazna ja Esmer käyttivät äärimmäistä magian muotoa. "
+             "Cazna iski viimeisen iskun ja lukitsi Tarquvasin sielun "
+             "kruunussaan olevaan vihreään timanttiin — ikuisuuden "
+             "vankilaan astraalimerellä, missä hänen haavansa eivät koskaan "
+             "sulkeudu mutta hän ei myöskään voi kuolla. Esmer rakensi "
+             "Kristallikuvun maailman ylle.\n\n"
+             "PELINJOHTAJALLE: tämä on malli sille, miten pelaajat voivat "
+             "voittaa myyttisen vastustajan. Tarquvasia ei voi tappaa "
+             "vahingolla — hänet on petettävä, eristettävä ja vangittava. "
+             "Sama pätee Caznaan: hänen sielukoneyhteytensä on "
+             "katkaistava ennen kuin vahinko merkitsee mitään. Kumpaakaan "
+             "ei kaadeta pelkällä DPR:llä.\n\n"
+             "Tarquvasin sielu on YHÄ Caznan kruunussa Zer'tath Lankessa. "
+             "Dimerius aikoo imeä sen itseensä.",
+        keywords=["tarquvas", "cazna", "sota", "war", "petos", "betrayal",
+                  "dimerius", "esmer", "vendilit", "nimfritei", "klorham",
+                  "hailufoi", "imprisonment", "kruunu", "timantti",
+                  "time of guidance", "ajanlasku", "historia",
+                  "miten voitti", "clavise"],
+        see_also=["tarquvas_redfei", "cazna_icharyd", "tarquvas",
+                  "kristallikupu", "clavise", "vendilit",
+                  "dimerius_tavoite"],
+        npc_ids=["npc_tarquvas", "npc_cazna", "npc_dimerius"],
+        location_ids=["loc_zertath_lanke"]),
 ]
 
 

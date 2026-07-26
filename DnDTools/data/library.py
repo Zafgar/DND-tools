@@ -72,12 +72,14 @@ class MonsterLibrary:
             from data.monsters.lvl12_foes import monsters as lvl12_list
             from data.monsters.deaths_vigil import monsters as vigil_list
             from data.monsters.ravenstone import monsters as ravenstone_list
+            from data.monsters.legends import monsters as legends_list
 
             for lst in [cr018_list, cr025_list, cr05_list, cr1_list,
                         cr2_list, cr3_list, cr4_list, cr5_list, cr67_list,
                         cr8_list, cr910_list, cr1112_list, cr13_list, cr1416_list, cr17_list,
                         baenrahel_list, whitestone_list, zertath_list,
-                        lvl12_list, vigil_list, ravenstone_list]:
+                        lvl12_list, vigil_list, ravenstone_list,
+                        legends_list]:
                 for m in lst:
                     # Don't overwrite a JSON-loaded entry; Python is
                     # a fallback / supplement for the JSON catalogue.

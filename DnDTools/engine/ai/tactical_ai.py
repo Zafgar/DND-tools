@@ -2186,6 +2186,48 @@ class TacticalAI:
             
         return None
 
+    def _aoe_bonus_action_step(self, entity, action, enemies, allies, battle):
+        """Build a save-based AoE step for a BONUS action.
+
+        Same rules as :meth:`_try_aoe_action` — friend and foe alike are
+        caught, so allies inside the burst are a cost, not a bonus — but
+        the result is tagged as a bonus action instead of an action.
+        """
+        result = self._best_aoe_cluster(
+            entity, enemies, allies, battle, action.aoe_radius,
+            shape=action.aoe_shape, damage_type=action.damage_type)
+        if not result:
+            return None
+        clusters, (cx, cy) = result
+        enemy_targets = [t for t in clusters
+                         if t.is_player != entity.is_player]
+        friendly_targets = [t for t in clusters
+                            if t.is_player == entity.is_player]
+        if not enemy_targets:
+            return None
+
+        def _dmg(t):
+            base = self._estimate_damage(action.damage_dice,
+                                         action.damage_type, t)
+            return base * 0.75 if action.condition_save else base
+
+        net = (sum(_dmg(t) for t in enemy_targets)
+               - sum(_dmg(t) for t in friendly_targets) * 2.0)
+        if net <= 0:
+            return None
+        return ActionStep(
+            step_type="bonus_attack",
+            description=(f"{entity.name} uses {action.name} "
+                         f"(DC {action.condition_dc or '??'} "
+                         f"{action.condition_save})"),
+            attacker=entity, targets=clusters, action=action,
+            damage=roll_dice(action.damage_dice),
+            damage_type=action.damage_type, action_name=action.name,
+            aoe_center=(cx, cy), save_dc=action.condition_dc,
+            save_ability=action.condition_save,
+            applies_condition=action.applies_condition,
+            condition_dc=action.condition_dc)
+
     def _try_revive_ally_spell(self, entity, allies, battle, action_type="action") -> Optional[ActionStep]:
         """Try to revive a dying ally with a healing spell."""
         # 1. Find dying allies
@@ -3899,6 +3941,19 @@ class TacticalAI:
         # --- 4. Bonus action attacks (Offhand, PAM, etc.) ---
         for ba in entity.stats.bonus_actions:
             if not ba.damage_dice:
+                continue
+            # Save-based AoE bonus actions (e.g. Tarquvas' Titaanin
+            # harppaus: leap and everyone within 15 ft makes a STR save)
+            # are NOT attack rolls. Rolling +0 vs AC would make them miss
+            # almost always, so route them through the AoE cluster logic
+            # exactly like a breath weapon.
+            if (ba.aoe_radius > 0 and ba.attack_bonus <= 0
+                    and ba.condition_save):
+                step = self._aoe_bonus_action_step(
+                    entity, ba, enemies, allies, battle)
+                if step:
+                    entity.bonus_action_used = True
+                    return [step]
                 continue
             target = self._pick_target(entity, enemies, battle)
             if not target:

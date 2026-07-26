@@ -155,8 +155,13 @@ _spells = {
                              damage_scaling="1d8",
                              description="Push 10ft on fail"),
 
+    # NOTE: no applies_condition. The -1d4 is implemented as an
+    # active_effect keyed on the spell name (see Entity.get_save_bonus /
+    # get_attack_bonus_effects, mirroring Bless). Declaring a condition
+    # here sent the resolver down the condition branch instead, so
+    # active_effects["Bane"] was never set and the spell did nothing.
     "Bane": SpellInfo("Bane", level=1, action_type="action", range=30, targets="aoe", concentration=True,
-                      duration="1 minute", save_ability="Charisma", applies_condition="Baned",
+                      duration="1 minute", save_ability="Charisma",
                       description="Up to 3 targets. CHA save; on fail: -1d4 on attacks & saves for 1 min."),
 
     "Sleep": SpellInfo("Sleep", level=1, action_type="action", range=90, aoe_radius=20, aoe_shape="sphere",
@@ -572,6 +577,31 @@ _spells = {
     
     "Time Stop": SpellInfo("Time Stop", level=9, action_type="action", range=0, targets="self",
                            description="Take 1d4+1 turns in a row"),
+
+    "Imprisonment": SpellInfo("Imprisonment", level=9, action_type="action",
+                              range=30, targets="single",
+                              save_ability="Wisdom",
+                              applies_condition="Incapacitated",
+                              repeat_save=False,
+                              duration="Until dispelled",
+                              components="V,S,M",
+                              description="DC WIS tai kohde vangitaan (Chain / "
+                                          "Minimus Containment / Burial / "
+                                          "Hedged Prison). Kohde ei vanhene "
+                                          "eikä tarvitse ravintoa. Vain "
+                                          "Dispel Magic 9. tasolla vapauttaa "
+                                          "— tällä Cazna telkesi Tarquvasin "
+                                          "sielun kruununsa timanttiin."),
+
+    "Foresight": SpellInfo("Foresight", level=9, action_type="action",
+                           range=0, targets="single",
+                           concentration=False, duration="8 hours",
+                           components="V,S,M",
+                           description="Kohde ei voi joutua yllätetyksi, saa "
+                                       "edun kaikkiin osumaheittoihin, "
+                                       "kykytesteihin ja pelastusheittoihin, "
+                                       "ja vihollisilla on haitta "
+                                       "osumaheittoihin häntä vastaan."),
 
     # ============================================================
     # XANATHAR'S GUIDE TO EVERYTHING (XGtE) SPELLS
