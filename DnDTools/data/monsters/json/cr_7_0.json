@@ -143,6 +143,25 @@
         "short_rest_recharge": false,
         "phase_trigger_hp_pct": 0.0,
         "phase_description": ""
+      },
+      {
+        "feature_type": "passive",
+        "uses_per_day": -1,
+        "legendary_cost": 1,
+        "recharge": "5-6",
+        "aura_radius": 0,
+        "save_dc": 0,
+        "save_ability": "",
+        "applies_condition": "",
+        "damage_dice": "",
+        "damage_type": "",
+        "mechanic": "",
+        "mechanic_value": "",
+        "short_rest_recharge": false,
+        "phase_trigger_hp_pct": 0.0,
+        "phase_description": "",
+        "name": "Acid Breath",
+        "description": "Recharge 5-6: 30 ft line, 11d8 acid, DC 14 DEX half."
       }
     ]
   },

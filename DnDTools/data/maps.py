@@ -9,6 +9,7 @@ Each map is a dict with:
 
 PREMADE_MAPS = {
     "tavern_brawl": {
+        "floor_style": "wood",
         "name": "Tavern Brawl",
         "description": "A rowdy tavern interior with tables, a bar, and two exits.",
         "terrain": [
@@ -43,6 +44,7 @@ PREMADE_MAPS = {
     },
 
     "dungeon_corridor": {
+        "floor_style": "dungeon",
         "name": "Dungeon Corridor",
         "description": "A narrow dungeon passage with doors, a pit trap, and an elevated platform.",
         "terrain": [
@@ -76,6 +78,7 @@ PREMADE_MAPS = {
     },
 
     "castle_courtyard": {
+        "floor_style": "flagstone",
         "name": "Castle Courtyard",
         "description": "An open courtyard with walls, battlements, a gate, and elevated towers.",
         "terrain": [
@@ -120,6 +123,7 @@ PREMADE_MAPS = {
     },
 
     "forest_clearing": {
+        "floor_style": "forest",
         "name": "Forest Clearing",
         "description": "A woodland clearing surrounded by trees with rocky outcrops.",
         "terrain": [
@@ -153,6 +157,7 @@ PREMADE_MAPS = {
     },
 
     "cliffside_battle": {
+        "floor_style": "stone",
         "name": "Cliffside Battle",
         "description": "A multi-level cliff with bridges, chasms, and deadly drops.",
         "terrain": [
@@ -189,6 +194,7 @@ PREMADE_MAPS = {
     },
 
     "dragon_lair": {
+        "floor_style": "cave",
         "name": "Dragon's Lair",
         "description": "A vast cavern with lava pools, treasure hoard, and elevated perches.",
         "terrain": [
@@ -235,6 +241,7 @@ PREMADE_MAPS = {
     # ================================================================
 
     "underdark_cavern": {
+        "floor_style": "underdark",
         "name": "Underdark Cavern",
         "description": "A vast Underdark cave with giant mushrooms, crystal formations, "
                        "web-choked passages, and a chasm spanned by a natural stone bridge.",
@@ -306,12 +313,13 @@ PREMADE_MAPS = {
             {"terrain_type": "moss", "grid_x": 16, "grid_y": 14},
         ],
         "spawn_zones": {
-            "players": [(2, 4), (3, 5), (4, 3), (5, 4), (2, 5), (3, 3)],
+            "players": [(2, 4), (3, 5), (4, 3), (5, 4), (2, 5), (2, 3)],
             "enemies": [(15, 3), (16, 3), (18, 3), (19, 5), (17, 5), (15, 5)],
         },
     },
 
     "sunken_temple": {
+        "floor_style": "temple",
         "name": "Sunken Temple",
         "description": "An ancient temple half-submerged in water. Central altar, flooded chambers, "
                        "collapsed pillars, and a raised sanctum with magical wards.",
@@ -381,11 +389,12 @@ PREMADE_MAPS = {
         ],
         "spawn_zones": {
             "players": [(8, 13), (9, 13), (10, 13), (11, 13), (9, 14), (10, 14)],
-            "enemies": [(9, 5), (10, 5), (3, 2), (16, 2), (9, 2), (10, 2)],
+            "enemies": [(8, 5), (10, 4), (3, 2), (16, 2), (9, 2), (10, 2)],
         },
     },
 
     "shipwreck_shore": {
+        "floor_style": "sand",
         "name": "Shipwreck Shore",
         "description": "A storm-wrecked ship on a rocky coastline. Half the ship is on sand, "
                        "half in shallow water. Masts, debris, and coral provide cover.",
@@ -456,6 +465,7 @@ PREMADE_MAPS = {
     },
 
     "haunted_graveyard": {
+        "floor_style": "graveyard",
         "name": "Haunted Graveyard",
         "description": "A fog-shrouded graveyard with tombstones, open graves, a mausoleum, "
                        "and a ruined chapel. Darkness clings to the crypts.",
@@ -516,11 +526,12 @@ PREMADE_MAPS = {
         ],
         "spawn_zones": {
             "players": [(7, 13), (8, 13), (9, 13), (10, 13), (7, 12), (10, 12)],
-            "enemies": [(8, 2), (9, 2), (3, 5), (14, 5), (5, 9), (12, 9)],
+            "enemies": [(6, 2), (9, 4), (2, 5), (14, 5), (5, 9), (11, 9)],
         },
     },
 
     "gladiator_arena": {
+        "floor_style": "arena",
         "name": "Gladiator Arena",
         "description": "A grand colosseum arena with a central pit, elevated spectator platforms, "
                        "cage doors releasing monsters, and scattered weapons on racks.",
@@ -591,6 +602,7 @@ PREMADE_MAPS = {
     },
 
     "volcanic_forge": {
+        "floor_style": "volcanic",
         "name": "Volcanic Forge",
         "description": "A dwarven forge built into a volcano. Lava rivers, stone bridges, "
                        "anvil platforms, and mechanical elevators. Extreme heat hazards.",
@@ -660,12 +672,13 @@ PREMADE_MAPS = {
             {"terrain_type": "fire", "grid_x": 15, "grid_y": 12},
         ],
         "spawn_zones": {
-            "players": [(2, 5), (3, 5), (4, 5), (5, 5), (2, 6), (5, 6)],
+            "players": [(2, 5), (3, 4), (4, 4), (5, 5), (2, 6), (5, 6)],
             "enemies": [(16, 3), (17, 3), (18, 6), (19, 7), (16, 12), (17, 12)],
         },
     },
 
     "wizard_tower": {
+        "floor_style": "marble",
         "name": "Wizard's Tower",
         "description": "A multi-level wizard's tower with a grand library, arcane laboratory, "
                        "teleport circles, and a rooftop observatory. Ley lines criss-cross the floors.",
@@ -760,6 +773,272 @@ PREMADE_MAPS = {
             "enemies": [(6, 2), (7, 2), (8, 2), (9, 2), (5, 3), (10, 3)],
         },
     },
+
+    # ================================================================= #
+    # PINWUDIN VIGIL-TEMPPELI — vampyyriongelman näyttämö
+    # ================================================================= #
+    # Kolmiosainen kirkko: kuorosali pohjoisessa (alttari + muurattu
+    # arkku), pääsali keskellä pilareineen ja penkkeineen, sekä krypta
+    # etelässä pyhäinjäännösarkulle. Ikkunat on peitetty "surunaikana",
+    # joten sisällä on hämärää — mutta lasimaalausruudut voi rikkoa ja
+    # päästää auringonvalon sisään. Se on koko kohtauksen ratkaisu.
+    "vigil_temple": {
+        "floor_style": "temple",
+        "name": "Vigil-temppeli (Pinwud)",
+        "description": "Death's Vigilin temppeli, jossa papisto on "
+                       "käännytetty vampyyreiksi. Peitetyt lasi-ikkunat, "
+                       "alttarin alle muurattu arkku ja krypta. Rikotut "
+                       "ikkunat päästävät auringonvalon sisään.",
+        "terrain": [
+            # --- Ulkoseinät (20 x 22) ---
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 0}
+              for x in range(20)],
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 21}
+              for x in range(20)],
+            *[{"terrain_type": "wall", "grid_x": 0, "grid_y": y}
+              for y in range(22)],
+            *[{"terrain_type": "wall", "grid_x": 19, "grid_y": y}
+              for y in range(22)],
+            # Pääovi etelässä
+            {"terrain_type": "door", "grid_x": 9, "grid_y": 21},
+            {"terrain_type": "door", "grid_x": 10, "grid_y": 21},
+            # --- Peitetyt lasi-ikkunat (cover_3q = rikottavissa) ---
+            # Nämä ovat pelaajien ase: rikottu ikkuna = auringonvalo.
+            *[{"terrain_type": "cover_3q", "grid_x": 0, "grid_y": y}
+              for y in (4, 8, 12, 16)],
+            *[{"terrain_type": "cover_3q", "grid_x": 19, "grid_y": y}
+              for y in (4, 8, 12, 16)],
+            # --- KUOROSALI (pohjoinen, y 1-6): alttari ja arkku ---
+            {"terrain_type": "altar", "grid_x": 9, "grid_y": 3},
+            {"terrain_type": "altar", "grid_x": 10, "grid_y": 3},
+            # Koroke alttarin ympärillä
+            *[{"terrain_type": "platform_5", "grid_x": x, "grid_y": y}
+              for x in range(7, 13) for y in range(2, 5)
+              if not (7 <= x <= 12 and y == 3 and x in (9, 10))],
+            {"terrain_type": "stairs_down", "grid_x": 8, "grid_y": 5},
+            {"terrain_type": "stairs_down", "grid_x": 11, "grid_y": 5},
+            # Kynttilät ja alttarin sivustat
+            {"terrain_type": "brazier", "grid_x": 6, "grid_y": 2},
+            {"terrain_type": "brazier", "grid_x": 13, "grid_y": 2},
+            {"terrain_type": "statue", "grid_x": 4, "grid_y": 2},
+            {"terrain_type": "statue", "grid_x": 15, "grid_y": 2},
+            # Kuoron penkit
+            *[{"terrain_type": "table", "grid_x": x, "grid_y": 6}
+              for x in (3, 4, 15, 16)],
+            # --- VÄLISEINÄ kuorosalin ja pääsalin välissä ---
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 7}
+              for x in range(1, 19) if x not in (8, 9, 10, 11)],
+            {"terrain_type": "door", "grid_x": 9, "grid_y": 7},
+            {"terrain_type": "door", "grid_x": 10, "grid_y": 7},
+            # --- PÄÄSALI (y 8-15): pilarit ja penkkirivit ---
+            *[{"terrain_type": "pillar", "grid_x": x, "grid_y": y}
+              for x in (4, 15) for y in (9, 12, 15)],
+            *[{"terrain_type": "table", "grid_x": x, "grid_y": y}
+              for x in range(6, 14)
+              for y in (10, 13) if x not in (9, 10)],
+            # Rippituoli (Ianus)
+            {"terrain_type": "cover", "grid_x": 2, "grid_y": 11},
+            {"terrain_type": "cover", "grid_x": 2, "grid_y": 12},
+            # Kirjahyllyt (Vhaltorin "epäpuhdas kirjasto")
+            *[{"terrain_type": "bookshelf", "grid_x": 17, "grid_y": y}
+              for y in (10, 11, 12, 13)],
+            {"terrain_type": "magic_circle", "grid_x": 17, "grid_y": 14},
+            # Hämäryys — ikkunat peitetty
+            *[{"terrain_type": "dim_light", "grid_x": x, "grid_y": y}
+              for x, y in ((2, 9), (2, 15), (17, 9), (7, 15), (12, 15))],
+            # --- KRYPTAN LASKU (y 16-20) ---
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 16}
+              for x in range(1, 19) if x not in (5, 6, 13, 14)],
+            {"terrain_type": "stairs_down", "grid_x": 5, "grid_y": 16},
+            {"terrain_type": "stairs_down", "grid_x": 14, "grid_y": 16},
+            {"terrain_type": "door", "grid_x": 6, "grid_y": 16},
+            {"terrain_type": "door", "grid_x": 13, "grid_y": 16},
+            # Krypta: sarkofageja ja pyhäinjäännösarkku keskellä
+            {"terrain_type": "sarcophagus", "grid_x": 3, "grid_y": 18},
+            {"terrain_type": "sarcophagus", "grid_x": 3, "grid_y": 20},
+            {"terrain_type": "sarcophagus", "grid_x": 16, "grid_y": 18},
+            {"terrain_type": "sarcophagus", "grid_x": 16, "grid_y": 20},
+            {"terrain_type": "grave_open", "grid_x": 7, "grid_y": 19},
+            {"terrain_type": "grave_open", "grid_x": 12, "grid_y": 19},
+            # Sanctum Abomination nousi tästä
+            {"terrain_type": "altar", "grid_x": 9, "grid_y": 19},
+            {"terrain_type": "altar", "grid_x": 10, "grid_y": 19},
+            {"terrain_type": "darkness", "grid_x": 9, "grid_y": 20},
+            {"terrain_type": "darkness", "grid_x": 10, "grid_y": 20},
+            {"terrain_type": "fog_light", "grid_x": 5, "grid_y": 19},
+            {"terrain_type": "fog_light", "grid_x": 14, "grid_y": 19},
+            # Web kryptan nurkissa
+            *[{"terrain_type": "web", "grid_x": x, "grid_y": y}
+              for x, y in ((1, 17), (18, 17), (1, 20), (18, 20))],
+        ],
+        "spawn_zones": {
+            # Pelaajat tulevat pääovesta
+            "players": [(8, 20), (9, 20), (10, 20), (11, 20),
+                        (8, 19), (11, 19)],
+            # Papisto pääsalissa ja kuorosalissa
+            "enemies": [(9, 9), (10, 9), (6, 12), (13, 12),
+                        (7, 4), (12, 4), (16, 9)],
+        },
+    },
+
+    # ================================================================= #
+    # CORVUS SPELCHRUM — Dimeriuksen krypta Ravenstonessa
+    # ================================================================= #
+    "corvus_crypt": {
+        "floor_style": "dungeon",
+        "name": "Corvus Spelchrum (Dimeriuksen krypta)",
+        "description": "Ravenstonen kynttiläkammio, jossa Dimerius makaa. "
+                       "Kolme holvia, kynttilämeri, valuvat portaat ja "
+                       "kryptan vartijat Golbera ja Xalars. Ei "
+                       "auringonvaloa missään.",
+        "terrain": [
+            # Ulkoseinät (24 x 18)
+            *[{"terrain_type": "rock", "grid_x": x, "grid_y": 0}
+              for x in range(24)],
+            *[{"terrain_type": "rock", "grid_x": x, "grid_y": 17}
+              for x in range(24)],
+            *[{"terrain_type": "rock", "grid_x": 0, "grid_y": y}
+              for y in range(18)],
+            *[{"terrain_type": "rock", "grid_x": 23, "grid_y": y}
+              for y in range(18)],
+            # Sisääntulo lännestä, portaat alas
+            {"terrain_type": "stairs_down", "grid_x": 1, "grid_y": 8},
+            {"terrain_type": "stairs_down", "grid_x": 1, "grid_y": 9},
+            {"terrain_type": "portcullis", "grid_x": 4, "grid_y": 8},
+            {"terrain_type": "portcullis", "grid_x": 4, "grid_y": 9},
+            # ETUHOLVI: Golberan vartiopaikka, myrkkyaltaat
+            *[{"terrain_type": "wall", "grid_x": 8, "grid_y": y}
+              for y in range(1, 17) if y not in (7, 8, 9, 10)],
+            {"terrain_type": "door", "grid_x": 8, "grid_y": 8},
+            {"terrain_type": "door", "grid_x": 8, "grid_y": 9},
+            *[{"terrain_type": "poison", "grid_x": x, "grid_y": y}
+              for x, y in ((3, 4), (5, 5), (6, 12), (3, 13))],
+            {"terrain_type": "grave_open", "grid_x": 5, "grid_y": 3},
+            {"terrain_type": "grave_open", "grid_x": 5, "grid_y": 14},
+            {"terrain_type": "web", "grid_x": 2, "grid_y": 2},
+            {"terrain_type": "web", "grid_x": 2, "grid_y": 15},
+            # KESKIHOLVI: Xalarsin arena, tulisia haudankaivauksia
+            *[{"terrain_type": "pillar", "grid_x": x, "grid_y": y}
+              for x in (11, 15) for y in (5, 12)],
+            *[{"terrain_type": "fire", "grid_x": x, "grid_y": y}
+              for x, y in ((12, 3), (14, 14))],
+            {"terrain_type": "rubble", "grid_x": 12, "grid_y": 8},
+            {"terrain_type": "rubble", "grid_x": 13, "grid_y": 9},
+            {"terrain_type": "pit", "grid_x": 13, "grid_y": 4},
+            {"terrain_type": "pit", "grid_x": 13, "grid_y": 13},
+            # Väliseinä keskiholvin ja kynttiläkammion välissä
+            *[{"terrain_type": "wall", "grid_x": 17, "grid_y": y}
+              for y in range(1, 17) if y not in (8, 9)],
+            {"terrain_type": "door_locked", "grid_x": 17, "grid_y": 8},
+            {"terrain_type": "door_locked", "grid_x": 17, "grid_y": 9},
+            # KYNTTILÄKAMMIO: Dimeriuksen leposija
+            *[{"terrain_type": "brazier", "grid_x": x, "grid_y": y}
+              for x, y in ((19, 3), (22, 3), (19, 14), (22, 14),
+                           (19, 6), (22, 11))],
+            *[{"terrain_type": "platform_5", "grid_x": x, "grid_y": y}
+              for x in range(19, 23) for y in range(7, 11)],
+            {"terrain_type": "sarcophagus", "grid_x": 20, "grid_y": 8},
+            {"terrain_type": "sarcophagus", "grid_x": 21, "grid_y": 8},
+            {"terrain_type": "magic_circle", "grid_x": 20, "grid_y": 9},
+            {"terrain_type": "magic_circle", "grid_x": 21, "grid_y": 9},
+            {"terrain_type": "statue", "grid_x": 18, "grid_y": 5},
+            {"terrain_type": "statue", "grid_x": 18, "grid_y": 12},
+            # Pimeys joka puolella — Dimerius ei siedä valoa
+            *[{"terrain_type": "darkness", "grid_x": x, "grid_y": y}
+              for x, y in ((10, 2), (10, 15), (16, 2), (16, 15),
+                           (19, 16), (22, 1))],
+            *[{"terrain_type": "stalactite", "grid_x": x, "grid_y": y}
+              for x, y in ((6, 6), (14, 6), (11, 15), (21, 16))],
+        ],
+        "spawn_zones": {
+            "players": [(2, 7), (2, 8), (2, 9), (2, 10), (3, 8), (3, 9)],
+            "enemies": [(6, 8), (12, 6), (14, 11), (20, 7), (21, 10),
+                        (19, 12)],
+        },
+    },
+
+    # ================================================================= #
+    # ZER'TATH LANKE — Kristallijärven palatsi (Caznan lair)
+    # ================================================================= #
+    "crystal_lake_palace": {
+        "floor_style": "underdark",
+        "name": "Kristallijärven palatsi (Zer'tath Lanke)",
+        "description": "Matriarkka Caznan valtaistuinsali Aterterrassa. "
+                       "Faerzress-kristallit, sielukoneen ankkuri ja kuilu "
+                       "Kristallijärveen. Caznan sielukone nollaa vahingon "
+                       "kunnes ankkurikristalli rikotaan.",
+        "terrain": [
+            # Ulkoseinät (26 x 20)
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 0}
+              for x in range(26)],
+            *[{"terrain_type": "wall", "grid_x": x, "grid_y": 19}
+              for x in range(26)],
+            *[{"terrain_type": "wall", "grid_x": 0, "grid_y": y}
+              for y in range(20)],
+            *[{"terrain_type": "wall", "grid_x": 25, "grid_y": y}
+              for y in range(20)],
+            # Sisääntulo etelästä
+            {"terrain_type": "door", "grid_x": 12, "grid_y": 19},
+            {"terrain_type": "door", "grid_x": 13, "grid_y": 19},
+            # Valtaistuin pohjoisessa, korokkeella
+            *[{"terrain_type": "platform_10", "grid_x": x, "grid_y": y}
+              for x in range(10, 16) for y in range(2, 5)],
+            {"terrain_type": "throne", "grid_x": 12, "grid_y": 3},
+            {"terrain_type": "throne", "grid_x": 13, "grid_y": 3},
+            {"terrain_type": "stairs_down", "grid_x": 11, "grid_y": 5},
+            {"terrain_type": "stairs_down", "grid_x": 14, "grid_y": 5},
+            # SIELUKONEEN ANKKURIKRISTALLI — pelaajien oikea kohde
+            {"terrain_type": "crystal", "grid_x": 12, "grid_y": 1},
+            {"terrain_type": "crystal", "grid_x": 13, "grid_y": 1},
+            {"terrain_type": "leyline", "grid_x": 12, "grid_y": 6},
+            {"terrain_type": "leyline", "grid_x": 13, "grid_y": 6},
+            {"terrain_type": "leyline", "grid_x": 12, "grid_y": 10},
+            {"terrain_type": "leyline", "grid_x": 13, "grid_y": 10},
+            # Kristallipilarit ja Faerzress-hehku
+            *[{"terrain_type": "crystal", "grid_x": x, "grid_y": y}
+              for x, y in ((4, 4), (21, 4), (3, 15), (22, 15),
+                           (7, 9), (18, 9))],
+            *[{"terrain_type": "pillar", "grid_x": x, "grid_y": y}
+              for x in (6, 19) for y in (6, 12, 16)],
+            # KUILU Kristallijärveen ("Syvyyden kaste")
+            *[{"terrain_type": "chasm_20", "grid_x": x, "grid_y": y}
+              for x in range(9, 17) for y in (13, 14)],
+            {"terrain_type": "bridge", "grid_x": 12, "grid_y": 13},
+            {"terrain_type": "bridge", "grid_x": 12, "grid_y": 14},
+            {"terrain_type": "bridge", "grid_x": 13, "grid_y": 13},
+            {"terrain_type": "bridge", "grid_x": 13, "grid_y": 14},
+            # Vesialtaat ja koralli järven reunalla
+            *[{"terrain_type": "water", "grid_x": x, "grid_y": y}
+              for x in range(2, 8) for y in (17, 18)],
+            *[{"terrain_type": "water", "grid_x": x, "grid_y": y}
+              for x in range(18, 24) for y in (17, 18)],
+            {"terrain_type": "deep_water", "grid_x": 4, "grid_y": 18},
+            {"terrain_type": "deep_water", "grid_x": 21, "grid_y": 18},
+            {"terrain_type": "coral", "grid_x": 3, "grid_y": 17},
+            {"terrain_type": "coral", "grid_x": 22, "grid_y": 17},
+            # Teleporttilaatat (Caznan pakoreitit)
+            {"terrain_type": "teleport_pad", "grid_x": 2, "grid_y": 2},
+            {"terrain_type": "teleport_pad", "grid_x": 23, "grid_y": 2},
+            # Mielenlukijoiden koroke ja arkistot
+            *[{"terrain_type": "bookshelf", "grid_x": 1, "grid_y": y}
+              for y in (8, 9, 10, 11)],
+            {"terrain_type": "magic_circle", "grid_x": 2, "grid_y": 10},
+            {"terrain_type": "antimagic", "grid_x": 24, "grid_y": 10},
+            # Hämärä ja sienimetsä reunoilla
+            *[{"terrain_type": "mushroom_giant", "grid_x": x, "grid_y": y}
+              for x, y in ((2, 5), (23, 5), (2, 13), (23, 13))],
+            *[{"terrain_type": "moss", "grid_x": x, "grid_y": y}
+              for x, y in ((5, 11), (20, 11), (8, 17), (17, 17))],
+            *[{"terrain_type": "dim_light", "grid_x": x, "grid_y": y}
+              for x, y in ((5, 2), (20, 2), (5, 16), (20, 16))],
+        ],
+        "spawn_zones": {
+            "players": [(11, 17), (12, 17), (13, 17), (14, 17),
+                        (11, 16), (14, 16)],
+            "enemies": [(12, 7), (13, 7), (9, 9), (16, 9), (10, 4),
+                        (15, 4)],
+        },
+    },
 }
 
 
@@ -775,6 +1054,16 @@ def load_map_terrain(map_key: str) -> list:
     if not map_data:
         return []
     return [TerrainObject.from_dict(t) for t in map_data["terrain"]]
+
+
+def get_floor_style(map_key: str) -> str:
+    """Procedural floor texture for a premade map (states/battle_floor.py).
+
+    Falls back to plain stone so an older map dict without the key still
+    loads and simply renders as flagstone.
+    """
+    map_data = PREMADE_MAPS.get(map_key) or {}
+    return map_data.get("floor_style", "stone")
 
 
 def get_spawn_zones(map_key: str) -> dict:

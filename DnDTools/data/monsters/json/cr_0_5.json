@@ -798,6 +798,25 @@
         "short_rest_recharge": false,
         "phase_trigger_hp_pct": 0.0,
         "phase_description": ""
+      },
+      {
+        "feature_type": "passive",
+        "uses_per_day": -1,
+        "legendary_cost": 1,
+        "recharge": "6",
+        "aura_radius": 0,
+        "save_dc": 0,
+        "save_ability": "",
+        "applies_condition": "",
+        "damage_dice": "",
+        "damage_type": "",
+        "mechanic": "",
+        "mechanic_value": "",
+        "short_rest_recharge": false,
+        "phase_trigger_hp_pct": 0.0,
+        "phase_description": "",
+        "name": "Blinding Breath",
+        "description": "Recharge 6: 15 ft cone, DC 10 DEX or Blinded for 1 minute (save at end of each turn)."
       }
     ]
   },

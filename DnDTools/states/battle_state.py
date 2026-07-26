@@ -492,8 +492,53 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.btn_speed_lbl.text = labels.get(self.auto_battle_speed, "1x")
         self._log(f"[SYSTEM] Auto speed: {labels.get(self.auto_battle_speed, '?')}")
 
+    # How many consecutive rounds with no HP change and no movement count
+    # as a stalemate. Two full rounds is unambiguous — nobody can reach
+    # anybody and nobody is shooting.
+    STALEMATE_ROUNDS = 2
+
+    def _check_auto_battle_stalemate(self) -> bool:
+        """Stop the sim when neither side can affect the other.
+
+        On a map with a barred corridor or a chasm between the sides the
+        AI keeps taking legal-but-useless turns forever, so an unattended
+        auto-battle never terminates. Snapshot every combatant's HP and
+        square once per round; if nothing changes for
+        ``STALEMATE_ROUNDS`` rounds, switch the dial back to suggest mode
+        and say so in the log — the DM decides what happens next.
+
+        Returns True when the auto-battle was stopped.
+        """
+        snapshot = tuple(sorted(
+            (e.name, e.hp, int(e.grid_x), int(e.grid_y))
+            for e in self.battle.entities))
+        prev = getattr(self, "_stalemate_snapshot", None)
+        if prev == snapshot:
+            self._stalemate_rounds = getattr(self, "_stalemate_rounds", 0) + 1
+        else:
+            self._stalemate_snapshot = snapshot
+            self._stalemate_rounds = 0
+        if self._stalemate_rounds < self.STALEMATE_ROUNDS:
+            return False
+        self._stalemate_rounds = 0
+        self._stalemate_snapshot = None
+        self.auto_battle = False
+        self._set_ai_mode("suggest")
+        self._log("[AUTO] Umpikuja: kumpikaan puoli ei ole vahingoittanut "
+                  "eikä liikkunut kahteen kierrokseen. Auto-battle "
+                  "pysäytetty — siirrä hahmoja tai avaa ovi.")
+        return True
+
     def _process_auto_battle(self):
         """Handle one tick of auto-battle logic."""
+        # 0. Stalemate guard — an unreachable enemy must not spin forever.
+        if self.auto_battle:
+            rnd = getattr(self.battle, "round", None)
+            if rnd is not None and rnd != getattr(self, "_stalemate_round", None):
+                self._stalemate_round = rnd
+                if self._check_auto_battle_stalemate():
+                    return
+
         # 1. Handle Aura Triggers (Auto-roll saves)
         if self.current_aura_trigger:
             feat = self.current_aura_trigger["feature"]
@@ -3038,13 +3083,16 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     def _load_premade_map(self, map_key):
         """Load a premade map, replacing current terrain."""
         try:
-            from data.maps import load_map_terrain
+            from data.maps import load_map_terrain, get_floor_style
             terrain_list = load_map_terrain(map_key)
             if not terrain_list:
                 self._log(f"[ERROR] Premade map '{map_key}' is empty or missing")
                 self.map_browser_open = False
                 return
             self.battle.terrain = terrain_list
+            # Each map brings its own floor texture (flagstone, forest
+            # turf, volcanic ash, …) so the ground reads as the place.
+            self.battle.floor_style = get_floor_style(map_key)
             # Invalidate selections/targeting that may reference old terrain
             self.pending_plan = None
             self.pending_step_idx = 0

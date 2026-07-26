@@ -831,6 +831,13 @@ class TacticalAI:
                     best_spot = (nx, ny)
 
         if best_spot and best_score > 5:
+            # _is_safe_passable treats a closed unlocked door as walkable
+            # (the mover is expected to open it). This teleport-style
+            # reposition skips the mover entirely, so it has to cash that
+            # in itself or the creature ends up standing inside a
+            # portcullis.
+            if not self._enter_cell_allowed(battle, entity, *best_spot):
+                return None
             old_x, old_y = entity.grid_x, entity.grid_y
             entity.grid_x, entity.grid_y = float(best_spot[0]), float(best_spot[1])
             move_cost = math.hypot(best_spot[0] - old_x, best_spot[1] - old_y) * 5
@@ -1136,6 +1143,11 @@ class TacticalAI:
 
         if best_spot:
             nx, ny, move_dist = best_spot
+            # See _enter_cell_allowed: the candidate filter accepts a
+            # closed unlocked door as walkable, so opening it (or bailing
+            # out) has to happen before the entity is actually placed.
+            if not self._enter_cell_allowed(battle, entity, nx, ny):
+                return None
             old_x, old_y = entity.grid_x, entity.grid_y
             entity.grid_x, entity.grid_y = float(nx), float(ny)
             entity.movement_left -= move_dist
@@ -1177,6 +1189,11 @@ class TacticalAI:
 
         if best_spot:
             nx, ny, move_dist = best_spot
+            # See _enter_cell_allowed: the candidate filter accepts a
+            # closed unlocked door as walkable, so opening it (or bailing
+            # out) has to happen before the entity is actually placed.
+            if not self._enter_cell_allowed(battle, entity, nx, ny):
+                return None
             old_x, old_y = entity.grid_x, entity.grid_y
             entity.grid_x, entity.grid_y = float(nx), float(ny)
             entity.movement_left -= move_dist
@@ -1210,6 +1227,29 @@ class TacticalAI:
         if t and t.is_hazard:
             return False
         return True
+
+    def _enter_cell_allowed(self, battle, entity, nx, ny) -> bool:
+        """May ``entity`` actually finish a step into cell (nx, ny)?
+
+        Pathfinding deliberately treats a closed unlocked door as
+        walkable, because a creature can open it as a free object
+        interaction. That optimism has to be cashed in at the moment of
+        entry: open the door here, and if the cell is STILL impassable
+        (locked, barred, a portcullis that refused, terrain that only
+        looked like a door) refuse the step. Without this the mover
+        walks straight into the obstacle and stands inside it.
+        """
+        if entity.is_flying:
+            return True
+        gx, gy = int(nx), int(ny)
+        t_at = battle.get_terrain_at(gx, gy)
+        if t_at is not None and t_at.is_door and not t_at.door_open \
+                and not t_at.is_locked:
+            battle.toggle_door_at(gx, gy)
+        if battle.is_passable(nx, ny, exclude=entity):
+            return True
+        # A gap is crossed by jumping/flying, handled by the caller.
+        return bool(t_at is not None and t_at.is_gap)
 
     def _find_path(self, start, end, battle, entity, allow_jump=True,
                      *, max_iterations: int = 600,
@@ -1366,10 +1406,15 @@ class TacticalAI:
                 if entity.movement_left < cost:
                     break
 
-                # Auto-open closed unlocked doors (free object interaction)
-                t_at = battle.get_terrain_at(int(nx), int(ny))
-                if t_at and t_at.is_door and not t_at.door_open and not t_at.is_locked:
-                    battle.toggle_door_at(int(nx), int(ny))
+                # Auto-open closed unlocked doors (free object interaction),
+                # and never step into a cell that is still impassable —
+                # pathfinding treats a closed door as walkable on the
+                # assumption it can be opened, so if opening fails the
+                # move MUST stop short instead of ending up inside a
+                # portcullis or a barred door.
+                if not is_jump and not self._enter_cell_allowed(
+                        battle, entity, nx, ny):
+                    break
 
                 # PHB p.290: Frightened creatures can't move closer to fear source
                 if fear_source:
@@ -1471,6 +1516,9 @@ class TacticalAI:
                     cost = 5.0 * battle.get_terrain_movement_cost(nx, ny, entity)
                 if entity.movement_left < cost:
                     break
+                if not is_jump and not self._enter_cell_allowed(
+                        battle, entity, nx, ny):
+                    break
                 if is_jump:
                     battle.move_entity_with_elevation(entity, nx, ny, is_jumping=True)
                     jumped = True
@@ -1519,10 +1567,10 @@ class TacticalAI:
                     chosen = (nx2, ny2)
 
             if chosen:
-                # Auto-open doors when fleeing
-                t_at = battle.get_terrain_at(int(chosen[0]), int(chosen[1]))
-                if t_at and t_at.is_door and not t_at.door_open and not t_at.is_locked:
-                    battle.toggle_door_at(int(chosen[0]), int(chosen[1]))
+                # Auto-open doors when fleeing — and stop rather than run
+                # into a barred one.
+                if not self._enter_cell_allowed(battle, entity, *chosen):
+                    break
 
                 cost = 5.0 * battle.get_terrain_movement_cost(chosen[0], chosen[1], entity)
                 if entity.movement_left >= cost:
@@ -2130,7 +2178,13 @@ class TacticalAI:
                 if not entity.can_use_feature(action.name):
                     continue
 
-            result = self._best_aoe_cluster(entity, enemies, allies, battle, action.aoe_radius, shape=action.aoe_shape, damage_type=action.damage_type)
+            # range == 0 means the burst erupts from the creature itself
+            # (Wing Attack, Fire Aura, Disrupt Life) rather than being
+            # aimed at a point.
+            result = self._best_aoe_cluster(
+                entity, enemies, allies, battle, action.aoe_radius,
+                shape=action.aoe_shape, damage_type=action.damage_type,
+                self_centred=(action.range == 0))
             if not result:
                 continue
             clusters, (cx, cy) = result
@@ -2195,7 +2249,8 @@ class TacticalAI:
         """
         result = self._best_aoe_cluster(
             entity, enemies, allies, battle, action.aoe_radius,
-            shape=action.aoe_shape, damage_type=action.damage_type)
+            shape=action.aoe_shape, damage_type=action.damage_type,
+            self_centred=(action.range == 0))
         if not result:
             return None
         clusters, (cx, cy) = result
@@ -4409,10 +4464,12 @@ class TacticalAI:
             # --- AoE legendary actions (Wing Attack, Frightful Presence) ---
             if leg_action.aoe_radius > 0:
                 allies = battle.get_allies_of(entity)
-                result = self._best_aoe_cluster(entity, enemies, allies, battle,
-                                                   leg_action.aoe_radius,
-                                                   shape=leg_action.aoe_shape or "sphere",
-                                                   damage_type=leg_action.damage_type)
+                result = self._best_aoe_cluster(
+                    entity, enemies, allies, battle,
+                    leg_action.aoe_radius,
+                    shape=leg_action.aoe_shape or "sphere",
+                    damage_type=leg_action.damage_type,
+                    self_centred=(leg_action.range == 0))
                 if result:
                     clusters, (cx, cy) = result
                     if clusters:
@@ -5011,10 +5068,20 @@ class TacticalAI:
         return best_spot
 
     def _best_aoe_cluster(self, entity, enemies, allies, battle, radius_ft,
-                          shape="sphere", avoid_allies=True, damage_type=None):
+                          shape="sphere", avoid_allies=True, damage_type=None,
+                          self_centred=False):
         """Returns the list of enemies within aoe_radius of the best center point.
         If avoid_allies is True, penalizes clusters that would hit allies.
-        Returns (best_cluster, (aim_x, aim_y)) or None."""
+        Returns (best_cluster, (aim_x, aim_y)) or None.
+
+        PHB p.204: "a creature is unaffected if there is total cover
+        between it and the point of origin". Every candidate target is
+        therefore filtered on line of sight from the point of origin —
+        the caster for a cone/line, the burst centre for a sphere/cube.
+        Without this a dragon happily breathes fire through a stone wall.
+        """
+        from engine.terrain import check_los_blocked
+
         alive = [e for e in enemies if e.hp > 0]
         if not alive:
             return None
@@ -5028,6 +5095,23 @@ class TacticalAI:
             return e.grid_x + s/2.0, e.grid_y + s/2.0
 
         ecx, ecy = get_center(entity)
+
+        def _reachable(ox, oy, target, oz=5.0):
+            """Is there a clear path from the point of origin to target?
+
+            For a cone/line the origin is the caster's OWN grid square,
+            not its geometric centre, so this agrees exactly with
+            ``BattleSystem.has_line_of_sight``. A Huge creature's centre
+            sits in a different cell, and the two checks disagreeing let
+            a dragon breathe past a wall its own LOS said it could not
+            see through.
+            """
+            if not getattr(battle, "terrain", None):
+                return True
+            return not check_los_blocked(
+                battle.terrain, int(ox), int(oy),
+                int(target.grid_x), int(target.grid_y),
+                oz, float(target.elevation) + 5.0)
 
         # CONE / LINE LOGIC (Origin = Entity)
         if shape in ("cone", "line"):
@@ -5067,7 +5151,12 @@ class TacticalAI:
                     # Check distance from attacker center
                     dist = math.hypot(tcx - ecx, tcy - ecy)
                     if dist * 5 > radius_ft: continue
-                        
+
+                    # Total cover from the point of origin = unaffected.
+                    if not _reachable(entity.grid_x, entity.grid_y, e,
+                                      float(entity.elevation) + 5.0):
+                        continue
+
                     # Check angle
                     edx = tcx - ecx
                     edy = tcy - ecy
@@ -5087,6 +5176,9 @@ class TacticalAI:
                         acx, acy = get_center(a)
                         dist = math.hypot(acx - ecx, acy - ecy)
                         if dist * 5 > radius_ft: continue
+                        if not _reachable(entity.grid_x, entity.grid_y, a,
+                                          float(entity.elevation) + 5.0):
+                            continue    # a wall shields the ally too
                         adx = acx - ecx
                         ady = acy - ecy
                         a_angle = math.atan2(ady, adx)
@@ -5102,20 +5194,25 @@ class TacticalAI:
                     # Aim point is just a point in the direction of the angle
                     best_aim_point = (ecx + math.cos(aim_angle)*5, ecy + math.sin(aim_angle)*5)
         else:
-            # SPHERE / CUBE (Origin = Point in space)
-            # Candidates: centers of enemies, and midpoints between enemies
-            candidates = []
-            for candidate in alive:
-                candidates.append(get_center(candidate))
+            if self_centred:
+                # SELF-CENTRED BURST (Wing Attack, Fire Aura, Disrupt
+                # Life, Whirlwind of Sand …): the effect erupts from the
+                # creature itself, so there is exactly ONE possible
+                # origin. Aiming these like a fireball let an Adult Red
+                # Dragon wing-buffet somebody 35 ft away.
+                candidates = [(ecx, ecy)]
+            else:
+                # SPHERE / CUBE (Origin = Point in space)
+                # Candidates: centers of enemies, and midpoints between enemies
+                candidates = []
+                for candidate in alive:
+                    candidates.append(get_center(candidate))
 
-            for i in range(len(alive)):
-                for j in range(i + 1, len(alive)):
-                    t1x, t1y = get_center(alive[i])
-                    t2x, t2y = get_center(alive[j])
-                    candidates.append(((t1x + t2x)/2, (t1y + t2y)/2))
-
-            # Import LOS check for center point visibility
-            from engine.terrain import check_los_blocked
+                for i in range(len(alive)):
+                    for j in range(i + 1, len(alive)):
+                        t1x, t1y = get_center(alive[i])
+                        t2x, t2y = get_center(alive[j])
+                        candidates.append(((t1x + t2x)/2, (t1y + t2y)/2))
 
             for (ccx, ccy) in candidates:
                 # Caster must have LOS to AoE center point
@@ -5128,20 +5225,29 @@ class TacticalAI:
                         continue
 
                     tcx, tcy = get_center(e)
-                    if math.hypot(ccx - tcx, ccy - tcy) * 5 <= radius_ft:
-                        cluster.append(e)
+                    if math.hypot(ccx - tcx, ccy - tcy) * 5 > radius_ft:
+                        continue
+                    # Total cover from the burst centre = unaffected.
+                    if not _reachable(ccx, ccy, e):
+                        continue
+                    cluster.append(e)
 
                 score = len(cluster)
                 if avoid_allies and allies:
                     for a in allies:
                         if a.hp <= 0: continue
                         acx, acy = get_center(a)
-                        if math.hypot(ccx - acx, ccy - acy) * 5 <= radius_ft:
-                            score -= 3
+                        if math.hypot(ccx - acx, ccy - acy) * 5 > radius_ft:
+                            continue
+                        if not _reachable(ccx, ccy, a):
+                            continue    # a wall shields the ally too
+                        score -= 3
                 # Phase 10d: also penalise self-hit. Sculpt Spells
                 # (Evoker) lets the caster carve a hole — skip the
-                # penalty there.
-                if not entity.has_feature("sculpt_spells"):
+                # penalty there. A self-centred burst never harms its own
+                # source, so it is exempt too, otherwise Wing Attack
+                # would always score itself down by 5.
+                if not self_centred and not entity.has_feature("sculpt_spells"):
                     if math.hypot(ccx - ecx, ccy - ecy) * 5 <= radius_ft:
                         score -= 5
 
@@ -5178,6 +5284,9 @@ class TacticalAI:
                 if shape in ("cone", "line"):
                     if math.hypot(acx - ecx, acy - ecy) * 5 > radius_ft:
                         continue
+                    if not _reachable(entity.grid_x, entity.grid_y, a,
+                                      float(entity.elevation) + 5.0):
+                        continue
                     diff = math.atan2(acy - ecy, acx - ecx) - ff_aim
                     while diff > math.pi:
                         diff -= 2 * math.pi
@@ -5186,7 +5295,9 @@ class TacticalAI:
                     if abs(diff) <= ff_half:
                         best_cluster.append(a)
                 else:
-                    if math.hypot(ax - acx, ay - acy) * 5 <= radius_ft:
+                    if math.hypot(ax - acx, ay - acy) * 5 > radius_ft:
+                        continue
+                    if _reachable(ax, ay, a):
                         best_cluster.append(a)
 
         return best_cluster, best_aim_point

@@ -370,6 +370,17 @@ class BattleRendererMixin:
             fx.draw(screen, self._grid_to_screen, self.battle.grid_size)
         for ft in self.floating_texts:
             ft.draw(screen, self._grid_to_screen, self.battle.grid_size)
+
+        # Edge lighting over the map (but under the UI chrome) so the
+        # viewport reads as a lit space and the eye lands in the middle.
+        try:
+            from states import battle_floor
+            battle_floor.draw_vignette(
+                screen,
+                pygame.Rect(0, TOP_BAR_H, GRID_W, SCREEN_HEIGHT - TOP_BAR_H))
+        except Exception:
+            pass
+
         self._draw_grid_buttons(screen, mp)
         
         if curr:
@@ -609,6 +620,21 @@ class BattleRendererMixin:
         grid_bg = pygame.Rect(0, TOP_BAR_H, GRID_W, SCREEN_HEIGHT - TOP_BAR_H)
         screen.fill(COLORS["bg_dark"], grid_bg)
 
+        # Procedural floor texture (flagstone / grass / sand / …) so each
+        # map reads as its own place instead of the same flat dark grey.
+        # Skipped when the DM has supplied a painted background image —
+        # that art wins.
+        if not getattr(self.battle, "background_image_path", ""):
+            try:
+                from states import battle_floor
+                battle_floor.draw_floor(
+                    screen, grid_bg,
+                    getattr(self.battle, "floor_style",
+                            battle_floor.DEFAULT_STYLE),
+                    gsz, self.camera_x, self.camera_y)
+            except Exception:
+                pass
+
         # Painted background image (JPG/PNG) — beneath grid lines & terrain
         self._draw_battle_background(screen, grid_bg)
 
@@ -720,7 +746,11 @@ class BattleRendererMixin:
                     s.fill((r, g, b, 200))
 
             screen.blit(s, (rx, ry))
-            # Border color: brighter for elevated, darker for lowered
+            # Border colour carries information, so the cases that MEAN
+            # something keep a bold 2px outline; a plain decorative tile
+            # gets a soft 1px edge instead. A hard bright rectangle on
+            # every square is what made maps read as a spreadsheet.
+            border_w = 2
             if t.is_spell_terrain:
                 # Pulsing border for spell terrain
                 pulse = int(20 * math.sin(ticks * 0.004 + hash(t.spell_name) * 0.1))
@@ -729,9 +759,12 @@ class BattleRendererMixin:
                 border_color = (200, 200, 255)  # blue-ish for elevated
             elif t.elevation < 0:
                 border_color = (100, 50, 50)    # dark red for pits/chasms
+            elif t.is_hazard or t.is_door:
+                border_color = tuple(min(255, c + 55) for c in t.color)
             else:
-                border_color = tuple(min(255, c+40) for c in t.color)
-            pygame.draw.rect(screen, border_color, (rx, ry, rw, rh), 2)
+                border_color = tuple(min(255, c + 22) for c in t.color)
+                border_w = 1
+            pygame.draw.rect(screen, border_color, (rx, ry, rw, rh), border_w)
             # Label (top-left)
             lbl_text = t.label[:8]
             lbl = fonts.tiny.render(lbl_text, True, (255, 255, 255))

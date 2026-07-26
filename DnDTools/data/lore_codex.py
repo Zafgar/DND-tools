@@ -357,6 +357,74 @@ CODEX: List[LoreEntry] = [
         npc_ids=["npc_blitz"],
         location_ids=["loc_fort_whitestone", "loc_aequitas"]),
 
+    LoreEntry(
+        key="pinwud_vampyyriongelma",
+        title="Pinwudin vampyyriongelma — Vigil sisältä",
+        category="uhat", spoiler=True,
+        summary="Dimerius on kääntänyt Death's Vigilin oman papiston "
+                "Pinwudin temppelissä. He esiintyvät yhä virassaan, koska "
+                "paljastuminen tarkoittaa järjestön omaa roviota.",
+        body="Death's Vigil polttaa epäkuolleet ja nullifioi kirotun maan. "
+             "Nyt tartunta on heidän omassa temppelissään — ja se on "
+             "koko kohtauksen ydin.\n\n"
+             "KUKA KÄÄNTYI JA MISSÄ JÄRJESTYKSESSÄ:\n"
+             "  1. VERIKUORO (CR 4) — kuoro laulaa iltamessussa eikä "
+             "kukaan ihmettele että he eivät enää tule aamuun. Sisar Neva "
+             "on nuorin ja pelokkain; hänen kautta pelaajat voivat saada "
+             "totuuden ilman taistelua.\n"
+             "  2. YÖVARTIO — Bracca, Custos Nocturnus (CR 6). Käännettiin "
+             "jotta kukaan ei ilmoittaisi. Pinwudista on kadonnut yhdeksän "
+             "puunhakkaajaa, kaikki hänen vuorollaan.\n"
+             "  3. LÄÄKÄRI — Livia Corvina, Medicus Sanguinis (CR 5). "
+             "Kääntynyt lääkäri päättää kuka \"ei selvinnyt yöstä\".\n"
+             "  4. KIRJASTO — Magister Vhaltor (CR 11) käänsi ITSENSÄ "
+             "tarkoituksella tutkimuksen vuoksi ja kirjasi jokaisen "
+             "tunnin.\n"
+             "  5. RIPPI-ISÄ — Confessor Ianus (CR 10) esiintyy yhä "
+             "elävänä ja on siksi vaarallisin.\n"
+             "  6. ESIMIES — Praefectus Ostorius Vane (CR 13) kääntyi "
+             "ensimmäisenä ja vapaaehtoisesti.\n"
+             "  7. PYHÄINJÄÄNNÖS — Sanctum Abominatio (CR 16) nousi kun "
+             "Ostorius avasi arkun.\n\n"
+             "MITEN PELAAJAT VOIVAT HUOMATA SEN:\n"
+             "  • Pappi joka ei enää osaa loitsia valoa. Sacred Flame ja "
+             "kaikki radiant-loitsut ovat kadonneet kääntyneiden listalta "
+             "kokonaan — turmeltunut jumaluus toimii väärinpäin: "
+             "Cure Wounds parantaa vain epäkuolleita ja Channel Divinity "
+             "avaa haudan sen sijaan että sulkisi sen.\n"
+             "  • Ikkunat peitetty \"surunaikana\", uudet kellarikäytävät, "
+             "aamumessu siirretty iltaan.\n"
+             "  • Yhdeksän kadonnutta puunhakkaajaa.\n"
+             "  • Kukaan kylässä ei puhu — Ianuksen Ripin sinetti (DC 17 "
+             "WIS) charmaa jokaisen todistajan.\n\n"
+             "MITEN SE RATKAISTAAN:\n"
+             "  • Ostorius pakenee 0 HP:ssä ALTTARIN ALLE muurattuun "
+             "arkkuun. Pelaajien on murrettava Vigilin oma alttari — jos "
+             "he tekevät sen, Isäntä-aura katoaa ja koko infestaatio "
+             "hajoaa.\n"
+             "  • Sanctum Abominatio EI ole vampyyri: auringonvalo, "
+             "kynnykset ja vaarnat eivät tehoa. Vain Vigilin oma "
+             "pyhitetty ase (Requiem-terä/-suurmiekka/-sauva) tekee sille "
+             "tuplavahinkoa. Pelaajien on otettava kaatuneiden pappien "
+             "aseet käyttöön.\n\n"
+             "MIKSI TÄMÄ ON KÄÄNNEKOHTA: Ostorius kantaa DIMERIUKSEN "
+             "SINETTIKIRJETTÄ — suoraa todistetta siitä että Ravenstonen "
+             "vampyyrilordi on Vigilin sisällä. Jos pelaajat saavat sen "
+             "Aurelia Valtarille tai Gaius Maradille, järjestön koko "
+             "asema muuttuu. Marduk on Pinwudin päämajassa.",
+        keywords=["pinwud", "pinvud", "vigil", "death's vigil", "temppeli",
+                  "vampyyri", "vampyyrit", "vampyyriongelma", "ostorius",
+                  "ianus", "vhaltor", "livia", "bracca", "neva",
+                  "verikuoro", "sanctum abominatio", "pyhäinjäännös",
+                  "requiem", "dimerius", "infestaatio", "papit",
+                  "sinettikirje", "alttari"],
+        see_also=["dimerius_tavoite", "tarquvas", "cazna_icharyd"],
+        npc_ids=["npc_ostorius", "npc_ianus", "npc_vhaltor", "npc_livia",
+                 "npc_bracca", "npc_neva", "npc_sanctum_abominatio",
+                 "npc_dimerius", "npc_gaius_marad", "npc_aurelia_valtar",
+                 "npc_marduk"],
+        location_ids=["loc_pinwud", "loc_ravenstone"]),
+
     # ================================================================= #
     # HAHMOT — kampanjan kaksi tärkeintä yksilöä
     # ================================================================= #

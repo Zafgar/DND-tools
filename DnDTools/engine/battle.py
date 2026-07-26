@@ -42,6 +42,12 @@ class BattleSystem:
         self.background_offset_x: int = 0           # world px offset
         self.background_offset_y: int = 0           # world px offset
 
+        # Procedural floor style painted under the grid when there is no
+        # background image. Premade maps set this so a dungeon reads as
+        # flagstone and a forest reads as grass instead of every map
+        # sharing the same flat dark fill. See states/battle_floor.py.
+        self.floor_style: str = "stone"
+
         # Global ceiling (feet). 0 = outdoor (no ceiling); a positive
         # value caps how high flying creatures may go. Used to model
         # indoor encounters (10ft corridor, 15ft cave, etc.).

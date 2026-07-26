@@ -934,6 +934,174 @@ NPCS: List[dict] = [
                "vain loukkuun (Forcecage/Banishment).",
          tags=["faction_leader", "mage", "senatorum", "hidden_threat"]),
 
+    # ===== PINWUDIN VAMPYYRIONGELMA =====
+    # Dimerius on kääntänyt Vigilin oman papiston Pinwudin temppelissä.
+    # Nämä esiintyvät yhä virassaan; paljastuminen tarkoittaa järjestön
+    # omaa roviota, joten he peittelevät sitä huolellisesti.
+    dict(id="npc_ostorius", name="Praefectus Ostorius Vane", race="Human",
+         age="", occupation="Praefectus Purificatorum (vampyyri)",
+         title="Pinwudin temppelin esimies",
+         faction="Death's Vigil", alignment="Lawful Evil",
+         loc="loc_pinwud", stat="monster:Praefectus Sanguinis Ostorius",
+         wealth="comfortable",
+         appearance="Kulta-mustassa virkahaarniskassa; kalpea, mutta "
+                     "Vigilin papit ovat aina kalpeita. Virkasauvan "
+                     "aurinko-pääkallo on kääntynyt ympäri niin että "
+                     "pääkallo on ylöspäin — kukaan ei ole huomannut.",
+         personality="Kunnianhimoinen, loukkaantunut, järjestelmällinen. "
+                     "Uskoo yhä palvelevansa järjestöä — hänen mielestään "
+                     "Vigil on aina ollut väärässä siitä, kummalla "
+                     "puolella kuolemaa kannattaa seistä.",
+         notes="INFESTAATION JOHTAJA. Ohitettu ylennyksissä kolmesti; "
+               "Dimerius ei tarjonnut hänelle valtaa vaan AIKAA todistaa "
+               "olevansa parempi kuin Aurelia Valtar. Kääntyi "
+               "vapaaehtoisesti ja käänsi sitten temppelinsä ylhäältä "
+               "alas: kuoro ensin, sitten yövartio, sitten lääkäri. "
+               "STATIT: CR 13 — AC 19, HP 204, DC 18, Regeneration 20, "
+               "Legendary Resistance 3, 3 legendaarista toimintoa + "
+               "lair-toiminnot temppelissä. Turmeltunut Channel Divinity "
+               "'Hauta avautuu' = TUPLAVAHINKO merkittyyn kohteeseen. "
+               "Misty Escape: 0 HP:ssä pakenee ALTTARIN ALLE muurattuun "
+               "arkkuun — pelaajien on murrettava Vigilin oma alttari. "
+               "Kantaa DIMERIUKSEN SINETTIKIRJETTÄ: suora todiste "
+               "Ravenstonen vampyyrilordin soluttautumisesta. Jos "
+               "Ostorius tuhotaan lopullisesti, hänen tekemänsä "
+               "vampyyrit menettävät Isäntä-auran ja pakenevat.",
+         tags=["antagonist", "undead", "boss", "clergy", "secret"]),
+    dict(id="npc_ianus", name="Confessor Ianus", race="Human", age="",
+         occupation="Rippi-isä (vampyyri)", title="Pinwudin confessor",
+         faction="Death's Vigil", alignment="Neutral Evil",
+         loc="loc_pinwud", stat="monster:Confessor Ianus",
+         wealth="comfortable",
+         appearance="Puhdas kulta-musta kaapu, tahrattomat hihansuut, "
+                     "lämmin kädenpuristus. Näyttää täysin elävältä — "
+                     "hän syö, hengittää näkyvästi ja käy päivämessussa "
+                     "verhotussa kirkossa.",
+         personality="Ystävällinen, avulias, uskottava. Kertoo tosia "
+                     "asioita ja ohjaa niillä väärään suuntaan.",
+         notes="VAARALLISIN, koska hän esiintyy yhä elävänä. Pyysi "
+               "kääntymistä itse kuultuaan tarpeeksi monta kuolemanpelkoa "
+               "ripissä. STATIT: CR 10 — AC 16, HP 127, DC 17, 2 "
+               "legendaarista toimintoa, Misty Escape (EI kuole "
+               "ensimmäisessä taistelussa). 'Elävän naamio': hänen "
+               "tunnistaminen on DC 25, eikä Detect Evil and Good tai "
+               "See Invisibility paljasta häntä — vain peili, kynnys tai "
+               "auringonvalo. 'Ripin sinetti' (DC 17 WIS) charmaa kohteen "
+               "tunniksi: charmattu ei kerro kenellekään mitä temppelissä "
+               "näki — TÄMÄ on syy siihen ettei kukaan Pinwudissa ole "
+               "puhunut. Kantaa rippikirjaa jossa on koko kylän "
+               "salaisuudet. PELINJOHTAJALLE: tarkoitettu sosiaaliseksi "
+               "kohtaamiseksi ensin, taisteluksi vasta myöhemmin.",
+         tags=["antagonist", "undead", "clergy", "social", "secret"]),
+    dict(id="npc_vhaltor", name="Magister Vhaltor", race="Human", age="",
+         occupation="Kirjaston apulainen (vampyyri)",
+         title="Epäpuhtaan kirjaston hoitaja",
+         faction="Death's Vigil", alignment="Neutral Evil",
+         loc="loc_pinwud", stat="monster:Magister Sanguinis Vhaltor",
+         wealth="modest",
+         appearance="Harmaa kaapu, mustepeitteiset sormet, kirja aina "
+                     "kädessä. Ei nosta katsettaan.",
+         personality="Kylmä tutkija, täsmälleen kuin oppi-isänsä "
+                     "Thalgrum. Ei vihaa ketään — kirjaa vain.",
+         notes="Thalgrumin apulainen, vastasi takavarikoidusta "
+               "'epäpuhtaasta kirjastosta'. Käänsi ITSENSÄ "
+               "tarkoituksella: halusi tietää miltä kuolemattomuus "
+               "tuntuu sisältä ja kirjasi jokaisen tunnin. STATIT: CR 11 "
+               "— AC 17, HP 144, INT 20, DC 17, Misty Escape. "
+               "'Epäpuhdas kirjasto' 3/päivä: 5. tason nekromantialoitsu "
+               "ILMAN loitsupaikkaa suoraan artefaktista. 'Epäpuhtaan "
+               "kirjaston avaus' (recharge 5-6) laskee kohteen max HP:tä. "
+               "Vhaltorin muistikirja on pelaajien paras vihje siitä "
+               "kuka kääntyi ensin ja milloin. Thalgrum ei ole "
+               "huomannut — tai ei välitä.",
+         tags=["antagonist", "undead", "mage", "secret"]),
+    dict(id="npc_livia", name="Livia Corvina", race="Human", age="",
+         occupation="Temppelin lääkäri (vampyyri)",
+         title="Medicus Animae", faction="Death's Vigil",
+         alignment="Lawful Evil", loc="loc_pinwud",
+         stat="monster:Medicus Sanguinis", wealth="modest",
+         appearance="Nahkaesiliina, hoitolaukku, huolellisesti pestyt "
+                     "kädet. Hymyilee aidosti.",
+         personality="Ystävällinen — ja se on pahin osa. Hoitaa oikeasti "
+                     "eläviä, juuri sen verran ettei kukaan epäile.",
+         notes="Hoiti kuolevia ja lohdutti heitä viimeisillä hetkillä. "
+               "Dimerius ei tarvinnut häntä sotilaana vaan "
+               "portinvartijana: kääntynyt lääkäri päättää kuka 'ei "
+               "selvinnyt yöstä'. STATIT: CR 5 — AC 15, HP 68, WIS 18, "
+               "DC 15. Turmeltunut jumaluus: Cure Wounds ja Healing Word "
+               "parantavat VAIN epäkuolleita, elävään ne tekevät saman "
+               "verran necrotic-vahinkoa; Revivify nostaa kohteen "
+               "vampyyrina. 'Armollinen uni' (DC 15 WIS) — tajuton kohde "
+               "epäonnistuu automaattisesti. Potilaskirjassa on 14 nimeä "
+               "yliviivattuna. Insight häntä vastaan on DC 20 eikä häntä "
+               "vastaan puhuvia uskota.",
+         tags=["antagonist", "undead", "clergy", "secret"]),
+    dict(id="npc_bracca", name="Bracca", race="Half-Orc", age="",
+         occupation="Yövartija (vampyyri)",
+         title="Custos Nocturnus", faction="Death's Vigil",
+         alignment="Lawful Evil", loc="loc_pinwud",
+         stat="monster:Custos Nocturnus", wealth="poor",
+         appearance="Vigilin kolhuinen ketjupaita ja kilpi, jonka "
+                     "aurinkoreliefin päälle on maalattu tervalla risti. "
+                     "Pyhä varsijousi ladattuna vaarnanuolilla.",
+         personality="Hiljainen, kurinalainen, tekee saman vuoron samalla "
+                     "reitillä kuin ennenkin.",
+         notes="Yövartio käännettiin ENSIN, jotta kukaan ei ilmoittaisi "
+               "Dimeriuksesta. STATIT: CR 6 — AC 17, HP 90, DEX 18, "
+               "Stealth +10, Sneak Attack 3d6, Regeneration 15. "
+               "Vaarnanuoli kriittisellä NAULAA elävän kohteen "
+               "paikoilleen (Restrained, DC 15 STR). Ei koskaan joudu "
+               "yllätetyksi temppelissä. Vihellys 1/taistelu kutsuu 2 "
+               "Verikuoron akolyyttiä. VIHJE PELAAJILLE: Pinwudista on "
+               "kadonnut yhdeksän puunhakkaajaa, ja kaikki hänen "
+               "vartiovuorollaan.",
+         tags=["antagonist", "undead", "guardian", "secret"]),
+    dict(id="npc_neva", name="Sisar Neva", race="Halfling", age="19",
+         occupation="Kuoroakolyytti (vampyyri)",
+         title="Verikuoro", faction="Death's Vigil",
+         alignment="Neutral Evil", loc="loc_pinwud",
+         stat="monster:Verikuoron akolyytti", wealth="poor",
+         appearance="Kulta-musta kuorokaapu, hihansuut tummuneet "
+                     "kuivuneesta verestä. Nuori, laiha, silmät liian "
+                     "suuret.",
+         personality="Yhä peloissaan. Tottelee Ostoriusta koska ei osaa "
+                     "muuta. Voidaan mahdollisesti pelastaa tai käännyttää "
+                     "todistajaksi.",
+         notes="Kuoro laulaa iltamessussa eikä kukaan ihmettele että he "
+               "eivät enää tule aamuun — siksi Dimerius käänsi heidät "
+               "ensimmäisinä. STATIT: CR 4 — AC 14, HP 52, Pack Tactics, "
+               "Regeneration 10, Spider Climb. Kuolinvirsi: DC 12 WIS, "
+               "mutta JOS kaksi tai useampi laulaa samalla kierroksella "
+               "DC on 15 ja pelko kestää minuutin. Esiintyvät aina "
+               "3-6 kappaleen ryhmissä ja pakenevat kun kaksi kaatuu. "
+               "PELINJOHTAJALLE: Neva on se jonka kautta pelaajat voivat "
+               "saada totuuden ilman taistelua.",
+         tags=["antagonist", "undead", "clergy", "secret", "sympathetic"]),
+    dict(id="npc_sanctum_abominatio", name="Sanctum Abominatio",
+         race="Pyhäinjäännös (epäkuollut)", age="400+",
+         occupation="Temppelin pyhäinjäännös noussut",
+         title="Vigilin perustajien yhteenkasvanut ruumis",
+         faction="", alignment="Neutral Evil", loc="loc_pinwud",
+         stat="monster:Sanctum Abominatio", wealth="squalid",
+         appearance="Huge-kokoinen kymmenien pyhien luiden yhteenkasvanut "
+                     "runko; kultapunottu rukousnauha selkärangoista, "
+                     "reliikkikäsi jonka ulottuvuus on 15 ft. Messuaa yhä "
+                     "oikeat rukoukset väärään suuntaan.",
+         personality="Ei älyä eikä puhetta — vain messu.",
+         notes="Death's Vigil on kerännyt neljänsadan vuoden ajan omien "
+               "pyhiensä luut Pinwudin temppelin alle. Ostorius avasi "
+               "arkun todistaakseen pointtinsa: jos kuolema on pyhä, "
+               "järjestön omat pyhät eivät nouse. NE NOUSIVAT. Tämä on "
+               "teologinen katastrofi, ei vain hirviö. "
+               "STATIT: CR 16 — AC 18, HP 252, reach 20 ft, Legendary "
+               "Resistance 3, 3 legendaarista toimintoa. "
+               "HUOM: EI OLE VAMPYYRI — auringonvalo, kynnykset, juokseva "
+               "vesi ja vaarnat eivät tehoa. Ratkaisu on Vigilin oma "
+               "pyhitetty ase (Requiem-terä/-suurmiekka/-sauva): "
+               "TUPLAVAHINKO ja regeneraatio sammuu. Pelaajien on siis "
+               "otettava kaatuneiden vampyyripappien aseet käyttöön.",
+         tags=["antagonist", "undead", "boss", "secret"]),
+
     # ===== LA FAMIGLIA DELL'ORSO =====
     dict(id="npc_rahgo", name="Rahgo \"Karhu\"", race="Human", age="",
          occupation="Mafiapomo", title="Capo dei Capi",
@@ -2954,6 +3122,34 @@ NPC_LINKS: List[tuple] = [
     ("npc_jivin", "npc_gaur", "patron", "Raportoi syndikaatille."),
     ("npc_lidian", "npc_aksel", "ally",
      "Valmistaa vampyyrin vastalääkettä metsästäjälle."),
+    # Pinwudin vampyyriongelma — Dimeriuksen soluttautuminen Vigiliin
+    ("npc_dimerius", "npc_ostorius", "subordinate",
+     "Käänsi Ostoriuksen ja antoi hänelle temppelin. Sinettikirje: "
+     "\"Sinä pidät temppelin. Minä pidän kaupungin.\""),
+    ("npc_ostorius", "npc_dimerius", "subordinate",
+     "Isäntä Ravenstonesta. Ostorius uskoo yhä olevansa se joka johtaa."),
+    ("npc_ostorius", "npc_ianus", "subordinate",
+     "Confessor pitää kylän hiljaisena ripin sinetillä."),
+    ("npc_ostorius", "npc_vhaltor", "subordinate",
+     "Kirjaston apulainen — käänsi itsensä vapaaehtoisesti."),
+    ("npc_ostorius", "npc_livia", "subordinate",
+     "Temppelin lääkäri päättää kuka 'ei selvinnyt yöstä'."),
+    ("npc_ostorius", "npc_bracca", "subordinate",
+     "Yövartio käännettiin ensin, jottei kukaan ilmoittaisi."),
+    ("npc_ostorius", "npc_neva", "subordinate",
+     "Kuoro käännettiin ensimmäisenä; Neva on nuorin ja pelokkain."),
+    ("npc_ostorius", "npc_sanctum_abominatio", "ally",
+     "Ostorius avasi pyhäinjäännösarkun tarkoituksella todistaakseen "
+     "pointtinsa. Reliikki ei tottele häntä."),
+    ("npc_ostorius", "npc_aurelia_valtar", "rival",
+     "Ohitettu ylennyksissä kolmesti. Koko kääntyminen on kilpailu "
+     "Aurelian kanssa."),
+    ("npc_ostorius", "npc_gaius_marad", "enemy",
+     "Magnus Custos ei tiedä vielä mitään. Paljastuminen = rovio."),
+    ("npc_vhaltor", "npc_thalgrum", "subordinate",
+     "Oppi-isä, joka ei ole huomannut — tai ei välitä."),
+    ("npc_ianus", "npc_neva", "rival",
+     "Ianus pitää kuoroa riskinä: Neva voi puhua."),
     # Death's Vigil
     ("npc_gaius_marad", "npc_marduk", "patron", "Esimies; manipuloi Mardukia."),
     ("npc_marduk", "npc_gaius_marad", "subordinate", "Vigilin alainen."),
