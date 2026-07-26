@@ -435,6 +435,16 @@ class CampaignManagerState:
         # Notes tab buttons
         self.btn_new_note = Button(20, SCREEN_HEIGHT - 60, 160, 45, "+ Add Note",
                                     self._add_note, color=COLORS["warning"])
+        # The Notes tab is a flat list; the deep world lore lives in the
+        # searchable codex, so offer it right here too.
+        self.btn_notes_codex = Button(188, SCREEN_HEIGHT - 60, 150, 45,
+                                          "📖 Lore-Codex",
+                                          self._open_lore_codex,
+                                          color=COLORS["legendary"])
+        self.btn_notes_import_lore = Button(346, SCREEN_HEIGHT - 60, 190, 45,
+                                                "Codex → muistiinpanot",
+                                                self._mirror_codex_to_notes,
+                                                color=COLORS["spell"])
 
         # World tab buttons
         self.btn_add_location = Button(20, SCREEN_HEIGHT - 60, 170, 45, "+ Location",
@@ -532,6 +542,12 @@ class CampaignManagerState:
                                         "Suhdeverkosto",
                                         self._open_npc_graph,
                                         color=COLORS["spell"])
+        # Lore Codex — searchable world lore (cosmology, artefacts, threats)
+        self.btn_lore_codex = Button(430, SCREEN_HEIGHT - 60,
+                                         120, 45,
+                                         "Lore-Codex",
+                                         self._open_lore_codex,
+                                         color=COLORS["legendary"])
         # Phase 45 — always-available dice tray (toggle with D)
         from states.dice_tray_widget import DiceTrayWidget
         self._dice_tray = DiceTrayWidget()
@@ -577,6 +593,7 @@ class CampaignManagerState:
             (self.btn_world_npcs_view, 110, _browse),
             (self.btn_npc_search,      110, _browse),
             (self.btn_npc_graph,       130, _browse),
+            (self.btn_lore_codex,      120, COLORS["legendary"]),
             (self.btn_world_shops_view, 90, _browse),
             (self.btn_world_quests,     90, _browse),
             (self.btn_world_services,  100, _browse),
@@ -622,6 +639,9 @@ class CampaignManagerState:
         # Phase 42 — relationship graph viewer
         self._npc_graph_view = None
         self._npc_graph_open = False
+        # Lore Codex browser
+        self._lore_codex_modal = None
+        self._lore_codex_open = False
         # Phase 41 — shared hover card for the NPC list
         self._npc_hover_card = None
         # Status string set by _import_text_file so the user sees what
@@ -1502,6 +1522,63 @@ class CampaignManagerState:
         self._npc_search_modal.open()
         self._npc_search_open = True
 
+    def _open_lore_codex(self, entry_key: str = "", query: str = ""):
+        """Open the searchable Lore Codex.
+
+        ``entry_key`` jumps straight to one article — that is how the
+        "Miksi tärkeä" chips on NPC and location sheets get the DM from a
+        name to the world lore behind it in one click.
+        """
+        from states.lore_codex_modal import LoreCodexModal
+        if self._lore_codex_modal is None:
+            self._lore_codex_modal = LoreCodexModal(
+                self.world, self.campaign,
+                on_close=lambda: setattr(self, "_lore_codex_open", False),
+                on_open_npc=self._jump_to_npc_id,
+                on_open_location=self._jump_to_location_id,
+            )
+        self._lore_codex_modal.open(entry_key=entry_key or "", query=query)
+        self._lore_codex_open = True
+
+    def _jump_to_npc_id(self, npc_id: str):
+        """Open the NPC detail card for an id (codex → character)."""
+        npc = (self.world.npcs or {}).get(npc_id) if self.world else None
+        if npc is None:
+            return
+        # Step aside so the character sheet is the top-most panel; the
+        # codex is one button away again.
+        if self._lore_codex_modal is not None:
+            self._lore_codex_modal.is_open = False
+        self._lore_codex_open = False
+        self._open_npc_detail(npc)
+
+    def _jump_to_location_id(self, location_id: str):
+        """Jump the World tab to a location (codex → place)."""
+        if not self.world or location_id not in (self.world.locations or {}):
+            return
+        if self._lore_codex_modal is not None:
+            self._lore_codex_modal.is_open = False
+        self._lore_codex_open = False
+        self.active_tab = 4
+        self._show_locations_view()
+        self.selected_location_id = location_id
+
+    def _mirror_codex_to_notes(self):
+        """Copy codex articles into campaign notes (skipping ones already
+        mirrored) so the lore is searchable in the Notes tab too."""
+        from data import lore_codex as codex
+        existing = {(n.text or "")[:60] for n in self.campaign.notes}
+        added = 0
+        for note in codex.as_campaign_notes():
+            if note.text[:60] in existing:
+                continue
+            self.campaign.notes.append(note)
+            added += 1
+        self._import_status = (f"Codex: {added} artikkelia muistiinpanoihin."
+                               if added else
+                               "Codex on jo muistiinpanoissa.")
+        self._import_status_timer = 180
+
     def _open_npc_graph(self):
         """Phase 42: open the NPC relationship graph viewer."""
         from states.npc_relationship_graph import NpcRelationshipGraph
@@ -1523,9 +1600,17 @@ class CampaignManagerState:
             on_navigate_npc=self._jump_to_npc_via_detail,
             on_open_org=self._jump_to_organisation,
             on_open_stats=self._open_monster_lore,
+            on_open_codex=self._open_codex_from_sheet,
         )
         self._npc_detail_modal.open()
         self._npc_detail_open = True
+
+    def _open_codex_from_sheet(self, entry_key: str):
+        """A sheet's "Miksi tärkeä" chip → the codex article itself."""
+        if self._npc_detail_modal is not None:
+            self._npc_detail_modal.is_open = False
+        self._npc_detail_open = False
+        self._open_lore_codex(entry_key=entry_key)
 
     def _jump_to_npc_via_detail(self, npc_id: str):
         """Detail-modal callback: switch its target NPC to the one
@@ -1939,6 +2024,14 @@ class CampaignManagerState:
                 self._handle_modal_event(event)
                 continue
 
+            # Lore Codex is reachable from every tab, and its search field
+            # must swallow keystrokes before the global hotkeys (D = dice
+            # tray) see them.
+            if (getattr(self, "_lore_codex_open", False)
+                    and self._lore_codex_modal is not None):
+                if self._lore_codex_modal.handle_event(event):
+                    continue
+
             # Phase 45 — dice tray takes events first when open; the
             # D hotkey toggles it (when no text field is focused).
             if self._dice_tray.is_open:
@@ -2161,6 +2254,8 @@ class CampaignManagerState:
                 self.btn_new_area.handle_event(event)
             elif self.active_tab == 3:
                 self.btn_new_note.handle_event(event)
+                self.btn_notes_codex.handle_event(event)
+                self.btn_notes_import_lore.handle_event(event)
             elif self.active_tab == 4:
                 self.btn_add_location.handle_event(event)
                 self.btn_add_npc.handle_event(event)
@@ -2192,6 +2287,7 @@ class CampaignManagerState:
                 self.btn_npc_search.handle_event(event)
                 # Phase 42 — relationship graph
                 self.btn_npc_graph.handle_event(event)
+                self.btn_lore_codex.handle_event(event)
                 if (self._quick_quest_modal is not None
                         and self._quick_quest_modal.is_open):
                     if self._quick_quest_modal.handle_event(event):
@@ -3167,6 +3263,8 @@ class CampaignManagerState:
             self.btn_new_area.draw(screen, mp)
         elif self.active_tab == 3:
             self.btn_new_note.draw(screen, mp)
+            self.btn_notes_codex.draw(screen, mp)
+            self.btn_notes_import_lore.draw(screen, mp)
         elif self.active_tab == 4:
             # Highlight whichever view toggle is currently active so the
             # DM always sees where they are (and that "🗺 Paikat" returns
@@ -3201,6 +3299,7 @@ class CampaignManagerState:
             self.btn_quick_quest.draw(screen, mp)
             self.btn_npc_search.draw(screen, mp)
             self.btn_npc_graph.draw(screen, mp)
+            self.btn_lore_codex.draw(screen, mp)
             if (self._quick_npc_modal is not None
                     and self._quick_npc_modal.is_open):
                 self._quick_npc_modal.draw(screen)
@@ -3251,6 +3350,12 @@ class CampaignManagerState:
                                             COLORS.get("success",
                                                          (90, 200, 120)))
                 screen.blit(msg, (20, SCREEN_HEIGHT - 90))
+
+        # Lore Codex draws above the tab content but below blocking
+        # modals, and works from every tab.
+        if (getattr(self, "_lore_codex_open", False)
+                and self._lore_codex_modal is not None):
+            self._lore_codex_modal.draw(screen)
 
         # Modal overlay
         if self.modal:
@@ -4320,6 +4425,41 @@ class CampaignManagerState:
                 y = self._draw_location_tree_item(screen, mp, child, y, depth + 1, max_x)
         return y
 
+    def _draw_location_codex_links(self, screen, mp, start_x, y, loc):
+        """Clickable Lore-Codex chips for a location's articles."""
+        from data import lore_codex as codex
+        entries = codex.entries_for_location(loc.id)
+        if not entries:
+            return y
+        lbl = fonts.small_bold.render("Lore-Codex:", True,
+                                          COLORS["text_dim"])
+        screen.blit(lbl, (start_x, y))
+        cx = start_x + lbl.get_width() + 8
+        now_ms = pygame.time.get_ticks()
+        for e in entries:
+            label = e.title + (" ⚠" if e.spoiler else "")
+            cw = fonts.tiny.size(label)[0] + 14
+            if cx + cw > SCREEN_WIDTH - 240:
+                cx = start_x + 20
+                y += 22
+            chip = pygame.Rect(cx, y, cw, 20)
+            hov = chip.collidepoint(mp)
+            pygame.draw.rect(screen,
+                                 COLORS["hover"] if hov
+                                 else COLORS["panel"], chip, border_radius=8)
+            pygame.draw.rect(screen, COLORS["legendary"], chip, 1,
+                                 border_radius=8)
+            screen.blit(fonts.tiny.render(label, True,
+                                              COLORS["text_bright"]),
+                            (cx + 7, y + 3))
+            if (hov and pygame.mouse.get_pressed()[0]
+                    and now_ms - getattr(self, "_codex_chip_cooldown",
+                                             -9999) > 400):
+                self._codex_chip_cooldown = now_ms
+                self._open_lore_codex(entry_key=e.key)
+            cx += cw + 5
+        return y + 26
+
     def _draw_location_detail(self, screen, mp, start_x):
         loc = self.world.locations.get(self.selected_location_id)
         if not loc:
@@ -4486,6 +4626,10 @@ class CampaignManagerState:
                     self.selected_location_id = child.id
                 chx += cw + 5
             y += 26
+
+        # Lore-Codex links — "miksi tämä paikka on tärkeä". One click
+        # from a place to the world lore behind it.
+        y = self._draw_location_codex_links(screen, mp, start_x, y, loc)
 
         # Lore facts — the "mikä tämä paikka on" panel. Two-column
         # click-to-edit rows; empty fields show a ghost prompt.

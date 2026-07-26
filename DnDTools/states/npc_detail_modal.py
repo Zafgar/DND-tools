@@ -63,13 +63,17 @@ class NpcDetailModal:
                   on_open_org: Optional[
                       Callable[[str], None]] = None,
                   on_open_stats: Optional[
-                      Callable[[object], None]] = None):
+                      Callable[[object], None]] = None,
+                  on_open_codex: Optional[
+                      Callable[[str], None]] = None):
         self.world = world
         self.campaign = campaign
         self.npc = npc
         self.on_close = on_close
         self.on_navigate_npc = on_navigate_npc
         self.on_open_org = on_open_org
+        # Opens a Lore Codex article — "miksi tämä hahmo on tärkeä".
+        self.on_open_codex = on_open_codex
         # Opens the combat stat sheet (Monster Lore modal) for this NPC.
         self.on_open_stats = on_open_stats
         self.is_open = False
@@ -92,6 +96,7 @@ class NpcDetailModal:
         self._link_chips: List[Tuple[pygame.Rect, str]] = []
         self._link_remove_rects: List[Tuple[pygame.Rect, str]] = []
         self._org_chips: List[Tuple[pygame.Rect, str]] = []
+        self._codex_chips: List[Tuple[pygame.Rect, str]] = []
         self._inv_remove_rects: List[Tuple[pygame.Rect, str]] = []
         self._add_link_btn_rect = None
         # Phase 40 link-form widget rects (set when form is drawn)
@@ -289,6 +294,11 @@ class NpcDetailModal:
                     if self.on_open_org:
                         self.on_open_org(org_key)
                     return True
+            for rect, entry_key in self._codex_chips:
+                if rect.collidepoint(event.pos):
+                    if self.on_open_codex:
+                        self.on_open_codex(entry_key)
+                    return True
             for rect, item_name in self._inv_remove_rects:
                 if rect.collidepoint(event.pos):
                     npc_dir.remove_inventory_item(
@@ -354,6 +364,7 @@ class NpcDetailModal:
         self._link_chips = []
         self._link_remove_rects = []
         self._org_chips = []
+        self._codex_chips = []
         self._inv_remove_rects = []
         self._add_link_btn_rect = None
         if not self._link_form_open:
@@ -375,6 +386,7 @@ class NpcDetailModal:
         y = body_top + 8 - self.scroll
 
         y = self._draw_profile(screen, y)
+        y = self._draw_codex(screen, y)
         y = self._draw_inventory(screen, y)
         y = self._draw_organisations(screen, y)
         y = self._draw_links(screen, y)
@@ -808,6 +820,46 @@ class NpcDetailModal:
                       (self._lf_cancel.x + 18,
                        self._lf_cancel.y + 4))
         return y + 104
+
+    def _draw_codex(self, screen, y):
+        """"Miksi tämä hahmo on tärkeä" — Lore Codex -artikkelit joissa
+        tämä NPC esiintyy, klikattavina linkkeinä."""
+        try:
+            from data import lore_codex as codex
+        except Exception:
+            return y
+        entries = codex.entries_for_npc(getattr(self.npc, "id", "") or "")
+        if not entries:
+            return y
+        screen.blit(fonts.small_bold.render(
+            "Miksi tärkeä (Lore-Codex):", True,
+            COLORS.get("text_bright", (240, 240, 250))),
+            (self.x + 20, y))
+        y += 22
+        x = self.x + 30
+        max_right = self.x + self.WIDTH - 30
+        mp = pygame.mouse.get_pos()
+        for e in entries:
+            label = e.title + (" ⚠" if e.spoiler else "")
+            w = fonts.tiny.size(label)[0] + 18
+            if x + w > max_right:
+                x = self.x + 30
+                y += 26
+            chip = pygame.Rect(x, y, w, 22)
+            hot = chip.collidepoint(mp)
+            col = COLORS.get("legendary", (170, 110, 220))
+            pygame.draw.rect(screen,
+                              col if hot
+                              else COLORS.get("panel", (44, 44, 58)),
+                              chip, border_radius=11)
+            pygame.draw.rect(screen, col, chip, 1, border_radius=11)
+            screen.blit(fonts.tiny.render(
+                label, True, (20, 20, 30) if hot
+                else COLORS.get("text_main", (220, 220, 235))),
+                (chip.x + 9, chip.y + 4))
+            self._codex_chips.append((chip, e.key))
+            x += w + 5
+        return y + 32
 
     def _draw_quests(self, screen, y):
         try:
