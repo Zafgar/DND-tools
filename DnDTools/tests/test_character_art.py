@@ -72,9 +72,12 @@ class TestKindForEntity(unittest.TestCase):
         ent = _StubEntity(is_player=True, character_class="trickster")
         self.assertEqual(kind_for_entity(ent), "warrior")
 
-    def test_monster_default(self):
+    def test_monster_gets_a_creature_silhouette(self):
+        """Aiemmin jokainen hirviö oli sama sarvipäinen humanoidi."""
+        from states.creature_art import has_painter
         ent = _StubEntity(is_player=False)
-        self.assertEqual(kind_for_entity(ent), "monster")
+        kind = kind_for_entity(ent)
+        self.assertTrue(has_painter(kind), kind)
 
     def test_wild_shape_is_beast(self):
         ent = _StubEntity(is_player=True, is_wild_shaped=True,

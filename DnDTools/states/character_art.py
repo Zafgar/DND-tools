@@ -275,6 +275,19 @@ def draw_character(surf, w: int, h: int, *,
         _draw_quadruped(surf, cx, cy, w, h, color)
         return True
 
+    # Monster silhouettes live in states/creature_art.py: a beholder, a
+    # dragon and an ooze should not all render as this horned humanoid.
+    # The class kinds above stay here; anything the creature module owns
+    # is handed over.
+    try:
+        from states import creature_art
+        if creature_art.has_painter(kind):
+            return creature_art.draw_creature(
+                surf, w, h, kind=kind, color=color, state=state,
+                phase=phase)
+    except Exception:
+        pass
+
     # 1. Legs
     legs_y = cy + int(h * 0.18)
     _draw_legs(surf, cx, legs_y, w, h, _shade(color, 0.65),
@@ -333,4 +346,10 @@ def kind_for_entity(entity) -> str:
     if getattr(entity, "is_player", False):
         cls = (entity.stats.character_class or "").lower()
         return _CLASS_TO_KIND.get(cls, "warrior")
-    return "monster"
+    # Monsters get a silhouette chosen from their type and name, so the
+    # map shows what each token actually is.
+    try:
+        from states.creature_art import kind_for_stats
+        return kind_for_stats(entity.stats)
+    except Exception:
+        return "monster"
