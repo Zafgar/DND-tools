@@ -401,6 +401,12 @@ class TacticalAI:
         if not plan.steps:
             plan.skipped = True
             plan.skip_reason = "Cannot reach target"
+        else:
+            # Mark the action spent. Without this the auto-battle loop
+            # (which re-plans while ``not action_used``) kept giving the
+            # summon turn after turn forever, so a single Spiritual
+            # Weapon / Construct Spirit could solo a boss.
+            entity.action_used = True
 
         return plan
 
@@ -449,6 +455,7 @@ class TacticalAI:
                 applies_condition="Help (advantage)",
             )
             plan.steps.append(step)
+            entity.action_used = True
             return plan
 
         # No useful Help target — orbit owner. Move one cell toward
@@ -467,6 +474,7 @@ class TacticalAI:
             action_name="Dodge",
             applies_condition="Dodging",
         ))
+        entity.action_used = True
         return plan
 
     def _move_summon_to_target(self, entity, target, battle):

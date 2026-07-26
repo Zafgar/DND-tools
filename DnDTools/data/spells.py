@@ -397,6 +397,17 @@ _spells = {
                       description="Kohteen max HP laskee vahingon verran 1 tunniksi; "
                                   "ei voi pudottaa alle 1 HP:n."),
 
+    "Dominate Person": SpellInfo("Dominate Person", level=5,
+                                 action_type="action", range=60,
+                                 targets="single", save_ability="Wisdom",
+                                 applies_condition="Charmed",
+                                 concentration=True, duration="1 minute",
+                                 repeat_save=True,
+                                 description="Kohde tekee WIS-saven tai on "
+                                             "Charmed ja loitsija voi komentaa "
+                                             "sitä; kohde saa uuden saven aina "
+                                             "kun se ottaa vahinkoa."),
+
     # --- High-tier arcane control (Thalgrumin kit) -------------------
     "Forcecage": SpellInfo("Forcecage", level=7, action_type="action",
                            range=100, targets="single", concentration=False,

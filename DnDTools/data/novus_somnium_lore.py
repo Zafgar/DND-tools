@@ -1507,7 +1507,7 @@ NPCS: List[dict] = [
     dict(id="npc_jugorai", name="Jugorai Millwind", race="Human (Vampyyri)",
          age="", occupation="Paroni / vampyyriloitsija",
          title="Ravenstonen paroni", faction="", alignment="Lawful Evil",
-         loc="loc_ravenstone", stat="monster:Vampire Spellcaster",
+         loc="loc_ravenstone", stat="monster:Paroni Jugorai Millwind",
          wealth="wealthy",
          appearance="Kalpea, erakoitunut paroni — salainen vampyyriloitsija.",
          personality="Epätoivoinen, vallanhimoinen, hajoamassa.",
@@ -1522,19 +1522,90 @@ NPCS: List[dict] = [
     dict(id="npc_dimerius", name="Dimerius Blackfeet", race="Goblin (Vampyyri)",
          age="", occupation="Vampyyrilordi", title="Ravenstonen perustajaisä",
          faction="", alignment="Chaotic Evil", loc="loc_corvus_spelchrum",
-         stat="monster:Vampire Spellcaster", wealth="aristocratic",
+         stat="monster:Lordi Dimerius Blackfeet", wealth="aristocratic",
          appearance="Muinainen \"elinvoiman vampyyri\"; alun perin gobliini.",
          personality="Petollinen, kärsivällinen, kaikkinäkevä.",
          notes="Ravenstonen perustaja ja keisari Tarquvasin entinen oikea "
                "käsi. Teljetty Corvus Spelchrum -kryptan kynttiläkammioon; "
                "odottaa heräämistään ja manipuloi koko kaupunkia varjoista "
                "palatakseen valtaan. Muinaiset vampyyrit vartioivat häntä "
-               "Jugorailta.",
+               "Jugorailta. STATIT: CR 20 (buffattu lähteen CR 18:sta) — "
+               "AC 20, HP 297, Spider Climb, Life Drain (2d10 elinvoimaa, "
+               "paranee saman verran), Regeneration 20/vuoro (ei radiantissa "
+               "/auringossa/juoksevassa vedessä), Misty Escape (ei kuole "
+               "kentällä — pakenee sumuna leposijaansa), Shapechanger, "
+               "Legendary Resistance 3, 3 legendaarista toimintoa + "
+               "lair-toiminnot kryptassa. Kryptaa vartioivat Golbera ja "
+               "Xalars.",
          tags=["antagonist", "undead", "boss"]),
+    dict(id="npc_golbera", name="Golbera", race="Alghoul (epäkuollut)",
+         age="", occupation="Kryptan erikoisvartija",
+         title="Corvus Spelchrumin vartija", faction="Dimeriuksen hovi",
+         alignment="Neutral Evil", loc="loc_corvus_spelchrum",
+         stat="monster:Golbera", wealth="squalid",
+         appearance="Valtava, turvonnut epäkuollut lihaskasa; myrkky "
+                     "kuplii sen huokosista.",
+         personality="Ei älyä — vain vartiointikäsky. Ei koskaan poistu "
+                     "kryptasta.",
+         notes="Dimeriuksen hautaa vartioiva Huge-kokoinen epäkuollut, "
+               "250 HP. Ampuu Myrkkypallon 50 ft päähän (purskahtaa 15 ft "
+               "säteelle, DC 14 DEX/CON tai 6d8 poison). Reaktiona Leap "
+               "(30 ft hyppy kohteen päälle): DC 12 DEX tai Prone JA "
+               "menettää toiminnon jonka Golbera keskeytti.",
+         tags=["undead", "guardian", "crypt"]),
+    dict(id="npc_xalars", name="Xalars",
+         race="Undead Red Dragon Minotaur", age="",
+         occupation="Kryptan erikoisvartija",
+         title="Corvus Spelchrumin vartija", faction="Dimeriuksen hovi",
+         alignment="Chaotic Evil", loc="loc_corvus_spelchrum",
+         stat="monster:Xalars", wealth="squalid",
+         appearance="Kärventynyt minotauruksen luuranko lohikäärmeen "
+                     "sarvin; kirves palaa ikuisessa tulessa.",
+         personality="Raivoisa ja tuhoava; nauttii poltetusta lihasta.",
+         notes="Kryptan toinen erikoisvartija. Reaction Warp Axe: heittää "
+               "kirveen 40 ft päähän ja osuessaan SIIRTYY välittömästi "
+               "iskun mukana kohteen viereen. ENRAGE (recharge 5-6): "
+               "syttyy liekkeihin ja luo laavalammikoita — kaikki "
+               "lähitaistelijat ottavat AUTOMAATTISESTI 3d12 tulivahinkoa, "
+               "Xalars saa +30 ft liikettä ja kolme kirvesiskua. Lisäksi "
+               "2 pistettä legendaarisia toimintoja.",
+         tags=["undead", "guardian", "crypt"]),
+    dict(id="npc_beatrice_vampyyri", name="Beatrice Rask (vampyyri)",
+         race="Vampire", age="muinainen",
+         occupation="Polsenin neuvonantaja", title="",
+         faction="Polsenin hovi", alignment="Neutral Evil",
+         loc="loc_ravenstone", stat="monster:Beatrice Rask (vampyyri)",
+         wealth="wealthy",
+         appearance="Kadonnut leipurin tytär; liikkuu niin nopeasti että "
+                     "silmä ei ehdi seurata.",
+         personality="Viekas ja kärsivällinen manipuloija; nauttii "
+                     "mielten murtamisesta.",
+         notes="HUOM: ERI HENKILÖ kuin pelaajahahmo Beatrice! Kadonnut "
+               "leipurin tytär, nykyisin Polsenin neuvonantaja. Muinainen "
+               "vampyyri: erittäin nopea (60 ft, Blinding Speed) ja "
+               "kykenee manipuloimaan mieliä (Mind Twist DC 19 — kohde "
+               "hyökkää liittolaistaan).",
+         tags=["undead", "advisor", "vampire_court"]),
+    dict(id="npc_lidian", name="Lidian Stramroot", race="Mens", age="31",
+         occupation="Rohtokauppias", title="", faction="",
+         alignment="Neutral", loc="loc_ravenstone",
+         stat="monster:Lidian Stramroot", wealth="modest",
+         appearance="31-vuotias; mystiset kultaiset silmät, jotka näkevät "
+                     "naamioiden läpi.",
+         personality="Rauhallinen, salaperäinen ja hyväntahtoinen; "
+                     "vaihtaa tietoa mieluummin kuin tavaraa.",
+         notes="Mens-alkuperäisrotuinen rohtokauppias, joka kantaa "
+               "äitinsä voimakasta perimää. Osaa loihtia 'muuta: anna tai "
+               "ota tietoa' -kyvyn (At Will, WIS DC 22) KOLME kertaa "
+               "päivässä: antaa kohteelle totuuden jota se ei voi epäillä, "
+               "tai ottaa siltä muiston tunniksi. Kultaiset silmät = "
+               "Truesight 30 ft, paljastaa vampyyrit ja sumumuodon. "
+               "Mestariherbalisti: osaa valmistaa vampyyrin vastalääkettä.",
+         tags=["merchant", "healer", "seer"]),
     dict(id="npc_polsen", name="Polsen", race="Vampire", age="",
          occupation="Vampyyrilordi", title="", faction="Dimeriuksen hovi",
          alignment="Lawful Evil", loc="loc_ravenstone",
-         stat="monster:Vampire", wealth="wealthy",
+         stat="monster:Polsen", wealth="wealthy",
          appearance="Hallitseva vampyyrilordi.",
          personality="Kylmä strategi.",
          notes="Johtaa Ravenstonen vampyyriverkostoa; suojelee Dimeriusta "
@@ -1543,7 +1614,7 @@ NPCS: List[dict] = [
     dict(id="npc_vilan", name="Vilan Norgrad", race="Vampire", age="350+",
          occupation="Palvelija", title="", faction="Dimeriuksen hovi",
          alignment="Lawful Evil", loc="loc_ravenstone",
-         stat="monster:Vampire", wealth="comfortable",
+         stat="monster:Vilan Norgrad", wealth="comfortable",
          appearance="Yli 350-vuotias uskollinen vampyyri.",
          personality="Uskollinen, tarkkaavainen.",
          notes="Dimeriuksen uskollinen palvelija; vartioi tämän voimaa.",
@@ -1551,7 +1622,7 @@ NPCS: List[dict] = [
     dict(id="npc_herold", name="Herold Reggefoi", race="Vampire", age="800+",
          occupation="Palvelija", title="", faction="Dimeriuksen hovi",
          alignment="Lawful Evil", loc="loc_ravenstone",
-         stat="monster:Vampire", wealth="comfortable",
+         stat="monster:Herold Reggefoi", wealth="comfortable",
          appearance="Yli 800-vuotias muinainen vampyyri.",
          personality="Ikivanha, hidasliikkeinen, armoton.",
          notes="Dimeriuksen vanhin palvelija; osa hovia joka estää "
@@ -1560,7 +1631,7 @@ NPCS: List[dict] = [
     dict(id="npc_fior", name="Fior Rask", race="Human (Vampyyri)", age="",
          occupation="Majatalonpitäjän tytär", title="", faction="",
          alignment="Neutral Evil", loc="loc_ravenstone",
-         stat="monster:Vampire Spawn", wealth="poor",
+         stat="monster:Fior Rask", wealth="poor",
          appearance="Nuori, vastikään muutettu vampyyri.",
          personality="Peloissaan, nälkäinen.",
          notes="Jugorain luoma uusi vampyyri, tarkoitettu uhrattavaksi "
@@ -1569,7 +1640,7 @@ NPCS: List[dict] = [
     dict(id="npc_zemok", name="Zemok Retana", race="Human (Vampyyri)", age="",
          occupation="Kauppias", title="", faction="",
          alignment="Neutral Evil", loc="loc_ravenstone",
-         stat="monster:Vampire Spawn", wealth="modest",
+         stat="monster:Zemok Retana", wealth="modest",
          appearance="Entinen kauppias, nyt vampyyri.",
          personality="Katkera, ahne.",
          notes="Jugorain luoma uusi vampyyri, uhrattavaksi tarkoitettu.",
@@ -1577,7 +1648,7 @@ NPCS: List[dict] = [
     dict(id="npc_greg", name="Greg Silverhand", race="Human", age="",
          occupation="Parantolan johtaja", title="Asylum Purgon johtaja",
          faction="Tarmaas", alignment="Lawful Evil", loc="loc_asylum_purgo",
-         stat="monster:Noble", wealth="wealthy",
+         stat="monster:Greg Silverhand", wealth="wealthy",
          appearance="Sileä, hymyilevä tiedemies.",
          personality="Sadistinen, utelias, tunteeton.",
          notes="Asylum Purgon johtaja; vastuussa julmista ihmiskokeista, "
@@ -1588,7 +1659,7 @@ NPCS: List[dict] = [
     dict(id="npc_gaur", name="Gaur Rakek", race="Tabaxi", age="",
          occupation="Alamaailman pomo", title="Cora 0:n johtaja",
          faction="Cora 0", alignment="Neutral Evil", loc="loc_profundus",
-         stat="monster:Assassin", wealth="wealthy",
+         stat="monster:Gaur Rakek", wealth="wealthy",
          appearance="Juonitteleva, tarkkaavainen tabaxi.",
          personality="Kunnianhimoinen, laskelmoiva.",
          notes="Johtaa Profunduksen rikollisjärjestöä Cora 0. Valmistautuu "
@@ -1598,7 +1669,7 @@ NPCS: List[dict] = [
          tags=["criminal", "boss"]),
     dict(id="npc_jivin", name="Jivin Lukom", race="Gnome", age="",
          occupation="Kirjastonhoitaja", title="", faction="Cora 0",
-         alignment="Neutral", loc="loc_ravenstone", stat="monster:Spy",
+         alignment="Neutral", loc="loc_ravenstone", stat="monster:Jivin Lukom",
          wealth="modest",
          appearance="Huomaamaton gnomi-kirjastonhoitaja.",
          personality="Terävä-älyinen, salaileva.",
@@ -1608,7 +1679,7 @@ NPCS: List[dict] = [
     dict(id="npc_aksel", name="Aksel Wolfbane", race="Human", age="",
          occupation="Vampyyrinmetsästäjä", title="", faction="",
          alignment="Chaotic Good", loc="loc_profundus",
-         stat="monster:Assassin", wealth="modest",
+         stat="monster:Aksel Wolfbane", wealth="modest",
          appearance="Karaistunut, arpinen metsästäjä.",
          personality="Päättäväinen, katkera, kunniallinen.",
          notes="Vampyyrinmetsästäjä joka piileskelee Profunduksessa. "
@@ -1619,7 +1690,7 @@ NPCS: List[dict] = [
     dict(id="npc_davos", name="Davos Wolfbane", race="Human (Vampyyri)",
          age="", occupation="Vampyyriorja", title="", faction="",
          alignment="Neutral Evil", loc="loc_ravenstone",
-         stat="monster:Vampire Spawn", wealth="poor",
+         stat="monster:Davos Wolfbane", wealth="poor",
          appearance="Kalpea, tahdoton vampyyri.",
          personality="Orjuutettu, tuskainen.",
          notes="Akselin veli, joka on nyt Jugorain vampyyriorja — "
@@ -2780,6 +2851,42 @@ NPC_LINKS: List[tuple] = [
     ("npc_zaira", "npc_darius", "enemy", "Famiglian vaarallinen vihollinen."),
     ("npc_zaira", "npc_rahgo", "subordinate", "Famiglian Consigliere."),
     ("npc_nilf", "npc_darius", "enemy", "E.F.I. jahtaa Dariusta."),
+    # Ravenstone — Dimeriuksen hovi vs. Jugorain vallankaappaus
+    ("npc_dimerius", "npc_golbera", "subordinate",
+     "Kryptan erikoisvartija — 250 HP myrkkyä."),
+    ("npc_dimerius", "npc_xalars", "subordinate",
+     "Kryptan erikoisvartija — palava kirves."),
+    ("npc_golbera", "npc_dimerius", "patron", "Vartioi hautaa."),
+    ("npc_xalars", "npc_dimerius", "patron", "Vartioi hautaa."),
+    ("npc_dimerius", "npc_jugorai", "enemy",
+     "Paroni yrittää omia Dimeriuksen voimat — sisällissota."),
+    ("npc_jugorai", "npc_dimerius", "enemy",
+     "Haluaa muinaisen voiman itselleen."),
+    ("npc_vilan", "npc_dimerius", "ally",
+     "Yli 350 v uskollinen; taistelee Jugoraita vastaan."),
+    ("npc_herold", "npc_dimerius", "ally",
+     "Yli 800 v uskollinen; vanhin vartija."),
+    ("npc_vilan", "npc_jugorai", "enemy", "Vastustaa vallankaappausta."),
+    ("npc_herold", "npc_jugorai", "enemy", "Vastustaa vallankaappausta."),
+    ("npc_polsen", "npc_beatrice_vampyyri", "subordinate",
+     "Neuvonantaja — nopea mielenmanipuloija."),
+    ("npc_beatrice_vampyyri", "npc_polsen", "patron",
+     "Palvelee Polsenia neuvonantajana."),
+    ("npc_polsen", "npc_davos", "subordinate",
+     "Vampyyrisoturi Polsenin joukoissa."),
+    ("npc_aksel", "npc_davos", "family",
+     "Oma veli, joka on muutettu vampyyriksi — Aksel etsii pelastusta."),
+    ("npc_davos", "npc_aksel", "family",
+     "Veli, joka jahtaa häntä; Davos epäröi lyödä häntä."),
+    ("npc_aksel", "npc_dimerius", "enemy",
+     "Vampyyrinmetsästäjä hopea-aseineen ja vastalääkkeineen."),
+    ("npc_aksel", "npc_gaur", "ally",
+     "Piileskelee Cora 0:n tiloissa Profunduksessa."),
+    ("npc_gaur", "npc_jivin", "subordinate",
+     "Kirjastonhoitaja-vakooja Cora 0:lle."),
+    ("npc_jivin", "npc_gaur", "patron", "Raportoi syndikaatille."),
+    ("npc_lidian", "npc_aksel", "ally",
+     "Valmistaa vampyyrin vastalääkettä metsästäjälle."),
     # Death's Vigil
     ("npc_gaius_marad", "npc_marduk", "patron", "Esimies; manipuloi Mardukia."),
     ("npc_marduk", "npc_gaius_marad", "subordinate", "Vigilin alainen."),
