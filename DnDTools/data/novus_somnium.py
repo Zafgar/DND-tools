@@ -400,6 +400,19 @@ def _build_world():
             "blacksmith", "comfortable", "Lawful Neutral", "",
             "Frand's most reputable smith, runs the Anvil & Star forge."),
     ]
+    # Closest library stat block for each starter NPC, so every one of
+    # them opens a usable sheet instead of an empty one.
+    starter_stats = {
+        "npc_calistro": "monster:Noble",
+        "npc_vela":     "monster:Acolyte",
+        "npc_jolan":    "monster:Noble",
+        "npc_mira":     "monster:Noble",
+        "npc_arys":     "monster:Spy",
+        "npc_rhoswen":  "monster:Acolyte",
+        "npc_smith":    "monster:Guard",
+        "npc_adrik":    "monster:Thug",
+        "npc_aedria":   "monster:Noble",
+    }
     for nid, name, race, occ, title, wealth, align, faction, notes in npc_specs:
         loc_id = (frand.id if nid in (
             "npc_calistro", "npc_vela", "npc_jolan",
@@ -408,6 +421,7 @@ def _build_world():
             id=nid, name=name, race=race, occupation=occ,
             title=title, alignment=align, faction=faction,
             notes=notes, location_id=loc_id, alive=True, active=True,
+            stat_source=starter_stats.get(nid, ""),
         )
         set_npc_coins(npc, suggest_coins_for_wealth_tier(wealth))
         w.npcs[nid] = npc

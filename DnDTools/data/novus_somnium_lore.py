@@ -867,15 +867,72 @@ NPCS: List[dict] = [
     dict(id="npc_gaius_marad", name="Gaius Marad", race="Human", age="",
          occupation="Magnus Custos", title="Death's Vigilin ylin vartija",
          faction="Death's Vigil", alignment="Lawful Neutral",
-         loc="loc_pinwud", stat="", wealth="comfortable",
-         appearance="Vanha ihminen, lempeät silmät, mutta niissä palaa "
-                     "outo liekki.",
-         personality="Arvokas johtaja; suojeleva mutta laskelmoiva.",
-         notes="Johtaa Kuoleman Vartijoita. Mardukin esimies — tietää "
-               "tämän kyvystä sitoa sieluja ja haluaa mahdollisesti käyttää "
-               "sitä. Poikansa Kaldir lähti järjestöstä. "
-               "Stat: Paladin/Cleric ~15, Deva-tier.",
-         tags=["faction_leader", "clergy"]),
+         loc="loc_pinwud", stat="monster:Gaius Marad", wealth="comfortable",
+         appearance="Vanha ihminen, kalju pää ja pyhät tatuoinnit otsassa; "
+                     "lempeät silmät, mutta niissä palaa outo liekki. "
+                     "Kulta-musta kaapu ja aurinko-pääkallo -medaljonki.",
+         personality="Arvokas johtaja; vaikuttaa lempeältä mutta on kylmä "
+                     "pragmaatikko. Näkee Mardukin 'sielumagneettina' ja "
+                     "täydellisenä astiana (Infracta Animae).",
+         notes="Magnus Custos — järjestön hengellinen ja strateginen "
+               "pääjohtaja, tekee lopulliset päätökset ja johtaa suurimmat "
+               "rituaalit. Grave Domain Cleric 15: HP 140, AC 20, WIS 20. "
+               "Channel Divinity: Path to the Grave (kohde ottaa "
+               "TUPLAVAHINGON seuraavasta osumasta) — tappava yhdistelmä "
+               "Aurelian tuplasmitejen kanssa. Sentinel at Death's Door "
+               "estää kriittiset, Keeper of Souls parantaa kun vihollinen "
+               "kuolee. Poikansa Kaldir lähti järjestöstä.",
+         tags=["faction_leader", "clergy", "senatorum"]),
+    dict(id="npc_aurelia_valtar", name="Aurelia Valtar", race="Human",
+         age="", occupation="Praetor Purificator",
+         title="Puhdistuksen Kenraali",
+         faction="Death's Vigil", alignment="Lawful Neutral",
+         loc="loc_pinwud", stat="monster:Aurelia Valtar",
+         wealth="comfortable",
+         appearance="Kalju, otsassa pyhät tatuoinnit; kulta-mustassa "
+                     "levyhaarniskassa, Requiem-suurmiekka selässä. "
+                     "Aesican taisteluiden jäljiltä selässä tuore, huonosti "
+                     "parantunut haava.",
+         personality="Armoton kenttäkomentaja. Suora, pelottava ja "
+                     "fanaattisen omistautunut — ei siedä heikkoutta.",
+         notes="Johtaa järjestön sotilaallista siipeä (Puhdistajia) ja "
+               "vastaa vaarallisimpien operaatioiden suunnittelusta. "
+               "Taso 20: Paladin 14 / Fighter 6 — 'tuplasmitet' eli "
+               "Action Surge + Divine Smite purkaa valtavan "
+               "radiant-piikin yhdessä kierroksessa. Otti Mardukin "
+               "siipiensä alle ja painosti tämän puhdistajan tielle. "
+               "Selvisi Aesican taisteluista (jaksot 106-126) vakavasti "
+               "haavoittuneena — selästä vedettiin metallinen objekti — "
+               "mutta komensi heti Vigil-joukot takavarikoimaan kaupungin "
+               "'epäpyhän kullan'. Padak arvioi ryhmän pärjäävän "
+               "Aurelialle ja Gaiukselle yhdessä. "
+               "Omin sanoin: \"Kun otan miekkaani maa tärisee.\"",
+         tags=["faction_leader", "warrior", "senatorum"]),
+    dict(id="npc_thalgrum", name="Thalgrum", race="Human", age="",
+         occupation="Magister Librorum", title="Kirjaston Mestari",
+         faction="Death's Vigil", alignment="Lawful Neutral",
+         loc="loc_pinwud", stat="monster:Thalgrum", wealth="wealthy",
+         appearance="Harmaaseen kaapuun pukeutuva ihminen; huomaamaton, "
+                     "hiljainen, tarkkailee enemmän kuin puhuu.",
+         personality="Kylmä tutkija. Näkee sielut datana eikä ihmisinä; "
+                     "utelias, kärsivällinen ja täysin tunteeton "
+                     "uhrauksien edessä.",
+         notes="Magister Librorum — vastaa muinaisista teksteistä, "
+               "rituaaleista ja takavarikoiduista nekroottisista "
+               "artefakteista järjestön 'epäpuhtaassa kirjastossa'. "
+               "Pitää Mardukia 'kävelevänä tutkimuskohteena'; on se "
+               "henkilö joka voisi löytää rituaalin Papan tai Erokmen "
+               "sielun siirtämiseksi esineeseen — mutta uhraisi Mardukin "
+               "silmääkään räpäyttämättä jos data on henkeä arvokkaampaa. "
+               "DM-VAROITUS: Padakin (Know Your Enemy) arvio on "
+               "yksiselitteinen — ryhmä voisi pärjätä Aurelialle ja "
+               "Gaiukselle yhdessä, mutta \"Thalgrum on aivan eri tason "
+               "uhka\". Hän on salaa järjestön vaarallisin yksilö: CR 21 "
+               "sielumaagi legendaarisin toiminnoin, Legendary "
+               "Resistancella ja Contingencyllä joka teleporttaa hänet "
+               "holviin alle 50 HP:ssä. Häntä ei kaadeta vahingossa — "
+               "vain loukkuun (Forcecage/Banishment).",
+         tags=["faction_leader", "mage", "senatorum", "hidden_threat"]),
 
     # ===== LA FAMIGLIA DELL'ORSO =====
     dict(id="npc_rahgo", name="Rahgo \"Karhu\"", race="Human", age="",
@@ -1000,7 +1057,7 @@ NPCS: List[dict] = [
     dict(id="npc_aedria", name="Aedria Fegel", race="Steel Dragon / Human",
          age="", occupation="Lohikäärme-ekologi", title="Neuvoston jäsen",
          faction="Unhael Scale Riders", alignment="Neutral Good",
-         loc="loc_antanard", stat="", wealth="wealthy",
+         loc="loc_antanard", stat="monster:Noble", wealth="wealthy",
          appearance="Hopeiset hiukset ja silmät, virheetön atleettinen iho, "
                      "nahkahaarniska.",
          personality="Viisas, suojeleva, utelias.",
@@ -1147,7 +1204,7 @@ NPCS: List[dict] = [
          tags=["ally", "party"]),
     dict(id="npc_xionzer", name="Xionzer \"Xer\"", race="Dwarf", age="",
          occupation="Barbaari", title="", faction="Vapaan Etelän Koalitio",
-         alignment="Chaotic Good", loc="loc_aesica", stat="", wealth="modest",
+         alignment="Chaotic Good", loc="loc_aesica", stat="monster:Thug", wealth="modest",
          appearance="Roteva kääpiöbarbaari.",
          personality="Suora, taisteluhaluinen, uskollinen.",
          notes="Jäi Aesicaan; ratsastaa valkoisella lohikäärme Fangrokilla. "
@@ -1183,7 +1240,7 @@ NPCS: List[dict] = [
          tags=["ally", "healer"]),
     dict(id="npc_adrik", name="Adrik Balderk", race="Dwarf", age="",
          occupation="Gladiaattorivalmentaja", title="", faction="",
-         alignment="Lawful Neutral", loc="loc_nak_magnok", stat="",
+         alignment="Lawful Neutral", loc="loc_nak_magnok", stat="monster:Thug",
          wealth="modest",
          appearance="Vanha, arpinen ja arvostettu kääpiösoturi.",
          personality="Ankara mutta isällinen.",
@@ -1750,7 +1807,7 @@ NPCS: List[dict] = [
          tags=["mysterious"]),
     dict(id="npc_caromaik", name="Sir Caromaik von Ermizen", race="Imp",
          age="", occupation="Pokerinpelaaja", title="", faction="",
-         alignment="Lawful Evil", loc="loc_feather_pillow", stat="",
+         alignment="Lawful Evil", loc="loc_feather_pillow", stat="monster:Spy",
          wealth="modest",
          appearance="Pieni, ovela paholainen (imp).",
          personality="Viekas, viihdyttävä.",
@@ -2394,7 +2451,7 @@ NPCS: List[dict] = [
     dict(id="npc_krusk", name="Krusk Akarsho", race="Half-Orc", age="",
          occupation="Barbaari", title="Vastentahtoinen keisari",
          faction="Vapaan Etelän Koalitio", alignment="Chaotic Good",
-         loc="loc_aesica", stat="", wealth="modest",
+         loc="loc_aesica", stat="hero:Krusk", wealth="modest",
          appearance="Atleettinen puoliörkki, selässä valtava pyöreä \"Pedon "
                      "merkki\" (Veru).",
          personality="\"Orjasta johtajaksi\" — sitkeä, suojeleva; tällä "
@@ -2411,7 +2468,7 @@ NPCS: List[dict] = [
     dict(id="npc_beatrice", name="Beatrice", race="Half-Elf / Drow",
          age="", occupation="Warlock / Sorcerer", title="",
          faction="", alignment="Neutral", loc="loc_veksla",
-         stat="", wealth="modest",
+         stat="hero:Beatrice", wealth="modest",
          appearance="Punaiset hiukset hopearaidoin, violetit drow-silmät.",
          personality="Ryhmän taikatykistö ja diplomaatti; kostonhimon ja "
                      "armon välissä.",
@@ -2421,7 +2478,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_venris", name="Venris Galanodel", race="Elf", age="",
          occupation="Velho", title="", faction="Seekers of Demimaind",
-         alignment="Neutral Good", loc="loc_fort_whitestone", stat="",
+         alignment="Neutral Good", loc="loc_fort_whitestone", stat="hero:Venris Galanodel",
          wealth="modest",
          appearance="Vaalea haltia; tutkiva, analyyttinen.",
          personality="Tarkkailija, ajan säröjen näkijä.",
@@ -2446,7 +2503,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_magnus", name="Magnus", race="Air Genasi", age="",
          occupation="Lohikäärmeenhoitaja", title="", faction="",
-         alignment="Chaotic Good", loc="loc_antanard", stat="", wealth="modest",
+         alignment="Chaotic Good", loc="loc_antanard", stat="hero:Magnus Dragonius", wealth="modest",
          appearance="Sinertäväihoinen, rento.",
          personality="Vapaa sielu; vanhojen lakien sokea piste.",
          notes="PELAAJAHAHMO. Kasvoi Antanardin hautomossa; yhteys "
@@ -2455,7 +2512,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_darius", name="Thomas / Darius Morin", race="Human", age="",
          occupation="Rogue / artefaktinmetsästäjä", title="",
-         faction="", alignment="Chaotic Neutral", loc="", stat="",
+         faction="", alignment="Chaotic Neutral", loc="", stat='hero:Darius "Slick" Morin',
          wealth="modest",
          appearance="Keskikokoinen, smaragdinvihreät silmät; "
                      "kaksoisidentiteetti.",
@@ -2468,7 +2525,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_padak", name="Padak", race="Tabaxi", age="",
          occupation="Taistelija", title="", faction="",
-         alignment="Neutral", loc="loc_veksla", stat="", wealth="modest",
+         alignment="Neutral", loc="loc_veksla", stat="hero:Padak Onslaught", wealth="modest",
          appearance="Arpinen tabaxi, sormia puuttuu, suonissa violetti "
                      "korruptio (Verdant Shard Fever).",
          personality="\"Perhe on kaikki\" — sitkeä, vaarallinen.",
@@ -2490,7 +2547,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party"]),
     dict(id="npc_ulv", name="Ulv", race="Firbolg", age="",
          occupation="Druidi", title="", faction="",
-         alignment="Neutral Good", loc="loc_veksla", stat="", wealth="modest",
+         alignment="Neutral Good", loc="loc_veksla", stat="hero:ULV", wealth="modest",
          appearance="3-metrinen, sarvekas; sammalviitta.",
          personality="Luonnon suojelija; pelkää metsän korruptiota.",
          notes="PELAAJAHAHMO. \"Kolmen veren\" ruumiillistuma: Archfey "
@@ -2502,7 +2559,7 @@ NPCS: List[dict] = [
     dict(id="npc_marduk", name="Marduk", race="Human", age="",
          occupation="Paladin / Cleric / Fighter",
          title="Praefectus Purificatorum", faction="Death's Vigil",
-         alignment="Lawful Neutral", loc="", stat="", wealth="modest",
+         alignment="Lawful Neutral", loc="", stat="hero:Marduk", wealth="modest",
          appearance="Kalju, arpikuvioitu; peittää tunteensa.",
          personality="Kurinalainen, salaileva.",
          notes="PELAAJAHAHMO. Karkotettiin Kaernathista nuorena; menetti "
@@ -2525,7 +2582,7 @@ NPCS: List[dict] = [
     dict(id="npc_blitz", name="Blitz Walker", race="Human", age="",
          occupation="Gunslinger", title="Walker-suvun perillinen",
          faction="Vapaan Etelän Koalitio",
-         alignment="Neutral Good", loc="loc_fort_whitestone", stat="",
+         alignment="Neutral Good", loc="loc_fort_whitestone", stat="hero:Blitz Walker",
          wealth="wealthy",
          appearance="Tutkimusmatkailija-asuinen ampuja.",
          personality="Periksiantamaton tutkija; nyt valtavan moraalisen "
@@ -2541,7 +2598,7 @@ NPCS: List[dict] = [
          tags=["player_character", "party", "ruler"]),
     dict(id="npc_carlo", name="Carlo \"Flexmaster\"", race="Human", age="",
          occupation="Barbaari / perämies", title="", faction="",
-         alignment="Chaotic Good", loc="loc_fort_whitestone", stat="",
+         alignment="Chaotic Good", loc="loc_fort_whitestone", stat="hero:Carlo",
          wealth="poor",
          appearance="Lihaksikas, kookospähkinöitä rakastava ihmissoturi.",
          personality="Maanläheinen, rento, kaoottinen energia.",
@@ -2726,6 +2783,29 @@ NPC_LINKS: List[tuple] = [
     # Death's Vigil
     ("npc_gaius_marad", "npc_marduk", "patron", "Esimies; manipuloi Mardukia."),
     ("npc_marduk", "npc_gaius_marad", "subordinate", "Vigilin alainen."),
+    # Senatorum — johtokolmikko
+    ("npc_gaius_marad", "npc_aurelia_valtar", "subordinate",
+     "Sotilaallisen siiven komentaja; Gaius antaa käskyt."),
+    ("npc_aurelia_valtar", "npc_gaius_marad", "patron",
+     "Ylin vartija; Aurelia toteuttaa hänen päätökset."),
+    ("npc_gaius_marad", "npc_thalgrum", "ally",
+     "Kirjaston Mestari — Gaius tarvitsee hänen rituaalejaan."),
+    ("npc_thalgrum", "npc_gaius_marad", "ally",
+     "Antaa rituaalit; pitää omat tavoitteensa salassa."),
+    ("npc_aurelia_valtar", "npc_thalgrum", "rival",
+     "Miekka vs. kirja: Aurelia ei luota harmaakaapuun."),
+    ("npc_thalgrum", "npc_aurelia_valtar", "rival",
+     "Pitää Aureliaa tylsänä välineenä."),
+    # Aurelia koulutti Mardukin
+    ("npc_aurelia_valtar", "npc_marduk", "mentor",
+     "Otti Mardukin siipiensä alle ja painosti puhdistajan tielle."),
+    ("npc_marduk", "npc_aurelia_valtar", "protege",
+     "Kouluttaja — kovakourainen mutta muovasi hänestä kapteenin."),
+    # Thalgrum näkee Mardukin tutkimuskohteena
+    ("npc_thalgrum", "npc_marduk", "other",
+     "'Kävelevä tutkimuskohde' — uhraisi Mardukin datan vuoksi."),
+    ("npc_marduk", "npc_thalgrum", "rival",
+     "Arkistonhoitaja joka näkee hänet astiana, ei ihmisenä."),
     # Golden Gear ↔ Emnar
     ("npc_heinrich", "npc_emnar", "ally", "Rahoittaa Emnaria vallasta."),
     # Aesica sielukone
@@ -2970,21 +3050,49 @@ def lore_organisations():
         operating_cities=["pinwud"],
         ranks=[
             OrganisationRank(key="magnus_custos", name="Magnus Custos", tier=1,
-                             description="Ylin vartija."),
+                             description="Ylin vartija — Senatorum."),
+            OrganisationRank(key="praetor", name="Praetor Purificator", tier=1,
+                             description="Puhdistuksen Kenraali — Senatorum."),
+            OrganisationRank(key="magister", name="Magister Librorum", tier=1,
+                             description="Kirjaston Mestari — Senatorum."),
             OrganisationRank(key="praefectus", name="Praefectus", tier=2,
-                             description="Puhdistajien komentaja."),
+                             description="Puhdistajien kenttäkomentaja (3)."),
+            OrganisationRank(key="archimedicus", name="Archimedicus", tier=2,
+                             description="Arkkiparantaja (7)."),
             OrganisationRank(key="custos", name="Custos", tier=4,
                              description="Vartija-ritari."),
+            OrganisationRank(key="medicus", name="Medicus Animae", tier=5,
+                             description="Sielun Parantaja (167)."),
         ],
         roles=[
             OrganisationRole(key="purificator", name="Puhdistaja",
-                             description="Tuhoaa epäkuolleita."),
+                             description="Tuhoaa epäkuolleita (Purificare)."),
+            OrganisationRole(key="medicus_animae", name="Sielun Parantaja",
+                             description="Hautajaiset ja sielujen "
+                                         "lepoon johtaminen (Pacare)."),
+            OrganisationRole(key="archivist", name="Arkistonhoitaja",
+                             description="Muinaiset tekstit, rituaalit ja "
+                                         "takavarikoidut artefaktit."),
         ],
         members=[
             OrganisationMember(npc_id="npc_gaius_marad", npc_name="Gaius Marad",
                                rank_key="magnus_custos", role_keys=[],
                                kingdom_key="tarmaas", city_key="pinwud",
-                               notes="Järjestön johtaja."),
+                               notes="Järjestön hengellinen ja strateginen "
+                                     "johtaja (Grave Cleric 15)."),
+            OrganisationMember(npc_id="npc_aurelia_valtar",
+                               npc_name="Aurelia Valtar",
+                               rank_key="praetor", role_keys=["purificator"],
+                               kingdom_key="tarmaas", city_key="pinwud",
+                               notes="Sotilaallisen siiven johtaja; taso 20 "
+                                     "(Paladin 14 / Fighter 6), tuplasmitet. "
+                                     "Mardukin kouluttaja."),
+            OrganisationMember(npc_id="npc_thalgrum", npc_name="Thalgrum",
+                               rank_key="magister", role_keys=["archivist"],
+                               kingdom_key="tarmaas", city_key="pinwud",
+                               notes="Epäpuhtaan kirjaston mestari. "
+                                     "DM-varoitus: salaa järjestön "
+                                     "vaarallisin yksilö (CR 21)."),
             OrganisationMember(npc_id="npc_marduk", npc_name="Marduk",
                                rank_key="praefectus", role_keys=["purificator"],
                                kingdom_key="tarmaas",

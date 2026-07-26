@@ -5301,15 +5301,26 @@ class CampaignManagerState:
             self._delete_world_npc(npc.id)
 
     def _get_npc_stats(self, npc):
-        """Get CreatureStats for an NPC from stat_source."""
+        """Get CreatureStats for an NPC from stat_source.
+
+        Supports ``monster:<name>`` (monster library) and ``hero:<name>``
+        (data.heroes.hero_list) — the latter lets an NPC entry mirror a
+        player character's full sheet, e.g. the party members who also
+        exist as world NPCs."""
         if npc is None or not npc.stat_source:
             return None
-        if npc.stat_source.startswith("monster:"):
-            monster_name = npc.stat_source[len("monster:"):]
+        src = npc.stat_source
+        if src.startswith("monster:"):
             try:
-                return library.get_monster(monster_name)
+                return library.get_monster(src[len("monster:"):])
             except Exception:
                 return None
+        if src.startswith("hero:"):
+            want = src[len("hero:"):].strip().lower()
+            for h in hero_list:
+                if h.name.lower() == want:
+                    return copy.deepcopy(h)
+            return None
         return None
 
     def _find_npc_by_name(self, name):

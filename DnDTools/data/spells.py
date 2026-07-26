@@ -363,6 +363,55 @@ _spells = {
     "Blight": SpellInfo("Blight", level=4, action_type="action", range=30, targets="single",
                         damage_dice="8d8", damage_type="necrotic", save_ability="Constitution", half_on_save=True,
                         damage_scaling="1d8"),
+
+    # --- Paladin / cleric support & control (Death's Vigil kit) ------
+    "Compelled Duel": SpellInfo("Compelled Duel", level=1, action_type="bonus",
+                                range=30, targets="single",
+                                save_ability="Wisdom", concentration=True,
+                                duration="1 minute",
+                                description="Kohde tekee DC-saven; muuten sillä on "
+                                            "disadvantage hyökkäyksiin muita kuin "
+                                            "loitsijaa vastaan eikä voi liikkua "
+                                            "loitsijasta poispäin."),
+    "Staggering Smite": SpellInfo("Staggering Smite", level=4, action_type="bonus",
+                                  range=5, targets="single",
+                                  damage_dice="4d6", damage_type="psychic",
+                                  save_ability="Wisdom",
+                                  applies_condition="Stunned",
+                                  description="Osuman jälkeen: 4d6 psychic ja DC-save "
+                                              "tai disadvantage hyökkäyksiin/saveihin "
+                                              "seuraavan vuoron loppuun."),
+    "Aura of Vitality": SpellInfo("Aura of Vitality", level=3, action_type="action",
+                                  range=30, targets="ally", heals="2d6",
+                                  concentration=True, duration="1 minute",
+                                  description="Bonustoiminto joka kierros: paranna "
+                                              "yhtä olentoa 30 ft säteellä 2d6."),
+    "Death Ward": SpellInfo("Death Ward", level=4, action_type="action",
+                            range=5, targets="ally", duration="8 hours",
+                            description="Ensimmäinen kerta kun kohde putoaisi 0 HP:hen, "
+                                        "se putoaa 1 HP:hen sijaan; myös instant-death "
+                                        "estyy. Loitsu päättyy tähän."),
+    "Harm": SpellInfo("Harm", level=6, action_type="action", range=60,
+                      targets="single", damage_dice="14d6", damage_type="necrotic",
+                      save_ability="Constitution", half_on_save=True,
+                      description="Kohteen max HP laskee vahingon verran 1 tunniksi; "
+                                  "ei voi pudottaa alle 1 HP:n."),
+
+    # --- High-tier arcane control (Thalgrumin kit) -------------------
+    "Forcecage": SpellInfo("Forcecage", level=7, action_type="action",
+                           range=100, targets="single", concentration=False,
+                           duration="1 hour", creates_terrain="forcecage",
+                           description="20 ft häkki (tai 10 ft umpinainen kuutio): "
+                                       "kohde ei pääse ulos ilman teleporttia, ja "
+                                       "teleportti vaatii DC-CHA-saven."),
+    "Feeblemind": SpellInfo("Feeblemind", level=8, action_type="action",
+                            range=150, targets="single",
+                            damage_dice="4d6", damage_type="psychic",
+                            save_ability="Intelligence",
+                            repeat_save=True,
+                            description="4d6 psychic; epäonnistuneella savella INT ja "
+                                        "CHA putoavat 1:een — ei voi loitsia, lukea "
+                                        "eikä ymmärtää kieltä (save 30 pv välein)."),
     
     "Dimension Door": SpellInfo("Dimension Door", level=4, action_type="action", range=500, targets="self",
                                 description="Teleport 500ft"),
