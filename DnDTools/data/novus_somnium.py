@@ -547,6 +547,7 @@ def _serialize_world_for_campaign(world):
     from data.world import (
         _serialize_location, _serialize_npc, _serialize_route,
         _serialize_quest, _serialize_shop, _serialize_service,
+        _serialize_pin, _serialize_token,
     )
     return {
         "name": world.name,
@@ -563,8 +564,12 @@ def _serialize_world_for_campaign(world):
                        for k, v in world.services.items()},
         "next_id": world.next_id,
         "map_routes": [_serialize_route(r) for r in world.map_routes],
+        "map_pins": [_serialize_pin(p) for p in world.map_pins],
+        "map_tokens": [_serialize_token(t) for t in world.map_tokens],
         "map_image_path": world.map_image_path,
         "map_positions": world.map_positions,
+        "map_scale_miles": world.map_scale_miles,
+        "map_scale_reference": world.map_scale_reference,
     }
 
 
@@ -606,6 +611,11 @@ def build_novus_somnium() -> Campaign:
     # cities on the kingdoms. Additive on top of the starter content.
     from data import novus_somnium_lore as _lore
     _lore.augment_campaign(camp, world)
+    # The DM's own hand-drawn maps: Cunae as the world background, each
+    # kingdom's detail map on its location, and the settlement pins that
+    # link the art back to real locations.
+    from data import world_maps as _wm
+    _wm.apply_world_maps(world)
     camp.world_data = _serialize_world_for_campaign(world)
     # Deep Aterterra / cosmology reveals as DM lore notes.
     camp.notes.extend(_lore.lore_campaign_notes())

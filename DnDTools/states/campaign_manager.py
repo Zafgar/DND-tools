@@ -653,7 +653,11 @@ class CampaignManagerState:
         """Load or create World from campaign's world_data."""
         if self.campaign.world_data:
             try:
-                from data.world import _deserialize_location, _deserialize_npc, _deserialize_route, _deserialize_quest, MapRoute
+                from data.world import (
+                    _deserialize_location, _deserialize_npc,
+                    _deserialize_route, _deserialize_quest,
+                    _deserialize_shop, _deserialize_service,
+                    _deserialize_pin, _deserialize_token, MapRoute)
                 wd = self.campaign.world_data
                 world = World(
                     name=wd.get("name", self.campaign.name),
@@ -663,10 +667,20 @@ class CampaignManagerState:
                     locations={k: _deserialize_location(v) for k, v in wd.get("locations", {}).items()},
                     npcs={k: _deserialize_npc(v) for k, v in wd.get("npcs", {}).items()},
                     quests={k: _deserialize_quest(v) for k, v in wd.get("quests", {}).items()},
+                    shops={k: _deserialize_shop(v)
+                           for k, v in wd.get("shops", {}).items()},
+                    services={k: _deserialize_service(v)
+                              for k, v in wd.get("services", {}).items()},
                     next_id=wd.get("next_id", 1),
                     map_routes=[_deserialize_route(r) for r in wd.get("map_routes", [])],
+                    map_pins=[_deserialize_pin(p)
+                              for p in wd.get("map_pins", [])],
+                    map_tokens=[_deserialize_token(t)
+                                for t in wd.get("map_tokens", [])],
                     map_image_path=wd.get("map_image_path", ""),
                     map_positions=wd.get("map_positions", {}),
+                    map_scale_miles=wd.get("map_scale_miles", 0.0),
+                    map_scale_reference=wd.get("map_scale_reference", 0.0),
                 )
                 self._merge_new_canon_lore(world)
                 return world
@@ -688,10 +702,16 @@ class CampaignManagerState:
                                             seed_party_groups,
                                             seed_area_encounters)
             added = _lore.refresh_lore(self.campaign, world)
-            if added > 0:
+            # The DM's hand-drawn maps and their location pins, for saves
+            # that predate them. Idempotent: never moves a pin the DM has
+            # already dragged somewhere better.
+            from data import world_maps as _wm
+            maps = _wm.apply_world_maps(world)
+            if added > 0 or maps["added_pins"] or maps["linked_maps"]:
                 self.campaign.world_data = _serialize_world_for_campaign(world)
-                logging.info("[LORE] merged %d new canon location(s) into "
-                             "the campaign.", added)
+                logging.info("[LORE] merged %d new canon location(s) and "
+                             "%d map pin(s) into the campaign.",
+                             added, maps["added_pins"])
             # Seed the canon sub-parties into older saves that predate them.
             groups = seed_party_groups(self.campaign)
             if groups > 0:
@@ -705,7 +725,10 @@ class CampaignManagerState:
 
     def _serialize_world(self) -> dict:
         """Serialize World to dict for campaign save."""
-        from data.world import _serialize_location, _serialize_npc, _serialize_route, _serialize_quest
+        from data.world import (
+            _serialize_location, _serialize_npc, _serialize_route,
+            _serialize_quest, _serialize_shop, _serialize_service,
+            _serialize_pin, _serialize_token)
         w = self.world
         # Sync map positions into world before saving
         w.map_positions = dict(self._location_map_positions)
@@ -717,10 +740,20 @@ class CampaignManagerState:
             "locations": {k: _serialize_location(v) for k, v in w.locations.items()},
             "npcs": {k: _serialize_npc(v) for k, v in w.npcs.items()},
             "quests": {k: _serialize_quest(v) for k, v in w.quests.items()},
+            # Shops, services, pins and tokens used to be dropped on every
+            # save: the DM's map annotations and every shop inventory
+            # vanished on the next load.
+            "shops": {k: _serialize_shop(v) for k, v in w.shops.items()},
+            "services": {k: _serialize_service(v)
+                         for k, v in w.services.items()},
             "next_id": w.next_id,
             "map_routes": [_serialize_route(r) for r in w.map_routes],
+            "map_pins": [_serialize_pin(p) for p in w.map_pins],
+            "map_tokens": [_serialize_token(t) for t in w.map_tokens],
             "map_image_path": w.map_image_path,
             "map_positions": w.map_positions,
+            "map_scale_miles": w.map_scale_miles,
+            "map_scale_reference": w.map_scale_reference,
         }
 
     def _on_tab_change(self, idx):
@@ -2133,6 +2166,9 @@ class CampaignManagerState:
                     if self._map_dragging_token:
                         self._map_dragging_token = ""
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Map switcher chips sit above the map viewport.
+                    if self._handle_map_switcher_click(mp):
+                        continue
                     grid_area = self._get_map_grid_area()
                     if grid_area.collidepoint(mp):
                         try:
@@ -2576,11 +2612,10 @@ class CampaignManagerState:
             self._map_dragging_token = clicked_token_id
             return
 
-        # Check if clicking on a map pin
+        # Check if clicking on a map pin (same filtered set the renderer
+        # draws, so an invisible pin from another sheet can't be clicked)
         clicked_pin_id = ""
-        for pin in self.world.map_pins:
-            if not pin.visible:
-                continue
+        for pin in self._visible_map_pins():
             px, py = self._map_to_screen(pin.map_x, pin.map_y, grid_area)
             pin_size = max(4, int(7 * self.map_zoom))
             hit_dist = pin_size + 5
@@ -2644,6 +2679,9 @@ class CampaignManagerState:
             pct_x = max(1, min(99, pct_x))
             pct_y = max(1, min(99, pct_y))
             new_pin = add_pin(self.world, "New Pin", "note", pct_x, pct_y)
+            # Stamp the sheet it was placed on so it does not float over
+            # every other map.
+            new_pin.map_key = self.active_map_key()
             self.selected_pin_id = new_pin.id
             self._map_pin_mode = False
             return
@@ -6248,6 +6286,107 @@ class CampaignManagerState:
         except ValueError:
             return None
 
+    # ---- Registered world maps (data/world_maps.py) ------------------ #
+    def active_map_key(self) -> str:
+        """Which registered map is currently shown as the background."""
+        try:
+            from data import world_maps as wm
+            return wm.key_for_path(self.world.map_image_path)
+        except Exception:
+            return ""
+
+    def _switch_world_map(self, key: str) -> bool:
+        """Swap the world-map background to another registered map.
+
+        Resets zoom/pan because the maps have different extents — keeping
+        the old camera would drop the DM somewhere off the new sheet.
+        """
+        try:
+            from data import world_maps as wm
+        except Exception:
+            return False
+        target = wm.get_map(key)
+        if target is None or not target.exists():
+            return False
+        if self.world.map_image_path == target.path:
+            return False
+        self.world.map_image_path = target.path
+        self._load_map_background()
+        self.map_zoom = 1.0
+        self.map_offset_x = 0
+        self.map_offset_y = 0
+        self.selected_pin_id = ""
+        self._status_msg = f"Kartta: {target.name}"
+        self._status_timer = 180
+        return True
+
+    def _visible_map_pins(self):
+        """Pins that belong on the map currently open.
+
+        A pin with no ``map_key`` is one the DM placed by hand, so it
+        stays visible whatever map is open — otherwise their own
+        annotations would vanish the moment they switched sheets.
+        """
+        key = self.active_map_key()
+        out = []
+        for pin in self.world.map_pins:
+            if not pin.visible:
+                continue
+            pin_key = getattr(pin, "map_key", "")
+            if pin_key and key and pin_key != key:
+                continue
+            out.append(pin)
+        return out
+
+    def _handle_map_switcher_click(self, mp) -> bool:
+        for rect, key in getattr(self, "_map_switch_rects", []):
+            if rect.collidepoint(mp):
+                self._switch_world_map(key)
+                return True
+        return False
+
+    def _draw_map_switcher(self, screen, mp):
+        """Chips for every registered map, above the viewport."""
+        self._map_switch_rects = []
+        try:
+            from data import world_maps as wm
+        except Exception:
+            return
+        maps = [m for m in wm.all_maps() if m.exists()]
+        if len(maps) < 2:
+            return
+        active = self.active_map_key()
+        x = 32
+        y = 92
+        screen.blit(fonts.tiny.render("Kartta:", True, COLORS["text_dim"]),
+                    (x, y + 5))
+        x += 52
+        for m in maps:
+            label = m.name.split("—")[0].split("(")[0].strip()
+            w = fonts.small.size(label)[0] + 20
+            rect = pygame.Rect(x, y, w, 24)
+            is_active = (m.key == active)
+            hot = rect.collidepoint(mp)
+            pygame.draw.rect(
+                screen,
+                COLORS["accent"] if is_active
+                else (COLORS["hover"] if hot else COLORS["panel"]),
+                rect, border_radius=12)
+            pygame.draw.rect(screen, COLORS["border"], rect, 1,
+                             border_radius=12)
+            screen.blit(fonts.small.render(
+                label, True,
+                (20, 20, 28) if is_active else COLORS["text_main"]),
+                (rect.x + 10, rect.y + 4))
+            self._map_switch_rects.append((rect, m.key))
+            x += w + 6
+        # Scale note for the open map, so distances are readable.
+        cur = wm.get_map(active) if active else None
+        if cur is not None and cur.scale_note:
+            screen.blit(fonts.tiny.render(cur.scale_note, True,
+                                          COLORS["text_muted"]),
+                        (x + 10, y + 6))
+
     def _get_map_grid_area(self):
         """Get the main map drawing region."""
         map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
@@ -6291,6 +6430,9 @@ class CampaignManagerState:
         """Draw an interactive world map with zoom, pan, routes, tooltips."""
         map_area = pygame.Rect(20, 65, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 135)
         grid_area = self._get_map_grid_area()
+        # Switch between the DM's hand-drawn sheets (Cunae, Smardu,
+        # Tarmaas, Oblitus, Fundarla).
+        self._draw_map_switcher(screen, mp)
 
         # Background image or default
         if self._map_bg_surface and self.world.map_image_path:
@@ -6537,11 +6679,9 @@ class CampaignManagerState:
                     COLORS["text_bright"]),
                     (badge.x + 2, badge.y))
 
-        # --- Draw map pins ---
+        # --- Draw map pins (only those belonging to the open map) ---
         hovered_pin_id = ""
-        for pin in self.world.map_pins:
-            if not pin.visible:
-                continue
+        for pin in self._visible_map_pins():
             px, py = self._map_to_screen(pin.map_x, pin.map_y, grid_area)
             if px < grid_area.x - 20 or px > grid_area.right + 20:
                 continue

@@ -311,6 +311,10 @@ class MapPin:
     color: str = ""                   # Custom hex color (empty = auto from pin_type)
     map_x: float = 0.0               # X position on map (percentage 0-100)
     map_y: float = 0.0               # Y position on map (percentage 0-100)
+    map_key: str = ""                 # Which registered map this pin belongs
+                                      # to (see data/world_maps.py). Empty =
+                                      # show on whichever map is open, which
+                                      # is what hand-placed pins do.
     location_id: str = ""             # Optional link to a Location
     npc_ids: List[str] = field(default_factory=list)  # Optional linked NPCs
     visible: bool = True              # Can be hidden from player view
@@ -687,6 +691,7 @@ def _serialize_pin(p: MapPin) -> dict:
         "id": p.id, "name": p.name, "pin_type": p.pin_type,
         "description": p.description, "notes": p.notes, "links": p.links,
         "icon": p.icon, "color": p.color, "map_x": p.map_x, "map_y": p.map_y,
+        "map_key": p.map_key,
         "location_id": p.location_id, "npc_ids": p.npc_ids, "visible": p.visible,
     }
 
@@ -697,6 +702,7 @@ def _deserialize_pin(d: dict) -> MapPin:
         description=d.get("description", ""), notes=d.get("notes", ""),
         links=d.get("links", []), icon=d.get("icon", ""), color=d.get("color", ""),
         map_x=d.get("map_x", 0.0), map_y=d.get("map_y", 0.0),
+        map_key=d.get("map_key", ""),
         location_id=d.get("location_id", ""), npc_ids=d.get("npc_ids", []),
         visible=d.get("visible", True),
     )
