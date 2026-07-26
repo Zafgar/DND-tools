@@ -302,8 +302,9 @@ class TacticalAI:
             plan.skip_reason = "Lair owner defeated"
             return plan
 
-        lair_actions = [a for a in owner.stats.actions if a.action_type == "lair"]
-        if not lair_actions:
+        from engine.special_actions import resolve_special_actions
+        lair_abilities = resolve_special_actions(owner.stats, "lair")
+        if not lair_abilities:
             plan.skipped = True
             plan.skip_reason = "No lair actions found"
             return plan
@@ -318,15 +319,28 @@ class TacticalAI:
         best_step = None
         best_score = -1.0
 
-        for action in lair_actions:
+        for sa in lair_abilities:
             # MM: Can't reuse the same lair action two rounds in a row
-            if action.name == entity.last_lair_action and len(lair_actions) > 1:
+            if sa.name == entity.last_lair_action and len(lair_abilities) > 1:
                 continue
 
             # Check if recharge needed
-            if entity.get_feature_by_name(action.name):
-                if not entity.can_use_feature(action.name):
+            if owner.get_feature_by_name(sa.name):
+                if not owner.can_use_feature(sa.name):
                     continue
+
+            action = sa.action
+            if action is None:
+                # A lair action with no numbers of its own — the room
+                # shifts, a door slams. Worth taking so the lair is not
+                # silent, but it never outbids a real one.
+                if 1.0 > best_score:
+                    best_score = 1.0
+                    best_step = ActionStep(
+                        step_type="legendary",
+                        description=f"[LAIR] {owner.name}: {sa.name}",
+                        attacker=owner, action_name=sa.name)
+                continue
 
             if action.aoe_radius > 0:
                 result = self._best_aoe_cluster(owner, enemies, allies=allies, battle=battle,
@@ -372,12 +386,19 @@ class TacticalAI:
                             step.description = f"[LAIR] {step.description}"
                             best_step = step
 
+        # The lair spends its turn either way. Without this the
+        # auto-battle re-planned the same lair turn forever whenever the
+        # chosen action had nothing to resolve (a room that darkens, a
+        # door that slams), and the whole fight deadlocked on initiative
+        # 20 with nobody else ever acting.
+        entity.action_used = True
+
         if best_step:
             # Track which lair action was used (MM: can't repeat next round)
             entity.last_lair_action = best_step.action_name or (best_step.action.name if best_step.action else "")
             # Consume usage if applicable
-            if best_step.action and entity.get_feature_by_name(best_step.action.name):
-                entity.use_feature(best_step.action.name)
+            if best_step.action and owner.get_feature_by_name(best_step.action.name):
+                owner.use_feature(best_step.action.name)
             plan.steps.append(best_step)
             return plan
 
@@ -4554,20 +4575,30 @@ class TacticalAI:
         if not enemies:
             return None
 
-        leg_feats = [f for f in entity.stats.features if f.feature_type == "legendary"]
-        if not leg_feats:
+        from engine.special_actions import resolve_special_actions
+        abilities = [sa for sa in
+                     resolve_special_actions(entity.stats, "legendary")
+                     if sa.cost <= entity.legendary_actions_left]
+        if not abilities:
             return None
 
         best_step = None
         best_score = 0.0
+        best_cost = 1
 
-        for feat in leg_feats:
-            if feat.legendary_cost > entity.legendary_actions_left:
-                continue
+        for sa in abilities:
+            leg_action = sa.action
 
-            leg_action = next((a for a in entity.stats.actions if a.name == feat.name
-                               and a.action_type == "legendary"), None)
-            if not leg_action:
+            # --- Abilities with no executable action of their own ---
+            # A reposition or a "cast a cantrip" legendary action still
+            # costs points and still helps; without this branch a
+            # movement legendary action scored zero and was never taken,
+            # so the creature simply banked its actions forever.
+            if leg_action is None:
+                score, step = self._legendary_fallback(entity, sa, enemies,
+                                                       battle)
+                if step is not None and score > best_score:
+                    best_score, best_step, best_cost = score, step, sa.cost
                 continue
 
             # --- AoE legendary actions (Wing Attack, Frightful Presence) ---
@@ -4591,31 +4622,38 @@ class TacticalAI:
                             score += len(clusters) * 8
 
                         # Cost efficiency
-                        score /= max(feat.legendary_cost, 1)
+                        score /= max(sa.cost, 1)
 
                         if score > best_score:
                             best_score = score
+                            best_cost = sa.cost
                             raw_dmg = roll_dice(leg_action.damage_dice) if leg_action.damage_dice else 0
                             best_step = ActionStep(
                                 step_type="legendary",
-                                description=f"[LEGENDARY] {entity.name} uses {feat.name}!",
+                                description=f"[LEGENDARY] {entity.name} uses {sa.name}!",
                                 attacker=entity, targets=clusters, action=leg_action,
                                 damage=raw_dmg, damage_type=leg_action.damage_type,
-                                action_name=feat.name, aoe_center=(cx, cy),
-                                save_dc=leg_action.condition_dc, save_ability=leg_action.condition_save
+                                action_name=sa.name, aoe_center=(cx, cy),
+                                save_dc=leg_action.condition_dc,
+                                save_ability=leg_action.condition_save
                             )
                 continue
 
             # --- Single-target legendary actions ---
-            # Score each potential target
             for target in enemies:
                 if target.hp <= 0:
                     continue
                 dist = battle.get_distance(entity, target)
                 if leg_action.range / 5.0 < dist:
                     continue
+                if not self._can_see_target(entity, target, battle):
+                    continue
 
-                score = 0.0
+                # A declared-but-empty legendary action (a Detect, a
+                # stare, a command) still has a floor value: scoring it
+                # at zero meant it could never beat best_score and the
+                # creature banked its actions for the whole fight.
+                score = 2.0
                 if leg_action.damage_dice:
                     dmg = self._estimate_damage(leg_action.damage_dice, leg_action.damage_type, target)
                     hit_chance = (21 + leg_action.attack_bonus - target.stats.armor_class) / 20.0
@@ -4637,30 +4675,58 @@ class TacticalAI:
                         score += 10
 
                 # Cost efficiency
-                score /= max(feat.legendary_cost, 1)
+                score /= max(sa.cost, 1)
 
                 if score > best_score:
                     best_score = score
+                    best_cost = sa.cost
                     step = self._execute_attack(entity, leg_action, target, battle)
                     step.step_type = "legendary"
-                    step.description = f"[LEGENDARY] " + step.description
+                    step.action_name = sa.name
+                    step.description = "[LEGENDARY] " + step.description
                     best_step = step
 
         if best_step:
-            # Find the feat used and deduct cost
-            for feat in leg_feats:
-                if feat.name == best_step.action_name or (best_step.action and feat.name == best_step.action.name):
-                    entity.legendary_actions_left -= feat.legendary_cost
-                    break
-                # Also check description match for AoE
-                if feat.name in best_step.description:
-                    entity.legendary_actions_left -= feat.legendary_cost
-                    break
-            else:
-                # Fallback: deduct cheapest cost
-                entity.legendary_actions_left -= min(f.legendary_cost for f in leg_feats)
+            entity.legendary_actions_left -= best_cost
             return best_step
         return None
+
+    def _legendary_fallback(self, entity, sa, enemies, battle):
+        """A legendary ability with no rules of its own — move or cast.
+
+        Worth far less than a real attack, so it only wins when nothing
+        else is available, but it beats sitting on unused actions.
+        """
+        if sa.intent == "move":
+            target = self._pick_target(entity, enemies, battle)
+            if target is None or battle.is_adjacent(entity, target):
+                return 0.0, None
+            before = entity.movement_left
+            entity.movement_left = max(entity.movement_left,
+                                       entity.stats.speed)
+            step = self._move_toward(entity, target, [], battle)
+            entity.movement_left = before
+            if step is None:
+                return 0.0, None
+            step.step_type = "legendary"
+            step.action_name = sa.name
+            step.description = f"[LEGENDARY] {entity.name}: {sa.name}"
+            return 4.0, step
+        if sa.intent == "spell":
+            step = self._try_damage_spell(entity, enemies, battle)
+            if step is None:
+                return 0.0, None
+            step.step_type = "legendary"
+            step.action_name = sa.name
+            step.description = f"[LEGENDARY] {entity.name}: {sa.name}"
+            return max(3.0, step.damage * 0.4), step
+        # Pure effect (Detect, a command, a buff for the horde). The DM
+        # narrates it; the engine records that the points were spent.
+        target = self._pick_target(entity, enemies, battle)
+        return 2.0, ActionStep(
+            step_type="legendary",
+            description=f"[LEGENDARY] {entity.name} uses {sa.name}.",
+            attacker=entity, target=target, action_name=sa.name)
 
     # ------------------------------------------------------------------ #
     # Opportunity Attack                                                   #

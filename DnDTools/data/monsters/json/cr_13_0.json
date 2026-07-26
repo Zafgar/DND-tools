@@ -436,6 +436,25 @@
         "short_rest_recharge": false,
         "phase_trigger_hp_pct": 0.0,
         "phase_description": ""
+      },
+      {
+        "feature_type": "legendary",
+        "uses_per_day": -1,
+        "legendary_cost": 1,
+        "recharge": "",
+        "aura_radius": 0,
+        "save_dc": 16,
+        "save_ability": "Dexterity",
+        "applies_condition": "",
+        "damage_dice": "4d8",
+        "damage_type": "force",
+        "mechanic": "",
+        "mechanic_value": "",
+        "short_rest_recharge": false,
+        "phase_trigger_hp_pct": 0.0,
+        "phase_description": "",
+        "name": "Eye Ray",
+        "description": "The beholder uses one random eye ray (Costs 1 Action)."
       }
     ],
     "legendary_action_count": 3,
@@ -607,7 +626,7 @@
         "phase_description": ""
       }
     ],
-    "legendary_action_count": 3,
+    "legendary_action_count": 0,
     "legendary_resistance_count": 3
   },
   {

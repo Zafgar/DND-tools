@@ -478,8 +478,20 @@ class TestVfxWiredIntoCombat(unittest.TestCase):
         self.assertIn("MissSpark", seen)
 
     def test_summons_get_a_summoning_circle(self):
-        seen = self._run(["Cazna Icharyd"], 23)
-        self.assertIn("SummonRune", seen)
+        """Ei nojata siihen että tietty taistelu sattuu kutsumaan —
+        kutsutaan olento suoraan ja katsotaan että kehä syntyy."""
+        bs = BattleState(_FM(), entities=[
+            Entity(_hero(), 3, 3, is_player=True),
+            Entity(library.get_monster("Verikuoron akolyytti"), 8, 3,
+                   is_player=False)])
+        summon = bs.battle.spawn_summon(
+            bs.battle.entities[0], "Construct Spirit", 5, 3,
+            hp=40, ac=13, damage_dice="1d8+4", duration=10,
+            spell_name="Summon Construct")
+        before = len(bs.impact_flashes)
+        bs._spawn_summon_vfx(summon)
+        self.assertEqual(len(bs.impact_flashes), before + 1)
+        self.assertEqual(type(bs.impact_flashes[-1]).__name__, "SummonRune")
 
     def test_teleport_step_carries_both_ends(self):
         """Misty Step relocates the token during planning; the step has to

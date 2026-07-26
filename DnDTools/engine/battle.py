@@ -136,7 +136,9 @@ class BattleSystem:
         # PHB/MM: Lair actions only occur when fighting in the creature's lair
         lair_owners = []
         if self.lair_enabled:
-            lair_owners = [e for e in self.entities if any(a.action_type == "lair" for a in e.stats.actions)]
+            from engine.special_actions import has_lair_actions
+            lair_owners = [e for e in self.entities
+                           if has_lair_actions(e.stats)]
         for owner in lair_owners:
             from data.models import CreatureStats
             lair_stats = CreatureStats(name="Lair Action", hit_points=1, speed=0, challenge_rating=0)

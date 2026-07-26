@@ -502,8 +502,8 @@ def should_use_lair_action(owner: "Entity") -> bool:
         return False
     if owner.is_incapacitated():
         return False
-    lair_actions = [a for a in owner.stats.actions if a.action_type == "lair"]
-    return len(lair_actions) > 0
+    from engine.special_actions import has_lair_actions
+    return has_lair_actions(owner.stats)
 
 
 # ============================================================
