@@ -188,6 +188,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # Deferred PLAYER concentration checks — at a physical table the
         # player rolls; each queued dict: {entity, dc, dmg, spell}.
         self.pending_conc_checks: list = []
+        # When set, the next creature added via the ADD modal becomes this
+        # entity's companion/summon (see _add_entity_to_battle).
+        self._summon_owner_pending = None
         import engine.entities as _entities_mod
         _entities_mod.CONCENTRATION_PROMPT_HOOK = self._concentration_hook
 
@@ -1997,6 +2000,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             (f"Drop Concentration", lambda: (entity.drop_concentration(), self._cleanup_dropped_spell_terrain(), self._log(f"{entity.name} drops concentration."))),
             (f"Add Effect...", lambda: self._open_effect_modal(entity)),
             (f"Edit Notes...", lambda: self._open_notes_modal(entity)),
+            (f"Kutsu kumppani...", lambda: self._begin_summon_companion(entity)),
+            (f"Vapauta kumppanit", lambda: self._dismiss_companions(entity)),
             (f"SET AI TARGET", lambda: self._set_ai_forced_target(entity)),
             (f"Clear Dead", lambda: self._clear_dead_monsters()),
         ]
@@ -2587,6 +2592,32 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log(f"[DM] {entity.name} manually expends a Legendary Resistance. ({entity.legendary_resistances_left} left)")
             self._save_undo_snapshot()
 
+    def _begin_summon_companion(self, entity):
+        """DM: open the ADD picker so the next creature chosen joins as
+        ``entity``'s companion/summon (Accursed Specter, Drake Companion,
+        an animal companion, a raised specter...)."""
+        self.ctx_open = False
+        self._summon_owner_pending = entity
+        self.add_entity_open = True
+        self.add_entity_search = ""
+        self.add_entity_is_player = entity.is_player
+        self._log(f"[KUMPPANI] Valitse olento — se liittyy {entity.name}:n "
+                  "kumppaniksi.")
+
+    def _dismiss_companions(self, entity):
+        """DM: dismiss every companion/summon owned by this entity."""
+        owned = [e for e in self.battle.entities
+                 if e.is_summon and e.summon_owner is entity]
+        if not owned:
+            self._log(f"[KUMPPANI] {entity.name}:llä ei ole kumppaneita.")
+            return
+        self._save_undo_snapshot()
+        for e in owned:
+            e.summon_rounds_left = 0
+            e.hp = 0
+        self.battle.remove_expired_summons()
+        self._log(f"[KUMPPANI] {entity.name} vapautti {len(owned)} kumppani(a).")
+
     def _use_feature_manual(self, entity, feature):
         if entity.can_use_feature(feature.name):
             entity.use_feature(feature.name)
@@ -3077,6 +3108,31 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.battle.combat_started:
             init_mod = stats.abilities.get_mod("dexterity")
             ent.initiative = random.randint(1, 20) + init_mod
+        # DM companion mode: the creature is added as a summon/companion
+        # bound to an owner (Accursed Specter, Drake Companion, an animal
+        # companion...). It shares the owner's side, acts right after them
+        # in initiative and is tracked as a summon.
+        owner = getattr(self, "_summon_owner_pending", None)
+        if owner is not None and owner in self.battle.entities:
+            ent.is_player = owner.is_player
+            ent.is_summon = True
+            ent.summon_owner = owner
+            ent.summon_rounds_left = 9999      # until dismissed/killed
+            ent.summon_spell_name = ""
+            ent.initiative = owner.initiative - 0.5
+            ent.name = f"{stats.name} ({owner.name})"
+            self.battle.entities.append(ent)
+            if self.battle.combat_started:
+                cur = self.battle.get_current_entity()
+                self.battle.entities.sort(key=lambda e: e.initiative,
+                                          reverse=True)
+                self.battle.turn_index = self.battle.entities.index(cur)
+            self._summon_owner_pending = None
+            self.selected_entity = ent
+            self.add_entity_open = False
+            self._log(f"[KUMPPANI] {ent.name} kutsuttiin kentälle "
+                      f"{owner.name}:n kumppanina (toimii heti tämän jälkeen).")
+            return
         self.battle.entities.append(ent)
         self.selected_entity = ent
         self.add_entity_open = False

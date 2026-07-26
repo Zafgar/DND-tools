@@ -179,7 +179,8 @@ novus_party = [
                      "Web", "Misty Step", "Mirror Image", "Invisibility",
                      "Fireball", "Counterspell", "Slow", "Dispel Magic",
                      "Fly", "Haste", "Polymorph", "Sickening Radiance",
-                     "Wall of Force", "Telekinesis", "Disintegrate"],
+                     "Summon Construct", "Wall of Force", "Telekinesis",
+                     "Disintegrate"],
         cantrip_names=["Ray of Frost", "Toll the Dead", "Mage Hand",
                        "Message", "Minor Illusion"],
         actions=[
@@ -647,7 +648,8 @@ novus_party = [
         spell_slots={"1st": 2, "5th": 2},
         spell_names=["Hex", "Armor of Agathys", "Shield", "Absorb Elements",
                      "Faerie Fire", "Cure Wounds", "Darkness", "Fly",
-                     "Shadow of Moil", "Dimension Door", "Synaptic Static"],
+                     "Summon Shadowspawn", "Shadow of Moil", "Dimension Door",
+                     "Synaptic Static"],
         cantrip_names=["Eldritch Blast", "Shocking Grasp", "Lightning Lure",
                        "Mage Hand"],
         actions=[

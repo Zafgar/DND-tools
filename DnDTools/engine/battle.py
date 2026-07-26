@@ -193,6 +193,12 @@ class BattleSystem:
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
         self.turn_index = self.entities.index(current)
 
+        # If the summoning spell requires concentration, tie the creature
+        # to it so losing concentration makes the summon vanish (PHB).
+        conc = owner.concentrating_on
+        if conc is not None and spell_name and conc.name == spell_name:
+            owner.register_concentration_effect(ent, "summon", spell_name)
+
         self.log(f"[SUMMON] {name} appears at ({int(x)},{int(y)})!")
         return ent
 

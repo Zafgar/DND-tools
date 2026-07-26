@@ -1593,7 +1593,14 @@ class TacticalAI:
                 return [heal_step]
 
         # === EVALUATE ALL OPTIONS AND PICK BEST ===
-        # Build a list of (score, action_fn) and pick the highest
+        # Build a list of (score, action_fn) and pick the highest.
+        #
+        # Several _try_* helpers consume a spell slot as soon as they build
+        # their candidate step. Only ONE candidate is finally used, so the
+        # losers would silently burn slots (a caster could lose its 6th
+        # level slot to a Disintegrate it never cast). Snapshot the slots
+        # here and re-apply only the winner's cost below.
+        slots_before = dict(entity.spell_slots)
         candidates = []
 
         # --- Channel Divinity (Turn Undead etc.) ---
@@ -1649,6 +1656,15 @@ class TacticalAI:
             if terrain_step:
                 candidates.append((terrain_step[0], "terrain_spell", terrain_step[1]))
 
+        # --- Summon a creature (Shadowspawn / Construct / Draconic ...) ---
+        # Valued by the summon's staying power: a body on the field soaks
+        # hits and adds damage every round, so it competes with a nuke.
+        if entity.stats.spells_known:
+            summon_step = self._try_summon_creature_spell(entity, enemies, battle)
+            if summon_step:
+                s_score = 18.0 + summon_step.summon_hp * 0.35
+                candidates.append((s_score, "summon_spell", [summon_step]))
+
         # --- Damage spell / cantrip ---
         if entity.stats.spells_known or entity.stats.cantrips:
             spell_step = self._try_damage_spell(entity, enemies, battle)
@@ -1689,8 +1705,22 @@ class TacticalAI:
             candidates.sort(key=lambda x: x[0], reverse=True)
             best_score, best_type, best_steps = candidates[0]
 
+            # Refund every slot the losing candidates burned, then charge
+            # only what the winning steps actually use.
+            entity.spell_slots = dict(slots_before)
+            for st in best_steps:
+                lvl = getattr(st, "slot_used", 0) or 0
+                if lvl > 0:
+                    entity.use_spell_slot_exact(lvl)
+
             # Apply side effects based on action type
-            if best_type == "turn_undead":
+            if best_type == "summon_spell":
+                # The slot was charged by the loop above; only the
+                # concentration hook is left to commit.
+                st = best_steps[0]
+                if st.spell is not None and st.spell.concentration:
+                    entity.start_concentration(st.spell)
+            elif best_type == "turn_undead":
                 entity.channel_divinity_left -= 1
             elif best_type in ("aoe_spell", "damage_spell", "debuff"):
                 pass  # Spell slot already consumed in try_ method
@@ -4151,6 +4181,69 @@ class TacticalAI:
             summon_duration=10,
             summon_spell="Spiritual Weapon",
             summon_immediate_attack=True,
+        )
+
+    def _try_summon_creature_spell(self, entity, enemies, battle):
+        """Cast a creature-summoning spell (Summon Shadowspawn, Summon
+        Construct, Summon Draconic Spirit, Bigby's Hand ...) as an ACTION.
+
+        Spiritual Weapon has its own bonus-action path; familiars are
+        utility and not summoned mid-fight. Only one such summon is kept
+        alive per caster, and concentration spells are skipped when the
+        caster is already concentrating on something."""
+        if entity.action_used:
+            return None
+        candidates = []
+        for sp in entity.stats.spells_known:
+            name = getattr(sp, "summon_name", "")
+            if not name or sp.name in ("Spiritual Weapon", "Find Familiar"):
+                continue
+            if not entity.has_spell_slot(sp.level):
+                continue
+            if sp.concentration and entity.concentrating_on:
+                continue
+            candidates.append(sp)
+        if not candidates:
+            return None
+        # Already have a summon of our own on the field? One is enough.
+        if any(e.is_summon and e.summon_owner is entity and e.hp > 0
+               for e in battle.entities):
+            return None
+        # Strongest available summon (highest HP, then slot level).
+        spell = max(candidates,
+                    key=lambda s: (getattr(s, "summon_hp", 0), s.level))
+        target = self._pick_target(entity, enemies, battle)
+        if not target:
+            return None
+        # Spawn adjacent to the target where possible.
+        spawn_x, spawn_y = entity.grid_x, entity.grid_y
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = target.grid_x + dx, target.grid_y + dy
+                if battle.is_passable(nx, ny, exclude=entity):
+                    spawn_x, spawn_y = nx, ny
+                    break
+            else:
+                continue
+            break
+        # NOTE: resources are NOT consumed here — the caller commits them
+        # only if this candidate actually wins (see "summon_spell" in
+        # _decide_action), so an unchosen summon never leaks a slot.
+        sname = getattr(spell, "summon_name", spell.name)
+        return ActionStep(
+            step_type="summon",
+            description=(f"{entity.name} casts {spell.name} — {sname} "
+                         f"appears near {target.name}!"),
+            attacker=entity, target=target, spell=spell,
+            slot_used=spell.level, action_name=spell.name,
+            summon_name=sname, summon_x=spawn_x, summon_y=spawn_y,
+            summon_hp=getattr(spell, "summon_hp", 0) or 1,
+            summon_ac=getattr(spell, "summon_ac", 12) or 12,
+            summon_owner=entity,
+            summon_duration=10,
+            summon_spell=spell.name,
         )
 
     def _monk_flurry_of_blows(self, entity, target, allies, battle):

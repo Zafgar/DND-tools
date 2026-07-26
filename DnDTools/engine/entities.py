@@ -621,15 +621,28 @@ class Entity:
             self.temp_hp -= absorbed
             amount -= absorbed
 
-        # Wild Shape Damage Carry-over
+        # Wild Shape damage carry-over (PHB p.67): damage that drops the
+        # beast form to 0 reverts the druid, and only the EXCESS carries
+        # over to their own hit points. The beast form absorbs the rest —
+        # so zero out ``amount`` instead of falling through, which used to
+        # subtract the beast-killing damage from the restored form a
+        # second time. ``damage_for_concentration`` keeps the full
+        # instance, so the concentration check below still runs correctly.
         if self.is_wild_shaped and amount > 0:
             if self.hp - amount <= 0:
                 excess = amount - self.hp
                 self.hp = 0
                 self.revert_form()
-                # Apply excess damage to original form
                 if excess > 0:
-                    return self.take_damage(excess, damage_type, is_magical)
+                    # The excess hits the druid's own form and can trigger
+                    # death saves there; report its concentration result.
+                    _dealt, broke = self.take_damage(
+                        excess, damage_type, is_magical, source=source,
+                        is_ranged_weapon=is_ranged_weapon, is_crit=is_crit)
+                    return amount, broke
+                # Exact kill: the beast form soaked all of it. Fall through
+                # with no HP loss so concentration is still checked.
+                amount = 0
 
         hp_before_damage = self.hp
         self.hp -= amount
@@ -852,7 +865,16 @@ class Entity:
         for link in links:
             tgt = link.get("target")
             name = link.get("name", "")
-            if tgt is None or not name or name == "Banished":
+            if tgt is None:
+                continue
+            # A summoned creature sustained by concentration vanishes the
+            # moment concentration ends (PHB: the spell ends). Flag it as
+            # expired; the BattleSystem sweeps it on its next check.
+            if link.get("kind") == "summon":
+                tgt.summon_rounds_left = 0
+                tgt.hp = 0
+                continue
+            if not name or name == "Banished":
                 continue
             if link.get("kind") == "effect":
                 if name in tgt.active_effects:
