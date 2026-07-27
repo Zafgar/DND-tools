@@ -2461,6 +2461,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             (f"Kutsu kumppani...", lambda: self._begin_summon_companion(entity)),
             (f"Vapauta kumppanit", lambda: self._dismiss_companions(entity)),
             (f"SET AI TARGET", lambda: self._set_ai_forced_target(entity)),
+            ("Vaihda puolta (pelaaja/vihollinen)",
+             lambda: self._switch_side(entity)),
             (f"Clear Dead", lambda: self._clear_dead_monsters()),
         ]
         x, y = pos
@@ -2468,6 +2470,31 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.ctx_rects = []
         for i, (txt, cb) in enumerate(options):
             self.ctx_rects.append((pygame.Rect(x, y + i*h, w, h), cb, txt))
+
+    def _switch_side(self, entity):
+        """Move a creature to the other team.
+
+        The ADD picker asks which side a new creature joins, but a
+        mistake there used to mean deleting it and starting again — and
+        a hero who turns on the party mid-fight is a thing that happens
+        at the table.
+        """
+        self.ctx_open = False
+        if entity is None:
+            return
+        self._save_undo_snapshot()
+        entity.is_player = not entity.is_player
+        # Anything it had decided about the old enemy list is now wrong.
+        entity.marked_target = None
+        if getattr(self, "ai_forced_target", None) is entity:
+            self.ai_forced_target = None
+        if self.pending_plan is not None and (
+                self.pending_plan.entity is entity
+                or entity in (self.pending_plan.steps[0].targets
+                              if self.pending_plan.steps else [])):
+            self._cancel_ai_plan()
+        side = "PELAAJIEN puolelle" if entity.is_player else "VIHOLLISEKSI"
+        self._log(f"[DM] {entity.name} siirtyi {side}.")
 
     def _open_notes_modal(self, entity):
         self.ctx_open = False

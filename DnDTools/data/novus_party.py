@@ -814,11 +814,50 @@ novus_party = [
             Action("Multiattack", "x2 (Extra Attack)", 0, "", 0, "",
                    is_multiattack=True, multiattack_count=2,
                    multiattack_targets=["Aeorian Rifle", "Aeorian Rifle"]),
-            Action("Aeorian Rifle", "Ranged firearm (Archery)", 10, "2d10+4",
-                   0, "piercing", range=80, long_range=240,
-                   properties=["two-handed", "ammunition"]),
-            Action("Flintlock Pistol of Aspicio", "Ranged firearm", 10,
-                   "1d10+4", 0, "piercing", range=60, long_range=240),
+            Action("Aeorian Rifle", "Ranged firearm (Archery). Aeorian "
+                   "make: needs no ammunition and never reloads.", 10,
+                   "2d10+4", 0, "piercing", range=80, long_range=240,
+                   properties=["two-handed", "ammunition", "slow"]),
+            # The rifle's three charge-fuelled discharges (5 charges,
+            # 1d4+1 back at dawn). Modelled as save-for-half area
+            # attacks so the AI aims them like breath weapons.
+            Action("Aeorian Rifle: Acid Jet",
+                   "1 charge. Line 45 ft long, 5 ft wide. DC 15 DEX, half "
+                   "on a save. A creature that fails also takes 1d10 acid "
+                   "at the start of each of its turns until it uses an "
+                   "action to wipe the acid off.",
+                   0, "2d10", 0, "acid", range=45,
+                   aoe_radius=45, aoe_shape="line",
+                   condition_save="Dexterity", condition_dc=15),
+            Action("Aeorian Rifle: Fire Jet",
+                   "1 charge. 30 ft cone. DC 15 DEX, half on a save. "
+                   "Ignites flammable objects nobody is wearing or "
+                   "carrying.",
+                   0, "3d10", 0, "fire", range=30,
+                   aoe_radius=30, aoe_shape="cone",
+                   condition_save="Dexterity", condition_dc=15),
+            Action("Aeorian Rifle: Frost Shot",
+                   "1 charge. A ball of frost to a point within 120 ft "
+                   "that bursts into a 20 ft radius sphere. DC 15 CON.",
+                   0, "3d10", 0, "cold", range=120,
+                   aoe_radius=20, aoe_shape="sphere",
+                   condition_save="Constitution", condition_dc=15),
+            Action("Cornu Aquilae", "Ranged firearm. Holds 2 shots, one "
+                   "per action; reloading both is one action. Its damage "
+                   "counts as magical (+1 / silvered).", 10,
+                   "1d10+4", 0, "piercing", range=60, long_range=240,
+                   properties=["reload", "misfire 1", "magical"]),
+            Action("Douk", "Shotgun (rare, attuned). Extra 1d6 force per "
+                   "point of DEX modifier, and the hit shoves the target "
+                   "15 ft (5 ft if Large, 30 ft if Small). One shot per "
+                   "day.", 10, "2d8+4", 0, "piercing",
+                   range=30, long_range=90,
+                   properties=["two-handed", "ammunition", "reload",
+                               "push"]),
+            Action("Flintlock Pistol of Aspicio", "Ranged firearm. One "
+                   "shot, then an action to reload. Misfire 1.", 10,
+                   "1d10+4", 0, "piercing", range=60, long_range=240,
+                   properties=["reload", "misfire 1"]),
             Action("Shortsword", "Melee", 8, "1d6+4", 0, "piercing",
                    properties=["finesse", "light"]),
             Action("Planar Warrior", "Bonus: next hit vs target deals +2d8 "
@@ -853,11 +892,34 @@ novus_party = [
             Feature("Sharpshooter", "Ignore long-range disadvantage, half/"
                     "three-quarters cover; -5 to hit for +10 damage option.",
                     feature_type="feat"),
+            Feature("Aeorian Rifle: Charges", "The rifle carries 5 charges "
+                    "and regains 1d4+1 at dawn. Acid Jet, Fire Jet and "
+                    "Frost Shot each spend one.", feature_type="item",
+                    uses_per_day=5),
+            Feature("Douk: Daily Shot", "The shotgun fires once per day; "
+                    "after that it waits for tomorrow.",
+                    feature_type="item", uses_per_day=1),
+            Feature("Cornu Aquilae: Steady Aim", "1/day, as a reaction, "
+                    "the gun adds +2 to one of your DEX saving throws.",
+                    feature_type="item", uses_per_day=1),
+            Feature("Misfire", "A natural 1 on a firearm attack jams the "
+                    "gun. Repair it with a Bullet Kit check (DC 8 + the "
+                    "weapon's misfire score); on a failure it is broken "
+                    "and must be mended out of combat for a quarter of "
+                    "the firearm's cost. Firing without proficiency "
+                    "raises the misfire score by 1.", feature_type="item"),
+            Feature("Full Load", "Overfill a flintlock: misfire score +5, "
+                    "and the shot deals 3 extra piercing damage.",
+                    feature_type="item"),
         ],
         racial_traits=get_racial_traits("Variant Human"),
         saving_throws={"Strength": 4, "Dexterity": 8},
+        # Straight off the sheet: Insight is expertise (+10, passive 20),
+        # Arcana is proficient, Acrobatics is not.
         skills={"Perception": 6, "Investigation": 4, "Stealth": 8,
-                "Survival": 6, "Insight": 6, "Acrobatics": 8},
+                "Survival": 6, "Insight": 10, "Arcana": 4,
+                "Acrobatics": 4, "Sleight of Hand": 4,
+                "Animal Handling": 2, "Medicine": 2},
         challenge_rating=6.0, proficiency_bonus=4,
         alignment="Lawful Neutral",
         lore="Walker-suvun etsivä-tarkka-ampuja ja E.F.I.-agentti Fort "

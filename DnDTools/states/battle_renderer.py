@@ -1465,7 +1465,9 @@ class BattleRendererMixin:
         lines, rationale, diff = [], "", ""
         try:
             if sel.hp > 0:
-                plan = self.battle.compute_ai_turn(sel)
+                # Preview, not the real turn: asking what the AI
+                # would do must not spend the character's action.
+                plan = self.battle.preview_ai_turn(sel)
                 lines = summarize_ai_plan_fi(plan)
                 # Kohdeperuste: etsi ensimmäinen kohteellinen hyökkäys/loitsu
                 # (myös AoE-loitsun ensimmäinen kohde targets-listasta).
@@ -2229,9 +2231,23 @@ class BattleRendererMixin:
                     self.btn_ai.text  = "AI DONE"
                     self.btn_ai.color = COLORS["text_dim"]
                 else:
-                    self.btn_ai.text  = "AI TURN" if curr.is_player else "AI AUTO-PLAY"
-                    self.btn_ai.color = COLORS["accent"]
+                    # On a hero's turn this is the "the player is not
+                    # here, run their character for them" button — the
+                    # AI plans the turn and the DM approves it step by
+                    # step, exactly like an NPC's.
+                    self.btn_ai.text = ("AI EHDOTUS (hero)" if curr.is_player
+                                        else "AI EHDOTUS (NPC)")
+                    self.btn_ai.color = (COLORS["spell"] if curr.is_player
+                                         else COLORS["accent"])
                 self.btn_ai.draw(screen, mp)
+                if curr.is_player and not curr.action_used \
+                        and self.pending_plan is None:
+                    hint = fonts.tiny.render(
+                        "Pelaaja poissa? AI EHDOTUS suunnittelee hänen "
+                        "vuoronsa — hyväksyt silti joka askeleen.",
+                        True, COLORS["text_dim"])
+                    screen.blit(hint, (self.btn_ai.rect.x,
+                                       self.btn_ai.rect.bottom + 2))
 
     # --- AI confirm dialog ---
     def _draw_plan_options(self, screen, mp, plan, bx, by, bw, bh):

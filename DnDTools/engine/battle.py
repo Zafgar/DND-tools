@@ -538,6 +538,55 @@ class BattleSystem:
                 ent.grid_x, ent.grid_y = rx, ry
                 self.log(f"[BANISHMENT] {ent.name} reappears at ({int(rx)}, {int(ry)}).")
 
+    # Everything planning spends. calculate_turn already rewinds where a
+    # creature stood; these are the rest of the books it writes in.
+    _PREVIEW_SCALARS = (
+        "action_used", "bonus_action_used", "reaction_used", "movement_left",
+        "reckless_attack_active", "rage_active", "rages_left",
+        "potion_used_this_turn", "sneak_attack_used", "elevation",
+        "is_flying", "is_climbing", "legendary_actions_left",
+        "legendary_resistances_left", "concentrating_on",
+        "concentration_rounds_left", "marked_target", "temp_hp", "hp",
+    )
+    _PREVIEW_DICTS = ("spell_slots", "feature_uses")
+
+    def preview_ai_turn(self, entity: Entity):
+        """Plan a turn WITHOUT spending anything.
+
+        The stat panel shows "what would the AI do with this character",
+        and it got that answer by running the real planner — which marks
+        the action used, burns the bonus action, spends a spell slot,
+        lights Reckless Attack and eats a rage. Merely selecting a
+        character therefore consumed their turn, and on a hero the DM
+        had not touched yet that is indistinguishable from the tool
+        being broken.
+        """
+        snap = {k: getattr(entity, k, None) for k in self._PREVIEW_SCALARS}
+        snap_d = {k: dict(getattr(entity, k, {}) or {})
+                  for k in self._PREVIEW_DICTS}
+        links = list(getattr(entity, "concentration_links", []) or [])
+        try:
+            return self.compute_ai_turn(entity)
+        finally:
+            self._restore_preview(entity, snap, snap_d, links)
+
+    @staticmethod
+    def _restore_preview(entity, snap, snap_d, links):
+        """Put back everything a preview plan spent."""
+        for k, v in snap.items():
+            try:
+                setattr(entity, k, v)
+            except Exception:
+                pass
+        for k, v in snap_d.items():
+            cur = getattr(entity, k, None)
+            if isinstance(cur, dict):
+                cur.clear()
+                cur.update(v)
+        cur_links = getattr(entity, "concentration_links", None)
+        if isinstance(cur_links, list):
+            cur_links[:] = links
+
     def apply_planned_move(self, mover: Entity, new_x, new_y,
                            elevation=None, flying=None, teleport=False,
                            dragged=None):
@@ -2061,8 +2110,20 @@ class BattleSystem:
         return assess_encounter_danger(players, enemies)
 
     def get_dm_suggestion(self, entity: Entity):
-        """Get AI suggestion for a player's turn."""
-        return self.dm_advisor.get_optimal_move(entity, self)
+        """Get AI suggestion for a player's turn.
+
+        Advisory only: the advisor plans with a copy of the battle but
+        the real creature, so without this the act of asking spent the
+        creature's action, bonus action and slots.
+        """
+        snap = {k: getattr(entity, k, None) for k in self._PREVIEW_SCALARS}
+        snap_d = {k: dict(getattr(entity, k, {}) or {})
+                  for k in self._PREVIEW_DICTS}
+        links = list(getattr(entity, "concentration_links", []) or [])
+        try:
+            return self.dm_advisor.get_optimal_move(entity, self)
+        finally:
+            self._restore_preview(entity, snap, snap_d, links)
 
     def rate_player_action(self, entity: Entity, action_type: str,
                            target: Entity = None, damage_dealt: int = 0,
