@@ -187,17 +187,34 @@ class Entity:
         return self.stats.fly_speed
 
     def start_flying(self) -> bool:
-        """Begin flying. Returns False if entity can't fly."""
+        """Begin flying. Returns False if entity can't fly.
+
+        The turn's movement budget was worked out from the walk speed at
+        the start of the turn, so taking off mid-turn has to top it up by
+        the difference — otherwise a creature that leaves the ground is
+        stuck with the slower of its two speeds for the rest of the turn.
+        """
         if not self.can_fly:
             return False
+        before = self.get_speed()
         self.is_flying = True
         self.is_climbing = False
+        gained = self.get_speed() - before
+        if gained > 0:
+            self.movement_left += gained
         return True
 
     def land(self, ground_elevation: int = 0):
-        """Land at ground level."""
+        """Land at ground level.
+
+        Whatever is left of the turn is capped at the walk speed: a
+        Giant Eagle that comes down after 20 ft of its 80 ft flight has
+        60 ft of flying left on paper, but on the ground it can only
+        manage its 10 ft walk.
+        """
         self.is_flying = False
         self.elevation = ground_elevation
+        self.movement_left = min(self.movement_left, self.get_speed())
 
     def start_climbing(self) -> bool:
         """Begin climbing (half speed movement)."""
@@ -998,7 +1015,15 @@ class Entity:
         from data.conditions import SPEED_ZERO_CONDITIONS
         if self.conditions & SPEED_ZERO_CONDITIONS:
             return 0.0
-        speed = float(self.stats.speed)
+        # A creature in the air moves at its FLY speed, which is the
+        # whole point of having one. This used to read stats.speed
+        # unconditionally, so a Giant Eagle flew 10 ft per round instead
+        # of 80 and a Will-o'-Wisp — walk 0, fly 50 — had a movement
+        # budget of zero and could not move at all.
+        if self.is_flying and self.effective_fly_speed > 0:
+            speed = float(self.effective_fly_speed)
+        else:
+            speed = float(self.stats.speed)
         # NOTE: Prone does NOT halve speed (PHB p.190-191) — crawling
         # costs double per foot (applied as a movement-cost multiplier)
         # and standing up costs half your speed. The old halving here

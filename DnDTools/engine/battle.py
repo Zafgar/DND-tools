@@ -889,12 +889,19 @@ class BattleSystem:
         return oas
 
     def check_counterspell_reaction(self, caster: Entity, spell_level: int) -> List[Entity]:
-        """Check if any enemy can counterspell."""
+        """Who could counterspell this, by the book?
+
+        PHB p.228: the trigger is "a creature within 60 feet of you that
+        you can see casting a spell". Both halves of that matter and
+        only the range half was being checked, so counterspells came
+        through solid stone walls and blinded mages countered spells
+        they could not possibly have seen being cast.
+        """
         potential = []
         for enemy in self.get_enemies_of(caster):
             if enemy.reaction_used or enemy.is_incapacitated():
                 continue
-            
+
             # Check if has Counterspell known
             has_cs = False
             for s in enemy.stats.spells_known:
@@ -904,9 +911,15 @@ class BattleSystem:
             if not has_cs:
                 continue
 
-            # Check range (60ft) and slots (needs lvl 3+)
-            if self.get_distance(caster, enemy) * 5 <= 60 and enemy.has_spell_slot(3):
-                potential.append(enemy)
+            if not enemy.has_spell_slot(3):
+                continue
+            if self.get_distance(caster, enemy) * 5 > 60:
+                continue
+            if enemy.has_condition("Blinded"):
+                continue
+            if not self.has_line_of_sight(enemy, caster):
+                continue
+            potential.append(enemy)
         return potential
 
     def check_turn_start_auras(self, entity: Entity) -> List[dict]:

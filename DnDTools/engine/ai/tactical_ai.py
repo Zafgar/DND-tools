@@ -941,6 +941,74 @@ class TacticalAI:
         if ment > phys + 2: return "ranged"
         return "melee"
 
+    @staticmethod
+    def _horizontal_gap_ft(a, b) -> float:
+        """Ground distance between two creatures, ignoring altitude.
+
+        ``BattleSystem.get_distance`` folds elevation into the result,
+        which is right for reach but useless for "am I above them yet".
+        """
+        sa, sb = a.size_in_squares, b.size_in_squares
+        dx = max(0.0, b.grid_x - (a.grid_x + sa), a.grid_x - (b.grid_x + sb))
+        dy = max(0.0, b.grid_y - (a.grid_y + sa), a.grid_y - (b.grid_y + sb))
+        return math.hypot(dx, dy) * 5.0
+
+    def _consider_descending(self, entity, enemies, battle) -> float:
+        """Drop altitude when staying up costs more than it gains.
+
+        A flyer descends to reach a ground target it cannot otherwise
+        touch, and lands outright when it has no reason to be airborne.
+        Both cost movement, foot for foot, like any other flight.
+        Returns the feet descended.
+
+        It stays up when the ground below is a hazard, when an enemy is
+        also airborne, or when it fights at range — height is a real
+        advantage for an archer and a death sentence for nobody.
+
+        Crucially it only drops once it is already OVER its target.
+        Descending the moment it left the ground undid the take-off in
+        the same breath, so a creature that took to the air because no
+        walking route existed landed again immediately and the two
+        sides circled each other for the rest of time.
+        """
+        live = [e for e in enemies if e.hp > 0]
+        if not live:
+            return 0.0
+        if any(e.is_flying and e.elevation > 0 for e in live):
+            return 0.0
+        if self._get_combat_preference(entity) == "ranged":
+            return 0.0
+        target = self._pick_target(entity, live, battle)
+        if target is None:
+            return 0.0
+        # Longest melee reach this creature actually has, in feet.
+        reach = max((a.reach for a in entity.stats.actions
+                     if a.range <= 10), default=5)
+        gap = entity.elevation - target.elevation
+        if gap <= reach:
+            return 0.0
+        if self._horizontal_gap_ft(entity, target) > reach:
+            return 0.0     # not above it yet — fly there first
+        ground = battle.get_elevation_at(int(entity.grid_x),
+                                         int(entity.grid_y))
+        t = battle.get_terrain_at(int(entity.grid_x), int(entity.grid_y))
+        if t is not None and t.is_hazard:
+            return 0.0     # the reason it took off is still down there
+        floor = max(float(ground), float(target.elevation))
+        drop = min(entity.elevation - floor, float(entity.movement_left))
+        if drop <= 0:
+            return 0.0
+        entity.elevation -= drop
+        entity.movement_left -= drop
+        if entity.elevation <= floor + 0.01 and entity.stats.speed > 0:
+            # On the deck and able to walk: land properly, so it is a
+            # ground creature again for everything that checks flight.
+            entity.land(int(floor))
+        battle.log(f"  [FLY] {entity.name} drops {drop:.0f} ft to "
+                   f"{'land' if not entity.is_flying else 'engage'} "
+                   f"{target.name}.")
+        return drop
+
     def _decide_movement(self, entity, enemies, allies, battle):
         """Optimal movement considering all factors including terrain awareness.
 
@@ -955,6 +1023,17 @@ class TacticalAI:
         6. Ranged: maintain optimal range + seek cover/elevation
         7. AoE caster: position for best cluster
         """
+        # A creature with no walk speed at all — a will-o'-wisp, a
+        # flying snake — has a ground movement budget of zero. This has
+        # to be settled BEFORE the guard below, or the guard sees zero
+        # movement and returns before the creature can leave the
+        # ground, which is why a will-o'-wisp never moved a square in
+        # its life. Flying is not a tactical choice for these.
+        if (entity.stats.speed <= 0 and entity.can_fly
+                and not entity.is_flying and entity.can_move()):
+            entity.start_flying()
+            entity.elevation = max(entity.elevation, 5)
+
         if not entity.can_move() or entity.movement_left <= 0:
             return None
 
@@ -988,6 +1067,15 @@ class TacticalAI:
                         # Can't walk there - fly if possible
                         entity.start_flying()
                         entity.elevation = max(entity.elevation, 15)
+
+        # --- -0.5. FLYING: come back down when there is nothing up here ---
+        # Altitude only ever went UP: every branch above uses max(), and
+        # nothing ever descended. A dragon that took off over a lava tile
+        # hovered at 10 ft for the rest of the fight, three squares of
+        # vertical distance away from every ground target, and could
+        # never reach anything with a 10 ft bite again.
+        if entity.is_flying and entity.elevation > 0:
+            self._consider_descending(entity, enemies, battle)
 
         # --- 0. PRONE: Stand up or escape grapple ---
         if entity.has_condition("Prone"):
@@ -4590,6 +4678,25 @@ class TacticalAI:
         - Use AoE legendary actions (Wing Attack, Tail Sweep) when surrounded
         - Target concentrators and low-HP enemies
         - Don't use all actions on first enemy turn - spread them out
+
+        That last line used to be a promise the code did not keep: the
+        best-scoring action won no matter how little it was worth, so a
+        2-point Wing Attack went off on a single target as readily as on
+        five.
+
+        Three things decide it now:
+
+        * A multi-point ability has to clear a value bar that rises
+          faster than its cost (:attr:`_LEGENDARY_VALUE_BAR`), so it
+          only fires when it genuinely beats spending the same points
+          on cheap attacks. Single-point abilities stay ungated — they
+          are what the points are for.
+        * Hitting whoever acts next is worth extra, most of all when
+          they are holding a concentration spell. That is the moment a
+          legendary action is actually critical.
+        * If nothing clears its bar the creature holds — unless its own
+          turn is next, because the points refresh then and holding
+          past that simply throws them away.
         """
         from engine.rules import can_use_legendary_action
         allowed, reason = can_use_legendary_action(entity)
@@ -4610,6 +4717,39 @@ class TacticalAI:
         best_step = None
         best_score = 0.0
         best_cost = 1
+        # Every option that clears its own value bar, tracked alongside
+        # the raw best. The two differ when the highest-scoring ability
+        # is an expensive one that is not worth its points right now —
+        # in that case the creature should fall back to a cheap action
+        # it CAN justify, not give up and bank everything.
+        admissible_step = None
+        admissible_score = 0.0
+        admissible_cost = 1
+        # True when the points would evaporate unspent: they refresh at
+        # the start of the creature's own turn, so "save it for later"
+        # stops being an option once later is its own turn.
+        last_chance = self._own_turn_is_next(entity, battle)
+
+        def _record(score, cost, step, gated=True):
+            """Note a candidate, both raw and (if it earns it) admissible.
+
+            ``gated=False`` for abilities with no executable rules of
+            their own — a Dominate, a Mastermind's Web. Their score is a
+            placeholder, not an expected-damage estimate, so measuring
+            it against a damage bar is comparing apples to nothing and
+            silenced them permanently.
+            """
+            nonlocal best_step, best_score, best_cost
+            nonlocal admissible_step, admissible_score, admissible_cost
+            if step is None:
+                return
+            if score > best_score:
+                best_score, best_cost, best_step = score, cost, step
+            if gated and score < self._value_bar(cost):
+                return
+            if score > admissible_score or admissible_step is None:
+                admissible_score, admissible_cost = score, cost
+                admissible_step = step
 
         for sa in abilities:
             leg_action = sa.action
@@ -4622,8 +4762,7 @@ class TacticalAI:
             if leg_action is None:
                 score, step = self._legendary_fallback(entity, sa, enemies,
                                                        battle)
-                if step is not None and score > best_score:
-                    best_score, best_step, best_cost = score, step, sa.cost
+                _record(score, sa.cost, step, gated=False)
                 continue
 
             # --- AoE legendary actions (Wing Attack, Frightful Presence) ---
@@ -4649,19 +4788,16 @@ class TacticalAI:
                         # Cost efficiency
                         score /= max(sa.cost, 1)
 
-                        if score > best_score:
-                            best_score = score
-                            best_cost = sa.cost
-                            raw_dmg = roll_dice(leg_action.damage_dice) if leg_action.damage_dice else 0
-                            best_step = ActionStep(
-                                step_type="legendary",
-                                description=f"[LEGENDARY] {entity.name} uses {sa.name}!",
-                                attacker=entity, targets=clusters, action=leg_action,
-                                damage=raw_dmg, damage_type=leg_action.damage_type,
-                                action_name=sa.name, aoe_center=(cx, cy),
-                                save_dc=leg_action.condition_dc,
-                                save_ability=leg_action.condition_save
-                            )
+                        raw_dmg = roll_dice(leg_action.damage_dice) if leg_action.damage_dice else 0
+                        _record(score, sa.cost, ActionStep(
+                            step_type="legendary",
+                            description=f"[LEGENDARY] {entity.name} uses {sa.name}!",
+                            attacker=entity, targets=clusters, action=leg_action,
+                            damage=raw_dmg, damage_type=leg_action.damage_type,
+                            action_name=sa.name, aoe_center=(cx, cy),
+                            save_dc=leg_action.condition_dc,
+                            save_ability=leg_action.condition_save
+                        ))
                 continue
 
             # --- Single-target legendary actions ---
@@ -4694,6 +4830,12 @@ class TacticalAI:
                 if target.concentrating_on:
                     score += 10
 
+                # The classic legendary play: hit the one who is about
+                # to act, before they act. Worth most against a caster
+                # holding a concentration spell.
+                if self._acts_next(target, battle):
+                    score += 12 if target.concentrating_on else 5
+
                 # Bonus for condition application
                 if leg_action.applies_condition:
                     if leg_action.applies_condition not in target.stats.condition_immunities:
@@ -4702,19 +4844,72 @@ class TacticalAI:
                 # Cost efficiency
                 score /= max(sa.cost, 1)
 
-                if score > best_score:
-                    best_score = score
-                    best_cost = sa.cost
+                if score > best_score or score >= self._value_bar(sa.cost):
                     step = self._execute_attack(entity, leg_action, target, battle)
                     step.step_type = "legendary"
                     step.action_name = sa.name
                     step.description = "[LEGENDARY] " + step.description
-                    best_step = step
+                    _record(score, sa.cost, step)
 
-        if best_step:
-            entity.legendary_actions_left -= best_cost
-            return best_step
-        return None
+        # Take the best option that is worth its points. If nothing is,
+        # hold — unless the points are about to refresh anyway, in which
+        # case spend the best thing available rather than waste them.
+        step = admissible_step
+        cost = admissible_cost
+        if step is None:
+            if not last_chance or best_step is None:
+                return None
+            step, cost = best_step, best_cost
+
+        entity.legendary_actions_left -= cost
+        return step
+
+    # Minimum expected value that justifies spending N legendary points.
+    # Calibrated against a big monster's own numbers: a claw or a tail
+    # (~10-18 EV) clears the 1-point bar comfortably, while a 2-point
+    # Wing Attack (7 avg × targets × 0.6 ÷ 2, plus 4 per prone target)
+    # needs three creatures in the blast before it beats two claws.
+    #
+    # 1-point abilities are deliberately ungated. They are what the
+    # points are FOR, and gating them made four creatures whose whole
+    # legendary kit is one cheap effect — Confessor Ianus, the Lich,
+    # Zhindia Oblodra — sit on their points for the entire fight.
+    _LEGENDARY_VALUE_BAR = {1: 0.0, 2: 11.0, 3: 20.0}
+
+    @classmethod
+    def _value_bar(cls, cost: int) -> float:
+        return cls._LEGENDARY_VALUE_BAR.get(cost, 6.0 * max(1, cost))
+
+    @staticmethod
+    def _turn_order_after(battle, entity):
+        """Living creatures due to act after ``entity``, in order."""
+        order = [e for e in battle.entities if e.hp > 0 and not e.is_lair]
+        if entity not in order:
+            return []
+        i = order.index(entity)
+        return order[i + 1:] + order[:i]
+
+    def _own_turn_is_next(self, entity, battle) -> bool:
+        """Would holding these legendary points waste them?
+
+        Points refresh at the start of the creature's own turn, so if
+        nobody else acts between now and then, anything unspent is gone.
+        """
+        try:
+            current = battle.get_current_entity()
+        except Exception:
+            return False
+        upcoming = self._turn_order_after(battle, current)
+        return bool(upcoming) and upcoming[0] is entity
+
+    def _acts_next(self, target, battle) -> bool:
+        """Is ``target`` the very next creature to take a turn?"""
+        try:
+            current = battle.get_current_entity()
+        except Exception:
+            return False
+        upcoming = self._turn_order_after(battle, current)
+        return bool(upcoming) and upcoming[0] is target
 
     def _legendary_fallback(self, entity, sa, enemies, battle):
         """A legendary ability with no rules of its own — move or cast.

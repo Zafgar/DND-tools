@@ -471,11 +471,22 @@ class TestVfxWiredIntoCombat(unittest.TestCase):
                           "Praefectus Sanguinis Ostorius"], 5)
         self.assertIn("ConeBlast", seen)
 
-    def test_condition_marks_and_misses_appear(self):
+    def test_misses_appear(self):
         seen = self._run(["Magister Sanguinis Vhaltor", "Sanguis Custos",
                           "Custos Nocturnus"], 11)
-        self.assertIn("ConditionMark", seen)
         self.assertIn("MissSpark", seen)
+
+    def test_a_landed_condition_puts_a_mark_on_the_token(self):
+        """Ei nojata siihen että tietty taistelu sattuu onnistumaan
+        ehdon asettamisessa — sama hauraus kuin kutsukehätestissä oli.
+        Ehto asetetaan suoraan ja katsotaan että merkki syntyy."""
+        pc = Entity(_hero(), 3, 3, is_player=True)
+        foe = Entity(library.get_monster("Sanguis Custos"), 6, 3,
+                     is_player=False)
+        bs = BattleState(_FM(), entities=[pc, foe])
+        bs._spawn_condition_vfx(foe, "Poisoned")
+        self.assertIn("ConditionMark",
+                      {type(fx).__name__ for fx in bs.impact_flashes})
 
     def test_summons_get_a_summoning_circle(self):
         """Ei nojata siihen että tietty taistelu sattuu kutsumaan —

@@ -122,7 +122,13 @@ def _action_from_feature(feature, stats) -> Optional[Action]:
         damage_dice=dice or "1d1",
         damage_bonus=0,
         damage_type=getattr(feature, "damage_type", "") or "force",
-        range=max(radius, 30) if radius else 60,
+        # An aura_radius means "every creature within X feet of ME". It
+        # is centred on the caster by definition, and range 0 is how the
+        # AI's AoE planner is told that. Giving it range 30 instead let
+        # a dragon aim its Wing Attack like a fireball at a knot of
+        # enemies thirty feet away, buffeting people its wings could
+        # not possibly touch.
+        range=0 if radius else 60,
         action_type="legendary",
         aoe_radius=radius,
         aoe_shape="sphere" if radius else "",
@@ -143,6 +149,28 @@ def _clone_as(action: Action, name: str, description: str) -> Action:
     clone.multiattack_count = 1
     clone.multiattack_targets = []
     return clone
+
+
+def _loose_match(name: str, by_name: dict) -> Optional[Action]:
+    """Find the real attack a legendary ability is a wrapper around.
+
+    Stat blocks name the legendary entry "Tail Attack" and the weapon
+    itself just "Tail". An exact-name lookup misses that, so the ability
+    was synthesised from the Feature's bare damage dice instead and lost
+    the weapon's reach — the dragon ended up tail-slapping people sixty
+    feet away.
+    """
+    key = (name or "").strip().lower()
+    for suffix in (" attack", " strike", "-isku", " isku"):
+        if key.endswith(suffix):
+            key = key[: -len(suffix)].strip()
+            break
+    if not key:
+        return None
+    for candidate, action in by_name.items():
+        if (candidate or "").strip().lower() == key:
+            return action
+    return None
 
 
 def resolve_special_actions(stats, kind: str) -> List[SpecialAction]:
@@ -182,7 +210,7 @@ def resolve_special_actions(stats, kind: str) -> List[SpecialAction]:
 
         # A same-named Action of any type (an "Eye Ray" listed as a
         # normal action, say) is the best executable match.
-        twin = by_name.get(feat.name)
+        twin = by_name.get(feat.name) or _loose_match(feat.name, by_name)
         if twin is not None and twin.damage_dice:
             out.append(SpecialAction(
                 feature=feat, action=_clone_as(twin, feat.name,
