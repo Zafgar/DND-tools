@@ -1262,14 +1262,15 @@ class TacticalAI:
             # Special case: closed (unlocked) door - AI can open it
             t = battle.get_terrain_at(int(x), int(y))
             if t and t.is_door and not t.door_open and not t.is_locked:
-                # Door can be opened - treat as passable
-                return True
+                # Door can be opened - treat as passable, unless somebody
+                # is already standing in the doorway.
+                return not battle.footprint_occupied(entity, x, y)
             # Special case: gap/chasm - jumpable or flyable
             if t and t.is_gap:
                 if entity.is_flying:
-                    return not battle.is_occupied(x, y, exclude=entity)
+                    return not battle.footprint_occupied(entity, x, y)
                 if allow_jump and entity.can_jump_gap(t.gap_width_ft, running_start=True):
-                    return not battle.is_occupied(x, y, exclude=entity)
+                    return not battle.footprint_occupied(entity, x, y)
             return False
         # Flying entities ignore ground hazards
         if entity.is_flying:
@@ -1319,18 +1320,23 @@ class TacticalAI:
         (locked, barred, a portcullis that refused, terrain that only
         looked like a door) refuse the step. Without this the mover
         walks straight into the obstacle and stands inside it.
+
+        Flying used to skip this whole test, which is how a dragon ended
+        up sharing a square with an iron golem: being airborne excuses
+        you from walls you are above, never from the creature standing
+        in the square. ``is_passable`` already draws that line.
         """
-        if entity.is_flying:
-            return True
         gx, gy = int(nx), int(ny)
         t_at = battle.get_terrain_at(gx, gy)
         if t_at is not None and t_at.is_door and not t_at.door_open \
-                and not t_at.is_locked:
+                and not t_at.is_locked and not entity.is_flying:
             battle.toggle_door_at(gx, gy)
         if battle.is_passable(nx, ny, exclude=entity):
             return True
-        # A gap is crossed by jumping/flying, handled by the caller.
-        return bool(t_at is not None and t_at.is_gap)
+        # A gap is crossed by jumping/flying, handled by the caller —
+        # but only into a square nobody else is standing in.
+        return bool(t_at is not None and t_at.is_gap
+                    and not battle.footprint_occupied(entity, nx, ny))
 
     def _find_path(self, start, end, battle, entity, allow_jump=True,
                      *, max_iterations: int = 600,
@@ -1526,11 +1532,30 @@ class TacticalAI:
                 if entity.hp <= 0 or entity.is_incapacitated():
                     break
 
-                # PHB p.195: Drag grappled creatures along when moving
+                # PHB p.195: Drag grappled creatures along when moving.
+                # The old cell is not automatically free — a Large
+                # grappler that steps one square still covers half of
+                # where it was, so dumping the victim there put them
+                # inside their captor.
                 for grappled_target in entity.grappling:
-                    if grappled_target.hp > 0:
+                    if grappled_target.hp <= 0:
+                        continue
+                    if battle.is_passable(old_x, old_y,
+                                          exclude=grappled_target):
                         grappled_target.grid_x = old_x
                         grappled_target.grid_y = old_y
+                        continue
+                    spot = battle.find_free_cell(
+                        grappled_target, entity.grid_x, entity.grid_y,
+                        max_radius=2)
+                    if spot is not None:
+                        grappled_target.grid_x, grappled_target.grid_y = spot
+                    else:
+                        # Nowhere to put them: the grapple breaks rather
+                        # than the two ending up in the same square.
+                        entity.grappling = [g for g in entity.grappling
+                                            if g is not grappled_target]
+                        grappled_target.remove_condition("Grappled")
 
                 if battle.is_adjacent(entity, target):
                     break

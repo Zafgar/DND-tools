@@ -555,7 +555,12 @@ class BattleEventsMixin:
                             # Calculate grid position based on CENTER of the token (free placement)
                             gx, gy = self._screen_to_grid(mx - self.battle.grid_size / 2, raw_my - self.battle.grid_size / 2)
 
-                            if not self.battle.is_occupied(gx, gy, exclude=self.dragging):
+                            # Footprint AND terrain: is_occupied only ever
+                            # tested a single square, so a Large token could
+                            # be dropped half inside another creature, and
+                            # any token could be dropped inside a wall.
+                            if self.battle.is_passable(gx, gy,
+                                                       exclude=self.dragging):
                                 old_x, old_y = self.dragging.grid_x, self.dragging.grid_y
 
                                 dm_free_move = (self.dm_move_mode
@@ -596,7 +601,8 @@ class BattleEventsMixin:
                                         dist_ft = math.hypot(gx - old_x, gy - old_y) * 5
                                         self._log(f"[MOVE] {self.dragging.name} moved {dist_ft:.0f} ft.")
                             else:
-                                self._log("Cannot move: space occupied.")
+                                self._log("Cannot move: not enough space "
+                                          "there (occupied or blocked).")
                         self.dragging = None
 
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:

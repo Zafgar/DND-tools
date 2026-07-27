@@ -127,6 +127,12 @@ class BattleSystem:
         'enemies' if enemies surprise players, '' for no surprise."""
         self.combat_started = True
 
+        # Nobody starts the fight standing inside somebody else or in a
+        # wall. Spawn points on the premade maps are one square apart,
+        # which is fine for Medium creatures and immediately overlaps for
+        # anything Large or bigger — an ogre needs 2x2 and a dragon 3x3.
+        self.resolve_overlaps()
+
         # Register entities with stats tracker
         for entity in self.entities:
             if not entity.is_lair:
@@ -228,6 +234,15 @@ class BattleSystem:
         )
         ent = Entity(summon_stats, x, y, is_player=owner.is_player)
         ent.is_summon = True
+        # A summon used to materialise straight on top of whoever was
+        # standing there. Slide it to the nearest square it actually
+        # fits in; if the whole area is packed, drop it next to its
+        # summoner rather than inside somebody.
+        spot = self.find_free_cell(ent, x, y)
+        if spot is None:
+            spot = self.find_free_cell(ent, owner.grid_x, owner.grid_y, 6)
+        if spot is not None:
+            ent.grid_x, ent.grid_y = float(spot[0]), float(spot[1])
         ent.summon_owner = owner
         ent.summon_rounds_left = duration
         ent.summon_spell_name = spell_name
@@ -423,6 +438,12 @@ class BattleSystem:
             res = current.roll_death_save()
             if res:
                 self.log(f"  [DEATH] {res}")
+
+        # Nobody starts a turn standing inside somebody else. This runs
+        # after the death save above on purpose: a natural 20 puts a
+        # downed creature back on 1 HP, and the body it was lying under
+        # had been walked over while it counted for nothing.
+        self.separate_overlapping()
 
         # Add to legendary queue if this creature has legendary actions
         self._build_legendary_queue()
@@ -947,6 +968,91 @@ class BattleSystem:
     def is_adjacent(self, e1: Entity, e2: Entity) -> bool:
         return self.get_distance(e1, e2) < 0.5
 
+    def resolve_overlaps(self) -> int:
+        """Slide any creature that does not legally fit to the nearest
+        square that it does. Returns how many were moved.
+
+        Bigger creatures are placed first, because a Huge dragon has far
+        fewer legal squares than a goblin and should get first pick.
+        """
+        moved = 0
+        order = sorted(
+            [e for e in self.entities if not e.is_lair and e.hp > 0],
+            key=lambda e: -e.size_in_squares)
+        for ent in order:
+            if self.is_passable(ent.grid_x, ent.grid_y, exclude=ent):
+                continue
+            spot = self.find_free_cell(ent, ent.grid_x, ent.grid_y,
+                                       max_radius=6)
+            if spot is None:
+                continue
+            self.log(f"  [PLACEMENT] {ent.name} shifted from "
+                     f"({int(ent.grid_x)},{int(ent.grid_y)}) to "
+                     f"({int(spot[0])},{int(spot[1])}) — no room there.")
+            ent.grid_x, ent.grid_y = float(spot[0]), float(spot[1])
+            moved += 1
+        return moved
+
+    def separate_overlapping(self) -> int:
+        """Break up creatures that are sharing squares. Returns how many
+        were moved.
+
+        A creature at 0 HP does not block anybody, so allies and enemies
+        walk right over the body — and then it is healed, or rolls a
+        natural 20 on its death save, and stands up inside whatever is
+        now on top of it. Rather than police every heal, every turn
+        begins by sliding anyone sharing a square out to the nearest
+        free one.
+
+        Smallest first, the opposite of :meth:`resolve_overlaps`: there
+        the question is "who gets first pick of a crowded map", here it
+        is "who squeezes out from underneath", and the goblin should be
+        the one to shuffle aside, not the dragon standing on it.
+        Terrain is only consulted for the destination — a creature
+        inside a Forcecage is meant to stay stuck in it.
+        """
+        moved = 0
+        order = sorted([e for e in self.entities
+                        if not e.is_lair and e.hp > 0],
+                       key=lambda e: e.size_in_squares)
+        for ent in order:
+            if not self.footprint_occupied(ent, ent.grid_x, ent.grid_y):
+                continue
+            spot = self.find_free_cell(ent, ent.grid_x, ent.grid_y,
+                                       max_radius=6)
+            if spot is None:
+                continue
+            self.log(f"  [PLACEMENT] {ent.name} squeezes out from "
+                     f"({int(ent.grid_x)},{int(ent.grid_y)}) to "
+                     f"({int(spot[0])},{int(spot[1])}) — that square was "
+                     f"already taken.")
+            ent.grid_x, ent.grid_y = float(spot[0]), float(spot[1])
+            moved += 1
+        return moved
+
+    def find_free_cell(self, entity: Entity, x: float, y: float,
+                       max_radius: int = 4):
+        """Nearest square where ``entity`` legally fits, searching outward.
+
+        Returns (x, y) or None. Used wherever something is placed rather
+        than walked — a summon arriving, a token dropped by the DM — so
+        nothing ever lands on top of another creature or inside a wall.
+        """
+        if self.is_passable(x, y, exclude=entity):
+            return (x, y)
+        for r in range(1, max(1, int(max_radius)) + 1):
+            ring = []
+            for dx in range(-r, r + 1):
+                for dy in range(-r, r + 1):
+                    if max(abs(dx), abs(dy)) != r:
+                        continue
+                    ring.append((int(x) + dx, int(y) + dy))
+            ring.sort(key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)
+            for nx, ny in ring:
+                if self.is_passable(nx, ny, exclude=entity):
+                    return (float(nx), float(ny))
+        return None
+
     def is_occupied(self, x: float, y: float, exclude: Entity = None) -> bool:
         for e in self.entities:
             if e == exclude or e.hp <= 0:
@@ -1103,9 +1209,42 @@ class BattleSystem:
 
         return "none"
 
+    def footprint_occupied(self, entity: Entity, x: float, y: float) -> bool:
+        """Does another creature stand in any square ``entity`` would cover?
+
+        ``is_occupied`` only ever tests one square, which quietly let a
+        Large or Huge creature settle half on top of somebody else.
+        """
+        size = entity.size_in_squares if entity is not None else 1
+        for dx in range(size):
+            for dy in range(size):
+                if self.is_occupied(x + dx, y + dy, exclude=entity):
+                    return True
+        return False
+
+    def flyer_clears(self, entity: Entity, t) -> bool:
+        """Can a flying ``entity`` pass over the impassable tile ``t``?
+
+        Flight is not phasing. A creature only crosses an obstruction
+        when it is actually above it, so a dragon at 15 ft sails over a
+        10 ft wall while a portcullis, a pillar or a forcecage — none of
+        which declare a height, so ``los_top_ft`` falls back to 100 ft —
+        stops it dead. Chasms are the one thing flight always beats.
+        """
+        if t is None or t.passable:
+            return True
+        if t.is_gap:
+            return True
+        return float(entity.elevation) >= t.los_top_ft
+
     def is_passable(self, x: float, y: float, exclude: Entity = None) -> bool:
-        """Returns True if cell is both unoccupied by entities and traversable terrain.
-        Flying entities ignore ground obstacles (walls, closed doors) but not other entities."""
+        """Is this cell free of creatures and terrain for ``exclude``?
+
+        Checks the mover's whole footprint, not just its anchor square.
+        Flying ignores ground obstacles only where the creature is high
+        enough to be over them (see :meth:`flyer_clears`) — never other
+        creatures, which occupy the air above their square too.
+        """
         size = exclude.size_in_squares if exclude else 1
         is_flyer = exclude.is_flying if exclude else False
         for dx in range(size):
@@ -1113,10 +1252,11 @@ class BattleSystem:
                 check_x, check_y = x + dx, y + dy
                 if self.is_occupied(check_x, check_y, exclude=exclude):
                     return False
-                if not is_flyer:
-                    t = self.get_terrain_at(int(check_x), int(check_y))
-                    if t and not t.passable:
-                        return False
+                t = self.get_terrain_at(int(check_x), int(check_y))
+                if t is None or t.passable:
+                    continue
+                if not is_flyer or not self.flyer_clears(exclude, t):
+                    return False
         return True
 
     def is_passable_or_jumpable(self, x: float, y: float, entity: Entity = None) -> bool:
@@ -1124,15 +1264,13 @@ class BattleSystem:
         Used by AI pathfinding to consider jump routes."""
         if self.is_passable(x, y, exclude=entity):
             return True
-        if entity and entity.is_flying:
-            # Flyer can cross anything except entity-occupied
-            return not self.is_occupied(x, y, exclude=entity)
         # Check if it's a jumpable gap
         t = self.get_terrain_at(int(x), int(y))
         if t and t.is_gap and entity:
             gap_ft = t.gap_width_ft
-            if entity.can_jump_gap(gap_ft, running_start=True):
-                return not self.is_occupied(x, y, exclude=entity)
+            if entity.is_flying or entity.can_jump_gap(gap_ft,
+                                                       running_start=True):
+                return not self.footprint_occupied(entity, x, y)
         return False
 
     def get_gap_at(self, x: int, y: int):
@@ -1533,15 +1671,15 @@ class BattleSystem:
             nx = cur_x + step_x
             ny = cur_y + step_y
             t = self.get_terrain_at(int(nx), int(ny))
-            if self.is_occupied(nx, ny, exclude=target):
-                break
             # Gap / hazard stops the push AT the gap (target gets shoved in)
             if t is not None and t.is_gap:
                 pushed += 1
                 cur_x, cur_y = nx, ny
                 break
-            if t is not None and not t.passable and not (t.is_gap):
-                # Impassable wall/pillar — target stops at previous cell
+            # Footprint-aware: the old single-cell test let a Large
+            # creature be shoved through a one-square doorway it cannot
+            # fit through, and past the corner of another creature.
+            if not self.is_passable(nx, ny, exclude=target):
                 break
             pushed += 1
             cur_x, cur_y = nx, ny

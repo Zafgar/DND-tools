@@ -150,6 +150,15 @@ class BattleRendererMixin:
                 else:
                     border_outer = COLORS["danger"]
                 inner = tuple(max(0, c - 40) for c in type_color)
+                # A red dragon and a white dragon are not the same
+                # colour. The outer ring above still carries side and
+                # wounds, so the silhouette itself is free to show the
+                # species — see creature_art.species_color.
+                try:
+                    from states.creature_art import species_color
+                    inner = species_color(entity.stats, inner)
+                except Exception:
+                    pass
 
             if entity.has_condition("Prone"):
                 try:
