@@ -149,6 +149,7 @@ class GameManager:
             "SETUP": EncounterSetupState(self),
             "HERO_CREATOR": HeroCreatorState(self),
             "COMBAT_ROSTER": CombatRosterState(self),
+            "COMBAT_AUDIT": None,
             "CAMPAIGN": None,
             "BATTLE": None,
             "MAP_EDITOR": None,
@@ -172,6 +173,11 @@ class GameManager:
                 self.states["HERO_CREATOR"] = HeroCreatorState(self)
             elif state_name == "COMBAT_ROSTER":
                 self.states["COMBAT_ROSTER"] = CombatRosterState(self)
+            elif state_name == "COMBAT_AUDIT":
+                # Built fresh so each visit starts with an empty report
+                # rather than the previous run's findings.
+                from states.combat_audit_state import CombatAuditState
+                self.states["COMBAT_AUDIT"] = CombatAuditState(self)
             elif state_name == "CAMPAIGN":
                 campaign = kwargs.get("campaign")
                 self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)

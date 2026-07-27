@@ -15,3 +15,6 @@ crash_log.txt
 # User campaign saves written by the app at runtime (incl. the seeded
 # Novus Somnium). Canon data lives in code (data/novus_somnium*.py), not here.
 DnDTools/campaigns/
+
+# Combat audit output — generated logs, not source.
+DnDTools/audit_logs/

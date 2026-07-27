@@ -1337,10 +1337,32 @@ class BattleSystem:
     # ------------------------------------------------------------------ #
 
     def get_terrain_at(self, gx: int, gy: int) -> Optional[TerrainObject]:
-        for t in self.terrain:
-            if t.occupies(gx, gy):
-                return t
-        return None
+        """The tile at this square, or None.
+
+        Indexed rather than scanned. This is the single hottest call in
+        the engine — every passability test hits it once per square of
+        the mover's footprint, and pathfinding does that thousands of
+        times per turn — so a linear walk of the terrain list made the
+        cost of a turn scale with the size of the map. On a city
+        district of two thousand tiles that was two thousand
+        comparisons per lookup, and the combat audit measured turns
+        thirty times slower there than on a small dungeon.
+
+        The index is rebuilt whenever the terrain list is replaced or
+        changes length, which covers every path that adds or removes a
+        tile. Mutating a tile in place (opening a door) does not move
+        it, so the index stays valid.
+        """
+        key = (id(self.terrain), len(self.terrain))
+        if getattr(self, "_terrain_index_key", None) != key:
+            index = {}
+            for t in self.terrain:
+                for dx in range(max(1, t.width)):
+                    for dy in range(max(1, t.height)):
+                        index.setdefault((t.grid_x + dx, t.grid_y + dy), t)
+            self._terrain_index = index
+            self._terrain_index_key = key
+        return self._terrain_index.get((int(gx), int(gy)))
 
     def add_terrain(self, terrain: TerrainObject):
         # Remove any existing terrain at the same cell first
