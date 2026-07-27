@@ -372,6 +372,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                                       "DO MANUALLY", lambda: self._cancel_ai_plan(), color=COLORS["warning"])
         self.btn_reroll = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+270, 130, 38,
                                  "UUSI EHDOTUS", lambda: self._reroll_ai_plan(), color=COLORS["spell"])
+        self.btn_options = Button(SCREEN_WIDTH//2-65, SCREEN_HEIGHT//2+315, 130, 38,
+                                  "VAIHTOEHDOT", lambda: self._toggle_plan_options(),
+                                  color=COLORS["accent"])
+        # The alternatives panel is opt-in: most turns the DM just wants
+        # to confirm the AI's pick, and a permanent list would bury the
+        # roll controls that matter every single step.
+        self.show_plan_options = False
 
         # Player action buttons
         self.player_action_btns = [
@@ -1227,6 +1234,57 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.pending_step_idx >= len(steps):
             self.pending_plan = None
             self._log("[AI] Turn complete.")
+
+    def _toggle_plan_options(self):
+        self.show_plan_options = not self.show_plan_options
+
+    def can_choose_plan_option(self, rank: int) -> bool:
+        """Is it still possible to swap the plan to option ``rank``?
+
+        Only before the action has actually been executed: once the DM
+        has confirmed past it, the dice are cast and the resources are
+        spent for real.
+        """
+        plan = self.pending_plan
+        if not plan or not plan.options:
+            return False
+        if not 1 <= rank <= len(plan.options):
+            return False
+        start, _end = plan.action_slice
+        return self.pending_step_idx <= start
+
+    def choose_plan_option(self, rank: int) -> bool:
+        """Take the AI's ``rank``-th choice instead of its first.
+
+        The DM sees everything the AI weighed and may deliberately pick
+        a worse line — because a player did something that ought to
+        draw the monster's attention, or because the optimal play is
+        out of character for the creature. The chosen option then runs
+        through exactly the same confirm-and-roll flow as the AI's own
+        pick; nothing about it is special downstream.
+        """
+        if not self.can_choose_plan_option(rank):
+            return False
+        plan = self.pending_plan
+        option = plan.options[rank - 1]
+        entity = plan.entity
+        start, end = plan.action_slice
+
+        # Pay for the new choice from the same baseline the AI used, so
+        # switching options can never leak or duplicate a spell slot.
+        if entity is not None:
+            self.battle.ai.commit_option(entity, option.kind, option.steps,
+                                         slots_before=dict(plan.slots_before))
+
+        plan.steps[start:end] = list(option.steps)
+        plan.action_slice = (start, start + len(option.steps))
+        plan.chosen_rank = rank
+        self.pending_step_idx = min(self.pending_step_idx, start)
+        self._prepare_step_outcomes()
+        tag = "AI:n oma valinta" if option.is_best else f"vaihtoehto {rank}"
+        self._log(f"[DM] {entity.name if entity else '?'}: "
+                  f"{option.label} ({tag}) — {option.reason}")
+        return True
 
     def _skip_step(self):
         if not self.pending_plan:

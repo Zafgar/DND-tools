@@ -420,12 +420,19 @@ class BattleEventsMixin:
                     # recomputed for the new positions).
                     dialog_rect = pygame.Rect(SCREEN_WIDTH//2 - 350,
                                               SCREEN_HEIGHT//2 - 225, 700, 450)
+                    # The alternatives panel sits beside the dialog and
+                    # overlaps the grid; without this a click on an
+                    # option would be read as a click on the map.
+                    opt_rect = getattr(self, "plan_options_rect", None)
+                    in_dialog = (dialog_rect.collidepoint(event.pos)
+                                 or (opt_rect is not None
+                                     and opt_rect.collidepoint(event.pos)))
                     grid_pass = (event.type in (pygame.MOUSEBUTTONDOWN,
                                                 pygame.MOUSEBUTTONUP)
                                  and getattr(event, "button", 0) == 1
                                  and event.pos[0] < GRID_W
                                  and event.pos[1] >= TOP_BAR_H
-                                 and not dialog_rect.collidepoint(event.pos))
+                                 and not in_dialog)
                     if not grid_pass:
                         # Check dynamic resolution buttons
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -441,6 +448,8 @@ class BattleEventsMixin:
                             self.btn_approve_all.handle_event(event)
                             self.btn_cancel_ai.handle_event(event)
                             self.btn_reroll.handle_event(event)
+                            if getattr(self.pending_plan, "options", None):
+                                self.btn_options.handle_event(event)
                         continue
 
                 # Pending Aura Trigger

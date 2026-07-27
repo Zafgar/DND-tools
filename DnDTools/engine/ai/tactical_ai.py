@@ -5,7 +5,7 @@ import heapq
 from typing import List, Optional, TYPE_CHECKING
 from data.models import Action, SpellInfo, Item
 from engine.dice import roll_attack, roll_dice, roll_dice_critical, average_damage, scale_cantrip_dice
-from engine.ai.models import ActionStep, TurnPlan
+from engine.ai.models import ActionStep, TurnOption, TurnPlan
 from engine.ai.constants import (
     KILL_POTENTIAL_BONUS, FOCUS_FIRE_WEIGHT, THREAT_DPR_WEIGHT,
     SPELL_SLOT_THREAT, CONC_LEVEL_VALUE, CONC_AOE_BONUS,
@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 
 class TacticalAI:
     """Full D&D 5e 2014 tactical AI with class mechanic and environment awareness."""
+
+    #: Every main action weighed for the creature that planned last,
+    #: best first. Filled by :meth:`_decide_action` and copied onto the
+    #: TurnPlan so the DM can override the AI's own pick.
+    last_options: list = []
+
+    #: Spell slots as they stood before the candidates were built, so a
+    #: DM-chosen option can be charged from the same baseline the AI
+    #: used. See :meth:`commit_option`.
+    _slots_before_action: dict = {}
 
     def _can_see_target(self, entity, target, battle) -> bool:
         """Check if entity has line of sight to target. Core check for all targeting."""
@@ -243,12 +253,13 @@ class TacticalAI:
                 plan.steps.append(revive_step)
                 entity.action_used = True
 
-        # ===== PHASE 3: AOE ACTION (Breath Weapon etc - before regular attacks) =====
-        if not entity.action_used:
-            aoe_action_step = self._try_aoe_action(entity, enemies, allies, battle)
-            if aoe_action_step:
-                plan.steps.append(aoe_action_step)
-                entity.action_used = True
+        # NOTE: the breath-weapon phase used to live here and claim the
+        # action outright, which meant a dragon's turn never reached the
+        # candidate scoring and the DM was shown no alternatives at all.
+        # It is now one candidate among the rest (see _decide_action);
+        # its own min-target gate still decides whether breathing is
+        # worth considering, and its damage still wins almost every
+        # time it is.
 
         # ===== PHASE 3.5: BUFF POTION (before attacks, if valuable) =====
         if not entity.action_used:
@@ -257,9 +268,23 @@ class TacticalAI:
                 plan.steps.append(buff_step)
 
         # ===== PHASE 4: MAIN ACTION =====
+        self.last_options = []
+        action_start = len(plan.steps)
         action_steps = self._decide_action(entity, enemies, allies, battle)
+        # Everything the AI weighed, best first, so the DM can take a
+        # deliberately worse line when the fiction calls for one. The
+        # slice and the slot baseline travel with the plan so swapping
+        # an option later does not depend on the AI still remembering
+        # this turn.
+        plan.options = list(self.last_options)
+        plan.slots_before = dict(getattr(self, "_slots_before_action", {}))
+        plan.chosen_rank = 1 if plan.options else 0
         if action_steps:
             plan.steps.extend(action_steps)
+            # The swappable slice is THIS action only. Action Surge below
+            # plans a second one, and the options list describes the
+            # first — so the slice is closed before the surge runs.
+            plan.action_slice = (action_start, len(plan.steps))
 
             # ===== PHASE 4.5: ACTION SURGE (Fighter) =====
             if entity.has_feature("action_surge") and entity.can_use_feature("Action Surge"):
@@ -1879,6 +1904,8 @@ class TacticalAI:
             loh_steps = self._try_lay_on_hands(entity, allies, battle)
             if loh_steps:
                 entity.action_used = True
+                self._record_forced_option("emergency", loh_steps, entity,
+                                           enemies, battle)
                 return loh_steps
 
         # === EMERGENCY: Stabilize dying ally (Medicine DC 10, no healing available) ===
@@ -1895,6 +1922,14 @@ class TacticalAI:
                     if roll >= 10:
                         dying.is_stable = True
                         dying.death_save_successes = 3
+                        self._record_forced_option(
+                            "emergency", [ActionStep(
+                                step_type="wait",
+                                description=f"{entity.name} stabilizes "
+                                            f"{dying.name}.",
+                                attacker=entity, target=dying,
+                                action_name="Stabilize")],
+                            entity, enemies, battle)
                         return [ActionStep(
                             step_type="wait",
                             description=f"{entity.name} stabilizes {dying.name} (Medicine {roll} vs DC 10).",
@@ -1914,6 +1949,8 @@ class TacticalAI:
             heal_step = self._try_heal_action(entity)
             if heal_step:
                 entity.action_used = True
+                self._record_forced_option("emergency", [heal_step], entity,
+                                           enemies, battle)
                 return [heal_step]
 
         # === EVALUATE ALL OPTIONS AND PICK BEST ===
@@ -1925,6 +1962,7 @@ class TacticalAI:
         # level slot to a Disintegrate it never cast). Snapshot the slots
         # here and re-apply only the winner's cost below.
         slots_before = dict(entity.spell_slots)
+        self._slots_before_action = dict(slots_before)
         candidates = []
 
         # A creature standing in a Silence zone cannot cast at all, so
@@ -1962,6 +2000,17 @@ class TacticalAI:
             dodge_score = len(threats) * 10 * (1.0 - hp_pct)
             if dodge_score > 0:
                 candidates.append((dodge_score, "dodge", [dodge_step]))
+
+        # --- Breath weapon and other non-spell area actions ---
+        # The recharge is NOT spent here: this is only a proposal, and
+        # commit_option spends it if this is the line actually taken.
+        aoe_action_step = self._try_aoe_action(entity, enemies, allies,
+                                               battle, consume=False)
+        if aoe_action_step:
+            enemy_hit = [t for t in aoe_action_step.targets
+                         if t.is_player != entity.is_player]
+            candidates.append((aoe_action_step.damage * max(len(enemy_hit), 1)
+                               * 0.8, "aoe_action", [aoe_action_step]))
 
         # --- AoE spell ---
         if can_cast and (entity.has_spell_slot(1) or entity.stats.cantrips):
@@ -2030,42 +2079,173 @@ class TacticalAI:
             # Score based on ally HP deficit and danger
             candidates.append((heal_ally_step[0], "heal_ally", heal_ally_step[1]))
 
-        # === PICK BEST OPTION ===
+        # === RANK EVERY OPTION, TAKE THE BEST ===
         if candidates:
             candidates.sort(key=lambda x: x[0], reverse=True)
+            self.last_options = [
+                TurnOption(kind=kind, score=score, steps=steps,
+                           label=self._option_label(kind, steps),
+                           reason=self._option_reason(kind, score, steps,
+                                                      entity, enemies, battle),
+                           rank=i + 1, is_best=(i == 0))
+                for i, (score, kind, steps) in enumerate(candidates)]
             best_score, best_type, best_steps = candidates[0]
-
-            # Refund every slot the losing candidates burned, then charge
-            # only what the winning steps actually use.
-            entity.spell_slots = dict(slots_before)
-            for st in best_steps:
-                lvl = getattr(st, "slot_used", 0) or 0
-                if lvl > 0:
-                    entity.use_spell_slot_exact(lvl)
-
-            # Apply side effects based on action type
-            if best_type == "summon_spell":
-                # The slot was charged by the loop above; only the
-                # concentration hook is left to commit.
-                st = best_steps[0]
-                if st.spell is not None and st.spell.concentration:
-                    entity.start_concentration(st.spell)
-            elif best_type == "turn_undead":
-                entity.channel_divinity_left -= 1
-            elif best_type in ("aoe_spell", "damage_spell", "debuff"):
-                pass  # Spell slot already consumed in try_ method
-            elif best_type == "buff":
-                pass  # Already handled
-            elif best_type == "disengage":
-                pass
-            elif best_type in ("multiattack", "single_attack", "grapple_shove"):
-                pass
-
-            entity.action_used = True
+            self.commit_option(entity, best_type, best_steps,
+                               slots_before=slots_before)
             return best_steps
 
         # Fallback: Dash toward nearest enemy
+        self.last_options = []
         return self._try_dash_action(entity, enemies, allies, battle)
+
+    def commit_option(self, entity, kind, steps, slots_before=None):
+        """Charge the resources for the action actually being taken.
+
+        Every ``_try_*`` helper spends its spell slot the moment it
+        builds a candidate, but only one candidate is used — so the
+        losers have to be refunded and the winner re-charged. Factored
+        out of ``_decide_action`` because the DM can now override the
+        AI's pick, and an option chosen by hand has to pay exactly the
+        same price the AI's own choice would have.
+        """
+        if slots_before is None:
+            slots_before = getattr(self, "_slots_before_action", None)
+        if slots_before is not None:
+            entity.spell_slots = dict(slots_before)
+        for st in steps:
+            lvl = getattr(st, "slot_used", 0) or 0
+            if lvl > 0:
+                entity.use_spell_slot_exact(lvl)
+
+        if kind == "summon_spell":
+            # The slot was charged by the loop above; only the
+            # concentration hook is left to commit.
+            st = steps[0] if steps else None
+            if st is not None and st.spell is not None and st.spell.concentration:
+                entity.start_concentration(st.spell)
+        elif kind == "turn_undead":
+            entity.channel_divinity_left -= 1
+        elif kind == "aoe_action":
+            # Breath weapons and the like are limited by a recharge
+            # feature. It is spent here rather than while proposing, so
+            # a dragon that ends up clawing still has its breath.
+            st = steps[0] if steps else None
+            name = st.action.name if (st is not None and st.action) else ""
+            if name and entity.get_feature_by_name(name):
+                entity.use_feature(name)
+        # aoe_spell / damage_spell / debuff / buff / disengage /
+        # multiattack / single_attack / grapple_shove: nothing further
+        # to charge, the helper or the loop above already did it.
+
+        entity.action_used = True
+
+    # ------------------------------------------------------------------ #
+    # Explaining the options to the DM
+    # ------------------------------------------------------------------ #
+    _OPTION_KIND_NAMES = {
+        "turn_undead":   "Channel Divinity",
+        "buff":          "Suojaloitsu",
+        "disengage":     "Irrottaudu",
+        "dodge":         "Väistä",
+        "aoe_spell":     "Aluevaikutus",
+        "debuff":        "Kontrolliloitsu",
+        "terrain_spell": "Maastoloitsu",
+        "summon_spell":  "Kutsu olento",
+        "damage_spell":  "Vahinkoloitsu",
+        "grapple_shove": "Paini / tönäisy",
+        "multiattack":   "Monihyökkäys",
+        "single_attack": "Hyökkäys",
+        "heal_ally":     "Paranna liittolaista",
+    }
+
+    def _record_forced_option(self, kind, steps, entity, enemies, battle):
+        """Note an action that was taken without any deliberation.
+
+        The emergency branches — catch a dying ally, stabilise, drink a
+        potion at 3 hp — short-circuit the scoring entirely. Recording
+        them as a single option keeps the DM's panel honest: it says
+        "this is what happened and why" rather than going blank on
+        exactly the turns that matter most.
+        """
+        self.last_options = [TurnOption(
+            kind=kind, score=999.0, steps=list(steps),
+            label=self._option_label(kind, steps),
+            reason=self._option_reason(kind, 999.0, steps, entity,
+                                       enemies, battle),
+            rank=1, is_best=True)]
+
+    @classmethod
+    def _option_label(cls, kind, steps) -> str:
+        """Short button text: the ability's own name where it has one."""
+        for st in steps:
+            name = st.action_name or (st.spell.name if st.spell else "")
+            if name:
+                return name
+        return cls._OPTION_KIND_NAMES.get(kind, kind.replace("_", " ").title())
+
+    def _option_reason(self, kind, score, steps, entity, enemies,
+                       battle) -> str:
+        """One line telling the DM why the AI rates this where it does.
+
+        Built from the same numbers the score came from, so the
+        explanation cannot drift away from the decision.
+        """
+        if not steps:
+            return ""
+        first = steps[0]
+        targets = list(first.targets) if first.targets else (
+            [first.target] if first.target else [])
+        tnames = ", ".join(t.name for t in targets[:3] if t is not None)
+        dmg = sum(s.damage for s in steps if s.damage)
+        adjacent = [e for e in enemies
+                    if e.hp > 0 and battle.is_adjacent(entity, e)]
+        hp_pct = int(100 * entity.hp / max(1, entity.max_hp))
+
+        if kind == "multiattack":
+            hits = sum(1 for s in steps if s.is_hit)
+            return (f"{len(steps)} iskua, {hits} osuu — yhteensä {dmg} "
+                    f"vahinkoa kohteeseen {tnames or '?'}")
+        if kind == "single_attack":
+            verdict = "osuu" if first.is_hit else "menee ohi"
+            return (f"Paras yksittäinen isku: {verdict}, {dmg} vahinkoa "
+                    f"kohteeseen {tnames or '?'}")
+        if kind in ("aoe_spell", "aoe_action"):
+            foes = [t for t in targets if t.is_player != entity.is_player]
+            friends = [t for t in targets if t.is_player == entity.is_player]
+            extra = (f", MUTTA osuu myös omiin: "
+                     f"{', '.join(f.name for f in friends)}") if friends else ""
+            return (f"Osuu {len(foes)} viholliseen kerralla "
+                    f"({dmg} kullekin): {tnames}{extra}")
+        if kind == "emergency":
+            return first.description[:110]
+        if kind == "debuff":
+            cond = first.applies_condition or "haittatila"
+            return (f"Asettaa tilan {cond} kohteeseen {tnames or '?'} — "
+                    f"vie vuoron pois vaarallisimmalta")
+        if kind == "terrain_spell":
+            return (f"Muuttaa maastoa: {self._option_label(kind, steps)} — "
+                    f"katkaisee näköyhteydet tai sulkee reitin")
+        if kind == "summon_spell":
+            return (f"Tuo kentälle {first.summon_hp} HP:n kehon, joka "
+                    f"imee iskuja ja hyökkää joka kierros")
+        if kind == "damage_spell":
+            return f"Loitsu {tnames or 'kohteeseen'}: {dmg} vahinkoa"
+        if kind == "heal_ally":
+            return f"Nostaa liittolaisen {tnames or ''} takaisin taistoon"
+        if kind == "turn_undead":
+            return "Karkottaa epäkuolleet kantaman sisältä"
+        if kind == "grapple_shove":
+            return (f"Sitoo tai kaataa kohteen {tnames or '?'} — "
+                    f"etu lähihyökkäyksiin, liike poikki")
+        if kind == "dodge":
+            return (f"Puolustautuu: {len(adjacent)} vihollista kiinni, "
+                    f"HP {hp_pct}% — hyökkäyksillä haitta")
+        if kind == "disengage":
+            return (f"Irrottautuu lähitaistelusta ilman vapaaiskuja "
+                    f"(HP {hp_pct}%)")
+        if kind == "buff":
+            return f"Suojaa itseään — {len(adjacent)} vihollista kiinni"
+        return first.description[:90]
 
     def suggest_alternative(self, entity, battle, skipped_step) -> Optional[ActionStep]:
         """Suggest an alternative action after DM skips a step.
@@ -2434,8 +2614,14 @@ class TacticalAI:
                                       attacker=entity, target=entity, spell=spell, slot_used=spell.level, action_name=spell.name)
         return None
 
-    def _try_aoe_action(self, entity, enemies, allies, battle):
-        """Try to use a non-spell AoE action (like Breath Weapon)."""
+    def _try_aoe_action(self, entity, enemies, allies, battle,
+                        consume=True):
+        """Try to use a non-spell AoE action (like Breath Weapon).
+
+        ``consume=False`` builds the step without spending the recharge,
+        for when this is only one candidate among several and might not
+        be the one taken. :meth:`commit_option` spends it if it wins.
+        """
         if entity.action_used:
             return None
 
@@ -2508,10 +2694,10 @@ class TacticalAI:
 
         if best_step:
             # Consume usage if applicable
-            if entity.get_feature_by_name(best_step.action.name):
+            if consume and entity.get_feature_by_name(best_step.action.name):
                 entity.use_feature(best_step.action.name)
             return best_step
-            
+
         return None
 
     def _aoe_bonus_action_step(self, entity, action, enemies, allies, battle):

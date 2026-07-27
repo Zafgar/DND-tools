@@ -23,6 +23,7 @@ from data.library import library
 from data.heroes import hero_list
 from data.spells import get_spell
 from data.maps import load_map_terrain
+from engine.ai.models import ActionStep
 from engine.entities import Entity
 from states.battle_state import BattleState
 from states import token_art
@@ -466,10 +467,45 @@ class TestVfxWiredIntoCombat(unittest.TestCase):
                 break
         return seen
 
-    def test_a_dragon_fight_produces_a_cone(self):
-        seen = self._run(["Adult Red Dragon",
-                          "Praefectus Sanguinis Ostorius"], 5)
-        self.assertIn("ConeBlast", seen)
+    def test_a_breath_weapon_produces_a_cone(self):
+        """Ei nojata siihen että tietty taistelu sattuu etenemään
+        lohikäärmeen vuoroon asti — sama hauraus kuin kutsukehä- ja
+        ehtomerkkitesteissä. Lohikäärmeen henkäys ajetaan suoraan.
+
+        Erillinen tarkistus alla varmistaa, että AI yhä *valitsee*
+        henkäyksen; tämä testi kysyy vain, näkyykö se kentällä."""
+        dragon = Entity(library.get_monster("Adult Red Dragon"), 8, 5,
+                        is_player=False)
+        pc = Entity(_hero(), 12, 5, is_player=True)
+        bs = BattleState(_FM(), entities=[pc, dragon])
+        breath = next(a for a in dragon.stats.actions
+                      if a.aoe_radius > 0 and a.aoe_shape == "cone")
+        step = ActionStep(step_type="attack", attacker=dragon, target=pc,
+                          targets=[pc], action=breath,
+                          action_name=breath.name,
+                          damage_type=breath.damage_type)
+        bs._spawn_attack_vfx_for_step(step, pc)
+        self.assertIn("ConeBlast",
+                      {type(fx).__name__ for fx in bs.impact_flashes})
+
+    def test_the_ai_still_chooses_the_breath_weapon(self):
+        """Henkäys siirrettiin omasta vaiheestaan ehdokaslistalle, jotta
+        pelinjohtaja näkee vaihtoehdot. Se ei saa muuttaa sitä, mitä
+        lohikäärmeet tekevät."""
+        from engine.battle import BattleSystem
+        for seed in range(5):
+            with self.subTest(seed=seed):
+                random.seed(seed)
+                dragon = Entity(library.get_monster("Adult Red Dragon"),
+                                12, 6, is_player=False)
+                pcs = [Entity(_hero(), 6, 5 + i, is_player=True)
+                       for i in range(3)]
+                b = BattleSystem(log_callback=lambda s: None,
+                                 initial_entities=pcs + [dragon])
+                b.start_combat()
+                plan = b.ai.calculate_turn(dragon, b)
+                self.assertTrue(plan.options)
+                self.assertIn("Breath", plan.options[0].label)
 
     def test_misses_appear(self):
         seen = self._run(["Magister Sanguinis Vhaltor", "Sanguis Custos",

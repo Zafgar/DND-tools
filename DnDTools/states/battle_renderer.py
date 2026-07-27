@@ -2183,6 +2183,102 @@ class BattleRendererMixin:
                 self.btn_ai.draw(screen, mp)
 
     # --- AI confirm dialog ---
+    def _draw_plan_options(self, screen, mp, plan, bx, by, bw, bh):
+        """Everything the AI weighed for this turn, best first.
+
+        The AI already builds and scores every option a creature has
+        and then discards all but the winner. Showing them gives the DM
+        the same view of the board the AI has — and the freedom to take
+        the third-best line on purpose, because a player just did
+        something that ought to pull the monster's attention. Picking
+        one runs through the ordinary confirm-and-roll flow.
+        """
+        opts = plan.options
+        pw = 520
+        px = bx + bw + 14
+        if px + pw > SCREEN_WIDTH - 10:          # not enough room: overlap left
+            px = max(10, bx - pw - 14)
+        row_h = 62
+        ph = min(bh, 74 + row_h * len(opts))
+        py = by
+        # Published so the event handler knows clicks here belong to the
+        # dialog and must not fall through to the battle grid.
+        self.plan_options_rect = pygame.Rect(px, py, pw, ph)
+
+        pygame.draw.rect(screen, (34, 36, 40), (px, py, pw, ph),
+                         border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent"], (px, py, pw, 34),
+                         border_top_left_radius=10,
+                         border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], (px, py, pw, ph), 2,
+                         border_radius=10)
+        screen.blit(fonts.body.render("AI:n vaihtoehdot — paras ylimpänä",
+                                      True, (255, 255, 255)), (px + 12, py + 7))
+
+        start, _end = plan.action_slice
+        locked = self.pending_step_idx > start
+        y = py + 42
+        if locked:
+            screen.blit(fonts.tiny.render(
+                "Toiminto on jo suoritettu — vaihtoehtoa ei voi enää "
+                "vaihtaa tällä vuorolla.", True, COLORS["warning"]),
+                (px + 12, y))
+            y += 18
+
+        best_score = max((o.score for o in opts), default=1.0) or 1.0
+        for opt in opts:
+            if y + row_h > py + ph - 6:
+                left = len(opts) - opt.rank + 1
+                screen.blit(fonts.tiny.render(
+                    f"...ja {left} muuta vaihtoehtoa", True,
+                    COLORS["text_dim"]), (px + 12, y + 4))
+                break
+            r = pygame.Rect(px + 10, y, pw - 20, row_h - 6)
+            chosen = (opt.rank == plan.chosen_rank)
+            hover = r.collidepoint(mp) and not locked
+            bg = (58, 62, 52) if chosen else ((48, 50, 56) if hover
+                                              else (42, 44, 48))
+            pygame.draw.rect(screen, bg, r, border_radius=6)
+            pygame.draw.rect(screen,
+                             COLORS["success"] if chosen else COLORS["border"],
+                             r, 2 if chosen else 1, border_radius=6)
+
+            # Rank badge — the AI's own pick is marked, not just first
+            badge = COLORS["legendary"] if opt.is_best else COLORS["text_dim"]
+            screen.blit(fonts.body.render(f"{opt.rank}.", True, badge),
+                        (r.x + 8, r.y + 6))
+            name = fonts.body.render(opt.label[:34], True,
+                                     COLORS["text_main"])
+            screen.blit(name, (r.x + 34, r.y + 6))
+            if opt.is_best:
+                screen.blit(fonts.tiny.render("AI:N VALINTA", True,
+                                              COLORS["legendary"]),
+                            (r.right - 92, r.y + 9))
+
+            # Score bar: relative weight at a glance
+            bar_w = int((r.width - 44) * max(0.04, opt.score / best_score))
+            pygame.draw.rect(screen, (30, 32, 36),
+                             (r.x + 34, r.y + 28, r.width - 44, 5),
+                             border_radius=2)
+            pygame.draw.rect(screen,
+                             COLORS["legendary"] if opt.is_best
+                             else COLORS["accent"],
+                             (r.x + 34, r.y + 28, bar_w, 5), border_radius=2)
+            screen.blit(fonts.tiny.render(f"{opt.score:.0f}", True,
+                                          COLORS["text_dim"]),
+                        (r.x + 8, r.y + 26))
+
+            reason = opt.reason
+            while reason and fonts.tiny.size(reason)[0] > r.width - 44:
+                reason = reason[:-2]
+            screen.blit(fonts.tiny.render(reason, True, COLORS["text_dim"]),
+                        (r.x + 34, r.y + 38))
+
+            if not locked:
+                self.ui_click_zones.append(
+                    (r, lambda rk=opt.rank: self.choose_plan_option(rk)))
+            y += row_h
+
     def _draw_ai_confirm_dialog(self, screen, mp):
         # Clear dynamic zones for this dialog
         self.ui_click_zones.clear()
@@ -2323,6 +2419,18 @@ class BattleRendererMixin:
         self.btn_approve_all.draw(screen, mp)
         self.btn_cancel_ai.draw(screen, mp)
         self.btn_reroll.draw(screen, mp)
+
+        # Everything else the AI considered, on request.
+        opts = getattr(plan, "options", None) or []
+        self.plan_options_rect = None
+        if opts:
+            self.btn_options.rect.topleft = (bx + bw - 154, by + bh - 100)
+            self.btn_options.text = (
+                f"{'PIILOTA' if self.show_plan_options else 'VAIHTOEHDOT'} "
+                f"({len(opts)})")
+            self.btn_options.draw(screen, mp)
+            if self.show_plan_options:
+                self._draw_plan_options(screen, mp, plan, bx, by, bw, bh)
         hint = fonts.tiny.render(
             "Klikkaa RESULT-ruutua muuttaaksesi osuma/ohi/save — "
             "raahaa tokenia kartalla siirtääksesi (AI laskee uuden ehdotuksen)",
