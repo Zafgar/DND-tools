@@ -179,6 +179,64 @@ class TestRangedPositioning(unittest.TestCase):
 
 
 # ===================================================================== #
+# 2b. THE BOARD HAS EDGES
+# ===================================================================== #
+class TestTheBattlefieldIsFinite(unittest.TestCase):
+    """Kun jousimiehet lakkasivat ryntäämästä, tilalle tuli päinvastainen
+    vika: peräännytään ikuisesti. Yksi ranger pakeni x = -429:ään, kahdeksan
+    ruutua kierroksessa kuudenkymmenen kierroksen ajan, pois ruudulta."""
+
+    def test_bounds_cover_where_everyone_actually_is(self):
+        a = _mon("Scout", 5, 5)
+        bb = _mon("Ogre", 30, 22, player=True)
+        b = _battle(a, bb)
+        for e in (a, bb):
+            self.assertTrue(b.in_ai_bounds(e.grid_x, e.grid_y), e.name)
+
+    def test_far_off_the_board_is_refused(self):
+        a = _mon("Scout", 5, 5)
+        bb = _mon("Ogre", 12, 5, player=True)
+        b = _battle(a, bb)
+        self.assertFalse(b.in_ai_bounds(-500, 70))
+        self.assertFalse(b.in_ai_bounds(70, 900))
+
+    def test_the_ai_will_not_step_outside(self):
+        a = _mon("Scout", 5, 5)
+        bb = _mon("Ogre", 12, 5, player=True)
+        b = _battle(a, bb)
+        x0, y0, x1, y1 = b.ai_bounds()
+        self.assertFalse(b.ai._enter_cell_allowed(b, a, x0 - 5, 5))
+        self.assertFalse(b.ai._enter_cell_allowed(b, a, 5, y1 + 5))
+
+    def test_a_retreat_stops_at_the_edge(self):
+        random.seed(17)
+        runner = _mon("Scout", 6, 6)
+        chaser = _mon("Ogre", 7, 6, player=True)
+        b = _battle(runner, chaser)
+        b.start_combat()
+        x0, y0, x1, y1 = b.ai_bounds()
+        for _ in range(40):
+            runner.movement_left = runner.get_speed()
+            step = b.ai._move_away(runner, chaser, b)
+            if step is None:
+                break
+            runner.grid_x, runner.grid_y = step.new_x, step.new_y
+            self.assertTrue(
+                b.in_ai_bounds(runner.grid_x, runner.grid_y),
+                f"pakeni kentän ulkopuolelle: "
+                f"{(runner.grid_x, runner.grid_y)} vs {(x0, y0, x1, y1)}")
+
+    def test_bounds_are_generous_enough_to_manoeuvre(self):
+        # Room to kite, just not to leave the county.
+        a = _mon("Scout", 10, 10)
+        bb = _mon("Ogre", 12, 10, player=True)
+        b = _battle(a, bb)
+        x0, y0, x1, y1 = b.ai_bounds()
+        self.assertGreaterEqual(x1 - x0, 60)
+        self.assertGreaterEqual(y1 - y0, 60)
+
+
+# ===================================================================== #
 # 3. THE BEHOLDER
 # ===================================================================== #
 class TestTheBeholder(unittest.TestCase):

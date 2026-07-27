@@ -1639,6 +1639,13 @@ class TacticalAI:
         in the square. ``is_passable`` already draws that line.
         """
         gx, gy = int(nx), int(ny)
+        # Off the board is not a legal square. Every AI move funnels
+        # through here, so this is the one place that has to say no.
+        try:
+            if not battle.in_ai_bounds(nx, ny):
+                return False
+        except Exception:
+            pass
         t_at = battle.get_terrain_at(gx, gy)
         if not entity.is_flying:
             # Open every door square the creature's body would cover,

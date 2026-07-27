@@ -550,6 +550,43 @@ class BattleSystem:
     )
     _PREVIEW_DICTS = ("spell_slots", "feature_uses")
 
+    def ai_bounds(self):
+        """The rectangle creatures are allowed to move inside.
+
+        The engine has no map edge, so a creature that decides to back
+        away can back away forever: a ranger being chased by something
+        she could not see retreated in a straight line to x = -429,
+        eight squares a round for sixty rounds, off the DM's screen and
+        out of the fight without either side ever landing a blow.
+
+        The board is the terrain if there is any, otherwise where the
+        creatures actually are, plus a wide margin so genuine
+        manoeuvring is never cramped. Cached — terrain rarely moves.
+        """
+        cached = getattr(self, "_ai_bounds_cache", None)
+        stamp = (len(self.terrain), len(self.entities))
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        xs, ys = [], []
+        for t in self.terrain:
+            xs += [t.grid_x, t.grid_x + max(1, t.width)]
+            ys += [t.grid_y, t.grid_y + max(1, t.height)]
+        for e in self.entities:
+            xs.append(e.grid_x)
+            ys.append(e.grid_y)
+        if not xs:
+            box = (0.0, 0.0, 200.0, 200.0)
+        else:
+            MARGIN = 40.0          # 200 ft of room beyond the action
+            box = (min(0.0, min(xs)) - MARGIN, min(0.0, min(ys)) - MARGIN,
+                   max(xs) + MARGIN, max(ys) + MARGIN)
+        self._ai_bounds_cache = (stamp, box)
+        return box
+
+    def in_ai_bounds(self, x, y) -> bool:
+        x0, y0, x1, y1 = self.ai_bounds()
+        return x0 <= x <= x1 and y0 <= y <= y1
+
     def preview_ai_turn(self, entity: Entity):
         """Plan a turn WITHOUT spending anything.
 
