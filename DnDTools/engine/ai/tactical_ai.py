@@ -1416,9 +1416,20 @@ class TacticalAI:
         """
         gx, gy = int(nx), int(ny)
         t_at = battle.get_terrain_at(gx, gy)
-        if t_at is not None and t_at.is_door and not t_at.door_open \
-                and not t_at.is_locked and not entity.is_flying:
-            battle.toggle_door_at(gx, gy)
+        if not entity.is_flying:
+            # Open every door square the creature's body would cover,
+            # not just the one under its anchor. A city gate is five
+            # squares across; opening one leaf of it left the other
+            # four shut, so the footprint check still failed and no
+            # Huge or Gargantuan creature could ever walk through a
+            # gate wide enough to march an army through.
+            size = entity.size_in_squares
+            for dx in range(size):
+                for dy in range(size):
+                    d = battle.get_terrain_at(gx + dx, gy + dy)
+                    if d is not None and d.is_door and not d.door_open \
+                            and not d.is_locked:
+                        battle.toggle_door_at(gx + dx, gy + dy)
         if battle.is_passable(nx, ny, exclude=entity):
             return True
         # A gap is crossed by jumping/flying, handled by the caller —
@@ -1426,8 +1437,36 @@ class TacticalAI:
         return bool(t_at is not None and t_at.is_gap
                     and not battle.footprint_occupied(entity, nx, ny))
 
+    @staticmethod
+    def _path_budget(battle) -> int:
+        """How many A* nodes this battlefield is worth exploring.
+
+        A flat 600 was sized for a 20x15 dungeon. On a city district
+        forty times that area the search runs out of budget halfway
+        down the first avenue and returns a partial path, so creatures
+        shuffle toward the nearest wall instead of walking around the
+        block. The cap scales with the map's actual extent and is
+        cached on the battle, since the terrain rarely changes.
+        """
+        cached = getattr(battle, "_ai_path_budget", None)
+        terrain = getattr(battle, "terrain", None) or ()
+        if cached is not None and cached[0] == len(terrain):
+            return cached[1]
+        if terrain:
+            xs = [t.grid_x for t in terrain]
+            ys = [t.grid_y for t in terrain]
+            cells = (max(xs) - min(xs) + 1) * (max(ys) - min(ys) + 1)
+        else:
+            cells = 0
+        budget = max(600, min(20000, int(cells * 4)))
+        try:
+            battle._ai_path_budget = (len(terrain), budget)
+        except Exception:
+            pass
+        return budget
+
     def _find_path(self, start, end, battle, entity, allow_jump=True,
-                     *, max_iterations: int = 600,
+                     *, max_iterations: int = 0,
                      return_partial: bool = True):
         """A* Pathfinding to find optimal path around obstacles.
         allow_jump: if True, consider jumping across gaps/chasms.
@@ -1437,7 +1476,12 @@ class TacticalAI:
         (root cause of the Phase 9d Bone Devil + tavern_brawl
         deadlocks). When the cap is hit, ``return_partial=True``
         returns the closest-to-end node walked so far so the AI
-        still makes progress rather than freezing the turn."""
+        still makes progress rather than freezing the turn.
+
+        ``max_iterations`` of 0 means "size it to the map" — see
+        :meth:`_path_budget`."""
+        if not max_iterations:
+            max_iterations = self._path_budget(battle)
         def heuristic(a, b):
             return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 

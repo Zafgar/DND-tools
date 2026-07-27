@@ -1072,3 +1072,11 @@ def get_spawn_zones(map_key: str) -> dict:
     if not map_data:
         return {}
     return map_data.get("spawn_zones", {})
+
+
+# The grand city is generated rather than written out: at sixty by
+# forty-four squares it is some thirteen hundred tiles, and a literal
+# that size cannot be edited by hand. See data/maps_city.py.
+from data.maps_city import install as _install_city  # noqa: E402
+
+_install_city(PREMADE_MAPS)

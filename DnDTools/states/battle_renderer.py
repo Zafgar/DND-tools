@@ -754,10 +754,18 @@ class BattleRendererMixin:
         gsz = self.battle.grid_size
         ticks = pygame.time.get_ticks()
         mp = pygame.mouse.get_pos()
+        # Only paint what is on screen. Every tile allocates a surface
+        # and runs a procedural painter, which is fine for a 20x15
+        # dungeon and ruinous for a city district of well over a
+        # thousand tiles — the vast majority of which are outside the
+        # viewport at any moment.
+        view = pygame.Rect(0, TOP_BAR_H, GRID_W, SCREEN_HEIGHT - TOP_BAR_H)
         for t in self.battle.terrain:
             rx, ry = self._grid_to_screen(t.grid_x, t.grid_y)
             rw = t.width * gsz
             rh = t.height * gsz
+            if not view.colliderect(pygame.Rect(rx, ry, rw, rh)):
+                continue
             # Hover tooltip for spell terrain: show rules/description
             if t.is_spell_terrain and pygame.Rect(rx, ry, rw, rh).collidepoint(mp):
                 self._build_spell_terrain_tooltip(t)

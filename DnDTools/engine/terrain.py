@@ -257,6 +257,104 @@ TERRAIN_TYPES = {
         "description": "A cage of force. The creature inside cannot leave "
                        "without teleporting (CHA save), and nothing can "
                        "pass the bars."},
+
+    # ------------------------------------------------------------------ #
+    # City and settlement props
+    #
+    # Everything a town square is made of. A city fight was previously
+    # buildable only out of walls, houses and barrels, so every street
+    # looked like the same dungeon corridor with a different colour.
+    # ------------------------------------------------------------------ #
+    "cobblestone": {
+        "color": (96, 92, 88), "passable": True, "label": "Cobblestone",
+        "icon": "::",
+        "description": "Paved street. No mechanical effect — it marks "
+                       "the road so the layout reads at a glance."},
+    "well": {
+        "color": (122, 122, 130), "passable": False, "label": "Well",
+        "icon": "()", "blocks_los": False, "cover_bonus": 5,
+        "elevation_ft": 4,
+        "description": "A stone well head. Solid enough to hide behind, "
+                       "low enough to see over."},
+    "fountain": {
+        "color": (92, 132, 164), "passable": False, "label": "Fountain",
+        "icon": "^~", "blocks_los": False, "cover_bonus": 5,
+        "elevation_ft": 5,
+        "description": "A tiered public fountain."},
+    "market_stall": {
+        "color": (172, 112, 68), "passable": False, "label": "Market Stall",
+        "icon": "/\\", "blocks_los": True, "cover_bonus": 5,
+        "elevation_ft": 8,
+        "description": "A canvas-roofed trader's stall. Blocks sight."},
+    "cart": {
+        "color": (136, 96, 56), "passable": False, "label": "Cart",
+        "icon": "oo", "blocks_los": False, "cover_bonus": 5,
+        "elevation_ft": 6, "climbable": True,
+        "description": "A loaded handcart. Three-quarters cover, and you "
+                       "can climb onto it."},
+    "haystack": {
+        "color": (186, 160, 74), "passable": True, "difficult": True,
+        "label": "Haystack", "icon": "//", "cover_bonus": 5,
+        "description": "Loose hay. You can force through it, slowly, and "
+                       "it hides you while you do."},
+    "fence": {
+        "color": (128, 96, 60), "passable": True, "difficult": True,
+        "label": "Fence", "icon": "##", "cover_bonus": 2,
+        "climbable": True, "elevation_ft": 0,
+        "description": "A waist-high paling. Clamber over it at half "
+                       "speed; it gives half cover."},
+    "hedge": {
+        "color": (52, 92, 52), "passable": True, "difficult": True,
+        "label": "Hedge", "icon": "%%", "cover_bonus": 2,
+        "blocks_los": True, "los_height_ft": 8, "elevation_ft": 0,
+        "description": "Dense garden hedge. You can push through it, but "
+                       "you cannot see through it."},
+    "lamppost": {
+        "color": (152, 140, 92), "passable": False, "label": "Lamppost",
+        "icon": "!", "blocks_los": False, "cover_bonus": 2,
+        "elevation_ft": 12,
+        "description": "An iron lamp standard. Thin, but something to "
+                       "put between you and an archer."},
+    "signpost": {
+        "color": (142, 116, 76), "passable": True, "label": "Signpost",
+        "icon": "->", "cover_bonus": 2,
+        "description": "A crossroads sign."},
+    "gate": {
+        "color": (152, 122, 72), "passable": False, "door": True,
+        "label": "City Gate", "icon": "|=|", "blocks_los": True,
+        "elevation_ft": 20,
+        "description": "A banded gate wide enough to march through. "
+                       "Opens and closes like any door."},
+    "battlement": {
+        "color": (128, 126, 120), "passable": True, "label": "Battlement",
+        "icon": "^^", "cover_bonus": 5, "elevation_ft": 20,
+        "climbable": True,
+        "description": "The walkway along the top of a curtain wall. "
+                       "Twenty feet up, with merlons for cover."},
+    "tower": {
+        "color": (118, 116, 122), "passable": False, "label": "Tower",
+        "icon": "TW", "blocks_los": True, "cover_bonus": 5,
+        "elevation_ft": 40,
+        "description": "A round stone tower. Nothing short of a "
+                       "high-flying dragon clears it."},
+    "forge": {
+        "color": (150, 78, 48), "passable": False, "label": "Forge",
+        "icon": "FG", "blocks_los": False, "cover_bonus": 5,
+        "elevation_ft": 6,
+        "description": "A smith's hearth and anvil, still hot."},
+    "crops": {
+        "color": (122, 132, 62), "passable": True, "difficult": True,
+        "label": "Crops", "icon": "\"\"",
+        "description": "A planted strip. Difficult going."},
+    "barricade": {
+        "color": (110, 88, 62), "passable": False, "label": "Barricade",
+        "icon": "XX", "blocks_los": False, "cover_bonus": 5,
+        "elevation_ft": 5, "climbable": True,
+        "description": "Furniture and beams piled across a street."},
+    "dock": {
+        "color": (138, 106, 68), "passable": True, "label": "Dock",
+        "icon": "==", "elevation_ft": 0,
+        "description": "Planking over water."},
 }
 
 

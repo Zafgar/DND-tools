@@ -973,11 +973,401 @@ def _paint_forcecage(surf, w, h, base, ticks):
 # --------------------------------------------------------------------- #
 # Dispatcher
 # --------------------------------------------------------------------- #
+# --------------------------------------------------------------------- #
+# City and settlement props
+#
+# These are the pieces a town square is built from. They are drawn to
+# read from directly overhead, like the rest of the tile art, and each
+# one commits to a single strong shape: the well is a ring, the fountain
+# a set of concentric rings, the cart a rectangle on two visible wheels.
+# --------------------------------------------------------------------- #
+def _paint_house(surf, w, h, base):
+    """A section of shingled roof, seen from above.
+
+    Town houses are drawn as solid blocks of this tile, so it has to
+    tile into something that reads as a roof rather than as a wall:
+    overlapping shingle courses running across, a bright ridge along
+    the top edge and a dark eave along the bottom. Sharing the brick
+    painter with ``wall`` made every building in the city look like a
+    flat brown slab of masonry.
+    """
+    surf.fill(_alpha(base, 240))
+    light = _shade(base, 1.28)
+    mid = _shade(base, 1.08)
+    dark = _shade(base, 0.62)
+    course = max(4, h // 4)
+    row = 0
+    y = 0
+    while y < h:
+        off = (course // 2) if row % 2 else 0
+        x = -off
+        while x < w:
+            tile = pygame.Rect(x, y, course, course)
+            pygame.draw.rect(surf, mid if (x // max(1, course) + row) % 2
+                             else light, tile, border_radius=2)
+            pygame.draw.arc(surf, dark, tile, 3.34, 6.08, 1)
+            x += course
+        pygame.draw.line(surf, dark, (0, y), (w, y), 1)
+        y += course
+        row += 1
+    # Ridge and eave give the block a top and a bottom
+    pygame.draw.line(surf, _shade(base, 1.5), (0, 1), (w, 1),
+                     max(1, h // 20))
+    pygame.draw.line(surf, _shade(base, 0.45), (0, h - 1), (w, h - 1),
+                     max(1, h // 16))
+
+
+def _paint_cobblestone(surf, w, h, base):
+    """Irregular paving setts. Deliberately quiet — it is a road, not
+    an obstacle, and it tiles across hundreds of squares."""
+    surf.fill(_alpha(base, 190))
+    light = _shade(base, 1.22)
+    dark = _shade(base, 0.72)
+    cw = max(5, w // 5)
+    ch = max(5, h // 5)
+    row = 0
+    y = 0
+    while y < h:
+        off = (cw // 2) if row % 2 else 0
+        x = -off
+        while x < w:
+            r = pygame.Rect(x + 1, y + 1, cw - 2, ch - 2)
+            pygame.draw.rect(surf, light if (x // cw + row) % 3 else dark,
+                             r, border_radius=2)
+            x += cw
+        y += ch
+        row += 1
+
+
+def _paint_well(surf, w, h, base):
+    """Stone ring around a black shaft, with a winch beam across it."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    cx, cy = w // 2, h // 2
+    r = max(4, int(min(w, h) * 0.42))
+    pygame.draw.circle(surf, _shade(base, 1.15), (cx, cy), r)
+    pygame.draw.circle(surf, _shade(base, 0.6), (cx, cy), r, 2)
+    # Course lines around the rim
+    for i in range(8):
+        a = i * math.tau / 8
+        pygame.draw.line(surf, _shade(base, 0.7),
+                         (cx + int(math.cos(a) * r * 0.55),
+                          cy + int(math.sin(a) * r * 0.55)),
+                         (cx + int(math.cos(a) * r),
+                          cy + int(math.sin(a) * r)), 1)
+    pygame.draw.circle(surf, (16, 16, 22), (cx, cy), max(2, int(r * 0.52)))
+    # Winch beam and rope
+    pygame.draw.line(surf, (120, 88, 52), (cx - r, cy - int(r * 0.7)),
+                     (cx + r, cy - int(r * 0.7)), max(2, w // 22))
+    pygame.draw.line(surf, (200, 196, 180), (cx, cy - int(r * 0.7)),
+                     (cx, cy), 1)
+
+
+def _paint_fountain(surf, w, h, base):
+    """Concentric basins with a spout and a scatter of droplets."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    cx, cy = w // 2, h // 2
+    r = max(4, int(min(w, h) * 0.46))
+    stone = _shade(base, 0.75)
+    water = (86, 146, 196)
+    pygame.draw.circle(surf, stone, (cx, cy), r)
+    pygame.draw.circle(surf, _shade(stone, 0.6), (cx, cy), r, 2)
+    pygame.draw.circle(surf, water, (cx, cy), max(2, int(r * 0.74)))
+    pygame.draw.circle(surf, _shade(stone, 1.2), (cx, cy),
+                       max(2, int(r * 0.38)))
+    pygame.draw.circle(surf, _shade(water, 1.3), (cx, cy),
+                       max(1, int(r * 0.2)))
+    for i in range(6):
+        a = i * math.tau / 6
+        pygame.draw.circle(surf, (190, 220, 240),
+                           (cx + int(math.cos(a) * r * 0.55),
+                            cy + int(math.sin(a) * r * 0.55)),
+                           max(1, w // 26))
+
+
+def _paint_market_stall(surf, w, h, base):
+    """Striped awning over a counter — the stripes are the giveaway."""
+    surf.fill(_alpha(_shade(base, 0.4), 120))
+    awning = pygame.Rect(1, 1, w - 2, int(h * 0.6))
+    stripe_w = max(3, w // 6)
+    x = awning.left
+    i = 0
+    while x < awning.right:
+        col = (196, 76, 66) if i % 2 == 0 else (232, 226, 210)
+        pygame.draw.rect(surf, col, pygame.Rect(
+            x, awning.top, min(stripe_w, awning.right - x), awning.height))
+        x += stripe_w
+        i += 1
+    pygame.draw.rect(surf, _shade(base, 0.5), awning, 1)
+    # Counter under the awning, with goods on it
+    counter = pygame.Rect(2, int(h * 0.62), w - 4, int(h * 0.3))
+    pygame.draw.rect(surf, _shade(base, 1.05), counter, border_radius=2)
+    for k in range(3):
+        pygame.draw.circle(surf, _shade(base, 1.4),
+                           (counter.left + (k + 1) * counter.width // 4,
+                            counter.centery), max(1, w // 20))
+
+
+def _paint_cart(surf, w, h, base):
+    """Loaded bed on two big wheels, seen from above and slightly aside."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    bed = pygame.Rect(int(w * 0.14), int(h * 0.22),
+                      int(w * 0.72), int(h * 0.5))
+    pygame.draw.rect(surf, base, bed, border_radius=2)
+    pygame.draw.rect(surf, _shade(base, 0.55), bed, 2, border_radius=2)
+    for k in range(3):
+        y = bed.top + (k + 1) * bed.height // 4
+        pygame.draw.line(surf, _shade(base, 0.7),
+                         (bed.left + 2, y), (bed.right - 2, y), 1)
+    wr = max(2, int(min(w, h) * 0.16))
+    for wx in (bed.left, bed.right):
+        for wy in (bed.top, bed.bottom):
+            pygame.draw.circle(surf, (48, 42, 36), (wx, wy), wr)
+            pygame.draw.circle(surf, _shade(base, 1.3), (wx, wy),
+                               max(1, wr // 2))
+    # Draught pole
+    pygame.draw.line(surf, _shade(base, 0.8), (bed.right, bed.centery),
+                     (w - 1, bed.centery), max(2, w // 24))
+
+
+def _paint_haystack(surf, w, h, base):
+    """A messy pile of straws, no straight edges anywhere."""
+    surf.fill(_alpha(_shade(base, 0.75), 200))
+    light = _shade(base, 1.25)
+    dark = _shade(base, 0.6)
+    for i in range(26):
+        a = (i * 2.399963) % math.tau
+        rr = (min(w, h) * 0.46) * (0.35 + 0.65 * ((i * 7) % 5) / 4.0)
+        x0 = int(w / 2 + math.cos(a) * rr * 0.5)
+        y0 = int(h / 2 + math.sin(a) * rr * 0.5)
+        x1 = int(x0 + math.cos(a + 0.6) * rr)
+        y1 = int(y0 + math.sin(a + 0.6) * rr)
+        pygame.draw.line(surf, light if i % 3 else dark, (x0, y0), (x1, y1),
+                         max(1, w // 26))
+
+
+def _paint_fence(surf, w, h, base):
+    """Palings on two rails, running the long way across the tile."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    light = _shade(base, 1.2)
+    dark = _shade(base, 0.6)
+    top = int(h * 0.3)
+    bot = int(h * 0.72)
+    pygame.draw.line(surf, dark, (0, top), (w, top), max(2, h // 14))
+    pygame.draw.line(surf, dark, (0, bot), (w, bot), max(2, h // 14))
+    step = max(4, w // 5)
+    for x in range(step // 2, w, step):
+        pygame.draw.line(surf, light, (x, int(h * 0.14)),
+                         (x, int(h * 0.88)), max(2, w // 18))
+
+
+def _paint_hedge(surf, w, h, base):
+    """Dense clipped foliage — overlapping blobs, no gaps."""
+    surf.fill(_alpha(_shade(base, 0.8), 235))
+    for i in range(14):
+        a = i * 2.399963
+        x = int(w / 2 + math.cos(a) * w * 0.32)
+        y = int(h / 2 + math.sin(a * 1.4) * h * 0.32)
+        pygame.draw.circle(surf, _shade(base, 1.0 + 0.35 * ((i % 3) - 1)),
+                           (x, y), max(2, int(min(w, h) * 0.22)))
+    pygame.draw.rect(surf, _shade(base, 0.5), pygame.Rect(0, 0, w, h), 1)
+
+
+def _paint_lamppost(surf, w, h, base):
+    """Thin standard with a lit lantern head and a pool of light."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    cx = w // 2
+    glow = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.circle(glow, (255, 214, 130, 46), (cx, h // 2),
+                       max(3, int(min(w, h) * 0.46)))
+    surf.blit(glow, (0, 0))
+    pygame.draw.line(surf, _shade(base, 0.6), (cx, int(h * 0.42)),
+                     (cx, int(h * 0.9)), max(2, w // 14))
+    pygame.draw.ellipse(surf, _shade(base, 0.5), pygame.Rect(
+        cx - max(2, w // 8), int(h * 0.84), max(4, w // 4), max(3, h // 10)))
+    head = pygame.Rect(cx - max(2, w // 7), int(h * 0.18),
+                       max(5, w // 3.5), max(5, int(h * 0.26)))
+    pygame.draw.rect(surf, (60, 56, 44), head, border_radius=2)
+    pygame.draw.rect(surf, (255, 226, 150), head.inflate(-2, -2))
+
+
+def _paint_signpost(surf, w, h, base):
+    """A post with two arms pointing opposite ways."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    cx = w // 2
+    pygame.draw.line(surf, _shade(base, 0.7), (cx, int(h * 0.2)),
+                     (cx, int(h * 0.9)), max(2, w // 12))
+    for i, (side, y) in enumerate(((1, 0.3), (-1, 0.52))):
+        arm = pygame.Rect(0, 0, int(w * 0.44), max(4, int(h * 0.15)))
+        arm.center = (cx + side * int(w * 0.22), int(h * y))
+        pygame.draw.rect(surf, _shade(base, 1.2), arm, border_radius=1)
+        pygame.draw.rect(surf, _shade(base, 0.55), arm, 1, border_radius=1)
+        pygame.draw.line(surf, _shade(base, 0.5),
+                         (arm.left + 2, arm.centery),
+                         (arm.right - 2, arm.centery), 1)
+
+
+def _paint_gate(surf, w, h, base):
+    """Heavy banded timbers with iron studs and a ring handle."""
+    surf.fill(_alpha(_shade(base, 0.9), 240))
+    plank = max(4, w // 5)
+    for x in range(0, w, plank):
+        pygame.draw.rect(surf, _shade(base, 1.1 if (x // plank) % 2 else 0.9),
+                         pygame.Rect(x, 0, plank - 1, h))
+    iron = (74, 74, 82)
+    for fy in (0.22, 0.72):
+        band = pygame.Rect(0, int(h * fy), w, max(3, h // 8))
+        pygame.draw.rect(surf, iron, band)
+        for k in range(3):
+            pygame.draw.circle(surf, (150, 150, 158),
+                               ((k + 1) * w // 4, band.centery),
+                               max(1, w // 26))
+    pygame.draw.circle(surf, iron, (int(w * 0.5), int(h * 0.5)),
+                       max(2, w // 10), max(1, w // 26))
+
+
+def _paint_battlement(surf, w, h, base):
+    """Walkway with merlons along the top edge — the crenellation is
+    what tells you this is the wall walk and not the wall."""
+    # The merlons ARE the silhouette, so they are drawn much lighter
+    # than the walkway with a hard shadow in the gaps. Painted at the
+    # same value as the walk it read as a plain grey slab, which is
+    # exactly what a battlement must not be mistaken for.
+    surf.fill(_alpha(_shade(base, 0.78), 240))
+    light = _shade(base, 1.45)
+    dark = _shade(base, 0.4)
+    # Walkway flagstones
+    for y in range(int(h * 0.34), h, max(4, h // 4)):
+        pygame.draw.line(surf, dark, (0, y), (w, y), 1)
+    # Merlons along the top, gaps knocked through to the shadow
+    crest = max(4, int(h * 0.32))
+    pygame.draw.rect(surf, dark, pygame.Rect(0, 0, w, crest))
+    merlon = max(3, w // 5)
+    x = 0
+    i = 0
+    while x < w:
+        if i % 2 == 0:
+            block = pygame.Rect(x, 0, min(merlon, w - x), crest)
+            pygame.draw.rect(surf, light, block)
+            pygame.draw.rect(surf, dark, block, 1)
+        x += merlon
+        i += 1
+    pygame.draw.line(surf, light, (0, crest), (w, crest),
+                     max(1, h // 22))
+
+
+def _paint_tower(surf, w, h, base):
+    """Round keep seen from above: rings, arrow slits, a shadow."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    cx, cy = w // 2, h // 2
+    r = max(4, int(min(w, h) * 0.48))
+    pygame.draw.circle(surf, (0, 0, 0, 90), (cx + 2, cy + 2), r)
+    pygame.draw.circle(surf, _shade(base, 1.05), (cx, cy), r)
+    pygame.draw.circle(surf, _shade(base, 0.55), (cx, cy), r, 2)
+    pygame.draw.circle(surf, _shade(base, 0.85), (cx, cy),
+                       max(2, int(r * 0.62)), 1)
+    # Crenellations as notches around the rim
+    for i in range(8):
+        a = i * math.tau / 8
+        pygame.draw.line(surf, _shade(base, 0.5),
+                         (cx + int(math.cos(a) * r * 0.62),
+                          cy + int(math.sin(a) * r * 0.62)),
+                         (cx + int(math.cos(a) * r),
+                          cy + int(math.sin(a) * r)),
+                         max(2, w // 18))
+    pygame.draw.circle(surf, (30, 28, 34), (cx, cy), max(2, int(r * 0.22)))
+
+
+def _paint_forge(surf, w, h, base):
+    """Anvil on a hearth, coals glowing underneath."""
+    surf.fill(_alpha(_shade(base, 0.5), 200))
+    # Coal bed
+    for i in range(10):
+        a = i * 2.399963
+        x = int(w / 2 + math.cos(a) * w * 0.3)
+        y = int(h * 0.68 + math.sin(a) * h * 0.16)
+        pygame.draw.circle(surf, (236, 128, 46) if i % 2 else (198, 62, 30),
+                           (x, y), max(1, w // 16))
+    # Anvil silhouette
+    top = pygame.Rect(int(w * 0.18), int(h * 0.22),
+                      int(w * 0.64), max(3, int(h * 0.16)))
+    pygame.draw.rect(surf, (62, 62, 70), top, border_radius=2)
+    pygame.draw.rect(surf, (36, 36, 42), pygame.Rect(
+        int(w * 0.38), top.bottom, int(w * 0.24), int(h * 0.2)))
+    pygame.draw.rect(surf, (62, 62, 70), pygame.Rect(
+        int(w * 0.26), int(h * 0.56), int(w * 0.48), max(3, int(h * 0.1))),
+        border_radius=2)
+    pygame.draw.polygon(surf, (62, 62, 70), [
+        (top.left, top.centery), (int(w * 0.04), top.bottom),
+        (top.left, top.bottom)])
+
+
+def _paint_crops(surf, w, h, base):
+    """Planted rows, with a little variation so it is not a barcode."""
+    surf.fill(_alpha(_shade(base, 0.7), 210))
+    light = _shade(base, 1.3)
+    rows = max(3, h // 7)
+    for i in range(rows):
+        y = int((i + 0.5) * h / rows)
+        pygame.draw.line(surf, _shade(base, 0.55), (0, y), (w, y), 1)
+        for x in range(2, w, max(4, w // 6)):
+            sway = 1 if (x + i) % 3 else -1
+            pygame.draw.line(surf, light, (x, y),
+                             (x + sway, y - max(2, h // 9)), 1)
+
+
+def _paint_barricade(surf, w, h, base):
+    """Beams and broken furniture crossed over each other."""
+    surf.fill(_alpha((20, 20, 20), 0))
+    light = _shade(base, 1.25)
+    dark = _shade(base, 0.55)
+    beams = (((0.05, 0.75), (0.95, 0.25)),
+             ((0.05, 0.3), (0.95, 0.8)),
+             ((0.15, 0.95), (0.5, 0.08)))
+    for (x0, y0), (x1, y1) in beams:
+        pygame.draw.line(surf, light, (int(x0 * w), int(y0 * h)),
+                         (int(x1 * w), int(y1 * h)), max(3, h // 6))
+        pygame.draw.line(surf, dark, (int(x0 * w), int(y0 * h)),
+                         (int(x1 * w), int(y1 * h)), 1)
+    pygame.draw.rect(surf, dark, pygame.Rect(
+        int(w * 0.6), int(h * 0.55), int(w * 0.3), int(h * 0.35)), 2)
+
+
+def _paint_dock(surf, w, h, base):
+    """Planking with visible gaps and dark water showing between."""
+    surf.fill((28, 44, 62, 220))
+    plank_h = max(4, h // 4)
+    for i, y in enumerate(range(0, h, plank_h)):
+        pygame.draw.rect(surf, _shade(base, 1.1 if i % 2 else 0.92),
+                         pygame.Rect(0, y, w, plank_h - 1))
+    for x in range(0, w, max(6, w // 3)):
+        pygame.draw.line(surf, _shade(base, 0.6), (x, 0), (x, h), 1)
+        for i in range(0, h, plank_h):
+            pygame.draw.circle(surf, _shade(base, 0.5),
+                               (x + 2, i + plank_h // 2), 1)
+
+
 _PAINTERS = {
+    "cobblestone":   _paint_cobblestone,
+    "well":          _paint_well,
+    "fountain":      _paint_fountain,
+    "market_stall":  _paint_market_stall,
+    "cart":          _paint_cart,
+    "haystack":      _paint_haystack,
+    "fence":         _paint_fence,
+    "hedge":         _paint_hedge,
+    "lamppost":      _paint_lamppost,
+    "signpost":      _paint_signpost,
+    "gate":          _paint_gate,
+    "battlement":    _paint_battlement,
+    "tower":         _paint_tower,
+    "forge":         _paint_forge,
+    "crops":         _paint_crops,
+    "barricade":     _paint_barricade,
+    "dock":          _paint_dock,
     "wall":          _paint_wall,
     "tree":          _paint_tree,
     "rock":          _paint_rock,
-    "house":         _paint_wall,
+    "house":         _paint_house,
     "pillar":        _paint_pillar,
     "table":         _paint_table,
     "crate":         _paint_crate,
