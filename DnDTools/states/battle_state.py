@@ -3190,7 +3190,24 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     }
 
     def _use_feature_manual(self, entity, feature):
-        flag = self._TOGGLE_FEATURES.get(feature.name.strip().lower())
+        name = feature.name.strip().lower()
+        if name == "rage":
+            # Rage spends a use going on and gives it back when the DM
+            # turns it off by hand, so a misclick is not a lost rage.
+            if entity.rage_active:
+                entity.end_rage()
+                self._save_undo_snapshot()
+                self._log(f"[DM] {entity.name}: Rage päättyi.")
+            elif entity.start_rage():
+                self._save_undo_snapshot()
+                self._log(f"[DM] {entity.name}: RAGE! "
+                          f"(+{entity.get_rage_damage_bonus()} lähivahinkoa, "
+                          f"vastustus lyönti/viilto/murskaus, "
+                          f"{entity.rages_left} jäljellä)")
+            else:
+                self._log(f"[DM] {entity.name}: raivoja ei ole jäljellä.")
+            return
+        flag = self._TOGGLE_FEATURES.get(name)
         if flag:
             on = not getattr(entity, flag, False)
             setattr(entity, flag, on)

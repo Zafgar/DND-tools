@@ -241,6 +241,40 @@ class TestFeatureToggles(unittest.TestCase):
         self.assertIn("Adv", st.attack_roll_str,
                       "reckless ei tuottanut etua heittoon")
 
+    def test_rage_toggles_and_gives_the_use_back(self):
+        bs, p, e = _fight()
+        feat = next((f for f in p.stats.features
+                     if f.name.strip().lower() == "rage"), None)
+        if feat is None:
+            self.skipTest("this hero has no Rage")
+        before = p.rages_left
+        bs._use_feature_manual(p, feat)
+        self.assertTrue(p.rage_active)
+        self.assertEqual(p.rages_left, before - 1)
+        bs._use_feature_manual(p, feat)
+        self.assertFalse(p.rage_active)
+
+    def test_rage_shows_up_on_the_swing(self):
+        random.seed(21)
+        bs, p, e = _fight()
+        bs._do_start_combat()
+        p.conditions.clear()
+        e.conditions.clear()
+        feat = next((f for f in p.stats.features
+                     if f.name.strip().lower() == "rage"), None)
+        if feat is None:
+            self.skipTest("this hero has no Rage")
+        bs._use_feature_manual(p, feat)
+        weapon = next(a for a in p.stats.actions
+                      if not a.is_multiattack and a.damage_dice
+                      and a.range <= 5)
+        bs._start_action_targeting(p, weapon)
+        sx, sy = bs._grid_to_screen(e.grid_x, e.grid_y)
+        bs._execute_manual_action((sx + 5, sy + 5))
+        note = BattleRendererMixin._attack_modifier_note(
+            bs.pending_plan.steps[0])
+        self.assertIn("Rage", note)
+
     def test_the_dialog_names_what_is_riding_on_the_swing(self):
         random.seed(13)
         bs, p, e = _fight()
