@@ -1192,7 +1192,14 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 oas = self.battle.check_opportunity_attacks(
                     mover, step.old_x, step.old_y)
                 if oas:
-                    mover.grid_x, mover.grid_y = step.old_x, step.old_y
+                    # Rewind so the reaction resolves before the move —
+                    # but only into a square that is still free. The
+                    # origin can have been taken since the plan was
+                    # built, and a Huge creature rewound onto a cleric
+                    # is worse than an attack resolved a step late.
+                    if self.battle.is_passable(step.old_x, step.old_y,
+                                               exclude=mover):
+                        mover.grid_x, mover.grid_y = step.old_x, step.old_y
                     self.reaction_pending = list(oas)
                     self.reaction_type = "oa"
                     self.pending_move = (mover, new_x, new_y)

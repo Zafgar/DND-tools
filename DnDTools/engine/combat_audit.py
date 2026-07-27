@@ -274,6 +274,12 @@ class _Watcher:
                     continue
                 if a.is_flying and battle.flyer_clears(a, t):
                     continue
+                # At the bottom of a chasm it fell into. That is a
+                # legal — if unfortunate — place to be standing, and
+                # the elevation is the proof: the creature is down at
+                # the pit floor, not hovering inside solid rock.
+                if t.is_gap and a.elevation <= t.elevation:
+                    continue
                 note(ERROR, "placement", "Creature inside impassable terrain",
                      f"{where}: {a.name} stands in {t.terrain_type} "
                      f"at ({cx},{cy})")
@@ -454,12 +460,17 @@ class _Watcher:
             # little slack, not the speed itself.
             speed = max(atk.get_speed(), atk.stats.speed,
                         atk.stats.fly_speed)
-            budget = speed * 2 + 10
+            # Dash doubles it. A rogue's Cunning Action is a SECOND
+            # Dash on the same turn, so three times speed is a legal
+            # move for one — 25 ft of walking plus two 25 ft Dashes was
+            # being reported as a 75 ft cheat.
+            multiplier = 3 if atk.has_feature("cunning_action") else 2
+            budget = speed * multiplier + 10
             if step.movement_ft > budget:
                 note(ERROR, "rules", "Moved further than its speed allows",
                      f"{where}: {atk.name} moved {step.movement_ft:.0f} ft "
-                     f"on a {speed:.0f} ft speed (Dash allows "
-                     f"{speed * 2:.0f})")
+                     f"on a {speed:.0f} ft speed (dashing allows "
+                     f"{speed * multiplier:.0f})")
 
 
 # --------------------------------------------------------------------- #

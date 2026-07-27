@@ -507,7 +507,177 @@ class TestShiftedActionArguments(unittest.TestCase):
 
 
 # ===================================================================== #
-# 9. AND THE AUDIT ITSELF AGREES
+# 9. THE DEEP RUN'S FINDINGS
+#
+# 510 battles and 34,000 steps turned up three more.
+# ===================================================================== #
+class TestOpportunityAttackRewind(unittest.TestCase):
+    """Kun liike provosoi vapaaiskun, moottori kelaa liikkujan takaisin
+    lähtöruutuun jotta reaktio ratkeaa ennen siirtoa. Lähtöruutu voi
+    olla jo varattu — ja Huge-lohikäärme keloutui papin päälle."""
+
+    def _scene(self):
+        dragon = _mon("Adult Brass Dragon", 5, 6)
+        cleric = Entity(_hero("War Cleric"), 4, 6, is_player=True)
+        bs = BattleState(_FM(), entities=[cleric, dragon])
+        bs.battle.start_combat()
+        return bs, dragon, cleric
+
+    def test_it_does_not_rewind_onto_another_creature(self):
+        from engine.ai.models import TurnPlan
+        bs, dragon, cleric = self._scene()
+        move = ActionStep(step_type="move", attacker=dragon,
+                          old_x=4.0, old_y=6.0,          # now the cleric's
+                          new_x=dragon.grid_x, new_y=dragon.grid_y,
+                          movement_ft=5.0)
+        bs.pending_plan = TurnPlan(entity=dragon, steps=[move])
+        bs.pending_step_idx = 0
+        bs._confirm_step()
+        sd = dragon.size_in_squares
+        fd = {(int(dragon.grid_x) + dx, int(dragon.grid_y) + dy)
+              for dx in range(sd) for dy in range(sd)}
+        self.assertNotIn((int(cleric.grid_x), int(cleric.grid_y)), fd,
+                         "the dragon was rewound on top of the cleric")
+
+    def test_it_still_rewinds_when_the_origin_is_free(self):
+        from engine.ai.models import TurnPlan
+        dragon = _mon("Adult Brass Dragon", 8, 6)
+        pc = Entity(_hero(), 20, 20, is_player=True)
+        bs = BattleState(_FM(), entities=[pc, dragon])
+        bs.battle.start_combat()
+        move = ActionStep(step_type="move", attacker=dragon,
+                          old_x=5.0, old_y=6.0,
+                          new_x=8.0, new_y=6.0, movement_ft=15.0)
+        bs.pending_plan = TurnPlan(entity=dragon, steps=[move])
+        bs.pending_step_idx = 0
+        bs._confirm_step()
+        # No opportunity attacks here, so the move simply stands.
+        self.assertEqual((dragon.grid_x, dragon.grid_y), (8.0, 6.0))
+
+
+class TestLegendaryMoveDoesNotLeak(unittest.TestCase):
+    """_move_toward kävelyttää olennon suunnitellessaan. Legendaarisen
+    liikkeen *pisteytys* siirsi olennon, vaikka vaihtoehtoa ei valittu
+    — ja se hyökkäsi sitten ruudusta jonka oli jo jättänyt."""
+
+    def _polsen(self):
+        p = _mon("Polsen", 20, 6)
+        pcs = [Entity(_hero(), 3, 5, is_player=True),
+               Entity(_hero("Beatrice"), 3, 7, is_player=True)]
+        b = _battle(p, *pcs)
+        b.start_combat()
+        p.legendary_actions_left = 3
+        return b, p, pcs
+
+    def test_scoring_a_reposition_does_not_move_the_creature(self):
+        from engine.ai import TacticalAI
+        from engine.special_actions import resolve_special_actions
+        ai = TacticalAI()
+        b, p, pcs = self._polsen()
+        move_ability = next(
+            (sa for sa in resolve_special_actions(p.stats, "legendary")
+             if sa.intent == "move"), None)
+        if move_ability is None:
+            self.skipTest("Polsen has no repositioning legendary action")
+        where = (p.grid_x, p.grid_y)
+        ai._legendary_fallback(p, move_ability, pcs, b)
+        self.assertEqual((p.grid_x, p.grid_y), where,
+                         "pricing an option walked the creature")
+
+    def test_the_chosen_reposition_does_move_it(self):
+        random.seed(2)
+        b, p, pcs = self._polsen()
+        where = (p.grid_x, p.grid_y)
+        for _ in range(3):
+            step = b.ai.calculate_legendary_action(p, b)
+            if step is not None and step.movement_ft:
+                self.assertNotEqual((p.grid_x, p.grid_y), where,
+                                    "the winning move was never applied")
+                self.assertEqual((p.grid_x, p.grid_y),
+                                 (step.new_x, step.new_y))
+                return
+
+    def test_a_legendary_attack_is_never_made_from_out_of_reach(self):
+        random.seed(5)
+        b, p, pcs = self._polsen()
+        for _ in range(6):
+            step = b.ai.calculate_legendary_action(p, b)
+            if step is None:
+                break
+            if step.action is not None and step.target is not None:
+                reach = max(step.action.range, step.action.reach)
+                if reach and not step.action.aoe_radius:
+                    ax = step.old_x if (step.old_x or step.old_y) else p.grid_x
+                    ay = step.old_y if (step.old_x or step.old_y) else p.grid_y
+                    d = ((ax - step.target.grid_x) ** 2
+                         + (ay - step.target.grid_y) ** 2) ** 0.5 * 5
+                    self.assertLessEqual(
+                        d, reach + 10,
+                        f"{step.action_name} ({reach} ft) swung at "
+                        f"{d:.0f} ft")
+            p.legendary_actions_left = 3
+
+
+class TestAuditorFalsePositives(unittest.TestCase):
+    """Meluava auditoija on hyödytön. Nämä kaksi olivat sen omia."""
+
+    def test_falling_into_a_chasm_is_a_legal_place_to_be(self):
+        from engine.combat_audit import AuditReport, _Watcher, ERROR
+        from engine.terrain import TerrainObject
+        pc = Entity(_hero(), 7, 4, is_player=True)
+        b = _battle(pc)
+        chasm = TerrainObject("chasm", 7, 4)
+        b.terrain = [chasm]
+        pc.elevation = chasm.elevation          # it fell in
+        pc.add_condition("Prone")
+        rep = AuditReport()
+        _Watcher(rep).check_state(b, "x")
+        self.assertEqual([f for f in rep.findings.values()
+                          if f.severity == ERROR], [],
+                         "a creature at the bottom of a pit it fell into "
+                         "was reported as standing inside solid rock")
+
+    def test_hovering_inside_a_wall_is_still_reported(self):
+        from engine.combat_audit import AuditReport, _Watcher, ERROR
+        from engine.terrain import TerrainObject
+        pc = Entity(_hero(), 7, 4, is_player=True)
+        b = _battle(pc)
+        b.terrain = [TerrainObject("wall", 7, 4)]
+        rep = AuditReport()
+        _Watcher(rep).check_state(b, "x")
+        self.assertTrue([f for f in rep.findings.values()
+                         if f.severity == ERROR],
+                        "standing inside a wall must still be an error")
+
+    def test_a_rogue_may_dash_twice(self):
+        """Cunning Action on TOINEN Dash samalla vuorolla: 25 jalkaa
+        kävelyä plus kaksi 25 jalan Dashia on laillista."""
+        from engine.combat_audit import AuditReport, _Watcher, ERROR
+        rogue = Entity(_hero("Shadow Rogue"), 3, 3, is_player=True)
+        self.assertTrue(rogue.has_feature("cunning_action"))
+        b = _battle(rogue)
+        rep = AuditReport()
+        step = ActionStep(step_type="move", attacker=rogue,
+                          movement_ft=rogue.get_speed() * 3)
+        _Watcher(rep).check_step(b, step, "x")
+        moved = [f for f in rep.findings.values()
+                 if "speed" in f.title and f.severity == ERROR]
+        self.assertEqual(moved, [], "a double Dash was called a cheat")
+
+    def test_a_creature_without_cunning_action_still_cannot(self):
+        from engine.combat_audit import AuditReport, _Watcher, ERROR
+        ogre = _mon("Ogre", 3, 3)
+        b = _battle(ogre)
+        rep = AuditReport()
+        step = ActionStep(step_type="move", attacker=ogre,
+                          movement_ft=ogre.get_speed() * 3)
+        _Watcher(rep).check_step(b, step, "x")
+        self.assertTrue([f for f in rep.findings.values()
+                         if "speed" in f.title and f.severity == ERROR])
+
+
+# ===================================================================== #
+# 10. AND THE AUDIT ITSELF AGREES
 # ===================================================================== #
 class TestTheAuditIsCleaner(unittest.TestCase):
 

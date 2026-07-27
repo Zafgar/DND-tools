@@ -5150,6 +5150,12 @@ class TacticalAI:
                 return None
             step, cost = best_step, best_cost
 
+        # A repositioning legendary action was priced with the creature
+        # put back where it started (see _legendary_fallback); the one
+        # that wins is the only one that actually moves.
+        if step.step_type == "legendary" and step.movement_ft:
+            entity.grid_x, entity.grid_y = step.new_x, step.new_y
+
         entity.legendary_actions_left -= cost
         return step
 
@@ -5211,10 +5217,24 @@ class TacticalAI:
             if target is None or battle.is_adjacent(entity, target):
                 return 0.0, None
             before = entity.movement_left
+            # _move_toward walks the creature as it plans, and drags
+            # anything it has grappled along with it. This is only a
+            # candidate being priced, and every other candidate is
+            # scored from where things actually stand — so snapshot the
+            # mover AND its captives and put them all back. Restoring
+            # only the mover still left a grappled victim displaced,
+            # which is how a five-foot legendary strike came to land on
+            # somebody fourteen feet away.
+            moved_bodies = [entity] + [g for g in entity.grappling
+                                       if g is not None]
+            was = [(e, e.grid_x, e.grid_y, e.elevation)
+                   for e in moved_bodies]
             entity.movement_left = max(entity.movement_left,
                                        entity.stats.speed)
             step = self._move_toward(entity, target, [], battle)
             entity.movement_left = before
+            for ent, ox, oy, oe in was:
+                ent.grid_x, ent.grid_y, ent.elevation = ox, oy, oe
             if step is None:
                 return 0.0, None
             step.step_type = "legendary"
