@@ -213,6 +213,7 @@ class CampaignManagerState:
         self.tabs = TabBar(430, 15, 830, ["Party", "Encounters", "Areas", "Notes", "World"],
                            active=0, on_change=self._on_tab_change)
         self.scroll_y = 0
+        self._row_hits = {}
         self.selected_member_idx = -1
         self.selected_encounter_idx = -1
         self.selected_area_idx = -1
@@ -2402,14 +2403,11 @@ class CampaignManagerState:
                 y += 35
             return
 
-        # Party member selection
-        y = 70 + self.scroll_y
-        for i, member in enumerate(self.campaign.party):
-            card_rect = pygame.Rect(20, y, SCREEN_WIDTH - 60, 55)
-            if card_rect.collidepoint(mp):
-                self.selected_member_idx = i
-                return
-            y += 60
+        # Party member selection — from the rows actually drawn.
+        idx = self._hit_row("party", mp)
+        if idx is not None:
+            self.selected_member_idx = idx
+            return
 
     def _handle_monster_picker_click(self, mp):
         """Handle clicks in the monster picker overlay (shared across tabs)."""
@@ -2519,33 +2517,24 @@ class CampaignManagerState:
             return
 
         # Encounter list (left panel)
-        y = 70 + self.scroll_y
-        for i, enc in enumerate(self.campaign.encounters):
-            rect = pygame.Rect(20, y, 300, 45)
-            if rect.collidepoint(mp):
-                self.selected_encounter_idx = i
-                return
-            y += 50
+        idx = self._hit_row("encounters", mp)
+        if idx is not None:
+            self.selected_encounter_idx = idx
+            return
 
     def _handle_area_click(self, mp):
-        y = 70 + self.scroll_y
-        for i, area in enumerate(self.campaign.areas):
-            rect = pygame.Rect(20, y, 400, 45)
-            if rect.collidepoint(mp):
-                self.selected_area_idx = i
-                return
-            y += 50
+        idx = self._hit_row("areas", mp)
+        if idx is not None:
+            self.selected_area_idx = idx
+            return
 
     def _handle_notes_click(self, mp):
-        y = 70 + self.scroll_y
-        for i, note in enumerate(self.campaign.notes):
-            rect = pygame.Rect(20, y, SCREEN_WIDTH - 60, 80)
-            if rect.collidepoint(mp):
-                self.modal = ("edit_note", i)
-                self.input_text = note.text
-                self.input_active = "note"
-                return
-            y += 90
+        idx = self._hit_row("notes", mp)
+        if idx is not None:
+            self.modal = ("edit_note", idx)
+            self.input_text = self.campaign.notes[idx].text
+            self.input_active = "note"
+            return
 
     def _handle_map_click(self, mp, grid_area):
         """Handle left-click on the map grid area."""
@@ -3184,9 +3173,29 @@ class CampaignManagerState:
     # DRAWING
     # ================================================================
 
+    # Rows the current frame actually drew, per tab: [(rect, index)].
+    # The click handlers used to recompute the same layout by hand and
+    # the two arithmetics drifted — the party list alone was out by the
+    # purse line, the group-chip bar, five pixels of card height and
+    # every member the group filter was hiding, so clicking a hero
+    # selected a different one. Recording what was drawn removes the
+    # second copy entirely.
+
+    def _register_row(self, key, index, rect):
+        self._row_hits.setdefault(key, []).append((pygame.Rect(rect), index))
+
+    def _hit_row(self, key, mp):
+        """Index of the row under the cursor, or None. Last drawn wins,
+        so a row painted on top of another takes the click."""
+        for rect, index in reversed(self._row_hits.get(key, ())):
+            if rect.collidepoint(mp):
+                return index
+        return None
+
     def draw(self, screen):
         screen.fill(COLORS["bg"])
         mp = pygame.mouse.get_pos()
+        self._row_hits = {}
 
         # Header bar
         pygame.draw.rect(screen, COLORS["panel_dark"], (0, 0, SCREEN_WIDTH, 55))
@@ -3568,6 +3577,7 @@ class CampaignManagerState:
             is_selected = i == self.selected_member_idx
             card_h = 50
             card_rect = pygame.Rect(20, y, SCREEN_WIDTH - 60, card_h)
+            self._register_row("party", i, card_rect)
 
             # Card background
             bg_color = COLORS["selected"] if is_selected else COLORS["panel"]
@@ -4058,6 +4068,7 @@ class CampaignManagerState:
         for i, enc in enumerate(self.campaign.encounters):
             is_sel = i == self.selected_encounter_idx
             rect = pygame.Rect(20, y, left_w, 42)
+            self._register_row("encounters", i, rect)
             bg = COLORS["selected"] if is_sel else COLORS["panel"]
             if enc.completed:
                 bg = COLORS["panel_dark"]
@@ -4253,6 +4264,7 @@ class CampaignManagerState:
         for i, area in enumerate(self.campaign.areas):
             is_sel = i == self.selected_area_idx
             rect = pygame.Rect(20, y, 400, 42)
+            self._register_row("areas", i, rect)
             bg = COLORS["selected"] if is_sel else COLORS["panel"]
             pygame.draw.rect(screen, bg, rect, border_radius=5)
             pygame.draw.rect(screen, COLORS["border_light"] if is_sel else COLORS["border"],
@@ -4314,6 +4326,7 @@ class CampaignManagerState:
 
         for i, note in enumerate(self.campaign.notes):
             rect = pygame.Rect(20, y, SCREEN_WIDTH - 60, 75)
+            self._register_row("notes", i, rect)
             is_hover = rect.collidepoint(mp)
             bg = COLORS["hover"] if is_hover else COLORS["panel"]
             pygame.draw.rect(screen, bg, rect, border_radius=5)

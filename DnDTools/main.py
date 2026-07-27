@@ -179,8 +179,21 @@ class GameManager:
                 from states.combat_audit_state import CombatAuditState
                 self.states["COMBAT_AUDIT"] = CombatAuditState(self)
             elif state_name == "CAMPAIGN":
+                # Only build a campaign screen when one is actually
+                # being opened. Coming BACK from an encounter passes no
+                # campaign, and rebuilding here handed the DM a brand
+                # new empty "New Campaign" in place of the one they had
+                # been running all evening — which is what "it jumps to
+                # the menu" looked like from the table.
                 campaign = kwargs.get("campaign")
-                self.states["CAMPAIGN"] = CampaignManagerState(self, campaign)
+                if campaign is not None or self.states.get("CAMPAIGN") is None:
+                    self.states["CAMPAIGN"] = CampaignManagerState(
+                        self, campaign)
+                else:
+                    logging.info("[STATE] returning to the open campaign "
+                                 "'%s' rather than rebuilding it",
+                                 getattr(self.states["CAMPAIGN"].campaign,
+                                         "name", "?"))
             elif state_name == "MAP_EDITOR":
                 world_map = kwargs.get("world_map")
                 if world_map is None:

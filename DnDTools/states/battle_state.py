@@ -1044,12 +1044,24 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                   "jolloin initiative heitettiin.")
 
     def _return_to_campaign(self):
-        """Go back to whatever launched this encounter."""
+        """Go back to whatever launched this encounter.
+
+        Back to the SAME campaign, still open on the same tab, with the
+        same party — never a rebuilt one and never the main menu. The
+        state manager keeps the instance alive; all this does is ask for
+        it by name and check it is really there before switching.
+        """
         target = getattr(self, "return_state", None) or "MENU"
-        if target not in self.manager.states or \
-                self.manager.states.get(target) is None:
+        live = self.manager.states.get(target)
+        if live is None:
+            if target != "MENU":
+                self._log(f"[SYSTEM] {target} ei ole enää auki — "
+                          f"palataan valikkoon.")
             target = "MENU"
-        self._log(f"[SYSTEM] Palataan: {target}.")
+        else:
+            label = getattr(getattr(live, "campaign", None), "name", "")
+            self._log(f"[SYSTEM] Palataan kampanjaan"
+                      + (f": {label}." if label else "."))
         self.manager.change_state(target)
 
     def _do_start_combat(self):

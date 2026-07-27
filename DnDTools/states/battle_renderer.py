@@ -12,6 +12,7 @@ from data.conditions import CONDITIONS
 from data.library import library
 from data.heroes import hero_list
 from data.ability_help_fi import (
+    explain_spell, explain_item,
     explain_action, explain_condition, explain_feature, summarize_ai_plan_fi,
     target_rationale_fi, difficulty_read_fi,
 )
@@ -1911,11 +1912,10 @@ class BattleRendererMixin:
                 # Hover logic
                 if line_rect.collidepoint(mp):
                     s = fonts.small.render(txt, True, COLORS["accent_hover"])
-                    desc = f"{sp.name} (Cantrip)\nRange: {sp.range}ft\n"
-                    if sp.damage_dice: desc += f"Damage: {sp.damage_dice} {sp.damage_type}\n"
-                    if sp.save_ability: desc += f"Save: {sp.save_ability}\n"
-                    desc += f"\n{sp.description}"
-                    self.active_tooltip = desc
+                    # Koko sääntöselite suomeksi — kantama, kohde,
+                    # heitto, vahinko, tila ja kesto yhtenä listana.
+                    self.active_tooltip = (f"{sp.name}\n"
+                                           + explain_spell(sp))
                 
                 screen.blit(s, (x0+4, y))
                 
@@ -1942,13 +1942,8 @@ class BattleRendererMixin:
                 # Hover logic
                 if line_rect.collidepoint(mp):
                     s = fonts.small.render(txt, True, COLORS["accent_hover"])
-                    desc = f"{sp.name} (Level {sp.level})\nRange: {sp.range}ft\n"
-                    if sp.damage_dice: desc += f"Damage: {sp.damage_dice} {sp.damage_type}\n"
-                    if sp.heals: desc += f"Heals: {sp.heals}\n"
-                    if sp.save_ability: desc += f"Save: {sp.save_ability} (Half: {sp.half_on_save})\n"
-                    if sp.concentration: desc += "Requires Concentration\n"
-                    desc += f"\n{sp.description}"
-                    self.active_tooltip = desc
+                    self.active_tooltip = (f"{sp.name}\n"
+                                           + explain_spell(sp))
                 
                 # Click to target
                 self.ui_click_zones.append((line_rect, lambda s=sp: self._start_spell_targeting(sel, s)))
@@ -2009,14 +2004,7 @@ class BattleRendererMixin:
             s = fonts.small.render(label, True, color)
             screen.blit(s, (x0, y))
             if hover:
-                tip = f"{item.name} ({item.rarity})\n{item.description}"
-                if item.item_type == "weapon" and item.weapon_damage_dice:
-                    tip += f"\nDamage: {item.weapon_damage_dice} {item.weapon_damage_type}"
-                if item.item_type == "armor":
-                    tip += f"\nBase AC: {item.base_ac}"
-                if item.heals:
-                    tip += f"\nHeals: {item.heals}"
-                self.active_tooltip = tip
+                self.active_tooltip = explain_item(item)
             # Left-click: toggle equip
             self.ui_click_zones.append((row_rect, lambda it=item: self._toggle_equip_item(it)))
             # Right-click: consume (potion/scroll) or attune (magic)
@@ -3073,8 +3061,10 @@ class BattleRendererMixin:
         if not self.active_tooltip: return
 
         mx, my = pygame.mouse.get_pos()
-        # Multi-line tooltip with word wrap
-        max_chars = 60
+        # Multi-line tooltip with word wrap. The Finnish rule notes run
+        # to a dozen lines or more, so this wraps wider, caps the height
+        # and clamps to the screen instead of drawing off the top edge.
+        max_chars = 78
         raw_lines = str(self.active_tooltip).split("\n")
         wrapped = []
         for raw in raw_lines:
@@ -3095,6 +3085,9 @@ class BattleRendererMixin:
                 wrapped.append(cur)
         if not wrapped:
             return
+        MAX_LINES = 26
+        if len(wrapped) > MAX_LINES:
+            wrapped = wrapped[:MAX_LINES] + ["…"]
         surfs = [fonts.tiny.render(ln, True, (255, 255, 255)) for ln in wrapped]
         tw = max(s.get_width() for s in surfs) + 10
         line_h = surfs[0].get_height()
@@ -3111,6 +3104,10 @@ class BattleRendererMixin:
         # Flip up if off-screen bottom
         if ty + th > SCREEN_HEIGHT:
             ty = my - th - 10
+        # ...and never off the top or left: a tall tooltip flipped up
+        # used to start above the window and lose its first lines.
+        ty = max(4, min(ty, SCREEN_HEIGHT - th - 4))
+        tx = max(4, min(tx, SCREEN_WIDTH - tw - 4))
 
         pygame.draw.rect(screen, (20, 20, 20), (tx, ty, tw, th))
         pygame.draw.rect(screen, COLORS["border"], (tx, ty, tw, th), 1)
