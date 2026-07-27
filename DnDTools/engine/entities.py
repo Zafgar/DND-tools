@@ -45,6 +45,9 @@ class Entity:
 
         # Initiative
         self.initiative = 0
+        # True once the DM has set this by hand, so start_combat leaves
+        # it alone instead of rolling over a deliberate turn order.
+        self.initiative_locked = False
         self.acts_on_initiative: bool = True  # If False, skipped in turn order (e.g. Spiritual Weapon)
 
         # Conditions: set of strings
@@ -990,6 +993,20 @@ class Entity:
         if target.grappled_by == self:
             target.grappled_by = None
             target.remove_condition("Grappled")
+
+    def break_all_grapples(self):
+        """End every grapple this creature is part of, both ways.
+
+        Teleporting is the case that needs it: Misty Step takes you out
+        of the grappler's reach instantly, and nothing else in the turn
+        loop gets a chance to notice before the hold is used again.
+        """
+        self._release_all_grapples()
+        holder = self.grappled_by
+        if holder is not None and self in getattr(holder, "grappling", ()):
+            holder.grappling.remove(self)
+        self.grappled_by = None
+        self.remove_condition("Grappled")
 
     def _release_all_grapples(self):
         """Release all creatures this entity is grappling (e.g. when incapacitated)."""

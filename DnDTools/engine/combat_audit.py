@@ -582,6 +582,9 @@ class AuditRunner:
         bs = BattleState(_FakeManager(), entities=ents)
         bs.battle.terrain = terrain
         bs._set_ai_mode("full_auto")
+        # Picking a mode no longer rolls initiative — deployment stays
+        # inert until the DM says START COMBAT. The audit is the DM here.
+        bs._do_start_combat()
         return bs
 
     def _play(self, sc: Scenario):

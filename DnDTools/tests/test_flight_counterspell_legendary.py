@@ -112,7 +112,7 @@ class TestFlySpeed(unittest.TestCase):
         start_dist = b.get_distance(w, pc)
         for _ in range(3):
             w.reset_turn()
-            b.ai.calculate_turn(w, b)
+            b.apply_plan_movement(b.ai.calculate_turn(w, b))
         self.assertTrue(w.is_flying)
         self.assertLess(b.get_distance(w, pc), start_dist)
 

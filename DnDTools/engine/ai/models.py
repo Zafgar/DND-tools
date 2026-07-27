@@ -35,6 +35,13 @@ class ActionStep:
     movement_ft: float = 0.0
     old_x: float = 0.0
     old_y: float = 0.0
+    # Altitude the mover is meant to be at when this step lands. A
+    # dragon that takes off and flies over a statue only clears it
+    # while it is actually up there; planning is rewound, so the step
+    # has to carry the height with it or the move is committed at
+    # ground level and the token ends up inside the statue.
+    new_elevation: Optional[float] = None
+    new_flying: Optional[bool] = None
     aoe_center: tuple = field(default_factory=tuple)
     # Class mechanic extras
     bonus_damage: int = 0            # Extra damage from Sneak Attack, Smite, etc.

@@ -285,6 +285,10 @@ class TestNoOverlapDuringRealBattles(unittest.TestCase):
         bs = BattleState(_FM(), entities=ents)
         bs.battle.terrain = load_map_terrain(map_key)
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         return bs
 
     def _run(self, map_key, seed, max_steps=400):

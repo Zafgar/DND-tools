@@ -367,6 +367,10 @@ class TestLegendaryInAFullFight(unittest.TestCase):
         bs = BattleState(_FM(), entities=pcs + [boss])
         bs.battle.lair_enabled = True
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for _ in range(300):
             bs._process_auto_battle()
         acted = {e.name for e in bs.battle.entities
@@ -384,6 +388,10 @@ class TestLegendaryInAFullFight(unittest.TestCase):
         bs = BattleState(_FM(), entities=pcs + [boss])
         bs.battle.lair_enabled = True
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for _ in range(1500):
             bs._process_auto_battle()
             if not bs.auto_battle:
@@ -405,6 +413,10 @@ class TestLegendaryInAFullFight(unittest.TestCase):
         bs.battle.lair_enabled = True
         bs.battle.start_combat()
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for _ in range(4000):
             bs._process_auto_battle()
             if not bs.auto_battle:

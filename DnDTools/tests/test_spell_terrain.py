@@ -306,7 +306,8 @@ class TestSilence(unittest.TestCase):
         b = _battle(c, o)
         b.spawn_spell_terrain(get_spell("Silence"), c, 5, 5)
         c.reset_turn()
-        TacticalAI().calculate_turn(c, b)
+        # Planning records the walk; applying it is what leaves the zone.
+        b.apply_plan_movement(TacticalAI().calculate_turn(c, b))
         self.assertFalse(b.is_silenced(c))
 
 
@@ -455,6 +456,10 @@ class TestAutoBattleWithTerrain(unittest.TestCase):
                              ("Wall of Fire", 6, 10)):
             bs.battle.spawn_spell_terrain(get_spell(name), caster, cx, cy)
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for _ in range(3000):
             bs._process_auto_battle()
             if not bs.auto_battle:

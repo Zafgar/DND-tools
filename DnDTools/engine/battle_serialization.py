@@ -43,6 +43,7 @@ def get_state_dict(battle) -> dict:
             "max_hp": e.max_hp,
             "temp_hp": e.temp_hp,
             "initiative": e.initiative,
+            "initiative_locked": e.initiative_locked,
             "conditions": list(e.conditions),
             "condition_metadata": copy.deepcopy(e.condition_metadata),
             "spell_slots": copy.deepcopy(e.spell_slots),
@@ -103,6 +104,11 @@ def _restore_entity_fields(e, ent_data):
     e.max_hp = ent_data["max_hp"]
     e.temp_hp = ent_data["temp_hp"]
     e.initiative = ent_data["initiative"]
+    # A hand-set initiative survives the save. Saving an
+    # encounter before the dice come out is the whole point of
+    # preparing one, and rolling over the DM's order on load
+    # would throw that preparation away.
+    e.initiative_locked = ent_data.get("initiative_locked", False)
     e.conditions = set(ent_data["conditions"])
     e.condition_metadata = ent_data.get("condition_metadata", {})
     e.spell_slots = ent_data["spell_slots"]

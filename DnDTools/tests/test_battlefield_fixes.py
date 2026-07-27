@@ -144,7 +144,9 @@ class TestWallsBlockLineOfSight(unittest.TestCase):
         plan = TacticalAI().calculate_turn(caster, b)
         kinds = [s.step_type for s in plan.steps]
         self.assertIn("move", kinds)
-        # …and the move is what unlocks the cast
+        # …and the move is what unlocks the cast. Planning only records
+        # the intent now, so walk it before checking the sightline.
+        b.apply_plan_movement(plan)
         self.assertTrue(b.has_line_of_sight(caster, target))
 
     def test_pinned_caster_does_not_cast_through_the_wall(self):
@@ -374,6 +376,10 @@ class TestMovementOnBuiltMaps(unittest.TestCase):
             bs = BattleState(_FM(), entities=pcs + foes)
             bs.battle.terrain = terr
             bs._set_ai_mode("full_auto")
+            # Choosing a mode no longer rolls initiative behind the
+            # DM\'s back — deployment stays inert until START COMBAT.
+            if not bs.battle.combat_started:
+                bs.battle.start_combat()
             for _ in range(1200):
                 bs._process_auto_battle()
                 if not bs.auto_battle:
@@ -405,6 +411,10 @@ class TestAutoBattleStalemate(unittest.TestCase):
         bs = BattleState(_FM(), entities=[pc, foe])
         bs.battle.terrain = _wall_column(11)
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         return bs
 
     def test_it_stops_instead_of_spinning_forever(self):
@@ -426,6 +436,10 @@ class TestAutoBattleStalemate(unittest.TestCase):
                      is_player=False)
         bs = BattleState(_FM(), entities=[pc, foe])
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         stopped_early = False
         for _ in range(400):
             bs._process_auto_battle()

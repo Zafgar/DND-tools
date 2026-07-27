@@ -437,6 +437,10 @@ class TestAiRunsBothLegends(unittest.TestCase):
                                        "Cazna Icharyd"])]
         bs = BattleState(_FM(), entities=pcs + foes)
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for _ in range(2500):
             bs._process_auto_battle()
             if (not [e for e in bs.battle.entities

@@ -54,10 +54,18 @@ class TestAiModeDial(unittest.TestCase):
     def test_mode_cycle_sets_auto_flags(self):
         bs = _bs([_mk("Hero", 3, 3, True), _mk("Orc", 10, 3, False)])
         bs._set_ai_mode("npc_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs._do_start_combat()
         self.assertTrue(bs.auto_battle)
         self.assertEqual(bs.auto_battle_mode, "npc")
         self.assertTrue(bs.battle.combat_started)  # auto-started
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs._do_start_combat()
         self.assertTrue(bs.auto_battle)
         self.assertEqual(bs.auto_battle_mode, "full")
         bs._set_ai_mode("manual")
@@ -91,6 +99,10 @@ class TestNpcAutoPausesForPlayers(unittest.TestCase):
         orc = _mk("Orc", 4, 3, False)
         bs = _bs([hero, orc])
         bs._set_ai_mode("npc_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs._do_start_combat()
         bs.reaction_pending = [hero]
         bs.reaction_type = "oa"
         bs.pending_move = (orc, 8.0, 3.0)
@@ -103,6 +115,10 @@ class TestNpcAutoPausesForPlayers(unittest.TestCase):
         orc = _mk("Orc", 4, 3, False)
         bs = _bs([hero, orc])
         bs._set_ai_mode("npc_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs._do_start_combat()
         bs.reaction_pending = [orc]
         bs.reaction_type = "oa"
         bs.pending_move = (hero, 8.0, 3.0)
@@ -200,6 +216,10 @@ class TestConcentrationPrompt(unittest.TestCase):
     def test_full_auto_rolls_engine_side(self):
         bs, hero = self._caster_battle()
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs._do_start_combat()
         hero.take_damage(60, "fire")   # DC 30 -> guaranteed break
         self.assertIsNone(hero.concentrating_on)
         self.assertEqual(bs.pending_conc_checks, [])

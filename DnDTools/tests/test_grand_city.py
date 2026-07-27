@@ -344,7 +344,10 @@ class TestBattleInTheCity(unittest.TestCase):
         bs = BattleState(_FM(), entities=party + foes)
         bs.battle.terrain = load_map_terrain(KEY)
         bs._set_ai_mode("full_auto")
-
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         for step in range(900):
             bs._process_auto_battle()
             live = [e for e in bs.battle.entities

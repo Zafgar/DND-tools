@@ -115,8 +115,15 @@ class WeatherParticle:
 
 
 class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
-    def __init__(self, manager, entities=None):
+    def __init__(self, manager, entities=None, return_state=None):
         super().__init__(manager)
+        # Where this encounter was launched from, so the DM can get
+        # back to the campaign when the fight is over instead of
+        # bouncing through the main menu.
+        self.return_state = return_state
+        # The board as it stood when initiative was first rolled.
+        # RESET restores it; see _reset_to_combat_start.
+        self.combat_start_snapshot = None
         self.logs = []
         self.battle = BattleSystem(self._log, initial_entities=entities)
         self.selected_entity: Entity | None = None
@@ -271,6 +278,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self._loot_panel_open = False
         self.pending_saves = []                # For manual end-of-turn saves
         self.save_modal_open = False
+        self.init_modal_open = False           # Manual initiative editor
         self.dm_suggestion_cache = None        # Cached DM advisor suggestion
         self.dm_rating_cache = None            # Cached player action rating
         self.show_advisor_panel = False        # Toggle for DM advisor panel
@@ -325,27 +333,76 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.btn_start  = Button(bx+20,  SCREEN_HEIGHT-65, 300, 50, "START COMBAT", self._do_start_combat,   color=COLORS["success"])
         self.btn_menu   = Button(10, 10, 80, 30, "Menu",          lambda: self.manager.change_state("MENU"), color=COLORS["panel"])
         self.btn_log_pl = Button(bx+330, SCREEN_HEIGHT-65, 165, 50, "LOG PLAYER ACTION", self._open_player_action_panel, color=COLORS["neutral"])
-        # Grid area bottom-left utilities
-        self.btn_save    = Button(10,  SCREEN_HEIGHT-65, 72, 35, "SAVE",    self._open_save_modal,      color=COLORS["panel"])
-        self.btn_load    = Button(87,  SCREEN_HEIGHT-65, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
-        self.btn_terrain = Button(164, SCREEN_HEIGHT-65, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
-        self.btn_save_map = Button(750, SCREEN_HEIGHT-65, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
-        self.btn_env     = Button(838, SCREEN_HEIGHT-65, 60, 35, "ENV",     self._open_env_modal,       color=COLORS["panel"])
+        # ---------------------------------------------------------- #
+        # Grid-area controls.
+        #
+        # These used to be twelve equally-sized buttons in one row with
+        # abbreviated labels, and the thing the DM does on almost every
+        # turn — choosing how much the AI drives — was a single button
+        # that cycled through four states. The front row now carries
+        # only what gets touched constantly: the three ways to run a
+        # fight, plus reset, save and the way back. Everything else
+        # lives behind TYÖKALUT.
+        # ---------------------------------------------------------- #
+        row = SCREEN_HEIGHT - 65
+        self.btn_mode_manual = Button(
+            10, row, 104, 35, "MANUAALI",
+            lambda: self._set_ai_mode("manual"), color=COLORS["panel"])
+        self.btn_mode_assist = Button(
+            118, row, 124, 35, "AI AVUSTAA",
+            lambda: self._set_ai_mode("suggest"), color=COLORS["panel"])
+        self.btn_mode_sim = Button(
+            246, row, 116, 35, "TÄYSI SIM",
+            lambda: self._set_ai_mode("full_auto"), color=COLORS["panel"])
+        self.mode_buttons = {
+            "manual": self.btn_mode_manual,
+            "suggest": self.btn_mode_assist,
+            "npc_auto": self.btn_mode_assist,
+            "full_auto": self.btn_mode_sim,
+        }
+        self.btn_reset = Button(374, row, 86, 35, "RESET",
+                                self._reset_to_combat_start,
+                                color=COLORS["warning"])
+        self.btn_save = Button(466, row, 104, 35, "TALLENNA",
+                               self._open_save_modal, color=COLORS["panel"])
+        self.btn_back = Button(576, row, 118, 35, "KAMPANJAAN",
+                               self._return_to_campaign,
+                               color=COLORS["accent"])
+        self.btn_tools = Button(706, row, 108, 35, "TYÖKALUT",
+                                self._toggle_tool_tray, color=COLORS["panel"])
+        # Initiative by hand. The order the fight runs in is the one
+        # thing a DM most often wants to overrule — a surprise round, a
+        # ruling at the table, an encounter prepared in advance — and
+        # until now the only way was to let the dice decide.
+        self.btn_init = Button(822, row, 122, 35, "INITIATIVE",
+                               self._open_init_modal, color=COLORS["panel"])
+        self.tool_tray_open = False
+
+        # Auto-run transport, only meaningful while the sim is running.
+        self.btn_pause   = Button(246, SCREEN_HEIGHT-28, 60, 24, "PAUSE",     self._toggle_pause_auto,    color=COLORS["panel"])
+        self.btn_speed_down = Button(310, SCREEN_HEIGHT-28, 24, 24, "-",       self._auto_speed_down,      color=COLORS["panel"])
+        self.btn_speed_lbl  = Button(334, SCREEN_HEIGHT-28, 36, 24, "1x",      lambda: None,               color=COLORS["text_dim"])
+        self.btn_speed_up   = Button(370, SCREEN_HEIGHT-28, 24, 24, "+",       self._auto_speed_up,        color=COLORS["panel"])
+
+        # --- the tray: everything used occasionally ---------------- #
+        tray = SCREEN_HEIGHT - 108
+        self.btn_load    = Button(10,  tray, 72, 35, "LOAD",    self._open_load_modal,      color=COLORS["panel"])
+        self.btn_undo    = Button(87,  tray, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
+        self.btn_terrain = Button(164, tray, 100, 35, "TERRAIN", self._toggle_terrain_mode, color=COLORS["panel"])
+        self.btn_weather = Button(270, tray, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
+        self.btn_maps    = Button(376, tray, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
+        self.btn_save_map = Button(454, tray, 82, 35, "MAP S/L", self._toggle_map_save_menu, color=COLORS["panel"])
+        self.btn_env     = Button(542, tray, 60, 35, "ENV",     self._open_env_modal,       color=COLORS["panel"])
+        self.btn_advisor = Button(608, tray, 88, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
+        self.btn_dm_move = Button(702, tray, 100, 35, "DM SIIRTO", self._toggle_dm_move,      color=COLORS["panel"])
+        self.btn_add_entity = Button(808, tray, 72, 35, "ADD", self._toggle_add_entity_modal, color=COLORS["spell"])
+        # Kept so the old cycling shortcut and its tests still work.
+        self.btn_auto = Button(886, tray, 126, 35, "AI: EHDOTA",
+                               self._cycle_ai_mode, color=COLORS["spell"])
         self.map_save_menu_open = False
         self._env_modal = None
-        self.btn_weather = Button(270, SCREEN_HEIGHT-65, 100, 35, "WEATHER", self._cycle_weather,       color=COLORS["panel"])
-        self.btn_undo    = Button(376, SCREEN_HEIGHT-65, 72, 35, "UNDO",      self._undo_last_action,     color=COLORS["warning"])
-        self.btn_auto    = Button(454, SCREEN_HEIGHT-65, 126, 35, "AI: EHDOTA", self._cycle_ai_mode,      color=COLORS["spell"])
-        self.btn_pause   = Button(454, SCREEN_HEIGHT-28, 72, 24, "PAUSE",     self._toggle_pause_auto,    color=COLORS["panel"])
-        self.btn_speed_down = Button(530, SCREEN_HEIGHT-28, 24, 24, "-",       self._auto_speed_down,      color=COLORS["panel"])
-        self.btn_speed_lbl  = Button(554, SCREEN_HEIGHT-28, 36, 24, "1x",      lambda: None,               color=COLORS["text_dim"])
-        self.btn_speed_up   = Button(590, SCREEN_HEIGHT-28, 24, 24, "+",       self._auto_speed_up,        color=COLORS["panel"])
-        self.btn_advisor = Button(586, SCREEN_HEIGHT-65, 80, 35, "ADVISOR",  self._toggle_advisor_panel, color=COLORS["spell"])
-        self.btn_maps    = Button(672, SCREEN_HEIGHT-65, 72, 35, "MAPS",     self._toggle_map_browser,   color=COLORS["panel"])
         self.map_browser_open = False
-        self.btn_dm_move = Button(904, SCREEN_HEIGHT-65, 94, 35, "DM SIIRTO", self._toggle_dm_move,      color=COLORS["panel"])
         self.dm_move_mode = False   # DM free move: no movement cost, no OA (ALT-drag works too)
-        self.btn_add_entity = Button(1004, SCREEN_HEIGHT-65, 72, 35, "ADD", self._toggle_add_entity_modal, color=COLORS["spell"])
         self.add_entity_open = False
         self.add_entity_search = ""
         self.add_entity_scroll = 0
@@ -413,6 +470,44 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         "full_auto": "Täysi simulaatio – AI pelaa molemmat puolet.",
     }
 
+    def _sync_auto_battle(self):
+        """Keep ``auto_battle`` in step with the chosen mode.
+
+        Picking TÄYSI SIM no longer rolls initiative on the spot, so the
+        flag has to catch up when combat does start. Without this the
+        mode looked armed and nothing ran.
+        """
+        want = (self.ai_mode in ("npc_auto", "full_auto")
+                and self.battle.combat_started)
+        if want and not self.auto_battle:
+            self.auto_battle = True
+            self.auto_battle_mode = ("full" if self.ai_mode == "full_auto"
+                                     else "npc")
+        elif not want and self.auto_battle and not self.battle.combat_started:
+            self.auto_battle = False
+
+    def _toggle_tool_tray(self):
+        self.tool_tray_open = not self.tool_tray_open
+        self.btn_tools.color = (COLORS["warning"] if self.tool_tray_open
+                                else COLORS["panel"])
+
+    def _refresh_mode_buttons(self):
+        """Light the button for the mode actually in force."""
+        # Two keys share the AI AVUSTAA button, so decide per BUTTON,
+        # not per key — iterating the map lit "suggest" and the very
+        # next entry, "npc_auto", darkened the same button again.
+        for btn in (self.btn_mode_manual, self.btn_mode_assist,
+                    self.btn_mode_sim):
+            active = any(k == self.ai_mode
+                         for k, b in getattr(self, "mode_buttons", {}).items()
+                         if b is btn)
+            btn.color = COLORS["success"] if active else COLORS["panel"]
+        # "AI avustaa" covers both suggest and npc-auto; say which.
+        if self.ai_mode == "npc_auto":
+            self.btn_mode_assist.text = "AI: NPC-AUTO"
+        else:
+            self.btn_mode_assist.text = "AI AVUSTAA"
+
     def _cycle_ai_mode(self):
         idx = self._AI_MODES.index(self.ai_mode)
         self._set_ai_mode(self._AI_MODES[(idx + 1) % len(self._AI_MODES)])
@@ -420,27 +515,21 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     def _set_ai_mode(self, mode):
         self.ai_mode = mode
         self.auto_battle_paused = False
-        if mode in ("npc_auto", "full_auto"):
-            # Auto modes: if the DM flips the dial before START COMBAT,
-            # auto-start so the toggle isn't a silent no-op.
-            if not self.battle.combat_started:
-                if not self.battle.entities:
-                    self._log("[SYSTEM] AI-tila hylätty — kentällä ei hahmoja.")
-                    self.ai_mode = "suggest"
-                    mode = "suggest"
-                else:
-                    try:
-                        self.battle.start_combat()
-                        self._log("[SYSTEM] Taistelu käynnistetty automaattisesti.")
-                    except Exception as ex:
-                        self._log(f"[SYSTEM] Taistelun käynnistys epäonnistui: {ex}.")
-                        self.ai_mode = "suggest"
-                        mode = "suggest"
-        self.auto_battle = mode in ("npc_auto", "full_auto")
+        if mode in ("npc_auto", "full_auto") and not self.battle.combat_started:
+            # Choosing a mode is not the same as starting the fight.
+            # This used to roll initiative behind the DM's back, which
+            # made it impossible to set the dial while still laying out
+            # the board. The mode is remembered and takes effect the
+            # moment START COMBAT is pressed.
+            self._log(f"[SYSTEM] {self._AI_MODE_LABELS[mode][0]} valittu — "
+                      f"käynnistyy kun painat ALOITA TAISTELU.")
+        self.auto_battle = (mode in ("npc_auto", "full_auto")
+                            and self.battle.combat_started)
         self.auto_battle_mode = "full" if mode == "full_auto" else "npc"
         label, colkey = self._AI_MODE_LABELS[mode]
         self.btn_auto.text = label
         self.btn_auto.color = COLORS[colkey]
+        self._refresh_mode_buttons()
         self.btn_pause.color = COLORS["warning"] if self.auto_battle else COLORS["panel"]
         self.btn_pause.text = "PAUSE"
         self._log(f"[SYSTEM] {label} — {self._AI_MODE_DESCS[mode]}")
@@ -502,10 +591,11 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.btn_speed_lbl.text = labels.get(self.auto_battle_speed, "1x")
         self._log(f"[SYSTEM] Auto speed: {labels.get(self.auto_battle_speed, '?')}")
 
-    # How many consecutive rounds with no HP change and no movement count
-    # as a stalemate. Two full rounds is unambiguous — nobody can reach
-    # anybody and nobody is shooting.
-    STALEMATE_ROUNDS = 2
+    # How many consecutive rounds with nothing happening at all count as
+    # a stalemate: no HP change, no movement, and not one attack or
+    # spell attempted by anybody. Three of those in a row is unambiguous
+    # — nobody can reach anybody and nobody is shooting.
+    STALEMATE_ROUNDS = 3
 
     def _check_auto_battle_stalemate(self) -> bool:
         """Stop the sim when neither side can affect the other.
@@ -519,7 +609,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
         Returns True when the auto-battle was stopped.
         """
-        snapshot = tuple(sorted(
+        snapshot = (getattr(self, "_offensive_steps", 0),) + tuple(sorted(
             (e.name, e.hp, int(e.grid_x), int(e.grid_y))
             for e in self.battle.entities))
         prev = getattr(self, "_stalemate_snapshot", None)
@@ -541,6 +631,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
 
     def _process_auto_battle(self):
         """Handle one tick of auto-battle logic."""
+        # Callers that drive the sim directly (the audit, the tests)
+        # never go through update(), so the mode/flag sync happens here
+        # too rather than only in the frame loop.
+        self._sync_auto_battle()
         # 0. Stalemate guard — an unreachable enemy must not spin forever.
         if self.auto_battle:
             rnd = getattr(self.battle, "round", None)
@@ -655,6 +749,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.turn_banner_timer > 0:
             self.turn_banner_timer -= 1
             
+        # An auto mode chosen during deployment arms itself the moment
+        # the fight actually starts, however it was started — the DM
+        # pressing the button, a scenario load, or a caller reaching
+        # straight for BattleSystem.start_combat.
+        self._sync_auto_battle()
+
         # Auto Battle Tick
         if self.auto_battle and not self.auto_battle_paused and self.battle.combat_started:
             self.auto_timer += 1
@@ -878,6 +978,60 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     # Turn management                                                      #
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+    # Reset point, and the way back to the campaign
+    # ------------------------------------------------------------------ #
+    def _capture_combat_start(self):
+        """Remember the board as initiative was first rolled."""
+        try:
+            self.combat_start_snapshot = self.battle.get_state_dict()
+        except Exception as ex:
+            self.combat_start_snapshot = None
+            self._log(f"[SYSTEM] Reset-pistettä ei voitu tallentaa: {ex}")
+
+    def _reset_to_combat_start(self):
+        """Put the whole fight back to the moment initiative was rolled.
+
+        Not an undo — undo walks back one action at a time and only
+        fifty deep. This is "that went wrong, run the encounter again",
+        which is a thing a DM wants often enough to deserve its own
+        button.
+        """
+        if not getattr(self, "combat_start_snapshot", None):
+            self._log("[RESET] Ei tallennettua aloituskohtaa — "
+                      "aloita taistelu ensin.")
+            return
+        self._save_undo_snapshot()
+        try:
+            self.battle.restore_state(self.combat_start_snapshot)
+        except Exception as ex:
+            self._log(f"[RESET] Palautus epäonnistui: {ex}")
+            return
+        self.pending_plan = None
+        self.pending_step_idx = 0
+        self.last_executed_step = None
+        # An empty list, not None: everything downstream iterates it.
+        self.reaction_pending = []
+        self.reaction_type = ""
+        self.reaction_context = {}
+        self.pending_move = None
+        self.pending_saves = []
+        self.save_modal_open = False
+        self.selected_entity = None
+        self.auto_battle_paused = False
+        self.impact_flashes = []
+        self._log("[RESET] Taistelu palautettu siihen hetkeen, "
+                  "jolloin initiative heitettiin.")
+
+    def _return_to_campaign(self):
+        """Go back to whatever launched this encounter."""
+        target = getattr(self, "return_state", None) or "MENU"
+        if target not in self.manager.states or \
+                self.manager.states.get(target) is None:
+            target = "MENU"
+        self._log(f"[SYSTEM] Palataan: {target}.")
+        self.manager.change_state(target)
+
     def _do_start_combat(self):
         if not self.battle.entities:
             self._log("[ERROR] Cannot start combat with no entities!")
@@ -885,6 +1039,15 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         try:
             self.battle.start_combat()
             self._log("Combat started! Initiative rolled.")
+            # The reset point. Everything from here is one fight, and
+            # RESET puts the board back to this exact moment — the one
+            # the DM will want when a round goes badly wrong.
+            self._capture_combat_start()
+            # A mode chosen during deployment takes effect now rather
+            # than having silently rolled initiative when it was picked.
+            self._sync_auto_battle()
+            if self.auto_battle:
+                self.auto_battle_paused = False
             curr = self.battle.get_current_entity()
             self._log(f"--- Round {self.battle.round}: {curr.name}'s turn ---")
             self.selected_entity = curr
@@ -1067,6 +1230,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log(f"[ERROR] Autosave failed: {ex}")
 
     def _do_ai_turn(self, force_auto=False):
+        # Nothing acts before initiative. The deployment phase is for
+        # arranging the board: tokens drag freely, nobody has a turn,
+        # and asking the AI to plan one is meaningless.
+        if not self.battle.combat_started:
+            self._log("[SYSTEM] Aloita taistelu ensin — "
+                      "asetteluvaiheessa hahmot vain siirtyvät.")
+            return
         curr = self.battle.get_current_entity()
         if self.pending_plan and self.pending_plan.entity == curr:
             self._log("AI plan already pending – confirm or skip each step.")
@@ -1141,6 +1311,22 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 # Auto-hit / buff / heal
                 self.current_step_outcomes[t] = "hit"
 
+    def _apply_planned_move(self, mover, new_x, new_y,
+                            elevation=None, flying=None, teleport=False):
+        """Put a creature where an approved step says it goes.
+
+        Planning used to walk the token as it thought, so by the time
+        the DM was asked to approve anything the whole turn had already
+        happened on screen. Now the plan only records where things mean
+        to go and this is what actually moves them — one step, one
+        approval.
+
+        Anything the mover has grappled comes along, into the square it
+        vacated where that is free (PHB p.195).
+        """
+        self.battle.apply_planned_move(mover, new_x, new_y,
+                                       elevation, flying, teleport)
+
     def _confirm_step(self):
         if not self.pending_plan:
             return
@@ -1188,32 +1374,42 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             if step.step_type == "move" and step.attacker and not step.counter_checked:
                 step.counter_checked = True
                 mover = step.attacker
-                new_x, new_y = mover.grid_x, mover.grid_y
+                # The destination comes from the step, not from where
+                # the token happens to be: planning no longer moves it,
+                # so the creature is still standing at the origin.
+                new_x, new_y = step.new_x, step.new_y
                 oas = self.battle.check_opportunity_attacks(
-                    mover, step.old_x, step.old_y)
+                    mover, step.old_x, step.old_y, new_x, new_y)
                 if oas:
-                    # Rewind so the reaction resolves before the move —
-                    # but only into a square that is still free. The
-                    # origin can have been taken since the plan was
-                    # built, and a Huge creature rewound onto a cleric
-                    # is worse than an attack resolved a step late.
-                    if self.battle.is_passable(step.old_x, step.old_y,
-                                               exclude=mover):
-                        mover.grid_x, mover.grid_y = step.old_x, step.old_y
+                    # The creature is still standing at its origin, so
+                    # the reaction simply resolves where it is and the
+                    # move lands afterwards.
                     self.reaction_pending = list(oas)
                     self.reaction_type = "oa"
                     self.pending_move = (mover, new_x, new_y)
-                    self.reaction_context = {"resume_ai_step": True}
+                    self.reaction_context = {
+                        "resume_ai_step": True,
+                        "move_elevation": step.new_elevation,
+                        "move_flying": step.new_flying,
+                    }
                     self._log(f"[REACTION] {mover.name}'s move provokes "
                               f"{len(oas)} opportunity attack(s)!")
                     return  # Pause; _resolve_reaction resumes the plan
+                # No reaction to wait for: walk it now, on approval.
+                self._apply_planned_move(mover, new_x, new_y,
+                                         step.new_elevation,
+                                         step.new_flying)
 
             # Blink spells (Misty Step, Dimension Door) relocate the
-            # caster during planning, so puff both ends here — otherwise
-            # a token simply jumps and reads as a bug.
+            # caster. Planning no longer does it, so the confirm does —
+            # and puffs both ends, otherwise a token simply jumps and
+            # reads as a bug.
             if (step.step_type == "spell" and step.attacker
                     and (step.old_x or step.old_y)
                     and (step.old_x, step.old_y) != (step.new_x, step.new_y)):
+                self._apply_planned_move(step.attacker,
+                                         step.new_x, step.new_y,
+                                         teleport=True)
                 self._spawn_teleport_vfx((step.old_x, step.old_y),
                                          (step.new_x, step.new_y))
 
@@ -1272,6 +1468,14 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             # or logging what a turn DID needs the difference between
             # "was planned" and "happened".
             self.last_executed_step = step
+            # A swing that missed is still a fight happening. The
+            # stalemate detector counts these so three unlucky rounds of
+            # whiffing do not read as "neither side can reach the other"
+            # and stop the simulation.
+            if step.step_type in ("attack", "multiattack", "bonus_attack",
+                                  "legendary", "spell", "bonus_spell"):
+                self._offensive_steps = getattr(
+                    self, "_offensive_steps", 0) + 1
             self.pending_step_idx += 1
             self._prepare_step_outcomes()
 
@@ -1337,10 +1541,10 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
 
-            # Revert Movement if it happened
+            # Nothing to revert: a move is only applied when it is
+            # approved, so refusing one simply means it never happens.
+            # Hand the movement back.
             if step.step_type == "move" and step.attacker:
-                step.attacker.grid_x = step.old_x
-                step.attacker.grid_y = step.old_y
                 step.attacker.movement_left += step.movement_ft
 
             self._log(f"[SKIPPED] {step.description}")
@@ -1367,6 +1571,20 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         if not self.pending_plan:
             return
         for step in self.pending_plan.steps[self.pending_step_idx:]:
+            # Approving the lot still has to walk the tokens: planning
+            # no longer moves anything, so a bulk approve that skipped
+            # this would resolve every attack from the starting square.
+            if step.step_type == "move" and step.attacker:
+                self._apply_planned_move(step.attacker,
+                                         step.new_x, step.new_y,
+                                         step.new_elevation,
+                                         step.new_flying)
+            elif (step.step_type == "spell" and step.attacker
+                    and (step.old_x or step.old_y)
+                    and (step.old_x, step.old_y) != (step.new_x, step.new_y)):
+                self._apply_planned_move(step.attacker,
+                                         step.new_x, step.new_y,
+                                         teleport=True)
             # Auto-resolve everything (assuming hits/fails for speed)
             targets = step.targets if step.targets else ([step.target] if step.target else [])
             for t in targets:
@@ -2913,8 +3131,13 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             
             self.reaction_pending.pop(0)
             if not self.reaction_pending:
-                mover.grid_x = dest_x
-                mover.grid_y = dest_y
+                # Go through the shared mover so grappled victims are
+                # dragged along and a planned take-off lands with the
+                # move — setting the coordinates by hand skipped both.
+                ctx = self.reaction_context or {}
+                self._apply_planned_move(mover, dest_x, dest_y,
+                                         ctx.get("move_elevation"),
+                                         ctx.get("move_flying"))
                 self.pending_move = None
                 # If this OA interrupted an AI move step, advance the AI
                 # plan past that step now that the reaction is resolved.
@@ -3304,6 +3527,98 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log(f"[LOAD] Loaded {os.path.basename(filepath)}")
         except Exception as ex:
             self._log(f"[ERROR] Load failed: {ex}")
+
+    # ------------------------------------------------------------------ #
+    # Manual initiative                                                    #
+    # ------------------------------------------------------------------ #
+    # The turn order belongs to the DM, not to the dice. This editor is
+    # open during deployment — where an encounter can be prepared with a
+    # fixed order and saved that way — and during the fight, where a
+    # ruling sometimes has to move somebody.
+
+    INIT_ROW_H = 34
+
+    def _open_init_modal(self):
+        self.init_modal_open = True
+
+    def _close_init_modal(self):
+        self.init_modal_open = False
+
+    def _init_modal_rects(self):
+        """Geometry for the initiative editor, one source for drawing
+        and for hit-testing so the two cannot drift apart."""
+        ents = [e for e in self.battle.entities if not e.is_lair]
+        w = 560
+        h = min(720, 150 + self.INIT_ROW_H * max(len(ents), 1) + 70)
+        bx = SCREEN_WIDTH // 2 - w // 2
+        by = SCREEN_HEIGHT // 2 - h // 2
+        rows = []
+        y = by + 100
+        for ent in ents:
+            rows.append({
+                "entity": ent,
+                "row": pygame.Rect(bx + 16, y, w - 32, self.INIT_ROW_H - 4),
+                "minus": pygame.Rect(bx + w - 190, y + 2, 28, 26),
+                "plus": pygame.Rect(bx + w - 122, y + 2, 28, 26),
+                "roll": pygame.Rect(bx + w - 88, y + 2, 72, 26),
+            })
+            y += self.INIT_ROW_H
+        return {
+            "panel": pygame.Rect(bx, by, w, h),
+            "rows": rows,
+            "roll_all": pygame.Rect(bx + 16, by + h - 56, 160, 40),
+            "close": pygame.Rect(bx + w - 136, by + h - 56, 120, 40),
+        }
+
+    def _bump_initiative(self, entity, delta):
+        self._save_undo_snapshot()
+        self.battle.update_initiative(entity, delta)
+
+    def _roll_initiative_for(self, entity):
+        """Give one creature a fresh roll and keep it locked, so
+        START COMBAT does not throw the result away."""
+        self._save_undo_snapshot()
+        before = entity.initiative
+        entity.roll_initiative()
+        rolled = entity.initiative
+        entity.initiative = before
+        self.battle.update_initiative(entity, rolled - before)
+        self._log(f"[INIT] {entity.name}: {rolled}")
+
+    def _roll_all_initiative(self):
+        self._save_undo_snapshot()
+        for ent in [e for e in self.battle.entities if not e.is_lair]:
+            before = ent.initiative
+            ent.roll_initiative()
+            rolled = ent.initiative
+            ent.initiative = before
+            self.battle.update_initiative(ent, rolled - before)
+        self._log("[INIT] Initiative rolled for everyone.")
+
+    def _handle_init_modal_click(self, pos):
+        """Returns True when the click belonged to the editor."""
+        geo = self._init_modal_rects()
+        if geo["close"].collidepoint(pos):
+            self._close_init_modal()
+            return True
+        if geo["roll_all"].collidepoint(pos):
+            self._roll_all_initiative()
+            return True
+        for row in geo["rows"]:
+            if row["minus"].collidepoint(pos):
+                self._bump_initiative(row["entity"], -1)
+                return True
+            if row["plus"].collidepoint(pos):
+                self._bump_initiative(row["entity"], 1)
+                return True
+            if row["roll"].collidepoint(pos):
+                self._roll_initiative_for(row["entity"])
+                return True
+        # A click anywhere else inside the window is swallowed; outside
+        # it closes, which is how every other panel here behaves.
+        if not geo["panel"].collidepoint(pos):
+            self._close_init_modal()
+        return True
 
     # ------------------------------------------------------------------ #
     # Mid-battle entity add                                                #

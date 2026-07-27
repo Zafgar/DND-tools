@@ -161,6 +161,19 @@ class BattleEventsMixin:
                         continue
                     continue
 
+                # Manual initiative editor. It sits above everything
+                # else so a click on a row cannot fall through onto the
+                # map behind it.
+                if self.init_modal_open:
+                    if event.type == pygame.KEYDOWN and \
+                            event.key == pygame.K_ESCAPE:
+                        self._close_init_modal()
+                        continue
+                    if event.type == pygame.MOUSEBUTTONDOWN and \
+                            event.button == 1:
+                        self._handle_init_modal_click(event.pos)
+                    continue
+
                 # Save Modal (End of Turn)
                 if self.save_modal_open:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -678,22 +691,29 @@ class BattleEventsMixin:
 
                 self.btn_menu.handle_event(event)
                 self.btn_log_pl.handle_event(event)
+                # Front row — always live.
+                self.btn_mode_manual.handle_event(event)
+                self.btn_mode_assist.handle_event(event)
+                self.btn_mode_sim.handle_event(event)
+                self.btn_reset.handle_event(event)
                 self.btn_save.handle_event(event)
-                self.btn_load.handle_event(event)
-                self.btn_terrain.handle_event(event)
-                self.btn_weather.handle_event(event)
-                self.btn_undo.handle_event(event)
-                self.btn_auto.handle_event(event)
-                self.btn_dm_move.handle_event(event)
+                self.btn_back.handle_event(event)
+                self.btn_tools.handle_event(event)
+                self.btn_init.handle_event(event)
                 if self.auto_battle:
                     self.btn_pause.handle_event(event)
                     self.btn_speed_down.handle_event(event)
                     self.btn_speed_up.handle_event(event)
-                self.btn_advisor.handle_event(event)
-                self.btn_maps.handle_event(event)
-                self.btn_save_map.handle_event(event)
-                self.btn_env.handle_event(event)
-                self.btn_add_entity.handle_event(event)
+                # The tray only takes clicks while it is on screen,
+                # otherwise its buttons would fire through the map.
+                if self.tool_tray_open:
+                    for _b in (self.btn_load, self.btn_undo,
+                               self.btn_terrain, self.btn_weather,
+                               self.btn_maps, self.btn_save_map,
+                               self.btn_env, self.btn_advisor,
+                               self.btn_dm_move, self.btn_add_entity,
+                               self.btn_auto):
+                        _b.handle_event(event)
 
                 # Map browser clicks
                 if self.map_browser_open and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

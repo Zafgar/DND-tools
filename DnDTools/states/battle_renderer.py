@@ -515,6 +515,8 @@ class BattleRendererMixin:
 
         if self.save_modal_open:
             self._draw_save_modal(screen, mp)
+        if self.init_modal_open:
+            self._draw_init_modal(screen, mp)
 
     # --- Top bar ---
     def _draw_top_bar(self, screen, curr):
@@ -1166,8 +1168,39 @@ class BattleRendererMixin:
 
     # --- Grid-area utility buttons (Save/Load/Terrain) ---
     def _draw_grid_buttons(self, screen, mp):
-        for b in (self.btn_save, self.btn_load, self.btn_terrain, self.btn_weather, self.btn_undo, self.btn_auto, self.btn_advisor, self.btn_maps, self.btn_save_map, self.btn_env, self.btn_dm_move, self.btn_add_entity):
+        # Front row: how the fight is run, and the three things a DM
+        # reaches for without thinking. The rest is behind TYÖKALUT.
+        self._refresh_mode_buttons()
+        for b in (self.btn_mode_manual, self.btn_mode_assist,
+                  self.btn_mode_sim, self.btn_reset, self.btn_save,
+                  self.btn_back, self.btn_tools, self.btn_init):
             b.draw(screen, mp)
+
+        # A one-line reminder of what the chosen mode means, so the
+        # labels do not have to carry the whole explanation.
+        desc = self._AI_MODE_DESCS.get(self.ai_mode, "")
+        if desc:
+            screen.blit(fonts.tiny.render(desc, True, COLORS["text_dim"]),
+                        (10, SCREEN_HEIGHT - 84))
+        if not self.battle.combat_started:
+            screen.blit(fonts.tiny.render(
+                "ASETTELU — raahaa hahmot paikoilleen, aseta järjestys "
+                "INITIATIVE-napista, TALLENNA valmis encounter, "
+                "sitten START COMBAT.", True, COLORS["warning"]),
+                (10, SCREEN_HEIGHT - 99))
+
+        if self.tool_tray_open:
+            tray_rect = pygame.Rect(4, SCREEN_HEIGHT - 114, 1014, 47)
+            pygame.draw.rect(screen, (30, 32, 36), tray_rect,
+                             border_radius=6)
+            pygame.draw.rect(screen, COLORS["border"], tray_rect, 1,
+                             border_radius=6)
+            for b in (self.btn_load, self.btn_undo, self.btn_terrain,
+                      self.btn_weather, self.btn_maps, self.btn_save_map,
+                      self.btn_env, self.btn_advisor, self.btn_dm_move,
+                      self.btn_add_entity, self.btn_auto):
+                b.draw(screen, mp)
+
         # Auto battle controls (pause + speed) - only visible when auto battle is active
         if self.auto_battle:
             self.btn_pause.draw(screen, mp)
@@ -2739,6 +2772,76 @@ class BattleRendererMixin:
             y2 += 18
 
     # --- Damage Modal Draw ---
+    def _draw_init_modal(self, screen, mp):
+        """The manual initiative editor. Geometry comes from
+        _init_modal_rects so what is drawn and what is clickable are
+        the same thing."""
+        ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 180))
+        screen.blit(ov, (0, 0))
+
+        geo = self._init_modal_rects()
+        p = geo["panel"]
+        pygame.draw.rect(screen, (35, 37, 42), p, border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent"], (p.x, p.y, p.w, 50),
+                         border_top_left_radius=10,
+                         border_top_right_radius=10)
+        pygame.draw.rect(screen, COLORS["border"], p, 2, border_radius=10)
+
+        screen.blit(fonts.header.render("INITIATIVE", True, (255, 255, 255)),
+                    (p.x + 20, p.y + 12))
+        hint = ("Aseta järjestys käsin ennen taistelun aloitusta — "
+                "ALOITA TAISTELU ei heitä näiden yli."
+                if not self.battle.combat_started else
+                "Muutokset järjestävät kierroksen uudelleen heti.")
+        screen.blit(fonts.tiny.render(hint, True, COLORS["text_dim"]),
+                    (p.x + 20, p.y + 66))
+
+        curr = (self.battle.get_current_entity()
+                if self.battle.combat_started else None)
+        for row in geo["rows"]:
+            ent = row["entity"]
+            r = row["row"]
+            bg = (52, 56, 64) if ent is curr else (44, 46, 51)
+            pygame.draw.rect(screen, bg, r, border_radius=5)
+            if ent is curr:
+                pygame.draw.rect(screen, COLORS["success"], r, 1,
+                                 border_radius=5)
+            side = COLORS["accent"] if ent.is_player else COLORS["danger"]
+            pygame.draw.rect(screen, side, (r.x, r.y + 4, 4, r.h - 8))
+
+            name = ent.name if len(ent.name) <= 26 else ent.name[:25] + "…"
+            screen.blit(fonts.body.render(name, True, COLORS["text_main"]),
+                        (r.x + 14, r.y + 5))
+            # A locked value is one the DM chose; say so, because the
+            # difference between "17" and "17, and the dice cannot
+            # change it" is the whole point of this panel.
+            val_c = (COLORS["warning"] if ent.initiative_locked
+                     else COLORS["text_dim"])
+            val = fonts.body.render(str(ent.initiative), True, val_c)
+            screen.blit(val, (row["minus"].x - 16 - val.get_width(),
+                              r.y + 5))
+
+            for rect, label in ((row["minus"], "-"), (row["plus"], "+"),
+                                (row["roll"], "HEITÄ")):
+                c = (60, 64, 72)
+                if rect.collidepoint(mp):
+                    c = COLORS["accent_hover"]
+                pygame.draw.rect(screen, c, rect, border_radius=4)
+                s = fonts.tiny.render(label, True, COLORS["text_main"])
+                screen.blit(s, (rect.centerx - s.get_width() // 2,
+                                rect.centery - s.get_height() // 2))
+
+        for rect, label, base in ((geo["roll_all"], "HEITÄ KAIKKI",
+                                   COLORS["spell"]),
+                                  (geo["close"], "VALMIS",
+                                   COLORS["success"])):
+            c = COLORS["accent_hover"] if rect.collidepoint(mp) else base
+            pygame.draw.rect(screen, c, rect, border_radius=6)
+            s = fonts.body.render(label, True, COLORS["text_main"])
+            screen.blit(s, (rect.centerx - s.get_width() // 2,
+                            rect.centery - s.get_height() // 2))
+
     def _draw_damage_modal(self, screen, mp):
         # Dim background
         ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)

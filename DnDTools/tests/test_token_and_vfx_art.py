@@ -450,6 +450,10 @@ class TestVfxWiredIntoCombat(unittest.TestCase):
                 for i, n in enumerate(foe_names)]
         bs = BattleState(_FM(), entities=pcs + foes)
         bs._set_ai_mode("full_auto")
+        # Choosing a mode no longer rolls initiative behind the
+        # DM\'s back — deployment stays inert until START COMBAT.
+        if not bs.battle.combat_started:
+            bs.battle.start_combat()
         screen = pygame.display.get_surface()
         seen = set()
         for i in range(steps):

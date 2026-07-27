@@ -40,11 +40,11 @@ def _mk(name, x, y, is_player, hp=40, ac=5):
     return Entity(s, x, y, is_player=is_player)
 
 
-def _move_step(mover, old_x, old_y):
+def _move_step(mover, old_x, old_y, new_x, new_y):
     st = ActionStep("move")
     st.attacker = mover
     st.old_x, st.old_y = old_x, old_y
-    st.new_x, st.new_y = mover.grid_x, mover.grid_y
+    st.new_x, st.new_y = new_x, new_y
     st.movement_ft = 30
     st.description = f"{mover.name} moves"
     return st
@@ -55,12 +55,13 @@ class TestAiMovementProvokesOA(unittest.TestCase):
         watcher = _mk("Hero", 5, 5, True)           # PC watcher
         mover = _mk("Goblin", 6, 5, False)          # NPC, adjacent to Hero
         bs = BattleState(_FM(), entities=[watcher, mover])
-        # Simulate planning already moving the NPC to its destination.
+        # Planning records where the NPC MEANS to go and leaves it
+        # standing where it is; the move lands when the step is
+        # approved. The token therefore starts at its origin.
         old_x, old_y = mover.grid_x, mover.grid_y
-        mover.grid_x, mover.grid_y = mover_final
         plan = TurnPlan()
         plan.entity = mover
-        plan.steps = [_move_step(mover, old_x, old_y)]
+        plan.steps = [_move_step(mover, old_x, old_y, *mover_final)]
         bs.pending_plan = plan
         bs.pending_step_idx = 0
         bs._prepare_step_outcomes()
@@ -71,7 +72,8 @@ class TestAiMovementProvokesOA(unittest.TestCase):
         bs._confirm_step()
         self.assertEqual(bs.reaction_type, "oa")
         self.assertIn(watcher, bs.reaction_pending)
-        # Mover reverted to origin while the OA is pending.
+        # The mover has not left yet: planning only records the move,
+        # so the reaction resolves with it still standing at its origin.
         self.assertEqual((mover.grid_x, mover.grid_y), (6.0, 5.0))
 
     def test_oa_deals_damage_and_resumes_turn(self):

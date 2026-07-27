@@ -130,6 +130,17 @@ class TacticalAI:
         import time as _time
         start = _time.monotonic()
         budget = getattr(self, "_TURN_BUDGET_SEC", 4.0)
+        # Planning walks the creature around as it thinks: _move_toward
+        # applies each step the moment it decides on it. That is fine
+        # for a simulation and wrong for a table, because the DM sees
+        # the token jump to the end of the turn before agreeing to any
+        # of it. Snapshot the mover — and anything it is dragging — and
+        # put it back once the plan is built. Every move the plan
+        # intends is recorded in a step, and _confirm_step applies each
+        # one as the DM approves it.
+        rewind = [(e, e.grid_x, e.grid_y, e.elevation, e.is_flying)
+                  for e in [entity] + list(entity.grappling or ())
+                  if e is not None]
         try:
             plan = self._calculate_turn_inner(entity, battle)
         except Exception as ex:
@@ -142,6 +153,22 @@ class TacticalAI:
             plan = TurnPlan(entity=entity)
             plan.skipped = True
             plan.skip_reason = f"AI error: {ex!r}"
+        # Any move step that did not record its own altitude inherits
+        # the height the planner left the creature at — otherwise a
+        # take-off is rewound away and the move is committed on the
+        # ground, through whatever the creature meant to fly over.
+        _all_steps = list(getattr(plan, "steps", ()) or ())
+        for opt in getattr(plan, "options", ()) or ():
+            _all_steps.extend(getattr(opt, "steps", ()) or ())
+        for step in _all_steps:
+            if (getattr(step, "step_type", "") == "move"
+                    and step.attacker is entity
+                    and step.new_elevation is None):
+                step.new_elevation = entity.elevation
+                step.new_flying = entity.is_flying
+        for ent, ox, oy, oe, ofly in rewind:
+            ent.grid_x, ent.grid_y, ent.elevation = ox, oy, oe
+            ent.is_flying = ofly
         elapsed = _time.monotonic() - start
         if elapsed > budget:
             try:
@@ -1779,6 +1806,7 @@ class TacticalAI:
             attacker=entity,
             new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y,
+            new_elevation=entity.elevation, new_flying=entity.is_flying,
         )
 
     def _try_teleport_escape(self, entity, threat, battle, spell):
@@ -1792,7 +1820,12 @@ class TacticalAI:
             rad = math.radians(angle)
             tx = entity.grid_x + math.cos(rad) * 6  # 30ft = 6 squares
             ty = entity.grid_y + math.sin(rad) * 6
-            if battle.is_passable(int(tx), int(ty)):
+            # Off the north or west edge is not an escape, it is a hole
+            # in the map: an Archmage blinked to (24, -8) and the fight
+            # carried on in negative space.
+            if tx < 0 or ty < 0:
+                continue
+            if battle.is_passable(int(tx), int(ty), exclude=entity):
                 d = math.hypot(tx - threat.grid_x, ty - threat.grid_y)
                 if d > best_dist:
                     best_dist = d

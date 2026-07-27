@@ -1058,7 +1058,7 @@ class CampaignManagerState:
 
         if roster:
             from states.game_states import BattleState
-            bs = BattleState(self.manager, roster)
+            bs = BattleState(self.manager, roster, return_state="CAMPAIGN")
             self.manager.states["BATTLE"] = bs
             self.manager.change_state("BATTLE")
 
@@ -1103,7 +1103,8 @@ class CampaignManagerState:
             self._status_timer = 150
             return
         from states.game_states import BattleState
-        self.manager.states["BATTLE"] = BattleState(self.manager, roster)
+        self.manager.states["BATTLE"] = BattleState(
+            self.manager, roster, return_state="CAMPAIGN")
         self.manager.change_state("BATTLE")
 
     def _roll_d20(self, who, label, modifier):

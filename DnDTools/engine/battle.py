@@ -155,8 +155,14 @@ class BattleSystem:
             self.entities.append(lair_ent)
 
         for entity in self.entities:
-            if not entity.is_lair:
-                entity.roll_initiative()
+            if entity.is_lair:
+                continue
+            # A value the DM typed in during deployment is a decision,
+            # not a leftover — rolling over it threw away the order they
+            # had just set up by hand.
+            if getattr(entity, "initiative_locked", False):
+                continue
+            entity.roll_initiative()
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
 
         # PHB p.189: Surprise — surprised creatures can't move or act in round 1
@@ -532,8 +538,117 @@ class BattleSystem:
                 ent.grid_x, ent.grid_y = rx, ry
                 self.log(f"[BANISHMENT] {ent.name} reappears at ({int(rx)}, {int(ry)}).")
 
+    def apply_planned_move(self, mover: Entity, new_x, new_y,
+                           elevation=None, flying=None, teleport=False):
+        """Walk a creature to where an approved step says it goes.
+
+        Planning no longer moves anything — it only records intent — so
+        this is what actually relocates a token, whether the DM pressed
+        approve or the simulation is running itself. Anything the mover
+        has grappled comes along (PHB p.195).
+
+        ``elevation``/``flying`` restore the altitude the planner meant
+        the creature to be at. A route that only exists in the air —
+        over a statue, a wall, a chasm — is illegal on the ground, so
+        the height has to land together with the position, not after it.
+
+        ``teleport`` marks a blink rather than a walk: it drags nobody
+        and ends every grapple the mover is part of, in both directions.
+        """
+        if mover is None:
+            return
+        if teleport:
+            mover.break_all_grapples()
+        if flying is not None:
+            mover.is_flying = bool(flying)
+        if elevation is not None:
+            mover.elevation = elevation
+        old_x, old_y = mover.grid_x, mover.grid_y
+        mover.grid_x, mover.grid_y = float(new_x), float(new_y)
+        for held in list(mover.grappling or ()):
+            if held is None or held.hp <= 0:
+                continue
+            # A hold only drags what it can still reach. Teleports break
+            # grapples the engine has no other chance to notice — an
+            # Archmage that Misty Stepped out of a rogue's grip was
+            # yanked twenty-eight feet back across the map the next time
+            # the rogue took a step, and then stabbed from out of reach.
+            reach = mover.get_max_melee_reach() / 5.0
+            ms, hs = mover.size_in_squares, held.size_in_squares
+            gx = max(0.0, held.grid_x - (old_x + ms),
+                     old_x - (held.grid_x + hs))
+            gy = max(0.0, held.grid_y - (old_y + ms),
+                     old_y - (held.grid_y + hs))
+            if math.hypot(gx, gy) > reach + 0.1:
+                mover.release_grapple(held)
+                self.log(f"[GRAPPLE] {held.name} is no longer within "
+                         f"{mover.name}'s reach; the hold breaks.")
+                continue
+            if self.is_passable(old_x, old_y, exclude=held):
+                held.grid_x, held.grid_y = old_x, old_y
+                continue
+            spot = self.find_free_cell(held, mover.grid_x, mover.grid_y,
+                                       max_radius=2)
+            if spot is not None:
+                held.grid_x, held.grid_y = spot
+            else:
+                mover.release_grapple(held)
+
+    def apply_plan_movement(self, plan) -> int:
+        """Run every movement a plan intends, in order.
+
+        For callers that want the end state without stepping through
+        the DM's approvals — the simulation, and tests that ask "where
+        would this turn leave the creature".
+        """
+        moved = 0
+        for step in getattr(plan, "steps", ()) or ():
+            if step.attacker is None:
+                continue
+            if step.step_type == "move":
+                self.apply_planned_move(step.attacker, step.new_x, step.new_y,
+                                        step.new_elevation, step.new_flying)
+                moved += 1
+            elif (step.step_type == "spell"
+                    and (step.old_x or step.old_y)
+                    and (step.old_x, step.old_y) != (step.new_x, step.new_y)):
+                self.apply_planned_move(step.attacker, step.new_x, step.new_y,
+                                        teleport=True)
+                moved += 1
+        return moved
+
     def validate_grapples(self):
-        """Check all active grapples and break them if invalid (out of reach)."""
+        """Break any grapple that is no longer real.
+
+        Two directions, and only the first used to be checked. Sweeping
+        the grapplers finds holds that have gone out of reach; sweeping
+        the VICTIMS finds the far nastier case — a Grappled condition
+        with nobody on the other end of it.
+
+        That one deadlocks the fight outright. Grappled sets speed to 0,
+        speed 0 means you cannot stand up from Prone, and a creature
+        that is both can never act again: no movement, no escape, no
+        end of combat. A whole party sat at full hit points for fifteen
+        rounds logging nothing but "[STATUS] Prone / [STATUS] Grappled"
+        because their grapplers had left the board and the condition
+        outlived them.
+        """
+        for victim in self.entities:
+            if not victim.has_condition("Grappled"):
+                continue
+            holder = victim.grappled_by
+            still_held = (holder is not None
+                          and holder in self.entities
+                          and holder.hp > 0
+                          and victim in holder.grappling)
+            if not still_held:
+                victim.grappled_by = None
+                if holder is not None and victim in holder.grappling:
+                    holder.grappling.remove(victim)
+                victim.remove_condition("Grappled")
+                self.log(f"[GRAPPLE] {victim.name} is free — nothing is "
+                         f"holding them any more.")
+
         for grappler in self.entities:
             # Check targets this entity is grappling
             for target in list(grappler.grappling):
@@ -865,8 +980,22 @@ class BattleSystem:
         """Calculate full turn plan for an NPC. Does NOT apply changes yet."""
         return self.ai.calculate_turn(entity, self)
 
-    def check_opportunity_attacks(self, mover: Entity, old_x: float, old_y: float):
-        """Check if any hostile can make an OA against mover."""
+    def check_opportunity_attacks(self, mover: Entity, old_x: float,
+                                  old_y: float, new_x=None, new_y=None):
+        """Who gets a swing as ``mover`` leaves their reach?
+
+        Both ends of the move have to be passed in now. This used to
+        read the mover's live position as the "after" end, which worked
+        only because planning had already walked the token there. Now
+        that a move lands when it is approved rather than when it is
+        planned, the creature is still standing at ``old_x, old_y`` when
+        this is asked — so without the destination every move looked
+        like standing still and nobody ever got an attack.
+        """
+        if new_x is None:
+            new_x = mover.grid_x
+        if new_y is None:
+            new_y = mover.grid_y
         # Forced movement (e.g. Grappled/dragged, Shoved) does not provoke OAs
         # If speed is 0 (Grappled), they can't move voluntarily, so it must be forced.
         if mover.has_condition("Grappled") or mover.has_condition("Restrained") or mover.has_condition("Stunned"):
@@ -896,8 +1025,11 @@ class BattleSystem:
                 old_x, old_y, mover.size_in_squares
             )
             
-            # Calculate distance AFTER move (current coordinates)
-            dist_new = self.get_distance(e, mover)
+            # Calculate distance AFTER move (the destination)
+            dist_new = self._calculate_distance_coords(
+                e.grid_x, e.grid_y, e.size_in_squares,
+                new_x, new_y, mover.size_in_squares
+            )
             
             # Trigger OA if target was within reach AND is now outside reach
             # Add small tolerance for floating point comparisons
@@ -1832,8 +1964,13 @@ class BattleSystem:
     # ------------------------------------------------------------------ #
 
     def update_initiative(self, entity: Entity, delta: int):
-        current = self.get_current_entity()
         entity.initiative += delta
+        # Typed by hand: start_combat must not roll over it.
+        entity.initiative_locked = True
+        if not self.combat_started:
+            self.entities.sort(key=lambda e: e.initiative, reverse=True)
+            return
+        current = self.get_current_entity()
         self.entities.sort(key=lambda e: e.initiative, reverse=True)
         self.turn_index = self.entities.index(current)
 
