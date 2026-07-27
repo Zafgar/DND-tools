@@ -406,7 +406,12 @@ class TestLegendaryInAFullFight(unittest.TestCase):
 
     def test_the_lair_speaks_during_a_fight(self):
         random.seed(33)
-        pcs = [Entity(_hero(), 3, 3 + i, is_player=True) for i in range(3)]
+        # Spread out. Stacked three-in-a-row the emperor's opening
+        # legendary area attack killed the entire party before the lair
+        # ever reached its slot in the order, and the test was really
+        # asserting "the boss rolled badly".
+        spots = [(3, 3), (26, 4), (5, 24)]
+        pcs = [Entity(_hero(), x, y, is_player=True) for x, y in spots]
         boss = Entity(library.get_monster("Keisari Tarquvas Redfei"),
                       9, 5, is_player=False)
         bs = BattleState(_FM(), entities=pcs + [boss])

@@ -322,7 +322,12 @@ monsters = [
         abilities=AbilityScores(strength=10,dexterity=14,constitution=14,intelligence=19,wisdom=15,charisma=19),
         actions=[
             Action("Bite","Melee",5,"4d6","piercing"),
-            Action("Eye Rays","3 random rays on up to 3 targets within 120ft",0,"",0,"",range=120),
+            # Was an action with no damage, no save and no condition —
+            # it resolved to nothing. It is the multiattack that fires
+            # three of the rays below.
+            Action("Eye Rays","Shoot 3 random rays at up to 3 targets within 120 ft",0,"",0,"",range=120,
+                   is_multiattack=True,multiattack_count=3,
+                   multiattack_targets=["Enervation Ray","Disintegration Ray","Paralyzing Ray"]),
             Action("Charm Ray","DC 17 WIS or Charmed for 1 hour",0,"",0,"",range=120,
                    applies_condition="Charmed",condition_dc=17,condition_save="Wisdom"),
             Action("Fear Ray","DC 17 WIS or Frightened for 1 minute",0,"",0,"",range=120,
@@ -344,7 +349,9 @@ monsters = [
                    0,"",0,"",range=120,action_type="lair",aoe_radius=10,aoe_shape="sphere",
                    applies_condition="Prone",condition_dc=15,condition_save="Dexterity"),
             # Legendary Actions
-            Action("Eye Ray","Use one random eye ray",0,"",0,"",range=120,action_type="legendary"),
+            Action("Eye Ray","Legendary: one eye ray. Numbers are the Enervation Ray's; roll a d10 at the table and swap in another ray's line if you prefer.",
+                   0,"8d8",0,"necrotic",range=120,action_type="legendary",
+                   condition_dc=17,condition_save="Constitution"),
         ],
         saving_throws={"Strength":5,"Constitution":7,"Intelligence":9,"Wisdom":7,"Charisma":9},
         skills={"Perception":12},
@@ -353,8 +360,12 @@ monsters = [
         features=[
             Feature("Legendary Resistance","3/day auto-succeed on failed save","legendary_resist",uses_per_day=3),
             Feature("Negative Energy Cone","60ft cone: dead creatures rise as zombies under Death Tyrant's control"),
-            Feature("Antimagic Cone","Central eye creates 150ft antimagic cone forward"),
-            Feature("Eye Ray","Legendary Action (1 cost)",feature_type="legendary",legendary_cost=1),
+            Feature("Antimagic Cone","The central eye projects a 150 ft cone of antimagic: spells and magical effects are suppressed inside it, and the tyrant's own rays cannot cross it.",
+                    aura_radius=150),
+            Feature("Eye Ray","Legendary Action (1 cost): fire one eye ray.",
+                    feature_type="legendary",legendary_cost=1,
+                    damage_dice="8d8",damage_type="necrotic",
+                    save_ability="Constitution",save_dc=17),
         ],
         legendary_action_count=3,
         legendary_resistance_count=3,

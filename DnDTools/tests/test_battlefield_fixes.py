@@ -405,9 +405,16 @@ class TestAutoBattleStalemate(unittest.TestCase):
     def _sealed_battle(self):
         pc = Entity(_hero(), 3, 5, is_player=True)
         pc.stats.speed = 0
+        # Zeroing stats.speed is not enough on a hero: this one carries
+        # equipment worth +99 ft, so get_speed() still returned 99 and
+        # the "sealed" room was a five-second walk around the wall. The
+        # scenario needs a creature that genuinely cannot move.
+        pc.items = []
         foe = Entity(library.get_monster("Sanguis Custos"), 20, 5,
                      is_player=False)
         foe.stats.speed = 0
+        foe.items = []
+        assert pc.get_speed() == 0 and foe.get_speed() == 0
         bs = BattleState(_FM(), entities=[pc, foe])
         bs.battle.terrain = _wall_column(11)
         bs._set_ai_mode("full_auto")

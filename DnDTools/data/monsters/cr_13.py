@@ -38,14 +38,52 @@ monsters = [
     CreatureStats(name="Beholder", size="Large", creature_type="Aberration",
         armor_class=18, hit_points=180, hit_dice="19d10+76", speed=0, fly_speed=20,
         abilities=AbilityScores(strength=10,dexterity=14,constitution=18,intelligence=17,wisdom=15,charisma=17),
-        actions=[Action("Bite","Melee",5,"4d6","piercing"),
-                 Action("Eye Rays","Use 3 random rays on up to 3 targets in 120ft",0,"",0,"",range=120)],
+        # MM p.28. The ten rays used to be one action with no damage,
+        # no save and no condition — it resolved to nothing at all, so
+        # a CR 13 beholder was a creature that bit you. Each ray is now
+        # its own action the AI can choose between and the DM can fire
+        # by hand; "Eye Rays" stays as the multiattack that fires three.
+        actions=[Action("Eye Rays","Shoot 3 random rays at up to 3 targets you can see within 120 ft",0,"",0,"",range=120,
+                        is_multiattack=True,multiattack_count=3,
+                        multiattack_targets=["Paralyzing Ray","Disintegration Ray","Death Ray"]),
+                 Action("Bite","Melee",5,"4d6","piercing"),
+                 Action("Charm Ray","Ray: DC 16 WIS or charmed by the beholder for 1 hour",0,"",0,"",range=120,
+                        applies_condition="Charmed",condition_dc=16,condition_save="Wisdom"),
+                 Action("Paralyzing Ray","Ray: DC 16 CON or paralyzed for 1 minute (save ends)",0,"",0,"",range=120,
+                        applies_condition="Paralyzed",condition_dc=16,condition_save="Constitution"),
+                 Action("Fear Ray","Ray: DC 16 WIS or frightened for 1 minute (save ends)",0,"",0,"",range=120,
+                        applies_condition="Frightened",condition_dc=16,condition_save="Wisdom"),
+                 Action("Slowing Ray","Ray: DC 16 DEX or slowed for 1 minute (save ends)",0,"",0,"",range=120,
+                        applies_condition="Slowed",condition_dc=16,condition_save="Dexterity"),
+                 Action("Enervation Ray","Ray: DC 16 CON, 8d8 necrotic, half on a save",0,"8d8",0,"necrotic",range=120,
+                        condition_dc=16,condition_save="Constitution"),
+                 Action("Telekinetic Ray","Ray: DC 16 STR or be moved 30 ft in any direction",0,"",0,"",range=120,
+                        applies_condition="Restrained",condition_dc=16,condition_save="Strength"),
+                 Action("Sleep Ray","Ray: DC 16 WIS or fall unconscious for 1 minute; wakes if damaged",0,"",0,"",range=120,
+                        applies_condition="Unconscious",condition_dc=16,condition_save="Wisdom"),
+                 Action("Petrification Ray","Ray: DC 16 DEX or begin turning to stone (restrained, then petrified)",0,"",0,"",range=120,
+                        applies_condition="Restrained",condition_dc=16,condition_save="Dexterity"),
+                 Action("Disintegration Ray","Ray: DC 16 DEX, 10d8 force; a target reduced to 0 hp is disintegrated",0,"10d8",0,"force",range=120,
+                        condition_dc=16,condition_save="Dexterity"),
+                 Action("Death Ray","Ray: DC 16 DEX, 10d10 necrotic; a target reduced to 0 hp dies",0,"10d10",0,"necrotic",range=120,
+                        condition_dc=16,condition_save="Dexterity")],
         saving_throws={"Intelligence":8,"Wisdom":7,"Charisma":8},
         skills={"Perception":12},
         condition_immunities=["Prone"],
-        features=[Feature("Antimagic Cone","Central eye creates 150ft antimagic cone"),
-                  Feature("Eye Rays","Roll d10 for random ray each turn: 1=Charm, 2=Paralyze, 3=Fear, 4=Slow, 5=Exhaust, 6=Disintegrate, 7=Petrify, 8=Shrink, 9=Sleep, 10=Death"),
-                  Feature("Legendary Resistance","3/day auto-succeed on failed save","legendary_resist",uses_per_day=3)],
+        features=[Feature("Antimagic Cone","The central eye projects a 150 ft cone of antimagic. Spells and magical effects are suppressed in it, and the beholder's own eye rays cannot cross it. The beholder chooses at the start of its turn whether the cone is active — no action.",
+                          aura_radius=150),
+                  Feature("Eye Rays","Three of the ten rays fire each turn at up to three targets within 120 ft, chosen at random (d10 per ray)."),
+                  Feature("Legendary Resistance","3/day auto-succeed on failed save","legendary_resist",uses_per_day=3),
+                  # MM: "Eye Ray. The beholder uses one random eye ray."
+                  # The numbers are the Enervation Ray's; at the table
+                  # roll a d10 and read any of the ten rays above
+                  # instead. Without this the beholder had three
+                  # legendary actions a turn and nothing to spend them
+                  # on.
+                  Feature("Eye Ray","Legendary Action (1 cost): fire one eye ray.",
+                          feature_type="legendary",legendary_cost=1,
+                          damage_dice="8d8",damage_type="necrotic",
+                          save_ability="Constitution",save_dc=16)],
         legendary_action_count=3,
         legendary_resistance_count=3,
         challenge_rating=13.0, xp=10000, proficiency_bonus=5),

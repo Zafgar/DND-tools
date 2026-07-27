@@ -1034,25 +1034,96 @@ class TacticalAI:
     # Movement                                                             #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _best_sustained(entity, ranged: bool) -> float:
+        """Damage from the best attack this creature can repeat every
+        round at that distance.
+
+        Area ACTIONS are left out: a dragon's breath is the biggest
+        number on its sheet but it is spent and then recharges, so
+        counting it would call every dragon an archer and stop it
+        closing to multiattack.
+
+        Area SPELLS are counted. Fireball is not a once-a-fight surprise,
+        it is what the wizard does for a living — leaving it out made an
+        Archmage whose only damage is area spells look like a creature
+        that wanted to be in dagger range.
+        """
+        from engine.dice import average_damage
+        best = 0.0
+        for a in entity.stats.actions or ():
+            if a.is_multiattack or not a.damage_dice or a.aoe_radius:
+                continue
+            is_r = a.range > 10
+            if is_r != ranged:
+                continue
+            try:
+                best = max(best, average_damage(a.damage_dice) + a.damage_bonus)
+            except Exception:
+                continue
+        if ranged:
+            for s in entity.stats.spells_known or ():
+                if not s.damage_dice or s.range <= 10:
+                    continue
+                if s.level and not entity.has_spell_slot(max(s.level, 1)):
+                    continue
+                try:
+                    best = max(best, average_damage(s.damage_dice))
+                except Exception:
+                    continue
+        return best
+
+    @staticmethod
+    def _effective_range_ft(entity) -> float:
+        """How far this creature can actually hit something."""
+        best = 0
+        for a in entity.stats.actions or ():
+            if a.damage_dice and not a.is_multiattack:
+                best = max(best, a.range)
+        for s in entity.stats.spells_known or ():
+            if s.damage_dice:
+                best = max(best, s.range)
+        return float(best)
+
     def _get_combat_preference(self, entity):
-        """Determine if entity prefers Melee or Ranged combat."""
+        """Does this creature want to be close or far?
+
+        This used to be decided by comparing the best mental ability
+        against the best physical one, and that reads a DEX archer
+        exactly backwards: a Scout's bow and its shortsword are both
+        DEX, so the mental score never won and the AI classed a
+        creature with a 150 ft longbow as a melee fighter — then walked
+        it out of cover and into contact with the party's wizard.
+
+        What settles it is which of its own options actually hits
+        harder, which is the question the creature would ask itself.
+        """
         stats = entity.stats
-        
-        # 1. Check stats (Mental vs Physical)
+        has_melee_action = any(a.range <= 5 and a.damage_dice
+                               for a in stats.actions)
+        has_ranged_action = any(a.range > 10 and a.damage_dice
+                                for a in stats.actions)
+        has_ranged_spells = any(s.range > 10 and s.damage_dice
+                                for s in stats.spells_known)
+
+        if not has_melee_action:
+            return "ranged"
+        if not (has_ranged_action or has_ranged_spells):
+            return "melee"
+
+        melee = self._best_sustained(entity, ranged=False)
+        ranged = self._best_sustained(entity, ranged=True)
+        # Ties go to staying away: a creature that loses nothing by
+        # keeping its distance should keep it.
+        if ranged > melee:
+            return "ranged"
+        if melee > ranged:
+            return "melee"
+
         phys = max(stats.abilities.strength, stats.abilities.dexterity)
-        ment = max(stats.abilities.intelligence, stats.abilities.wisdom, stats.abilities.charisma)
-        
-        # 2. Check capabilities
-        has_melee_action = any(a.range <= 5 for a in stats.actions)
-        has_ranged_action = any(a.range > 10 for a in stats.actions)
-        has_ranged_spells = any(s.range > 10 and s.damage_dice for s in stats.spells_known)
-        
-        if not has_melee_action: return "ranged"
-        if not (has_ranged_action or has_ranged_spells): return "melee"
-        
-        # Hybrids: lean towards higher stat (e.g. Lich INT 20 > STR 11 -> Ranged)
-        if ment > phys + 2: return "ranged"
-        return "melee"
+        ment = max(stats.abilities.intelligence, stats.abilities.wisdom,
+                   stats.abilities.charisma)
+        return "ranged" if ment > phys + 2 else "melee"
 
     @staticmethod
     def _horizontal_gap_ft(a, b) -> float:
@@ -1357,6 +1428,20 @@ class TacticalAI:
         best_spot = None
         best_score = current_terrain_score
 
+        live = [e for e in enemies if e.hp > 0]
+        cur_min = min((math.hypot(entity.grid_x - e.grid_x,
+                                  entity.grid_y - e.grid_y) for e in live),
+                      default=99.0)
+        # How close is "within somebody's swing", in squares.
+        melee_danger = 0.0
+        for e in live:
+            for a in e.stats.actions or ():
+                if a.damage_dice and a.range <= 10 and not a.is_multiattack:
+                    melee_danger = max(melee_danger,
+                                       max(a.range, a.reach) / 5.0
+                                       + e.size_in_squares - 1)
+        melee_danger = max(melee_danger, 1.0)
+
         max_squares = min(int(entity.movement_left / 5.0), 4)  # Don't wander too far
 
         for dx in range(-max_squares, max_squares + 1):
@@ -1382,12 +1467,18 @@ class TacticalAI:
 
                 score = self._get_terrain_advantage_score(entity, battle, nx, ny)
 
-                # Bonus for distance from nearest melee enemy
-                min_enemy_dist = min(
-                    (math.hypot(nx - e.grid_x, ny - e.grid_y) for e in enemies if e.hp > 0),
-                    default=20)
-                if min_enemy_dist > 2:
-                    score += min(min_enemy_dist, 6) * 0.5
+                # Distance from the people who want to hit you. This used
+                # to be a small one-sided bonus — at most +3, and never a
+                # penalty — so a patch of cover six squares CLOSER
+                # outscored staying put, and an archer with a 150 ft bow
+                # repositioned from thirty-five feet to five.
+                new_min = min((math.hypot(nx - e.grid_x, ny - e.grid_y)
+                               for e in enemies if e.hp > 0), default=99.0)
+                if new_min < melee_danger and new_min < cur_min:
+                    # Never step INTO a melee attacker's reach to take
+                    # cover. Backing off is always allowed.
+                    continue
+                score += (new_min - cur_min) * 2.0
 
                 if score > best_score + 2:  # Need meaningful improvement
                     best_score = score
@@ -1414,12 +1505,22 @@ class TacticalAI:
         return None
 
     def _move_to_get_los(self, entity, target, battle):
-        """Find a nearby position that has LOS to target. For ranged entities blocked by walls."""
+        """Step out from behind the wall far enough to shoot — and no
+        further.
+
+        This used to take the LoS square CLOSEST to the target, which
+        for an archer is the worst one on offer: a Scout with a 150 ft
+        longbow walked thirty feet to end up in contact with the wizard
+        it was shooting at. What it wants is the square that opens the
+        shot while keeping the most air between it and everyone else.
+        """
         from engine.terrain import check_los_blocked
         best_spot = None
-        best_dist_to_target = 999
+        best_key = None
 
         max_squares = min(int(entity.movement_left / 5.0), 6)
+        reach_sq = self._effective_range_ft(entity) / 5.0
+        live = [e for e in battle.get_enemies_of(entity) if e.hp > 0]
 
         for dx in range(-max_squares, max_squares + 1):
             for dy in range(-max_squares, max_squares + 1):
@@ -1434,10 +1535,18 @@ class TacticalAI:
                 # Check if this position has LOS to target
                 if check_los_blocked(battle.terrain, nx, ny, int(target.grid_x), int(target.grid_y)):
                     continue
-                # Prefer positions closest to target but still with decent range
-                dist_to_target = math.hypot(nx - target.grid_x, ny - target.grid_y)
-                if dist_to_target < best_dist_to_target:
-                    best_dist_to_target = dist_to_target
+                dist_to_target = math.hypot(nx - target.grid_x,
+                                            ny - target.grid_y)
+                # A sight line the weapon cannot cover is not a shot.
+                if reach_sq and dist_to_target > reach_sq:
+                    continue
+                # Farthest from the nearest threat wins; a shorter walk
+                # breaks the tie.
+                safety = min((math.hypot(nx - e.grid_x, ny - e.grid_y)
+                              for e in live), default=99.0)
+                key = (-safety, move_dist)
+                if best_key is None or key < best_key:
+                    best_key = key
                     best_spot = (nx, ny, move_dist)
 
         if best_spot:
