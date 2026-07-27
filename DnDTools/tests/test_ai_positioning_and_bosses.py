@@ -317,6 +317,60 @@ class TestTheBeholder(unittest.TestCase):
 
 
 # ===================================================================== #
+# 3b. A MULTIATTACK MAKES AS MANY ATTACKS AS IT SAYS
+# ===================================================================== #
+class TestMultiattackCount(unittest.TestCase):
+    """"2 x Greatsword" is written with ONE name and a count of two. The
+    count was only consulted when the name list was empty, so a Knight
+    swung once instead of twice and a Gladiator once instead of three
+    times."""
+
+    def _attacks(self, name):
+        random.seed(5)
+        st = library.get_monster(name)
+        multi = next(a for a in st.actions if a.is_multiattack)
+        foe = Entity(copy.deepcopy(hero_list[0]), 5.0, 5.0, is_player=True)
+        m = Entity(copy.deepcopy(st), 6.0, 5.0, is_player=False)
+        b = _battle(m, foe)
+        b.start_combat()
+        steps = b.ai._execute_multiattack(m, multi, [foe], [], b)
+        return len(steps), multi.multiattack_count
+
+    def test_a_knight_swings_twice(self):
+        got, want = self._attacks("Knight")
+        self.assertEqual(got, want)
+
+    def test_a_gladiator_attacks_three_times(self):
+        got, want = self._attacks("Gladiator")
+        self.assertEqual(got, want)
+
+    def test_a_named_list_is_still_honoured(self):
+        got, want = self._attacks("Vampire")
+        self.assertEqual(got, want)
+
+    def test_no_stat_block_under_delivers(self):
+        short = []
+        for st in library.get_all_monsters():
+            for a in st.actions or ():
+                if not a.is_multiattack:
+                    continue
+                names = list(a.multiattack_targets or [])
+                count = a.multiattack_count or 0
+                if not names or not count:
+                    continue
+                m = Entity(copy.deepcopy(st), 6.0, 5.0, is_player=False)
+                foe = Entity(copy.deepcopy(hero_list[0]), 5.0, 5.0,
+                             is_player=True)
+                b = _battle(m, foe)
+                b.start_combat()
+                steps = b.ai._execute_multiattack(m, a, [foe], [], b)
+                if steps and len(steps) < count:
+                    short.append(f"{st.name}: {len(steps)} of {count}")
+        self.assertEqual(short, [],
+                         "nämä tekevät vähemmän hyökkäyksiä kuin lupaavat")
+
+
+# ===================================================================== #
 # 4. EVERY LEGENDARY CREATURE HAS SOMETHING TO SPEND ITS ACTIONS ON
 # ===================================================================== #
 class TestLegendaryRoster(unittest.TestCase):

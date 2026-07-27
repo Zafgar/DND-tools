@@ -3120,11 +3120,17 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                    if not a.is_multiattack}
         subs = [by_name[n] for n in (action.multiattack_targets or [])
                 if n in by_name]
+        want = max(1, action.multiattack_count or 1)
         if not subs:
             usable = [a for a in caster.stats.actions
                       if not a.is_multiattack and a.damage_dice]
             if usable:
-                subs = [usable[0]] * max(1, action.multiattack_count or 1)
+                subs = [usable[0]] * want
+        elif len(subs) < want:
+            # "2 x Greatsword" names the weapon once and says two.
+            base = list(subs)
+            while len(subs) < want:
+                subs.append(base[len(subs) % len(base)])
         return subs
 
     def _build_manual_step(self, caster, action, targets, aoe_center):

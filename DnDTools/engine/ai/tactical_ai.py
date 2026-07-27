@@ -4040,6 +4040,17 @@ class TacticalAI:
             non_multi = [a for a in entity.stats.actions if not a.is_multiattack]
             if non_multi:
                 sub_actions = [non_multi[0]] * multi_action.multiattack_count
+        else:
+            # "2 x Greatsword" is written with ONE name and a count of
+            # two, which is a perfectly natural way to put it — and the
+            # count was ignored unless the name list was empty, so a
+            # Knight swung once, a Gladiator once instead of three
+            # times. Repeat the listed attacks until the count is met.
+            want = max(1, multi_action.multiattack_count or 1)
+            if len(sub_actions) < want:
+                base = list(sub_actions)
+                while len(sub_actions) < want:
+                    sub_actions.append(base[len(sub_actions) % len(base)])
 
         first_attack = True
         for sub in sub_actions:
