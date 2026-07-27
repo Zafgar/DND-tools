@@ -1381,6 +1381,24 @@ class TacticalAI:
 
         # --- 5. MELEE: Approach target with smart positioning ---
         if preference == "melee":
+            # A fighter hurt badly enough that the action phase will spend
+            # its turn disengaging must not walk into contact first. The
+            # two phases were pulling opposite ways and each was locally
+            # right: movement closed to melee, then the action decided it
+            # was too wounded to fight and retreated. Advance, disengage,
+            # retreat, every round, for as long as the fight lasted.
+            if entity.hp <= entity.max_hp * DISENGAGE_HP_LOW:
+                threats_now = [e for e in enemies
+                               if e.hp > 0 and battle.is_adjacent(entity, e)]
+                if not threats_now:
+                    # Out of reach and badly hurt: keep it that way and
+                    # use whatever reach the creature has.
+                    if self._effective_range_ft(entity) > 10:
+                        cover = self._seek_cover_position(entity, target,
+                                                          enemies, battle)
+                        if cover:
+                            return cover
+                    return None
             # If we can't see the target, move to get LOS first
             if not self._can_see_target(entity, target, battle):
                 return self._move_toward(entity, target, allies, battle)

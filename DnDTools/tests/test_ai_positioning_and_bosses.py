@@ -237,6 +237,78 @@ class TestTheBattlefieldIsFinite(unittest.TestCase):
 
 
 # ===================================================================== #
+# 2c. A WOUNDED FIGHTER DOES NOT ADVANCE AND RETREAT FOREVER
+# ===================================================================== #
+class TestWoundedMeleeDoesNotLoop(unittest.TestCase):
+    """Liikkumisvaihe sulki lähitaisteluun, minkä jälkeen toimintovaihe
+    päätti että hahmo on liian haavoittunut taistelemaan ja perääntyi.
+    Molemmat olivat erikseen oikeassa; yhdessä ne tekivät ikuisen
+    silmukan: etene, disengage, peräänny, joka kierros."""
+
+    def _hurt_fighter(self, gap):
+        random.seed(4)
+        f = _mon("Knight", 5 + gap, 5)
+        foe = _mon("Necromancer", 5, 5, player=True) \
+            if "Necromancer" in [m.name for m in library.get_all_monsters()] \
+            else _mon("Mage", 5, 5, player=True)
+        f.hp = max(1, int(f.max_hp * 0.1))
+        b = _battle(f, foe)
+        b.start_combat()
+        return b, f, foe
+
+    def test_it_does_not_close_when_it_means_to_withdraw(self):
+        b, f, foe = self._hurt_fighter(gap=2)
+        before = b.get_distance(f, foe)
+        step = b.ai._decide_movement(f, [foe], [], b)
+        if step is None:
+            return                      # holding position is the fix
+        f.grid_x, f.grid_y = step.new_x, step.new_y
+        self.assertGreaterEqual(
+            b.get_distance(f, foe), before - 0.1,
+            "haavoittunut lähitaistelija käveli kosketukseen aikoessaan "
+            "vetäytyä")
+
+    def test_a_healthy_fighter_still_closes(self):
+        b, f, foe = self._hurt_fighter(gap=3)
+        f.hp = f.max_hp
+        before = b.get_distance(f, foe)
+        step = b.ai._decide_movement(f, [foe], [], b)
+        self.assertIsNotNone(step, "terve lähitaistelija ei lähestynyt")
+        f.grid_x, f.grid_y = step.new_x, step.new_y
+        self.assertLess(b.get_distance(f, foe), before)
+
+    def test_a_wounded_fighter_already_in_contact_may_still_disengage(self):
+        # Backing out of a swing is the point of Disengage; only the
+        # pointless advance-first was wrong.
+        b, f, foe = self._hurt_fighter(gap=1)
+        step = b.ai._try_disengage_action(f, [foe], b, preference="melee")
+        self.assertIsNotNone(step,
+                             "vetäytyminen kosketuksesta estyi turhaan")
+
+    def test_the_fight_actually_ends(self):
+        """Oikea taisteluluuppi, ei pelkkä liike — muuten kukaan ei ota
+        vahinkoa eikä mikään voi päättyä."""
+        for seed in (4, 11, 23):
+            random.seed(seed)
+            f = _mon("Knight", 9, 5)
+            foe = _mon("Ogre", 5, 5, player=True)
+            f.hp = max(1, int(f.max_hp * 0.1))
+            bs = BattleState(_FM(), entities=[foe, f])
+            bs._set_ai_mode("full_auto")
+            bs._do_start_combat()
+            for _ in range(2000):
+                bs._process_auto_battle()
+                if not bs.auto_battle or bs.battle.check_battle_over():
+                    break
+                if bs.battle.round > 60:
+                    break
+            self.assertLessEqual(
+                bs.battle.round, 60,
+                f"seed {seed}: taistelu ei päättynyt kuudessakymmenessä "
+                f"kierroksessa")
+
+
+# ===================================================================== #
 # 3. THE BEHOLDER
 # ===================================================================== #
 class TestTheBeholder(unittest.TestCase):
