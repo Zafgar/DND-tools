@@ -1312,7 +1312,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 self.current_step_outcomes[t] = "hit"
 
     def _apply_planned_move(self, mover, new_x, new_y,
-                            elevation=None, flying=None, teleport=False):
+                            elevation=None, flying=None, teleport=False,
+                            dragged=None):
         """Put a creature where an approved step says it goes.
 
         Planning used to walk the token as it thought, so by the time
@@ -1325,7 +1326,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         vacated where that is free (PHB p.195).
         """
         self.battle.apply_planned_move(mover, new_x, new_y,
-                                       elevation, flying, teleport)
+                                       elevation, flying, teleport, dragged)
 
     def _confirm_step(self):
         if not self.pending_plan:
@@ -1391,6 +1392,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                         "resume_ai_step": True,
                         "move_elevation": step.new_elevation,
                         "move_flying": step.new_flying,
+                        "move_dragged": step.dragged,
                     }
                     self._log(f"[REACTION] {mover.name}'s move provokes "
                               f"{len(oas)} opportunity attack(s)!")
@@ -1398,7 +1400,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 # No reaction to wait for: walk it now, on approval.
                 self._apply_planned_move(mover, new_x, new_y,
                                          step.new_elevation,
-                                         step.new_flying)
+                                         step.new_flying,
+                                         dragged=step.dragged)
 
             # Blink spells (Misty Step, Dimension Door) relocate the
             # caster. Planning no longer does it, so the confirm does —
@@ -1578,7 +1581,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 self._apply_planned_move(step.attacker,
                                          step.new_x, step.new_y,
                                          step.new_elevation,
-                                         step.new_flying)
+                                         step.new_flying,
+                                         dragged=step.dragged)
             elif (step.step_type == "spell" and step.attacker
                     and (step.old_x or step.old_y)
                     and (step.old_x, step.old_y) != (step.new_x, step.new_y)):
@@ -3137,7 +3141,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 ctx = self.reaction_context or {}
                 self._apply_planned_move(mover, dest_x, dest_y,
                                          ctx.get("move_elevation"),
-                                         ctx.get("move_flying"))
+                                         ctx.get("move_flying"),
+                                         dragged=ctx.get("move_dragged"))
                 self.pending_move = None
                 # If this OA interrupted an AI move step, advance the AI
                 # plan past that step now that the reaction is resolved.

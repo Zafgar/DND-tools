@@ -539,7 +539,8 @@ class BattleSystem:
                 self.log(f"[BANISHMENT] {ent.name} reappears at ({int(rx)}, {int(ry)}).")
 
     def apply_planned_move(self, mover: Entity, new_x, new_y,
-                           elevation=None, flying=None, teleport=False):
+                           elevation=None, flying=None, teleport=False,
+                           dragged=None):
         """Walk a creature to where an approved step says it goes.
 
         Planning no longer moves anything — it only records intent — so
@@ -554,6 +555,12 @@ class BattleSystem:
 
         ``teleport`` marks a blink rather than a walk: it drags nobody
         and ends every grapple the mover is part of, in both directions.
+
+        ``dragged`` is where the planner actually left each grappled
+        creature, as [(entity, x, y)]. Prefer it: the planner walks the
+        route square by square and the victim trails one step behind,
+        whereas re-deriving the spot from a single jump to the
+        destination drops them back at the origin.
         """
         if mover is None:
             return
@@ -565,8 +572,22 @@ class BattleSystem:
             mover.elevation = elevation
         old_x, old_y = mover.grid_x, mover.grid_y
         mover.grid_x, mover.grid_y = float(new_x), float(new_y)
+        # The planner's list, when it gave one, is the whole truth about
+        # who comes along. A grapple made LATER in the same turn is
+        # already on the creature by the time the move is approved —
+        # planning applies it immediately — and dragging that victim
+        # would move somebody the plan's own ordering had not grabbed
+        # yet, out of reach of the attack the move was made for.
+        want = None if dragged is None else {id(e) for e, _x, _y in dragged}
+        spots = {id(e): (x, y) for e, x, y in (dragged or ())}
         for held in list(mover.grappling or ()):
             if held is None or held.hp <= 0:
+                continue
+            if want is not None and id(held) not in want:
+                continue
+            hx, hy = spots.get(id(held), (None, None))
+            if hx is not None and self.is_passable(hx, hy, exclude=held):
+                held.grid_x, held.grid_y = float(hx), float(hy)
                 continue
             # A hold only drags what it can still reach. Teleports break
             # grapples the engine has no other chance to notice — an
@@ -584,7 +605,23 @@ class BattleSystem:
                 self.log(f"[GRAPPLE] {held.name} is no longer within "
                          f"{mover.name}'s reach; the hold breaks.")
                 continue
-            if self.is_passable(old_x, old_y, exclude=held):
+            # Dumping the victim in the square the mover left is only
+            # right for a single step. An approved plan can cover thirty
+            # feet at once, and a paladin who walked fifteen feet with an
+            # ogre in tow left it three squares behind — then swung at it
+            # from out of reach. Use the vacated square only when it is
+            # still next to where the mover ended up.
+            # Measure the VICTIM standing on the vacated square against
+            # the mover's new footprint — not the mover's old anchor
+            # against its new one, which for a Huge creature reads as
+            # zero however far it walked.
+            ox2 = max(0.0, old_x - (float(new_x) + ms),
+                      float(new_x) - (old_x + hs))
+            oy2 = max(0.0, old_y - (float(new_y) + ms),
+                      float(new_y) - (old_y + hs))
+            vacated_still_close = math.hypot(ox2, oy2) <= reach + 0.1
+            if vacated_still_close and self.is_passable(old_x, old_y,
+                                                        exclude=held):
                 held.grid_x, held.grid_y = old_x, old_y
                 continue
             spot = self.find_free_cell(held, mover.grid_x, mover.grid_y,
@@ -607,7 +644,8 @@ class BattleSystem:
                 continue
             if step.step_type == "move":
                 self.apply_planned_move(step.attacker, step.new_x, step.new_y,
-                                        step.new_elevation, step.new_flying)
+                                        step.new_elevation, step.new_flying,
+                                        dragged=step.dragged)
                 moved += 1
             elif (step.step_type == "spell"
                     and (step.old_x or step.old_y)

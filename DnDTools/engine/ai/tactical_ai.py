@@ -22,6 +22,22 @@ if TYPE_CHECKING:
     from data.models import CreatureStats
 
 
+def _drag_snapshot(entity):
+    """Who this creature is dragging, and exactly where the planner put
+    them (PHB p.195).
+
+    Recorded on the move step rather than worked out again when the DM
+    approves it. The two answers differ: planning walks the route square
+    by square so the victim trails one step behind, while approval jumps
+    straight to the destination and would drop them back at the origin.
+    An empty list is meaningful — it says the planner dragged nobody,
+    which is not the same as "no information".
+    """
+    return [(g, g.grid_x, g.grid_y)
+            for g in (getattr(entity, "grappling", None) or ())
+            if g is not None and g.hp > 0]
+
+
 class TacticalAI:
     """Full D&D 5e 2014 tactical AI with class mechanic and environment awareness."""
 
@@ -634,6 +650,7 @@ class TacticalAI:
             description=f"[SUMMON] {entity.name} moves to ({nx},{ny})",
             attacker=entity, new_x=nx, new_y=ny,
             movement_ft=best_gap, old_x=start_x, old_y=start_y,
+            dragged=_drag_snapshot(entity),
         )
 
     # ------------------------------------------------------------------ #
@@ -993,6 +1010,7 @@ class TacticalAI:
                 description=f"{entity.name} spreads out to avoid AoE ({move_cost:.0f} ft).",
                 attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
                 movement_ft=move_cost, old_x=old_x, old_y=old_y,
+                dragged=_drag_snapshot(entity),
             )
         return None
 
@@ -1391,6 +1409,7 @@ class TacticalAI:
                 description=f"{entity.name} {reason} ({move_dist:.0f} ft).",
                 attacker=entity, new_x=float(nx), new_y=float(ny),
                 movement_ft=move_dist, old_x=old_x, old_y=old_y,
+                dragged=_drag_snapshot(entity),
             )
         return None
 
@@ -1436,6 +1455,7 @@ class TacticalAI:
                 description=f"{entity.name} moves to get line of sight ({move_dist:.0f} ft).",
                 attacker=entity, new_x=float(nx), new_y=float(ny),
                 movement_ft=move_dist, old_x=old_x, old_y=old_y,
+                dragged=_drag_snapshot(entity),
             )
         return None
 
@@ -1807,6 +1827,7 @@ class TacticalAI:
             new_x=entity.grid_x, new_y=entity.grid_y,
             movement_ft=moved_cost, old_x=start_x, old_y=start_y,
             new_elevation=entity.elevation, new_flying=entity.is_flying,
+            dragged=_drag_snapshot(entity),
         )
 
     def _try_teleport_escape(self, entity, threat, battle, spell):
@@ -1906,7 +1927,8 @@ class TacticalAI:
             step_type="move",
             description=f"{entity.name} repositions {moved_cost:.0f} ft.{jump_note}",
             attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
-            movement_ft=moved_cost, old_x=start_x, old_y=start_y)
+            movement_ft=moved_cost, old_x=start_x, old_y=start_y,
+            dragged=_drag_snapshot(entity))
 
     def _move_away(self, entity, threat, battle):
         start_x, start_y = entity.grid_x, entity.grid_y
@@ -1960,7 +1982,8 @@ class TacticalAI:
             step_type="move",
             description=f"{entity.name} disengages and moves {moved_cost:.0f} ft.",
             attacker=entity, new_x=entity.grid_x, new_y=entity.grid_y,
-            movement_ft=moved_cost, old_x=start_x, old_y=start_y)
+            movement_ft=moved_cost, old_x=start_x, old_y=start_y,
+            dragged=_drag_snapshot(entity))
 
     # ------------------------------------------------------------------ #
     # Main Action                                                          #

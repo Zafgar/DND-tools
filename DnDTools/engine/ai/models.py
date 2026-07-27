@@ -42,6 +42,13 @@ class ActionStep:
     # ground level and the token ends up inside the statue.
     new_elevation: Optional[float] = None
     new_flying: Optional[bool] = None
+    # Where the planner left anyone this mover is dragging, as
+    # [(entity, x, y)]. Re-deriving it at approval time gets a different
+    # answer: the planner walks square by square and the victim ends up
+    # trailing one step behind, while a single jump to the destination
+    # dumps them back at the origin — far enough that the very attack
+    # the move was made for is out of reach.
+    dragged: Optional[List] = None
     aoe_center: tuple = field(default_factory=tuple)
     # Class mechanic extras
     bonus_damage: int = 0            # Extra damage from Sneak Attack, Smite, etc.
