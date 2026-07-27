@@ -279,6 +279,7 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.pending_saves = []                # For manual end-of-turn saves
         self.save_modal_open = False
         self.init_modal_open = False           # Manual initiative editor
+        self.ai_dialog_rect = None             # Set by the renderer
         self.dm_suggestion_cache = None        # Cached DM advisor suggestion
         self.dm_rating_cache = None            # Cached player action rating
         self.show_advisor_panel = False        # Toggle for DM advisor panel
@@ -635,7 +636,26 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # never go through update(), so the mode/flag sync happens here
         # too rather than only in the frame loop.
         self._sync_auto_battle()
-        # 0. Stalemate guard — an unreachable enemy must not spin forever.
+        # 0a. Nobody to fight. A roster launched from the campaign can
+        # be all heroes and no monsters; the AI then plans "no valid
+        # targets" for every creature, forever, and the board looks
+        # frozen with no explanation. Say what is actually wrong.
+        if self.auto_battle:
+            live_p = [e for e in self.battle.entities
+                      if e.is_player and e.hp > 0 and not e.is_lair]
+            live_e = [e for e in self.battle.entities
+                      if not e.is_player and e.hp > 0 and not e.is_lair]
+            if not live_p or not live_e:
+                missing = "vihollisia" if live_p else "pelaajia"
+                self.auto_battle = False
+                self._set_ai_mode("suggest")
+                self._log(f"[AUTO] Kentällä ei ole {missing} — simulaatio "
+                          f"ei voi edetä. Lisää olentoja (TYÖKALUT → ADD) "
+                          f"tai vaihda puolta oikealla klikkaamalla.")
+                self._check_battle_end()
+                return
+
+        # 0b. Stalemate guard — an unreachable enemy must not spin forever.
         if self.auto_battle:
             rnd = getattr(self.battle, "round", None)
             if rnd is not None and rnd != getattr(self, "_stalemate_round", None):
@@ -2852,7 +2872,33 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         """Remove a terrain type from favorites."""
         if ttype in self.terrain_favorites:
             self.terrain_favorites.remove(ttype)
+    def _blocked_by_condition(self, entity, what):
+        """Can this creature take an action at all right now?
+
+        Hold Person paralyses you: no actions, no reactions, no
+        movement. The AI has always known that and skipped the turn, but
+        the DM panel did not — it would happily let a paralysed wizard
+        Misty Step out of the spell that was holding them. Same for
+        Stunned, Unconscious, Petrified and Banished.
+        """
+        if entity is None or not entity.is_incapacitated():
+            return False
+        from data.conditions import INCAPACITATING_CONDITIONS
+        which = ", ".join(sorted(entity.conditions & INCAPACITATING_CONDITIONS))
+        src = ""
+        for cond in sorted(entity.conditions & INCAPACITATING_CONDITIONS):
+            holder = getattr(entity, "condition_sources", {}).get(cond)
+            if holder is not None and getattr(holder, "name", None):
+                src = f" ({holder.name} ylläpitää)"
+                break
+        self._log(f"[SÄÄNTÖ] {entity.name} ei voi {what}: {which}{src}. "
+                  f"Poista tila oikean paneelin CONDITIONS-listasta jos "
+                  f"pelinjohtaja päättää toisin.")
+        return True
+
     def _start_spell_targeting(self, entity, spell):
+        if self._blocked_by_condition(entity, f"loitsia {spell.name}"):
+            return
         self.spell_caster = entity
         self.spell_targeting = spell
         self._log(f"[TARGETING] Select target/area for {spell.name} (Range: {spell.range}ft)")
@@ -2965,6 +3011,8 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
     # ------------------------------------------------------------------ #
 
     def _start_action_targeting(self, entity, action):
+        if self._blocked_by_condition(entity, f"käyttää: {action.name}"):
+            return
         self.action_caster = entity
         self.action_targeting = action
         self._log(f"[TARGETING] Select target for {action.name} ({action.range}ft)")
@@ -3001,28 +3049,105 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             self._log("[TARGETING] No target selected.")
             return
 
-        # Roll damage
-        dmg = roll_dice(action.damage_dice)
-        if action.damage_bonus:
-            dmg += action.damage_bonus
+        steps = []
+        for sub in self._manual_subactions(caster, action):
+            steps.append(self._build_manual_step(caster, sub, targets,
+                                                 aoe_center))
+        if not steps:
+            self._log(f"[ACTION] {action.name}: ei suoritettavaa hyökkäystä.")
+            self._cancel_action_targeting()
+            return
 
-        step = ActionStep(
-            step_type=action.action_type if action.action_type in ("legendary","reaction","bonus_attack") else "attack",
-            description=f"{caster.name} uses {action.name}.",
-            attacker=caster, targets=targets, action=action,
-            damage=dmg, damage_type=action.damage_type,
-            action_name=action.name,
-            save_dc=action.condition_dc, save_ability=action.condition_save,
-            applies_condition=action.applies_condition,
-            aoe_center=aoe_center if aoe_center else tuple()
-        )
-
-        plan = TurnPlan(entity=caster, steps=[step])
+        plan = TurnPlan(entity=caster, steps=steps)
         self.pending_plan = plan
         self.pending_step_idx = 0
         self._prepare_step_outcomes()
         self._cancel_action_targeting()
-        self._log(f"[ACTION] Using {action.name}...")
+        self._log(f"[ACTION] Using {action.name}"
+                  + (f" — {len(steps)} hyökkäystä." if len(steps) > 1
+                     else "..."))
+
+    def _manual_subactions(self, caster, action):
+        """A Multiattack is not a thing you roll — it is a list of the
+        attacks you get to make.
+
+        Choosing it from the DM panel used to build one nameless step
+        with the Multiattack's own (empty) damage dice, so the whole
+        action resolved as a single automatic miss.
+        """
+        if not getattr(action, "is_multiattack", False):
+            return [action]
+        by_name = {a.name: a for a in caster.stats.actions
+                   if not a.is_multiattack}
+        subs = [by_name[n] for n in (action.multiattack_targets or [])
+                if n in by_name]
+        if not subs:
+            usable = [a for a in caster.stats.actions
+                      if not a.is_multiattack and a.damage_dice]
+            if usable:
+                subs = [usable[0]] * max(1, action.multiattack_count or 1)
+        return subs
+
+    def _build_manual_step(self, caster, action, targets, aoe_center):
+        """One attack the DM asked for, rolled properly.
+
+        The old manual path rolled nothing at all: no attack roll, no
+        natural die, no comparison against AC. Every step arrived with
+        is_hit False, which _prepare_step_outcomes reads as a miss, so
+        every action the DM took by hand automatically missed and the
+        dialog had nothing to show but the word MISS.
+        """
+        is_save = action.condition_dc > 0 and action.condition_save
+        is_ranged = action.range > 10
+        step = ActionStep(
+            step_type=(action.action_type
+                       if action.action_type in ("legendary", "reaction",
+                                                 "bonus_attack")
+                       else "attack"),
+            description=f"{caster.name} uses {action.name}.",
+            attacker=caster, targets=list(targets), action=action,
+            damage_type=action.damage_type,
+            action_name=action.name,
+            save_dc=action.condition_dc, save_ability=action.condition_save,
+            applies_condition=action.applies_condition,
+            aoe_center=aoe_center if aoe_center else tuple(),
+        )
+        if is_save or not action.damage_dice:
+            step.damage = roll_dice(action.damage_dice) if action.damage_dice \
+                else 0
+            if action.damage_bonus:
+                step.damage += action.damage_bonus
+            return step
+
+        # A single-target swing: roll it, and say what was rolled.
+        target = targets[0] if targets else None
+        adv = dis = False
+        if target is not None:
+            adv = caster.has_attack_advantage(target, is_ranged=is_ranged,
+                                              battle=self.battle)
+            dis = caster.has_attack_disadvantage(target, is_ranged=is_ranged,
+                                                 battle=self.battle)
+        total, nat, is_crit, is_fumble, roll_str = roll_attack(
+            action.attack_bonus, adv, dis)
+        ac = target.stats.armor_class if target is not None else 10
+        step.attack_roll = total
+        step.attack_roll_str = roll_str
+        step.nat_roll = nat
+        step.is_crit = is_crit
+        step.is_hit = (not is_fumble) and (is_crit or total >= ac)
+        dice = action.damage_dice
+        step.damage = (roll_dice_critical(dice) if is_crit
+                       else roll_dice(dice))
+        if action.damage_bonus:
+            step.damage += action.damage_bonus
+        edge = " (etu)" if adv and not dis else \
+               (" (haitta)" if dis and not adv else "")
+        verdict = ("CRIT!" if is_crit else
+                   ("OSUU" if step.is_hit else "OHI"))
+        step.description = (f"{caster.name}: {action.name} — d20 {roll_str} "
+                            f"{action.attack_bonus:+d} = {total} vs AC {ac}"
+                            f"{edge} → {verdict}")
+        return step
 
     def _use_legendary_resistance_manual(self, entity):
         if entity.legendary_resistances_left > 0:
@@ -3056,7 +3181,25 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.battle.remove_expired_summons()
         self._log(f"[KUMPPANI] {entity.name} vapautti {len(owned)} kumppani(a).")
 
+    # Features that are a STATE, not a one-off expenditure. Clicking
+    # these used to tick a usage counter and log a line while changing
+    # nothing about the next attack — so a barbarian could never
+    # actually attack recklessly from the DM's panel.
+    _TOGGLE_FEATURES = {
+        "reckless attack": "reckless_attack_active",
+    }
+
     def _use_feature_manual(self, entity, feature):
+        flag = self._TOGGLE_FEATURES.get(feature.name.strip().lower())
+        if flag:
+            on = not getattr(entity, flag, False)
+            setattr(entity, flag, on)
+            self._save_undo_snapshot()
+            self._log(f"[DM] {entity.name}: {feature.name} "
+                      f"{'PÄÄLLÄ' if on else 'pois'}."
+                      + (" Etu STR-lähitaisteluun, viholliset saavat "
+                         "edun häntä vastaan." if on else ""))
+            return
         if entity.can_use_feature(feature.name):
             entity.use_feature(feature.name)
             self._log(f"[DM] {entity.name} uses {feature.name}.")

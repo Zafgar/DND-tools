@@ -371,6 +371,20 @@ class BattleRendererMixin:
     def draw(self, screen):
         screen.fill(COLORS["bg"])
         mp = pygame.mouse.get_pos()
+
+        # Clickable regions are registered as they are drawn, so the
+        # list has to be emptied exactly once per frame — here, at the
+        # top, before anything registers anything.
+        #
+        # It used to be cleared by whichever panel happened to draw
+        # first, and that panel was conditional. When it did not run,
+        # every zone from every previous frame stayed in the list, and
+        # the click test takes the FIRST rectangle that contains the
+        # cursor: a stale button from a screen the DM had left minutes
+        # ago swallowed the click and fired something else entirely.
+        # When it did run, it wiped the zones of every panel that had
+        # drawn before it in the same frame, killing those buttons.
+        self.ui_click_zones.clear()
         
         # Safely get current entity
         try:
@@ -1350,7 +1364,6 @@ class BattleRendererMixin:
     def _draw_panel(self, screen, curr, sel, mp):
         self.active_tooltip = None # Reset tooltip
         # Clear dynamic click zones for this frame
-        self.ui_click_zones.clear()
         self.ui_right_click_zones.clear()
 
         panel_rect = pygame.Rect(GRID_W, TOP_BAR_H, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H)
@@ -1623,6 +1636,11 @@ class BattleRendererMixin:
         indicator("Reaction", sel.reaction_used); y+=18
         if sel.concentrating_on:
             conc_text = f"Concentrating: {sel.concentrating_on.name}"
+            held = sel.concentration_target_names()
+            if held:
+                conc_text += " -> " + ", ".join(held[:2])
+                if len(held) > 2:
+                    conc_text += f" +{len(held) - 2}"
             if hasattr(sel, 'concentration_rounds_left') and sel.concentration_rounds_left is not None:
                 conc_text += f" ({sel.concentration_rounds_left} rnds)"
             ln(conc_text, COLORS["concentration"])
@@ -2312,9 +2330,49 @@ class BattleRendererMixin:
                     (r, lambda rk=opt.rank: self.choose_plan_option(rk)))
             y += row_h
 
+    @staticmethod
+    def _step_one_liner(step):
+        """A step in a handful of words, for the turn list.
+
+        Names the WEAPON for an attack, because "Multiattack" tells the
+        DM nothing about what is actually being swung — a multiattack is
+        now expanded into one step per weapon and this is where that
+        becomes visible.
+        """
+        if step.step_type == "move":
+            return f"{step.movement_ft:.0f} ft → ({step.new_x:.0f},{step.new_y:.0f})"
+        name = step.action_name or (step.spell.name if step.spell else "")
+        if not name and step.action is not None:
+            name = step.action.name
+        tgt = step.target or (step.targets[0] if step.targets else None)
+        if name and tgt is not None:
+            return f"{name} → {tgt.name}"
+        if name:
+            return name
+        return (step.description or step.step_type)[:40]
+
+    @staticmethod
+    def _attack_modifier_note(step):
+        """What is riding on this swing — Reckless, Rage, Sneak Attack,
+        Hunter's Mark and the rest. The dialog reported a bare total and
+        the DM had no way to tell whether the character's own abilities
+        had been counted."""
+        bits = []
+        atk = step.attacker
+        act = step.action
+        melee = bool(act) and act.range <= 10
+        if atk is not None and getattr(atk, "reckless_attack_active", False) \
+                and melee:
+            bits.append("Reckless")
+        if atk is not None and getattr(atk, "rage_active", False) and melee:
+            bits.append("Rage")
+        if step.bonus_damage_desc:
+            bits.append(step.bonus_damage_desc)
+        elif step.rage_bonus:
+            bits.append(f"+{step.rage_bonus}")
+        return " · ".join(bits[:3])
+
     def _draw_ai_confirm_dialog(self, screen, mp):
-        # Clear dynamic zones for this dialog
-        self.ui_click_zones.clear()
 
         plan = self.pending_plan
         steps = plan.steps
@@ -2330,9 +2388,12 @@ class BattleRendererMixin:
         ov.fill((0,0,0,170))
         screen.blit(ov, (0,0))
 
-        bw, bh = 700, 450
+        bw, bh = 900, 560
         bx = SCREEN_WIDTH//2 - bw//2
         by = SCREEN_HEIGHT//2 - bh//2
+        # One source for the geometry. The event handler used to carry
+        # its own copy of these numbers and they drifted apart.
+        self.ai_dialog_rect = pygame.Rect(bx, by, bw, bh)
 
         pygame.draw.rect(screen, (38,40,44), (bx, by, bw, bh), border_radius=10)
         pygame.draw.rect(screen, COLORS["accent"], (bx, by, bw, 44), border_top_left_radius=10, border_top_right_radius=10)
@@ -2344,13 +2405,56 @@ class BattleRendererMixin:
         title = fonts.header.render(title_str, True, (255,255,255))
         screen.blit(title, (bx+14, by+8))
 
+        # THE WHOLE TURN, not just the step in front of you. A plan is
+        # "move here, then swing twice"; showing one line of it at a
+        # time left the DM approving things without knowing where the
+        # turn was going.
+        list_w = 300
+        lx = bx + 14
+        ly = by + 54
+        screen.blit(fonts.tiny.render("KOKO VUORO", True,
+                                      COLORS["text_dim"]), (lx, ly))
+        ly += 18
+        for i, st in enumerate(steps):
+            done = i < idx
+            here = i == idx
+            row = pygame.Rect(lx, ly, list_w, 34)
+            bg = (46, 62, 46) if done else ((52, 62, 86) if here
+                                            else (40, 42, 47))
+            pygame.draw.rect(screen, bg, row, border_radius=4)
+            if here:
+                pygame.draw.rect(screen, COLORS["accent"], row, 1,
+                                 border_radius=4)
+            mark = "OK" if done else (">" if here else str(i + 1))
+            mc = (COLORS["success"] if done else
+                  (COLORS["accent"] if here else COLORS["text_dim"]))
+            screen.blit(fonts.tiny.render(mark, True, mc), (row.x + 6,
+                                                            row.y + 4))
+            kind = fonts.tiny.render(st.step_type.upper(), True,
+                                     COLORS["text_dim"])
+            screen.blit(kind, (row.x + 28, row.y + 4))
+            label = self._step_one_liner(st)
+            while label and fonts.tiny.size(label)[0] > list_w - 34:
+                label = label[:-2]
+            screen.blit(fonts.tiny.render(label, True, COLORS["text_main"]),
+                        (row.x + 28, row.y + 18))
+            ly += 36
+            if ly > by + bh - 130:
+                left = len(steps) - i - 1
+                if left > 0:
+                    screen.blit(fonts.tiny.render(f"+{left} lisää", True,
+                                                  COLORS["text_dim"]),
+                                (lx + 6, ly))
+                break
+
         # Step info
+        col_x = bx + 14 + list_w + 16
         y = by + 54
         step_type_c = {"attack":COLORS["danger"],"spell":COLORS["spell"],
                        "move":COLORS["success"],"legendary":COLORS["legendary"],
                        "reaction":COLORS["reaction"],"bonus_attack":COLORS["warning"]}.get(step.step_type, COLORS["text_main"])
         type_lbl = fonts.body.render(f"[{step.step_type.upper()}]", True, step_type_c)
-        screen.blit(type_lbl, (bx+14, y))
+        screen.blit(type_lbl, (col_x, y))
         # Acting creature's statuses right on the dialog so the DM sees
         # how conditions shape this turn (durations included).
         if plan.entity is not None and (plan.entity.conditions
@@ -2360,9 +2464,9 @@ class BattleRendererMixin:
                     for c in sorted(plan.entity.conditions)]
             if plan.entity.concentrating_on:
                 bits.append(f"C:{plan.entity.concentrating_on.name}")
-            cond_s = fonts.small.render("Tilat: " + ", ".join(bits)[:60],
+            cond_s = fonts.small.render("Tilat: " + ", ".join(bits)[:52],
                                         True, COLORS["warning"])
-            screen.blit(cond_s, (bx + 140, y + 3))
+            screen.blit(cond_s, (col_x + 100, y + 3))
         y += 30
 
         # Description (wrap)
@@ -2371,16 +2475,16 @@ class BattleRendererMixin:
         line = ""
         for w in words:
             test = line + w + " "
-            if fonts.body.size(test)[0] > bw - 30:
+            if fonts.body.size(test)[0] > bw - list_w - 60:
                 ds = fonts.body.render(line, True, COLORS["text_main"])
-                screen.blit(ds, (bx+14, y))
+                screen.blit(ds, (col_x, y))
                 y += 24
                 line = w + " "
             else:
                 line = test
         if line:
             ds = fonts.body.render(line.strip(), True, COLORS["text_main"])
-            screen.blit(ds, (bx+14, y))
+            screen.blit(ds, (col_x, y))
             y += 24
 
         # --- TARGET RESOLUTION LIST ---
@@ -2388,26 +2492,58 @@ class BattleRendererMixin:
         
         if targets:
             y += 10
-            pygame.draw.line(screen, COLORS["border"], (bx+10, y), (bx+bw-10, y), 1)
+            pygame.draw.line(screen, COLORS["border"],
+                             (col_x - 6, y), (bx + bw - 10, y), 1)
             y += 10
-            
+
             # Headers
-            screen.blit(fonts.tiny.render("TARGET", True, COLORS["text_dim"]), (bx+20, y))
-            screen.blit(fonts.tiny.render("RESULT (Click to change)", True, COLORS["text_dim"]), (bx+200, y))
+            screen.blit(fonts.tiny.render("KOHDE / HEITTO", True,
+                                          COLORS["text_dim"]), (col_x + 6, y))
+            screen.blit(fonts.tiny.render("TULOS (klikkaa vaihtaaksesi)",
+                                          True, COLORS["text_dim"]),
+                        (col_x + 250, y))
             y += 20
 
             for t in targets:
-                # Name
-                name_str = t.name[:20]
-                
-                # Show Roll or DC info for DM to announce
-                info_str = ""
+                name_str = t.name[:22]
+                screen.blit(fonts.small.render(name_str, True,
+                                               COLORS["text_main"]),
+                            (col_x + 6, y))
+                # The numbers the table needs read out loud: the dice as
+                # rolled, the total, and the AC or DC it is measured
+                # against. None of this was shown before — the DM was
+                # asked to approve HIT or MISS with nothing to justify
+                # it.
                 if step.save_dc > 0:
-                    info_str = f" (DC {step.save_dc} {step.save_ability[:3]})"
-                elif step.attack_roll > 0:
-                    info_str = f" (Rolled {step.attack_roll} vs AC)"
-
-                screen.blit(fonts.small.render(name_str + info_str, True, COLORS["text_main"]), (bx+20, y+4))
+                    bonus = t.get_save_bonus(step.save_ability) \
+                        if step.save_ability else 0
+                    roll_line = (f"DC {step.save_dc} "
+                                 f"{step.save_ability[:3].upper()} "
+                                 f"(pelastus {bonus:+d})")
+                    rc = COLORS["spell"]
+                elif step.attack_roll_str or step.attack_roll:
+                    # d20 as rolled, the modifier, the total, and what it
+                    # is being measured against — the whole sentence the
+                    # DM has to say out loud.
+                    bonus = step.action.attack_bonus if step.action else 0
+                    shown = step.attack_roll_str or str(step.nat_roll)
+                    roll_line = (f"d20 {shown} {bonus:+d} = {step.attack_roll}"
+                                 f"  vs AC {t.stats.armor_class}")
+                    if step.nat_roll == 20:
+                        roll_line += "   NAT 20"
+                    elif step.nat_roll == 1:
+                        roll_line += "   NAT 1"
+                    rc = (COLORS["legendary"] if step.is_crit
+                          else (COLORS["success"] if step.is_hit
+                                else COLORS["text_dim"]))
+                else:
+                    roll_line = f"AC {t.stats.armor_class} — ei heittoa"
+                    rc = COLORS["text_dim"]
+                extra = self._attack_modifier_note(step)
+                if extra:
+                    roll_line += "   " + extra
+                screen.blit(fonts.tiny.render(roll_line, True, rc),
+                            (col_x + 6, y + 17))
 
                 # Outcome Toggle
                 outcome = self.current_step_outcomes.get(t, "hit")
@@ -2421,7 +2557,7 @@ class BattleRendererMixin:
                 elif outcome == "legendary": txt, col = "LEGENDARY RESIST", COLORS["legendary"]
                 else: txt, col = outcome.upper(), COLORS["text_main"]
 
-                r_toggle = pygame.Rect(bx+200, y, 140, 26)
+                r_toggle = pygame.Rect(col_x + 250, y, 150, 26)
                 pygame.draw.rect(screen, (50,52,55), r_toggle, border_radius=4)
                 pygame.draw.rect(screen, col, r_toggle, 1, border_radius=4)
                 
@@ -2430,12 +2566,7 @@ class BattleRendererMixin:
                 
                 self.ui_click_zones.append((r_toggle, lambda t=t: self._toggle_outcome(t)))
 
-                y += 32
-
-        # Upcoming steps
-        if len(steps) > idx + 1:
-            next_lbl = fonts.tiny.render(f"Next: {steps[idx+1].step_type.upper()} – {steps[idx+1].description[:60]}", True, COLORS["text_dim"])
-            screen.blit(next_lbl, (bx+14, by+bh-55))
+                y += 40
 
         self.btn_confirm.rect.topleft = (bx + bw//2 - 135, by + bh - 55)
         self.btn_confirm.text = "NEXT STEP" if len(steps) > idx+1 else "FINISH TURN"
@@ -2472,7 +2603,6 @@ class BattleRendererMixin:
 
     # --- Reaction / Opportunity Attack Modal ---
     def _draw_reaction_modal(self, screen, mp):
-        self.ui_click_zones.clear()
         
         reactor = self.reaction_pending[0]
         
@@ -2548,7 +2678,6 @@ class BattleRendererMixin:
 
     # --- Deferred player concentration check (the table rolls) ---
     def _draw_conc_check_modal(self, screen, mp):
-        self.ui_click_zones.clear()
         chk = self.pending_conc_checks[0]
         ent, dc, dmg, spell = chk["entity"], chk["dc"], chk["dmg"], chk["spell"]
 
@@ -2618,7 +2747,6 @@ class BattleRendererMixin:
         screen.blit(surf, (cx - r_px - 2, cy - r_px - 2))
 
     def _draw_aura_modal(self, screen, mp):
-        self.ui_click_zones.clear()
         trig = self.current_aura_trigger
         if not trig: return
 
@@ -2675,7 +2803,6 @@ class BattleRendererMixin:
 
     # --- End of Turn Save Modal ---
     def _draw_save_modal(self, screen, mp):
-        self.ui_click_zones.clear()
         if not self.pending_saves:
             self.save_modal_open = False
             self._complete_next_turn(skip_saves=True)
@@ -3023,7 +3150,9 @@ class BattleRendererMixin:
             return
         lines = [f"=== {ent.name} — vuoron alku ==="]
         if ent.concentrating_on:
-            lines.append(f"[C] Keskittyy: {ent.concentrating_on.name} — "
+            held = ent.concentration_target_names()
+            who = (" -> " + ", ".join(held)) if held else ""
+            lines.append(f"[C] Keskittyy: {ent.concentrating_on.name}{who} — "
                          "vahinko vaatii CON-saven (DC 10 tai puolet vahingosta)")
         durations = getattr(ent, "condition_durations", {})
         for cond in sorted(ent.conditions):
@@ -3036,6 +3165,11 @@ class BattleRendererMixin:
             if meta and meta.get("save"):
                 extra.append(f"save DC {meta['dc']} {meta['save'][:3].upper()} "
                              "vuoron lopussa")
+            # Who did this. A Paralyzed badge with no author leaves the
+            # table guessing which caster to knock out to end it.
+            src = getattr(ent, "condition_sources", {}).get(cond)
+            if src is not None and getattr(src, "name", None):
+                extra.append(f"lähde: {src.name}")
             suffix = f"  [{', '.join(extra)}]" if extra else ""
             lines.append(f"• {cond}: {desc[:76]}{suffix}")
         for eff, rounds in sorted(getattr(ent, "active_effects", {}).items()):

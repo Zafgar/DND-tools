@@ -81,6 +81,11 @@ class BattleEventsMixin:
     # Event handling                                                       #
     # ------------------------------------------------------------------ #
 
+    # Click zones are walked back-to-front on purpose. They are
+    # registered in drawing order, so the LAST one registered is the one
+    # drawn on top and the one the DM can actually see under the cursor.
+    # Taking the first match handed the click to whatever was underneath.
+
     def handle_events(self, events):
         try:
             curr = self.battle.get_current_entity()
@@ -154,7 +159,7 @@ class BattleEventsMixin:
                         continue
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         # Check close/save button clicks via ui_click_zones
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -177,7 +182,7 @@ class BattleEventsMixin:
                 # Save Modal (End of Turn)
                 if self.save_modal_open:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -337,7 +342,7 @@ class BattleEventsMixin:
                 if self.add_entity_open:
                     self._handle_add_entity_event(event)
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -381,7 +386,7 @@ class BattleEventsMixin:
                             elif event.button == 1:
                                 # Check ui_click_zones first (toolbar, favorites)
                                 handled = False
-                                for rect, callback in self.ui_click_zones:
+                                for rect, callback in reversed(self.ui_click_zones):
                                     if rect.collidepoint(event.pos):
                                         callback()
                                         handled = True
@@ -401,7 +406,7 @@ class BattleEventsMixin:
 
                         # Map save menu clicks
                         if self.map_save_menu_open and event.button == 1:
-                            for rect, callback in self.ui_click_zones:
+                            for rect, callback in reversed(self.ui_click_zones):
                                 if rect.collidepoint(event.pos):
                                     callback()
                                     break
@@ -419,7 +424,7 @@ class BattleEventsMixin:
                 # Deferred player concentration check (table rolls)
                 if self.pending_conc_checks:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -431,8 +436,12 @@ class BattleEventsMixin:
                     # DM can reposition tokens mid-suggestion (the drag
                     # release becomes a free DM move and the plan is
                     # recomputed for the new positions).
-                    dialog_rect = pygame.Rect(SCREEN_WIDTH//2 - 350,
-                                              SCREEN_HEIGHT//2 - 225, 700, 450)
+                    # The rect the dialog actually drew itself at. Two
+                    # hand-maintained copies of the same geometry is how
+                    # a click lands somewhere the DM did not aim.
+                    dialog_rect = getattr(self, "ai_dialog_rect", None) \
+                        or pygame.Rect(SCREEN_WIDTH//2 - 450,
+                                       SCREEN_HEIGHT//2 - 280, 900, 560)
                     # The alternatives panel sits beside the dialog and
                     # overlaps the grid; without this a click on an
                     # option would be read as a click on the map.
@@ -449,7 +458,7 @@ class BattleEventsMixin:
                     if not grid_pass:
                         # Check dynamic resolution buttons
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                            for rect, callback in self.ui_click_zones:
+                            for rect, callback in reversed(self.ui_click_zones):
                                 if rect.collidepoint(event.pos):
                                     callback()
                                     break
@@ -468,7 +477,7 @@ class BattleEventsMixin:
                 # Pending Aura Trigger
                 if self.current_aura_trigger:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -478,7 +487,7 @@ class BattleEventsMixin:
                 # Pending Reaction (Opportunity Attack)
                 if self.reaction_pending:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break
@@ -651,7 +660,7 @@ class BattleEventsMixin:
                     # We check if the click is within the visible panel area to avoid clicking hidden scrolled items
                     panel_clip_rect = pygame.Rect(GRID_W, TOP_BAR_H+68, PANEL_W, SCREEN_HEIGHT - TOP_BAR_H - 68 - 80)
                     if panel_clip_rect.collidepoint(event.pos):
-                        for rect, callback in self.ui_click_zones:
+                        for rect, callback in reversed(self.ui_click_zones):
                             if rect.collidepoint(event.pos):
                                 callback()
                                 break

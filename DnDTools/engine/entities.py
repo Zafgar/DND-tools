@@ -875,6 +875,24 @@ class Entity:
         self._end_concentration_effects()
         return dropped
 
+    def concentration_target_names(self) -> list:
+        """Who this creature's concentration is currently holding.
+
+        "Concentrating: Hold Person" is only half the sentence at the
+        table — the half that matters is WHO is held, and that was
+        never shown anywhere.
+        """
+        names, seen = [], set()
+        for link in self.concentration_links:
+            tgt = link.get("target")
+            nm = getattr(tgt, "name", None)
+            if nm and nm not in seen:
+                seen.add(nm)
+                names.append(nm)
+        if not names and getattr(self, "marked_target", None) is not None:
+            names.append(self.marked_target.name)
+        return names
+
     def register_concentration_effect(self, target, kind: str, name: str):
         """Record that ``name`` (an active effect or condition) applied
         to ``target`` is sustained by this caster's concentration, so it
