@@ -3220,46 +3220,22 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         self.battle.remove_expired_summons()
         self._log(f"[KUMPPANI] {entity.name} vapautti {len(owned)} kumppani(a).")
 
-    # Features that are a STATE, not a one-off expenditure. Clicking
-    # these used to tick a usage counter and log a line while changing
-    # nothing about the next attack — so a barbarian could never
-    # actually attack recklessly from the DM's panel.
-    _TOGGLE_FEATURES = {
-        "reckless attack": "reckless_attack_active",
-    }
-
     def _use_feature_manual(self, entity, feature):
-        name = feature.name.strip().lower()
-        if name == "rage":
-            # Rage spends a use going on and gives it back when the DM
-            # turns it off by hand, so a misclick is not a lost rage.
-            if entity.rage_active:
-                entity.end_rage()
-                self._save_undo_snapshot()
-                self._log(f"[DM] {entity.name}: Rage päättyi.")
-            elif entity.start_rage():
-                self._save_undo_snapshot()
-                self._log(f"[DM] {entity.name}: RAGE! "
-                          f"(+{entity.get_rage_damage_bonus()} lähivahinkoa, "
-                          f"vastustus lyönti/viilto/murskaus, "
-                          f"{entity.rages_left} jäljellä)")
-            else:
-                self._log(f"[DM] {entity.name}: raivoja ei ole jäljellä.")
-            return
-        flag = self._TOGGLE_FEATURES.get(name)
-        if flag:
-            on = not getattr(entity, flag, False)
-            setattr(entity, flag, on)
+        """The DM presses an ability on the stat sheet.
+
+        This used to decrement a counter and write a line while changing
+        nothing: Second Wind healed nobody, Action Surge granted no
+        action, Nature's Veil left the ranger visible. Of the 149
+        abilities reachable from the panel, two did anything at all.
+        engine.feature_actions now decides whether a feature is passive
+        (nothing to press), a toggle, or a use — and carries it out.
+        """
+        from engine.feature_actions import activate
+        ok, msg = activate(entity, feature, self.battle)
+        if ok:
             self._save_undo_snapshot()
-            self._log(f"[DM] {entity.name}: {feature.name} "
-                      f"{'PÄÄLLÄ' if on else 'pois'}."
-                      + (" Etu STR-lähitaisteluun, viholliset saavat "
-                         "edun häntä vastaan." if on else ""))
-            return
-        if entity.can_use_feature(feature.name):
-            entity.use_feature(feature.name)
-            self._log(f"[DM] {entity.name} uses {feature.name}.")
-            self._save_undo_snapshot()
+        if msg:
+            self._log(f"[DM] {msg}")
 
     _LOG_FILTERS = [
         ("all", "ALL"),

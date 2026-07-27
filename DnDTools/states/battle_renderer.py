@@ -16,6 +16,10 @@ from data.ability_help_fi import (
     explain_action, explain_condition, explain_feature, summarize_ai_plan_fi,
     target_rationale_fi, difficulty_read_fi,
 )
+from engine.feature_actions import (classify as feat_kind,
+                                    describe as feat_describe,
+                                    PASSIVE as FEAT_PASSIVE,
+                                    TOGGLE as FEAT_TOGGLE, _TOGGLES)
 from engine.terrain import TERRAIN_TYPES
 from engine.win_probability import assess_encounter_danger
 
@@ -1773,17 +1777,34 @@ class BattleRendererMixin:
                         remaining = sel.feature_uses.get(feat.name, 0)
                         uses_str = f" [{remaining}/1]"
 
-                    # Render manually to check hover
-                    txt_str = f"• {feat.name}{uses_str}"
-                    s = fonts.small.render(txt_str, True, COLORS["text_main"])
+                    # Passive, a switch, or something to press. The
+                    # click zone used to be registered only for features
+                    # with limited uses, so Reckless Attack — a toggle
+                    # with no daily limit — had no clickable region at
+                    # all and no amount of aiming would fire it.
+                    kind = feat_kind(feat)
+                    on = (kind == FEAT_TOGGLE
+                          and self._toggle_is_on(sel, feat))
+                    marker = ("•" if kind == FEAT_PASSIVE
+                              else ("[X]" if on else "[ ]"))
+                    txt_str = f"{marker} {feat.name}{uses_str}"
+                    colour = (COLORS["text_dim"] if kind == FEAT_PASSIVE
+                              else (COLORS["success"] if on
+                                    else COLORS["text_main"]))
+                    s = fonts.small.render(txt_str, True, colour)
                     line_rect = pygame.Rect(x0+8, y, s.get_width(), 20)
 
                     if line_rect.collidepoint(mp):
-                        s = fonts.small.render(txt_str, True, COLORS["accent_hover"])
-                        self.active_tooltip = f"{feat.name}: {explain_feature(feat)}"
+                        s = fonts.small.render(
+                            txt_str, True,
+                            colour if kind == FEAT_PASSIVE
+                            else COLORS["accent_hover"])
+                        self.active_tooltip = (
+                            f"{feat.name}\n{feat_describe(feat, sel)}\n\n"
+                            f"{explain_feature(feat)}")
 
-                    # Click to use feature (if it has uses)
-                    if feat.uses_per_day > 0 or feat.recharge:
+                    # Anything that is not passive can be pressed.
+                    if kind != FEAT_PASSIVE:
                         self.ui_click_zones.append((line_rect, lambda f=feat: self._use_feature_manual(sel, f)))
 
                     screen.blit(s, (x0+8, y))
@@ -2333,6 +2354,11 @@ class BattleRendererMixin:
                 self.ui_click_zones.append(
                     (r, lambda rk=opt.rank: self.choose_plan_option(rk)))
             y += row_h
+
+    @staticmethod
+    def _toggle_is_on(entity, feature):
+        flag = _TOGGLES.get((getattr(feature, 'mechanic', '') or '').lower())
+        return bool(flag and getattr(entity, flag, False))
 
     @staticmethod
     def _step_one_liner(step):
