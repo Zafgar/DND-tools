@@ -1659,6 +1659,13 @@ class Entity:
             self.death_save_history.append("F")
             msg += f" (Failure) [{self.death_save_successes}/3 S, {self.death_save_failures}/3 F]"
 
+        # Three is the end of the track in both directions. A natural 1
+        # counts as two failures (PHB p.197), so a creature already on
+        # two ran to four and the sheet showed "1s/4f" — a score that
+        # cannot exist, because the third failure is death.
+        self.death_save_failures = min(3, self.death_save_failures)
+        self.death_save_successes = min(3, self.death_save_successes)
+
         if self.death_save_successes >= 3:
             self.is_stable = True
             msg += " -> STABILIZED!"

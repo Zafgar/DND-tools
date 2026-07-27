@@ -657,7 +657,7 @@
         "multiattack_count": 1,
         "multiattack_targets": [],
         "reach": 5,
-        "applies_condition": "HP Max Reduced",
+        "applies_condition": "Max HP Reduced",
         "condition_save": "Constitution",
         "condition_dc": 10,
         "aoe_radius": 0,

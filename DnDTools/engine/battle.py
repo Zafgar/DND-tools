@@ -269,12 +269,23 @@ class BattleSystem:
         return ent
 
     def remove_expired_summons(self) -> bool:
-        """Remove summons that have expired. Returns True if current entity was removed."""
+        """Clear away summons that are finished. True if the current one went.
+
+        Finished means the duration ran out OR the thing was destroyed.
+        A summon is a spell effect, not a creature: it does not fall
+        unconscious and it does not roll death saves. Leaving the wreck
+        on the field meant a Spiritual Weapon on -1 hp kept taking a
+        turn and kept swinging, because a player-side summon satisfied
+        the "dying player still gets a turn" rule in next_turn.
+        """
         current = self.get_current_entity() if self.entities else None
-        expired = [e for e in self.entities if e.is_summon and e.summon_rounds_left <= 0]
+        expired = [e for e in self.entities
+                   if e.is_summon and (e.summon_rounds_left <= 0
+                                       or e.hp <= 0)]
         current_removed = False
         for e in expired:
-            self.log(f"[SUMMON] {e.name} disappears.")
+            verb = "is destroyed" if e.hp <= 0 else "disappears"
+            self.log(f"[SUMMON] {e.name} {verb}.")
             if e == current:
                 current_removed = True
 
@@ -340,8 +351,14 @@ class BattleSystem:
         while True:
             ent = self.entities[self.turn_index]
             is_alive = ent.hp > 0
-            # Players roll death saves, so they get a turn even if 0 HP (unless dead-dead or stable)
-            is_dying_player = ent.is_player and ent.hp <= 0 and ent.death_save_failures < 3 and not ent.is_stable
+            # Players roll death saves, so they get a turn even if 0 HP
+            # (unless dead-dead or stable). A summon is not a player
+            # even when it fights on the party's side — it is a spell
+            # effect, and a destroyed one has no death saves to roll.
+            is_dying_player = (ent.is_player and not ent.is_summon
+                               and ent.hp <= 0
+                               and ent.death_save_failures < 3
+                               and not ent.is_stable)
 
             should_act = ent.acts_on_initiative
             if (is_alive or is_dying_player or ent.is_lair) and should_act:

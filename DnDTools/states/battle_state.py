@@ -167,6 +167,9 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         # AI turn state
         self.pending_plan: TurnPlan | None = None
         self.pending_step_idx: int = 0
+        # The last plan step that actually resolved, as opposed to one
+        # that was merely queued and then cancelled. See _confirm_step.
+        self.last_executed_step = None
         self.current_step_outcomes = {} # target -> "hit"/"miss"/"save"/"fail"
         self.current_step_rolls = {}    # target -> "15+5=20" (for saves)
         self._pre_plan_state = None     # Saved entity state before AI planning
@@ -1145,7 +1148,26 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
         steps = self.pending_plan.steps
         if self.pending_step_idx < len(steps):
             step = steps[self.pending_step_idx]
-            
+
+            # --- The actor may have died since the plan was made ---
+            # A turn is planned in one go, then confirmed step by step,
+            # and plenty can happen in between: an opportunity attack
+            # provoked by the move, a hazard tile, a readied reaction.
+            # A creature that is down does not finish its turn, and a
+            # destroyed summon does not swing again — both were doing
+            # exactly that until the combat audit noticed.
+            actor = step.attacker
+            if (actor is not None and actor.hp <= 0
+                    and step.step_type not in ("wait",)):
+                # A dying player gets a turn, but that turn is a death
+                # save and nothing else — no potion, no crawling away.
+                # Everyone else simply stops.
+                self._log(f"[AI] {actor.name} is down — the rest of its "
+                          f"turn is cancelled.")
+                self.pending_plan = None
+                self.pending_step_idx = 0
+                return
+
             # --- Counterspell Check ---
             if step.step_type == "spell" and not step.counter_checked:
                 step.counter_checked = True
@@ -1206,8 +1228,17 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
                 # Rotating summoning circle under the new arrival.
                 self._spawn_summon_vfx(new_ent)
                 
-                # Handle immediate attack (e.g. Spiritual Weapon on cast)
+                # Handle immediate attack (e.g. Spiritual Weapon on cast).
+                # Only if it can actually reach: get_distance counts
+                # altitude, and a weapon that materialises on the floor
+                # cannot hit a dragon hovering fifteen feet above it.
+                reach_ok = False
                 if step.summon_immediate_attack and step.target and new_ent.stats.actions:
+                    _a = new_ent.stats.actions[0]
+                    _reach = max(_a.range, _a.reach, 5)
+                    reach_ok = (self.battle.get_distance(new_ent, step.target)
+                                * 5 <= _reach + 0.01)
+                if reach_ok:
                     action = new_ent.stats.actions[0]
                     atk_step = self.battle.ai._execute_attack(new_ent, action, step.target, self.battle)
                     atk_step.step_type = "bonus_attack"
@@ -1228,6 +1259,12 @@ class BattleState(BattleRendererMixin, BattleEventsMixin, GameState):
             # Clean up terrain from any broken concentration (damage, incapacitation, etc.)
             self._cleanup_dropped_spell_terrain()
 
+            # The last step that actually resolved. A queued step can be
+            # cancelled — countered, interrupted by a reaction, or
+            # dropped because its actor went down — so anything auditing
+            # or logging what a turn DID needs the difference between
+            # "was planned" and "happened".
+            self.last_executed_step = step
             self.pending_step_idx += 1
             self._prepare_step_outcomes()
 

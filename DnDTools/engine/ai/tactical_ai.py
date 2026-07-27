@@ -466,11 +466,16 @@ class TacticalAI:
             if move_step:
                 plan.steps.append(move_step)
 
-        # Attack
-        if battle.is_adjacent(entity, target) or entity.stats.actions:
-            actions = entity.stats.actions
-            if actions:
-                step = self._execute_attack(entity, actions[0], target, battle)
+        # Attack — only if the thing can actually reach. The old test
+        # was "adjacent OR it has any actions at all", which is always
+        # true, so a Spiritual Weapon that failed to close still swung
+        # and connected from fifteen feet away.
+        actions = entity.stats.actions
+        if actions:
+            weapon = actions[0]
+            reach_ft = max(weapon.range, weapon.reach, 5)
+            if battle.get_distance(entity, target) * 5 <= reach_ft + 0.01:
+                step = self._execute_attack(entity, weapon, target, battle)
                 step.description = f"[SUMMON] {step.description}"
                 plan.steps.append(step)
 
@@ -554,25 +559,55 @@ class TacticalAI:
         return plan
 
     def _move_summon_to_target(self, entity, target, battle):
-        """Simple movement for summons - teleport adjacent to target."""
-        # Spiritual Weapon can move 20ft as part of its bonus action
+        """Float a summon toward its target, within its own speed.
+
+        A Spiritual Weapon moves 20 ft as part of the bonus action that
+        commands it — it does not teleport. The old version dropped it
+        on any free square beside the target regardless of distance,
+        which the combat audit caught as a summon covering sixty-six
+        feet on a twenty-foot speed.
+        """
         start_x, start_y = entity.grid_x, entity.grid_y
-        # Find adjacent free spot to target
+        budget = max(entity.get_speed(), 5.0)
+        best = None
+        best_gap = None
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx == 0 and dy == 0:
                     continue
                 nx, ny = target.grid_x + dx, target.grid_y + dy
+                if not battle.is_passable(nx, ny, exclude=entity):
+                    continue
+                travel = math.hypot(nx - start_x, ny - start_y) * 5
+                if travel > budget:
+                    continue
+                if best_gap is None or travel < best_gap:
+                    best, best_gap = (nx, ny), travel
+        if best is None:
+            # Out of reach this turn: drift as far toward it as the
+            # speed allows instead of standing still.
+            vx, vy = target.grid_x - start_x, target.grid_y - start_y
+            mag = math.hypot(vx, vy)
+            if mag < 0.01:
+                return None
+            steps = int(budget // 5)
+            for k in range(steps, 0, -1):
+                nx = int(round(start_x + vx / mag * k))
+                ny = int(round(start_y + vy / mag * k))
                 if battle.is_passable(nx, ny, exclude=entity):
-                    entity.grid_x, entity.grid_y = nx, ny
-                    dist = math.hypot(nx - start_x, ny - start_y) * 5
-                    return ActionStep(
-                        step_type="move",
-                        description=f"[SUMMON] {entity.name} moves to ({nx},{ny})",
-                        attacker=entity, new_x=nx, new_y=ny,
-                        movement_ft=dist, old_x=start_x, old_y=start_y,
-                    )
-        return None
+                    best = (nx, ny)
+                    best_gap = math.hypot(nx - start_x, ny - start_y) * 5
+                    break
+        if best is None:
+            return None
+        nx, ny = best
+        entity.grid_x, entity.grid_y = float(nx), float(ny)
+        return ActionStep(
+            step_type="move",
+            description=f"[SUMMON] {entity.name} moves to ({nx},{ny})",
+            attacker=entity, new_x=nx, new_y=ny,
+            movement_ft=best_gap, old_x=start_x, old_y=start_y,
+        )
 
     # ------------------------------------------------------------------ #
     # Barbarian Rage                                                       #
@@ -858,8 +893,16 @@ class TacticalAI:
                 if entity.is_disengaging or entity.has_feature("cunning_action"):
                     return self._move_away(entity, threats[0], battle)
 
-        # Both: spread from allies if AoE threat exists
-        if entity.movement_left >= 5.0:
+        # Both: spread from allies if AoE threat exists — but never by
+        # walking out of a melee you are already in. Leaving reach hands
+        # the enemy a free attack (PHB p.195) and gives up the contact
+        # you just spent your move making. The combat audit caught this
+        # as goblins that closed, swung, and then jogged twenty-five
+        # feet away from the target they had just hit.
+        in_melee = any(e.hp > 0 and battle.is_adjacent(entity, e)
+                       for e in enemies)
+        if entity.movement_left >= 5.0 and not (
+                in_melee and not entity.is_disengaging):
             aoe_threat = self._assess_aoe_threat(entity, enemies)
             if aoe_threat > 0:
                 # Check if we're dangerously clumped
@@ -4263,7 +4306,13 @@ class TacticalAI:
             is_crit=is_crit, is_hit=is_hit,
             damage=dmg, damage_type=action.damage_type, applies_condition=action.applies_condition,
             condition_dc=action.condition_dc, save_ability=action.condition_save,
-            is_magical=is_magical
+            is_magical=is_magical,
+            # Where the swing was actually made from. Planning applies
+            # movement as it goes, so by the time a plan is reviewed the
+            # attacker is standing wherever its LAST step left it — which
+            # made a legal melee attack look like it came from across the
+            # room. Recording it keeps the step self-describing.
+            old_x=entity.grid_x, old_y=entity.grid_y,
         )
 
     # ------------------------------------------------------------------ #
@@ -4316,11 +4365,21 @@ class TacticalAI:
                         move_step.step_type = "bonus_attack"
                         move_step.description = f"{entity.name} moves Spiritual Weapon."
                         steps.append(move_step)
+                # Only swing if the weapon actually got there. It floats
+                # 20 ft a round; a target further off than that is out
+                # of its reach this turn, and attacking anyway had it
+                # connecting from forty feet away.
                 if weapon.stats.actions:
-                    atk_step = self._execute_attack(weapon, weapon.stats.actions[0], target, battle)
-                    atk_step.step_type = "bonus_attack"
-                    atk_step.description = f"{entity.name} attacks with Spiritual Weapon."
-                    steps.append(atk_step)
+                    blade = weapon.stats.actions[0]
+                    reach_ft = max(blade.range, blade.reach, 5)
+                    if battle.get_distance(weapon, target) * 5 <= reach_ft + 0.01:
+                        atk_step = self._execute_attack(weapon, blade, target,
+                                                        battle)
+                        atk_step.step_type = "bonus_attack"
+                        atk_step.description = (f"{entity.name} attacks with "
+                                                f"Spiritual Weapon.")
+                        steps.append(atk_step)
+                if steps:
                     entity.bonus_action_used = True
                     return steps
 

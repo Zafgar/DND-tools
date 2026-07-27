@@ -69,7 +69,7 @@ monsters = [
         armor_class=12, hit_points=22, hit_dice="5d8", speed=0, fly_speed=50,
         abilities=AbilityScores(strength=1,dexterity=14,constitution=11,intelligence=10,wisdom=10,charisma=11),
         actions=[Action("Life Drain","Melee",4,"3d6",0,"necrotic",
-                        applies_condition="HP Max Reduced",condition_save="Constitution",condition_dc=10)],
+                        applies_condition="Max HP Reduced",condition_save="Constitution",condition_dc=10)],
         damage_resistances=["acid","cold","fire","lightning","thunder","bludgeoning","piercing","slashing"],
         damage_immunities=["necrotic","poison"],
         condition_immunities=["Charmed","Exhaustion","Grappled","Paralyzed","Petrified","Poisoned","Prone","Restrained","Unconscious"],

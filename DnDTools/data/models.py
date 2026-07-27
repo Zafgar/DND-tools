@@ -79,6 +79,63 @@ class Action:
     properties: List[str] = field(default_factory=list)  # weapon: "light","finesse","heavy","reach","thrown","versatile","two-handed","loading"
     long_range: int = 0               # long range in ft (normal range = self.range)
 
+    # Damage types and action types, for repairing shifted arguments.
+    _DAMAGE_TYPES = frozenset((
+        "acid", "bludgeoning", "cold", "fire", "force", "lightning",
+        "necrotic", "piercing", "poison", "psychic", "radiant",
+        "slashing", "thunder"))
+    _ACTION_TYPES = frozenset((
+        "action", "bonus", "reaction", "legendary", "free", "lair"))
+
+    def __post_init__(self):
+        """Repair stat blocks whose positional arguments slipped a place.
+
+        ``Action("Bite", "Melee", 3, "2d8+3", "piercing")`` reads
+        naturally and is wrong: the fifth positional is damage_bonus,
+        so the damage TYPE lands in it and damage_type keeps its
+        default. Forty-seven actions across the library were written
+        that way, which meant a ghoul's bite dealt bludgeoning and any
+        arithmetic on the bonus raised TypeError — the combat audit
+        found it as a crash inside the win-probability meter.
+
+        Repairing it here fixes every one of them at once and stops the
+        next stat block written the same way from doing it again.
+        """
+        if isinstance(self.damage_bonus, str):
+            word = self.damage_bonus.strip().lower()
+            if word in self._DAMAGE_TYPES:
+                # It is a damage type in the wrong slot.
+                if self.damage_type in ("", "bludgeoning"):
+                    self.damage_type = word
+                self.damage_bonus = 0
+            else:
+                try:
+                    self.damage_bonus = int(word or 0)
+                except ValueError:
+                    self.damage_bonus = 0
+
+        if isinstance(self.attack_bonus, str):
+            word = self.attack_bonus.strip().lower()
+            if word in self._ACTION_TYPES:
+                if self.action_type == "action":
+                    self.action_type = word
+                self.attack_bonus = 0
+            else:
+                try:
+                    self.attack_bonus = int(word or 0)
+                except ValueError:
+                    self.attack_bonus = 0
+
+        for numeric in ("range", "reach", "condition_dc", "aoe_radius",
+                        "long_range", "multiattack_count"):
+            value = getattr(self, numeric)
+            if not isinstance(value, (int, float)):
+                try:
+                    setattr(self, numeric, int(str(value)))
+                except (TypeError, ValueError):
+                    setattr(self, numeric, 0)
+
+
 @dataclass
 class Feature:
     name: str

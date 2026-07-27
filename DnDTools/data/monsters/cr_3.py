@@ -130,7 +130,7 @@ monsters = [
                  Action("Longsword","Melee",4,"1d8",2,"slashing"),
                  Action("Longbow","Ranged",4,"1d8",2,"piercing",range=150),
                  Action("Life Drain","Melee",4,"1d6",2,"necrotic",
-                        applies_condition="HP Max Reduced",condition_save="Constitution",condition_dc=13)],
+                        applies_condition="Max HP Reduced",condition_save="Constitution",condition_dc=13)],
         skills={"Perception":3,"Stealth":4},
         damage_resistances=["necrotic","bludgeoning","piercing","slashing"],
         damage_immunities=["poison"],

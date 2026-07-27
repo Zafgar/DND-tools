@@ -49,6 +49,51 @@ CONDITIONS = {
         "10-foot radius. Any attack roll against it has advantage, and it can't "
         "benefit from being invisible."
     ),
+    # The three below were being applied by the engine and by stat
+    # blocks without ever appearing here. They worked mechanically, but
+    # the table is what drives the token badge and the help text, so the
+    # DM had no way to see that a creature was under them. The combat
+    # audit found all three.
+    "Lethargic": (
+        "The rush of Haste has drained away. The creature can't move or take "
+        "actions until after its next turn (PHB p.250). It is not Incapacitated: "
+        "concentration and grapples are unaffected."
+    ),
+    "Turned": (
+        "The undead is turned. It must spend its turns trying to move as far away "
+        "from the source of the turning as it can, and it can't willingly move to "
+        "within 30 feet of them. It can't take reactions, and for its action it "
+        "can only Dash or try to escape. The effect ends if it takes any damage."
+    ),
+    "Max HP Reduced": (
+        "Necrotic drain has cut the creature's hit point maximum by the damage "
+        "taken. The reduction lasts until the creature finishes a long rest, and "
+        "the creature dies if this reduces its maximum to 0."
+    ),
+    "Cursed": (
+        "The creature labours under a curse (a mummy's rot, a hag's malediction, "
+        "a lich's mark). It has disadvantage on ability checks and saving throws, "
+        "and it cannot regain hit points. Remove Curse or Greater Restoration "
+        "ends it."
+    ),
+    "Slowed": (
+        "The creature's speed is halved, it takes a -2 penalty to AC and Dexterity "
+        "saving throws, and it can't take reactions. On its turn it may use either "
+        "an action or a bonus action, not both."
+    ),
+    "Possessed": (
+        "Another will is riding this creature. It is incapacitated and loses "
+        "control of its body while the possessor acts through it."
+    ),
+    "Infernal Wound": (
+        "A wound that will not close. The creature loses hit points at the start "
+        "of each of its turns and its hit point maximum is reduced by the same "
+        "amount. A DC 12 Medicine check or any magical healing ends it."
+    ),
+    "Disadvantage": (
+        "A catch-all marker: the creature has disadvantage on its attack rolls "
+        "until the effect that imposed it ends."
+    ),
     "Invisible": (
         "An invisible creature is impossible to see without the aid of magic or a "
         "special sense. The creature's location can be detected by noise or tracks. "
@@ -138,6 +183,34 @@ CONDITION_EFFECTS = {
         "speed_zero": True,
         "prevents_prone_standup": True,  # Can't stand from Prone while speed is 0
     },
+    # Turn Undead has always applied this condition; it just had no
+    # entry, so it did nothing and showed nothing. The reaction ban is
+    # RAW and mechanical. The "must flee, may only Dash or Disengage"
+    # half is deliberately left to the DM rather than half-modelled —
+    # the description on the badge now spells it out.
+    "Turned": {
+        "no_reactions": True,
+        "cannot_attack_source": True,
+        "cannot_move_toward_source": True,
+    },
+    # Mummy Rot and its kin. Applied by three stat blocks and defined
+    # by none of them until the audit asked.
+    "Cursed": {
+        "check_disadvantage": True,
+    },
+    "Slowed": {
+        "no_reactions": True,
+    },
+    "Possessed": {
+        "incapacitated": True,
+        "no_actions": True,
+        "no_reactions": True,
+    },
+    "Disadvantage": {
+        "attack_disadvantage": True,
+    },
+    # Infernal Wound is damage over time rather than a state that
+    # changes what the creature can do; the description carries it.
     "Incapacitated": {
         "no_actions": True,
         "no_reactions": True,
@@ -221,4 +294,5 @@ SPEED_ZERO_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unco
 PREVENTS_STANDUP_CONDITIONS = {"Grappled", "Restrained", "Paralyzed", "Stunned", "Unconscious", "Petrified", "Banished", "Lethargic"}
 
 # Conditions that require a source entity for their effects (e.g. Frightened, Charmed)
-SOURCE_DEPENDENT_CONDITIONS = {"Frightened", "Charmed", "Banished"}
+SOURCE_DEPENDENT_CONDITIONS = {"Frightened", "Charmed", "Banished",
+                               "Turned"}

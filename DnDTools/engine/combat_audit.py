@@ -329,6 +329,26 @@ class _Watcher:
             else:
                 self.report.conditions_seen[cond] += 1
 
+    @staticmethod
+    def _attack_distance(battle, atk, target, step) -> float:
+        """Distance in feet from where the swing was actually made.
+
+        The AI applies movement while it plans, so an attacker is
+        standing at the end of its whole turn by the time any step is
+        reviewed. Judging a melee attack against that position reported
+        legal attacks as coming from across the room. ``old_x/old_y``
+        on the step records where the attacker stood when the attack was
+        built; fall back to the live position for steps that carry none.
+        """
+        ax, ay = atk.grid_x, atk.grid_y
+        if step.old_x or step.old_y:
+            ax, ay = step.old_x, step.old_y
+        sa, st = atk.size_in_squares, target.size_in_squares
+        dx = max(0.0, target.grid_x - (ax + sa), ax - (target.grid_x + st))
+        dy = max(0.0, target.grid_y - (ay + sa), ay - (target.grid_y + st))
+        dz = abs(atk.elevation - target.elevation) / 5.0
+        return (dx * dx + dy * dy + dz * dz) ** 0.5 * 5.0
+
     # -- one executed step -------------------------------------------- #
     def check_step(self, battle, step, where: str):
         note = self.report.note
@@ -352,10 +372,15 @@ class _Watcher:
                  f"'{step.applies_condition}' — it will have no badge, no "
                  f"help text and no duration handling")
 
-        if step.save_ability and step.save_dc <= 0:
+        # An attack keeps its DC in condition_dc, a spell in save_dc,
+        # and the resolver reads "condition_dc or save_dc". Checking
+        # only save_dc reported every weapon-borne condition in the
+        # game as having no DC at all.
+        effective_dc = step.condition_dc or step.save_dc
+        if step.save_ability and effective_dc <= 0:
             note(WARNING, "rules", "Saving throw with no DC",
                  f"{where}: {step.action_name or '?'} asks for a "
-                 f"{step.save_ability} save at DC {step.save_dc}")
+                 f"{step.save_ability} save at DC {effective_dc}")
 
         if atk is None:
             return
@@ -367,15 +392,21 @@ class _Watcher:
 
         # Reach and range. A miss is fine; a swing from across the room
         # is not.
-        if step.step_type in ("attack", "multiattack", "bonus_attack",
-                              "legendary") and step.action is not None:
+        # Area actions are excluded: a Ground Slam's ``range`` is where
+        # the shockwave starts, not how far it travels, so measuring its
+        # victims against it reported every burst in the game as an
+        # over-long swing.
+        if (step.step_type in ("attack", "multiattack", "bonus_attack",
+                               "legendary")
+                and step.action is not None
+                and not step.action.aoe_radius and not step.aoe_center):
             reach_ft = max(step.action.range, step.action.reach)
             if step.action.long_range:
                 reach_ft = max(reach_ft, step.action.long_range)
             for t in targets:
                 if t is None:
                     continue
-                dist = battle.get_distance(atk, t) * 5.0
+                dist = self._attack_distance(battle, atk, t, step)
                 if reach_ft and dist > reach_ft + 2.5:
                     note(ERROR, "rules", "Attack made beyond its reach",
                          f"{where}: {atk.name}'s {step.action.name} "
@@ -388,15 +419,23 @@ class _Watcher:
         # a map with no terrain at all as shooting "through solid cover".
         # Area effects are excluded too: a burst legitimately catches
         # things around a corner from its caster.
+        # Ranged only. The centre-to-centre line is the wrong test for
+        # melee: a Huge creature's body wraps a corner, so its bite is
+        # legitimately in contact with something the line from its
+        # anchor square cannot see.
         if (step.step_type in ("attack", "multiattack", "bonus_attack")
                 and not step.aoe_center and battle.terrain
-                and step.action is not None and step.action.aoe_radius == 0):
+                and step.action is not None and step.action.aoe_radius == 0
+                and step.action.range > 10):
             from engine.terrain import check_los_blocked
+            ax = int(step.old_x) if (step.old_x or step.old_y) \
+                else int(atk.grid_x)
+            ay = int(step.old_y) if (step.old_x or step.old_y) \
+                else int(atk.grid_y)
             for t in targets:
                 if t is None or t is atk:
                     continue
-                if check_los_blocked(battle.terrain,
-                                     int(atk.grid_x), int(atk.grid_y),
+                if check_los_blocked(battle.terrain, ax, ay,
                                      int(t.grid_x), int(t.grid_y),
                                      float(atk.elevation) + 5.0,
                                      float(t.elevation) + 5.0):
@@ -409,12 +448,18 @@ class _Watcher:
             if step.movement_ft < 0:
                 note(ERROR, "rules", "Negative movement",
                      f"{where}: {atk.name} moved {step.movement_ft} ft")
-            budget = max(atk.get_speed(), atk.stats.speed,
-                         atk.stats.fly_speed) + 10
+            # Dash doubles it, difficult terrain charges double per
+            # square, and movement_ft records cost rather than distance
+            # — so the honest ceiling is twice the best speed with a
+            # little slack, not the speed itself.
+            speed = max(atk.get_speed(), atk.stats.speed,
+                        atk.stats.fly_speed)
+            budget = speed * 2 + 10
             if step.movement_ft > budget:
                 note(ERROR, "rules", "Moved further than its speed allows",
                      f"{where}: {atk.name} moved {step.movement_ft:.0f} ft "
-                     f"on a {budget - 10:.0f} ft speed")
+                     f"on a {speed:.0f} ft speed (Dash allows "
+                     f"{speed * 2:.0f})")
 
 
 # --------------------------------------------------------------------- #
@@ -498,7 +543,12 @@ class AuditRunner:
         if not pspots:
             pspots = [(3, 3 + i * 2) for i in range(8)]
         if not espots:
-            espots = [(16, 3 + i * 2) for i in range(8)]
+            # 45 ft apart, not 65. A gelatinous cube moves 15 ft a round:
+            # at the old spacing it needed five rounds just to reach the
+            # party and the fight was over first, so four stat blocks
+            # were reported as "never acted" when the truth was that the
+            # scenario never gave them a turn in range.
+            espots = [(12, 3 + i * 2) for i in range(8)]
 
         ents = []
         for i, name in enumerate(sc.players):
@@ -540,12 +590,7 @@ class AuditRunner:
         steps = 0
         for steps in range(self.MAX_STEPS_PER_BATTLE):
             where = f"{where0} r{bs.battle.round}s{steps}"
-            # The step that is about to be executed, so coverage and the
-            # per-step rule checks see the real stream of play.
-            pending = None
-            if bs.pending_plan and \
-                    bs.pending_step_idx < len(bs.pending_plan.steps):
-                pending = bs.pending_plan.steps[bs.pending_step_idx]
+            bs.last_executed_step = None
             try:
                 bs._process_auto_battle()
             except Exception:
@@ -553,9 +598,14 @@ class AuditRunner:
                          f"{where}: "
                          + traceback.format_exc().strip().splitlines()[-1])
                 break
-            if pending is not None:
+            # Only steps that actually RESOLVED. Reading the queued step
+            # instead reported every cancelled one as if it had happened
+            # — counterspelled casts, and the whole remainder of a turn
+            # belonging to a creature that had just been dropped.
+            executed = bs.last_executed_step
+            if executed is not None:
                 try:
-                    watcher.check_step(bs.battle, pending, where)
+                    watcher.check_step(bs.battle, executed, where)
                 except Exception:
                     pass
             try:
@@ -593,8 +643,10 @@ class AuditRunner:
         # actions at all. Any of the three is worth a look.
         silent = sorted(set(rep.monsters_played) - rep.monsters_that_acted)
         for name in silent[:40]:
-            rep.note(WARNING, "coverage", "Monster never acted",
-                     f"{name} was in a fight and never took an action")
+            rep.note(INFO, "coverage", "Monster never acted",
+                     f"{name} — usually means it died before its turn "
+                     f"came round, but check that it has a usable action "
+                     f"and can reach anything")
 
         try:
             import data.spells as spell_lib

@@ -77,6 +77,32 @@ CONDITION_HELP_FI = {
     "Outlined": "Valaistu (Faerie Fire): kohde hehkuu, jokainen hyökkäys "
                 "sitä vastaan saa EDUN eikä se voi hyötyä "
                 "näkymättömyydestä.",
+    # Nämä kahdeksan asetettiin pelissä ilman merkintää tilataulukossa,
+    # joten pelinjohtaja ei nähnyt niistä mitään. Combat audit löysi.
+    "Lethargic": "Hasten jälkitila: ei voi liikkua eikä toimia ennen kuin "
+                 "seuraava vuoro on ohi. EI ole Incapacitated — "
+                 "keskittyminen ja painit säilyvät.",
+    "Turned": "Karkotettu: epäkuolleen on paettava karkottajasta niin "
+              "kauas kuin pääsee eikä se voi lähestyä 30 jalkaa "
+              "lähemmäs. Ei reaktioita; toiminnoksi vain Dash tai "
+              "pakoyritys. Päättyy jos se ottaa vahinkoa.",
+    "Max HP Reduced": "Osumapistemaksimi laskenut otetun vahingon verran. "
+                      "Palautuu vasta pitkällä levolla; jos maksimi "
+                      "putoaa nollaan, olento kuolee.",
+    "Cursed": "Kirottu: HAITTA kykyheittoihin ja pelastusheittoihin, eikä "
+              "olento voi palauttaa osumapisteitä. Remove Curse tai "
+              "Greater Restoration poistaa.",
+    "Slowed": "Hidastettu: nopeus puolittuu, -2 AC:hen ja DEX-pelastuksiin, "
+              "ei reaktioita. Vuorolla joko toiminto TAI bonustoiminto, "
+              "ei molempia.",
+    "Possessed": "Riivattu: toinen tahto ohjaa kehoa. Olento on "
+                 "toimintakyvytön eikä hallitse itseään.",
+    "Infernal Wound": "Helvetin haava: olento menettää osumapisteitä joka "
+                      "vuoron alussa ja sen maksimi laskee saman verran. "
+                      "DC 12 Medicine tai mikä tahansa taikaparannus "
+                      "sulkee sen.",
+    "Disadvantage": "Haitta: olennon hyökkäysheitot saavat HAITAN kunnes "
+                    "vaikutus päättyy.",
     "Incapacitated": "Toimintakyvytön: ei voi tehdä toimintoja eikä "
                      "reaktioita.",
     "Invisible": "Näkymätön: hyökkäykset sitä vastaan saavat HAITAN, sen "
